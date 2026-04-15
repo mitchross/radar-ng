@@ -1,9 +1,141 @@
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Switch, TouchableOpacity } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Slider from "@react-native-community/slider";
+import { useWeatherStore } from "../../stores/useWeatherStore";
 
 export default function SettingsScreen() {
+  const mapStyle = useWeatherStore((s) => s.mapStyle);
+  const setMapStyle = useWeatherStore((s) => s.setMapStyle);
+  const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
+  const setTemperatureUnit = useWeatherStore((s) => s.setTemperatureUnit);
+  const radarOpacity = useWeatherStore((s) => s.radarOpacity);
+  const setRadarOpacity = useWeatherStore((s) => s.setRadarOpacity);
+  const playbackSpeed = useWeatherStore((s) => s.playbackSpeed);
+  const setPlaybackSpeed = useWeatherStore((s) => s.setPlaybackSpeed);
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Settings - Coming Soon</Text>
+    <SafeAreaView style={styles.container}>
+      <Text style={styles.title}>Settings</Text>
+
+      <Section title="Map">
+        <Row label="Dark Mode">
+          <Switch
+            value={mapStyle === "dark"}
+            onValueChange={(v) => setMapStyle(v ? "dark" : "light")}
+            trackColor={{ true: "#4fc3f7" }}
+          />
+        </Row>
+      </Section>
+
+      <Section title="Units">
+        <Row label="Temperature">
+          <SegmentedControl
+            options={["F", "C"]}
+            selected={temperatureUnit === "fahrenheit" ? "F" : "C"}
+            onSelect={(v) =>
+              setTemperatureUnit(v === "F" ? "fahrenheit" : "celsius")
+            }
+          />
+        </Row>
+      </Section>
+
+      <Section title="Radar">
+        <Row label={`Opacity: ${Math.round(radarOpacity * 100)}%`}>
+          <Slider
+            style={styles.slider}
+            minimumValue={0.1}
+            maximumValue={1}
+            step={0.05}
+            value={radarOpacity}
+            onValueChange={setRadarOpacity}
+            minimumTrackTintColor="#4fc3f7"
+            maximumTrackTintColor="#555"
+            thumbTintColor="#4fc3f7"
+          />
+        </Row>
+        <Row label={`Playback: ${playbackSpeed} FPS`}>
+          <Slider
+            style={styles.slider}
+            minimumValue={1}
+            maximumValue={15}
+            step={1}
+            value={playbackSpeed}
+            onValueChange={setPlaybackSpeed}
+            minimumTrackTintColor="#4fc3f7"
+            maximumTrackTintColor="#555"
+            thumbTintColor="#4fc3f7"
+          />
+        </Row>
+      </Section>
+
+      <Text style={styles.footer}>
+        StormScope v1.0{"\n"}
+        Data: RainViewer, Open-Meteo, NWS
+      </Text>
+    </SafeAreaView>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
+function Row({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      {children}
+    </View>
+  );
+}
+
+function SegmentedControl({
+  options,
+  selected,
+  onSelect,
+}: {
+  options: string[];
+  selected: string;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <View style={styles.segmented}>
+      {options.map((opt) => (
+        <TouchableOpacity
+          key={opt}
+          style={[
+            styles.segment,
+            opt === selected && styles.segmentSelected,
+          ]}
+          onPress={() => onSelect(opt)}
+        >
+          <Text
+            style={[
+              styles.segmentText,
+              opt === selected && styles.segmentTextSelected,
+            ]}
+          >
+            {opt}
+          </Text>
+        </TouchableOpacity>
+      ))}
     </View>
   );
 }
@@ -12,11 +144,64 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#1a1a2e",
-    justifyContent: "center",
-    alignItems: "center",
+    padding: 16,
   },
-  text: {
+  title: {
+    fontSize: 28,
+    fontWeight: "700",
     color: "#fff",
-    fontSize: 18,
+    marginBottom: 24,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#888",
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#333",
+  },
+  rowLabel: {
+    fontSize: 16,
+    color: "#ddd",
+  },
+  slider: {
+    width: 150,
+  },
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: "#333",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  segment: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  segmentSelected: {
+    backgroundColor: "#4fc3f7",
+  },
+  segmentText: {
+    color: "#aaa",
+    fontWeight: "600",
+  },
+  segmentTextSelected: {
+    color: "#000",
+  },
+  footer: {
+    marginTop: "auto",
+    textAlign: "center",
+    color: "#555",
+    fontSize: 12,
+    lineHeight: 18,
   },
 });
