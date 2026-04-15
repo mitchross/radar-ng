@@ -5,6 +5,8 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  Modal,
+  SafeAreaView,
   useWindowDimensions,
 } from "react-native";
 import { useForecast } from "../../hooks/useForecast";
@@ -13,111 +15,106 @@ import { HourlyScroll } from "./HourlyScroll";
 import { DailyForecast } from "./DailyForecast";
 import { getWeatherInfo } from "../../lib/weatherCodes";
 
-type SheetState = "collapsed" | "half" | "full";
+export function ForecastPeek() {
+  const { data: forecast } = useForecast();
+  const [showModal, setShowModal] = useState(false);
 
-export function ForecastSheet() {
-  const { data: forecast, isLoading } = useForecast();
-  const [state, setState] = useState<SheetState>("collapsed");
-  const { height: screenHeight } = useWindowDimensions();
+  if (!forecast) return null;
 
-  const heights: Record<SheetState, number> = {
-    collapsed: 56,
-    half: screenHeight * 0.4,
-    full: screenHeight * 0.75,
-  };
-
-  const cycleState = () => {
-    const order: SheetState[] = ["collapsed", "half", "full"];
-    const idx = order.indexOf(state);
-    setState(order[(idx + 1) % order.length]);
-  };
-
-  if (!forecast && !isLoading) return null;
-
-  const weather = forecast ? getWeatherInfo(forecast.current.weather_code) : null;
+  const weather = getWeatherInfo(forecast.current.weather_code);
+  const high = Math.round(forecast.daily.temperature_2m_max[0]);
+  const low = Math.round(forecast.daily.temperature_2m_min[0]);
 
   return (
-    <View style={[styles.container, { height: heights[state] }]}>
-      <Pressable onPress={cycleState} style={styles.handleTouchArea}>
-        <View style={styles.handleBar} />
-        {state === "collapsed" && forecast && (
-          <View style={styles.peekRow}>
-            <Text style={styles.peekTemp}>
-              {Math.round(forecast.current.temperature_2m)}{"\u00B0"}
-            </Text>
-            <Text style={styles.peekCondition}>
-              {weather?.icon} {weather?.label}
-            </Text>
-            <Text style={styles.peekChevron}>{"\u25B2"}</Text>
-          </View>
-        )}
+    <>
+      <Pressable onPress={() => setShowModal(true)} style={styles.peek}>
+        <Text style={styles.peekTemp}>
+          {Math.round(forecast.current.temperature_2m)}{"\u00B0"}
+        </Text>
+        <Text style={styles.peekCondition}>
+          {weather.icon} {weather.label}
+        </Text>
+        <Text style={styles.peekHighLow}>
+          {high}{"\u00B0"}/{low}{"\u00B0"}
+        </Text>
+        <Text style={styles.peekChevron}>{"\u25B2"}</Text>
       </Pressable>
-      {state !== "collapsed" && (
-        isLoading ? (
-          <View style={styles.loading}>
-            <Text style={styles.loadingText}>Loading forecast...</Text>
-          </View>
-        ) : forecast ? (
-          <ScrollView
-            scrollEnabled={state === "full"}
-            showsVerticalScrollIndicator={false}
-          >
+
+      <Modal
+        visible={showModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowModal(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowModal(false)}>
+          <View />
+        </Pressable>
+        <View style={styles.modalSheet}>
+          <Pressable onPress={() => setShowModal(false)} style={styles.modalHandle}>
+            <View style={styles.handleBar} />
+          </Pressable>
+          <ScrollView showsVerticalScrollIndicator={false}>
             <CurrentConditions forecast={forecast} />
             <HourlyScroll forecast={forecast} />
-            {state === "full" && <DailyForecast forecast={forecast} />}
+            <DailyForecast forecast={forecast} />
+            <View style={{ height: 40 }} />
           </ScrollView>
-        ) : null
-      )}
-    </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
+// Keep the old name as re-export for backward compat
+export const ForecastSheet = ForecastPeek;
+
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: "#1a1a2e",
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    overflow: "hidden",
-  },
-  handleTouchArea: {
-    alignItems: "center",
-    paddingTop: 8,
-    paddingBottom: 6,
-    minHeight: 44,
-  },
-  handleBar: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#555",
-    marginBottom: 4,
-  },
-  peekRow: {
+  peek: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    backgroundColor: "#1a1a2e",
     paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
   },
   peekTemp: {
     color: "#fff",
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   peekCondition: {
-    color: "#aaa",
+    color: "#bbb",
     fontSize: 14,
     flex: 1,
+  },
+  peekHighLow: {
+    color: "#888",
+    fontSize: 13,
+    fontVariant: ["tabular-nums"],
   },
   peekChevron: {
     color: "#555",
     fontSize: 10,
   },
-  loading: {
-    padding: 20,
-    alignItems: "center",
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
   },
-  loadingText: {
-    color: "#888",
-    fontSize: 14,
+  modalSheet: {
+    backgroundColor: "#1a1a2e",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "80%",
+    paddingBottom: 20,
+  },
+  modalHandle: {
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  handleBar: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#555",
   },
 });

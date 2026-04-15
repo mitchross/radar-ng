@@ -5,7 +5,7 @@ import { WeatherLayerOverlay } from "../../components/map/WeatherLayerOverlay";
 import { AlertPolygon } from "../../components/map/AlertPolygon";
 import { TimeSlider } from "../../components/timeline/TimeSlider";
 import { PlayButton } from "../../components/timeline/PlayButton";
-import { ForecastSheet } from "../../components/forecast/ForecastSheet";
+import { ForecastPeek } from "../../components/forecast/ForecastSheet";
 import { AlertBanner } from "../../components/alerts/AlertBanner";
 import { LayerPicker } from "../../components/layers/LayerPicker";
 import { useLocation } from "../../hooks/useLocation";
@@ -49,7 +49,7 @@ export default function MapScreen() {
           <TimeSlider />
         </View>
       </View>
-      <ForecastSheet />
+      <ForecastPeek />
     </View>
   );
 }
