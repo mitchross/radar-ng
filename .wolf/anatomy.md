@@ -12,7 +12,7 @@ Expo SDK 55 React Native weather radar app (StormScope). Uses expo-router for fi
 ## Source: App Routes (expo-router)
 
 - `src/app/_layout.tsx` — Root layout. Sets up GestureHandlerRootView, QueryClientProvider (retry:2, gcTime:10min), StatusBar light, Stack with (tabs) and alert/[id] (modal). ~50 tokens.
-- `src/app/(tabs)/_layout.tsx` — Tab navigator. Dark theme (#1a1a2e bg), Map and Settings tabs. ~40 tokens.
+- `src/app/(tabs)/_layout.tsx` — Tab navigator. Dark theme (#1a1a2e bg), Map (🗺️ emoji) and Settings (⚙️ emoji) tabs with Unicode icon Text components, height 56, paddingBottom 6, label fontSize 11. ~55 tokens.
 - `src/app/(tabs)/index.tsx` — Map screen. Calls useLocation + useManifest. Reads activeLayer/visibleOverlays/radarOpacity/dataSource from store. Renders WeatherMap with RadarOverlay, WeatherLayerOverlay (self-hosted layers), AlertPolygon, AlertBanner, LayerPicker, timeline bar, ForecastSheet. ~70 tokens.
 - `src/app/(tabs)/settings.tsx` — Full Settings screen. SafeAreaView, Section/Row/SegmentedControl helpers. Controls: map dark mode, temp unit, radar opacity, playback speed, data source toggle (Free/Self-Hosted), server URL TextInput (shown when selfhosted). Footer attribution. ~230 tokens.
 - `src/app/alert/[id].tsx` — Alert detail modal screen. Uses useLocalSearchParams to get id. ~30 tokens.
@@ -39,12 +39,12 @@ Expo SDK 55 React Native weather radar app (StormScope). Uses expo-router for fi
 ## Source: Components
 
 - `src/components/map/WeatherMap.tsx` — MapLibre MapView wrapper. Reads mapStyle/lat/lon from Zustand, renders Camera + UserLocation. Accepts children for overlays. Sets access token null. ~50 tokens.
-- `src/components/map/RadarOverlay.tsx` — Radar tile overlay. Supports both RainViewer (uses manifest.host) and self-hosted (uses serverUrl+activeLayer). Uses isRainViewerManifest() type guard to branch tile URL building. ~70 tokens.
-- `src/components/timeline/TimeSlider.tsx` — Radar timeline slider. Reads frames/currentFrameIndex from Zustand, renders @react-native-community/slider. Shows time label and LIVE badge. Pauses playback on drag. ~50 tokens.
-- `src/components/timeline/PlayButton.tsx` — Play/pause button. Uses setInterval at playbackSpeed fps to call nextFrame when playing. ~40 tokens.
+- `src/components/map/RadarOverlay.tsx` — Radar tile overlay. useMemo to compute tileUrl from manifest+frame. key={tileUrl} on RasterSource (not frame.path). maxZoomLevel 12 for selfhosted, RADAR.MAX_ZOOM for rainviewer. isRainViewerManifest() type guard. ~75 tokens.
+- `src/components/timeline/TimeSlider.tsx` — Radar timeline slider. Reads frames/currentFrameIndex from Zustand, renders @react-native-community/slider. Shows time label, LIVE badge (green pill), ago label (e.g. "5m ago"), and frame counter (N/total). Pauses playback on drag. thumbTintColor #fff, maximumTrackTintColor #444. ~65 tokens.
+- `src/components/timeline/PlayButton.tsx` — Play/pause button. Uses setInterval at playbackSpeed fps to call nextFrame when playing. Styled with CSS triangle (play) and two rects (pause) — no emoji. Button bg #4fc3f7, size 48x48. ~55 tokens.
 - `src/components/forecast/CurrentConditions.tsx` — Current weather card. Renders temp, condition icon/label, H/L, feels-like, wind, humidity, gusts from OpenMeteoResponse. ~50 tokens.
 - `src/components/forecast/HourlyScroll.tsx` — Horizontal 24-hour forecast scroll. Shows icon, temp, precip%, wind per hour from OpenMeteoResponse. ~50 tokens.
-- `src/components/forecast/ForecastSheet.tsx` — @gorhom/bottom-sheet panel. Snap points [80, 35%, 80%]. Wraps content in ScrollView (react-native-gesture-handler). Renders CurrentConditions + HourlyScroll + DailyForecast from useForecast data. ~55 tokens.
+- `src/components/forecast/ForecastSheet.tsx` — Custom 3-state sheet (collapsed/half/full). Pressable handle with 44pt touch area; shows peek text (temp + "Tap for forecast") when collapsed. Heights: 90/40%/75% of screen. ScrollView scrollEnabled only in full state. ~75 tokens.
 - `src/components/forecast/DailyForecast.tsx` — 7-day daily forecast rows. Shows day name, weather icon, min/max temps with bar, precip sum. Uses getWeatherInfo for codes. ~60 tokens.
 - `src/components/alerts/AlertBanner.tsx` — NWS alert banner. Reads worst-severity alert from useAlerts, colored by severity. Navigates to /alert/[id] on press. ~45 tokens.
 - `src/components/layers/LayerPicker.tsx` — FAB stack (right side, top:100). Shows only radar layer for rainviewer, all 5 layers for self-hosted. Fill layers use setActiveLayer (mutually exclusive); non-fill use toggleOverlay. Active state highlighted in #4fc3f7. ~70 tokens.

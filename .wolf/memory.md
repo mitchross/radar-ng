@@ -3,6 +3,7 @@
 | Time  | Description | Files | Outcome | ~Tokens |
 |-------|-------------|-------|---------|---------|
 | session-start | Tasks 6 & 7: React Query hooks, location hook, root layout, tab navigation | src/hooks/*, src/app/_layout.tsx, src/app/(tabs)/*, src/app/alert/[id].tsx | 16/16 tests pass, committed | ~800 |
+| 18:16 | Fix 6 UI issues: ForecastSheet handle+peek, tab icons, PlayButton styled, RadarOverlay useMemo+per-source maxZoom, TimeSlider agoLabel+LIVE badge+frame counter | src/components/forecast/ForecastSheet.tsx, src/app/(tabs)/_layout.tsx, src/components/timeline/PlayButton.tsx, src/components/map/RadarOverlay.tsx, src/components/timeline/TimeSlider.tsx | tsc clean, 21/21 tests pass, committed | ~600 |
 | 09:00 | Created WeatherMap.tsx + RadarOverlay.tsx, updated MapScreen | src/components/map/WeatherMap.tsx, src/components/map/RadarOverlay.tsx, src/app/(tabs)/index.tsx | All 16 tests pass, committed | ~200 |
 | 23:02 | Tasks 10-11-12: created timeline, forecast, alerts components; updated map screen and alert detail; all 16 tests passed | src/components/timeline/*.tsx, src/components/forecast/*.tsx, src/components/alerts/AlertBanner.tsx, src/app/alert/[id].tsx, src/app/(tabs)/index.tsx | success | ~400 |
 | 00:00 | Task 13: replaced placeholder settings.tsx with full settings screen (map style, temp unit, radar opacity, playback speed) | src/app/(tabs)/settings.tsx | committed fb43e8e, 16/16 tests pass | ~300 |

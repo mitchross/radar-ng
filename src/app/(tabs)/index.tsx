@@ -59,8 +59,9 @@ const styles = StyleSheet.create({
   timelineBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(26, 26, 46, 0.9)",
-    paddingBottom: 16,
+    backgroundColor: "#1a1a2e",
+    paddingBottom: 4,
+    paddingTop: 4,
   },
   sliderContainer: { flex: 1 },
 });
