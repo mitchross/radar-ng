@@ -1,0 +1,10 @@
+# Session Memory — radar-ng
+
+| Time  | Description | Files | Outcome | ~Tokens |
+|-------|-------------|-------|---------|---------|
+| session-start | Tasks 6 & 7: React Query hooks, location hook, root layout, tab navigation | src/hooks/*, src/app/_layout.tsx, src/app/(tabs)/*, src/app/alert/[id].tsx | 16/16 tests pass, committed | ~800 |
+| 09:00 | Created WeatherMap.tsx + RadarOverlay.tsx, updated MapScreen | src/components/map/WeatherMap.tsx, src/components/map/RadarOverlay.tsx, src/app/(tabs)/index.tsx | All 16 tests pass, committed | ~200 |
+| 23:02 | Tasks 10-11-12: created timeline, forecast, alerts components; updated map screen and alert detail; all 16 tests passed | src/components/timeline/*.tsx, src/components/forecast/*.tsx, src/components/alerts/AlertBanner.tsx, src/app/alert/[id].tsx, src/app/(tabs)/index.tsx | success | ~400 |
+| 00:00 | Task 13: replaced placeholder settings.tsx with full settings screen (map style, temp unit, radar opacity, playback speed) | src/app/(tabs)/settings.tsx | committed fb43e8e, 16/16 tests pass | ~300 |
+| 14:00 | Tasks 1-9: MMKV storage wrapper, types (SelfHostedManifest/LayerType/DataSource/LayerConfig), constants (SELF_HOSTED/LAYERS), updated store (layer/dataSource/serverUrl), updated useManifest (dual-source), self-hosted API functions, tileUrl builder, updated tests | src/lib/storage.ts (new), src/lib/api.ts, src/lib/constants.ts, src/lib/tileUrl.ts, src/types/weather.ts, src/stores/useWeatherStore.ts, src/hooks/useManifest.ts, src/components/map/RadarOverlay.tsx, __tests__/lib/api.test.ts, __tests__/stores/useWeatherStore.test.ts | 21/21 tests pass, tsc clean, committed 1fb8352 | ~1200 |
+| 14:30 | Backend pipeline plan execution (all 7 tasks): color_tables.json, tiler.py+tests, ingest-mrms, ingest-hrrr, tile-server (Caddy+FastAPI), tile-cleanup, docker-compose, Dockerfile build context fix | services/**, deploy/docker-compose.yml | 2/2 tiler tests pass; bug fixed (ty_min/ty_max swap in render_tiles); committed dabc2b2 | ~2000 |

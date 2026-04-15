@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Switch, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, Switch, TouchableOpacity, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
 import { useWeatherStore } from "../../stores/useWeatherStore";
@@ -12,6 +12,10 @@ export default function SettingsScreen() {
   const setRadarOpacity = useWeatherStore((s) => s.setRadarOpacity);
   const playbackSpeed = useWeatherStore((s) => s.playbackSpeed);
   const setPlaybackSpeed = useWeatherStore((s) => s.setPlaybackSpeed);
+  const dataSource = useWeatherStore((s) => s.dataSource);
+  const setDataSource = useWeatherStore((s) => s.setDataSource);
+  const serverUrl = useWeatherStore((s) => s.serverUrl);
+  const setServerUrl = useWeatherStore((s) => s.setServerUrl);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -66,6 +70,29 @@ export default function SettingsScreen() {
             thumbTintColor="#4fc3f7"
           />
         </Row>
+      </Section>
+
+      <Section title="Data Source">
+        <Row label="Source">
+          <SegmentedControl
+            options={["Free", "Self-Hosted"]}
+            selected={dataSource === "rainviewer" ? "Free" : "Self-Hosted"}
+            onSelect={(v) => setDataSource(v === "Free" ? "rainviewer" : "selfhosted")}
+          />
+        </Row>
+        {dataSource === "selfhosted" && (
+          <Row label="Server URL">
+            <TextInput
+              style={styles.textInput}
+              value={serverUrl}
+              onChangeText={setServerUrl}
+              placeholder="http://192.168.1.x:8080"
+              placeholderTextColor="#555"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </Row>
+        )}
       </Section>
 
       <Text style={styles.footer}>
@@ -203,5 +230,15 @@ const styles = StyleSheet.create({
     color: "#555",
     fontSize: 12,
     lineHeight: 18,
+  },
+  textInput: {
+    color: "#fff",
+    fontSize: 14,
+    backgroundColor: "#333",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    width: 200,
+    textAlign: "right",
   },
 });

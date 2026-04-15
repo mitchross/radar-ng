@@ -1,13 +1,15 @@
 import { useCallback, useMemo, useRef } from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { ScrollView } from "react-native-gesture-handler";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { useForecast } from "../../hooks/useForecast";
 import { CurrentConditions } from "./CurrentConditions";
 import { HourlyScroll } from "./HourlyScroll";
+import { DailyForecast } from "./DailyForecast";
 
 export function ForecastSheet() {
   const bottomSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => [80, "35%", "70%"], []);
+  const snapPoints = useMemo(() => [80, "35%", "80%"], []);
   const { data: forecast, isLoading } = useForecast();
 
   const renderHandle = useCallback(
@@ -35,10 +37,11 @@ export function ForecastSheet() {
           <Text style={styles.loadingText}>Loading forecast...</Text>
         </View>
       ) : forecast ? (
-        <View>
+        <ScrollView>
           <CurrentConditions forecast={forecast} />
           <HourlyScroll forecast={forecast} />
-        </View>
+          <DailyForecast forecast={forecast} />
+        </ScrollView>
       ) : null}
     </BottomSheet>
   );

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "bug-001",
+    "timestamp": "2026-04-14T14:30:00Z",
+    "error_message": "test_render_tiles_creates_files: assert 0 > 0 — render_tiles returned 0 tiles written",
+    "file": "services/shared/tiler.py",
+    "root_cause": "In render_tiles(), _lat_lon_to_tile(lat_max, lon_min, z) returns (tx_min, ty_min) — the top-left tile — but was incorrectly destructured as (tx_min, ty_max). Similarly _lat_lon_to_tile(lat_min, lon_max, z) was destructured as (tx_max, ty_min). This swapped ty_min and ty_max so range(ty_min, ty_max+1) was always empty (e.g. range(6,6) instead of range(5,7)).",
+    "fix": "Swapped the destructuring: tx_min, ty_min = _lat_lon_to_tile(lat_max, lon_min, z) and tx_max, ty_max = _lat_lon_to_tile(lat_min, lon_max, z).",
+    "tags": ["tile-rendering", "coordinate-math", "off-by-one", "y-axis-inversion"],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-14T14:30:00Z"
+  }
+]
