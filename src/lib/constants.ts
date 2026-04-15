@@ -22,9 +22,9 @@ export const RADAR = {
 } as const;
 
 export const DEFAULTS = {
-  LATITUDE: 39.8283,
-  LONGITUDE: -98.5795,
-  ZOOM: 4,
+  LATITUDE: 42.9634,
+  LONGITUDE: -85.6681,
+  ZOOM: 7,
   PLAYBACK_FPS: 5,
   MANIFEST_REFETCH_MS: 30_000,
   FORECAST_REFETCH_MS: 15 * 60_000,
@@ -32,7 +32,7 @@ export const DEFAULTS = {
 } as const;
 
 export const SELF_HOSTED = {
-  DEFAULT_URL: "http://localhost:8080",
+  DEFAULT_URL: "http://10.0.2.2:8080",
   MANIFEST_PATH: "/api/manifest.json",
   TILE_PATTERN: "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
   FORECAST_PATH: "/api/forecast",

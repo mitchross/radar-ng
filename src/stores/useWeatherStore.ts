@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, DataSource } from "../types/weather";
-import { DEFAULTS, RADAR } from "../lib/constants";
+import { DEFAULTS, RADAR, SELF_HOSTED } from "../lib/constants";
 import { getString, setString } from "../lib/storage";
 
 interface WeatherState {
@@ -50,7 +50,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   temperatureUnit: "fahrenheit",
   mapStyle: "light",
   dataSource: (getString("dataSource", "rainviewer") as DataSource),
-  serverUrl: getString("serverUrl", "http://localhost:8080"),
+  serverUrl: getString("serverUrl", SELF_HOSTED.DEFAULT_URL),
 
   setFrames: (frames) => set({ frames }),
   setCurrentFrameIndex: (index) => set({ currentFrameIndex: index }),
