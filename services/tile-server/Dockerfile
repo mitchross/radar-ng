@@ -1,26 +1,26 @@
-FROM python:3.12-slim AS api
+FROM python:3.12-slim
 
-WORKDIR /app/api
+# Install Caddy
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && curl -o /usr/bin/caddy -L "https://caddyserver.com/api/download?os=linux&arch=amd64" \
+    && chmod +x /usr/bin/caddy \
+    && apt-get purge -y curl \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python deps
+WORKDIR /app
 COPY api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY api/ .
 
-FROM caddy:2-alpine
-
-# Install Python for the API sidecar
-RUN apk add --no-cache python3 py3-pip
-
-COPY --from=api /app/api /app/api
-COPY --from=api /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-
+COPY api/ /app/api/
 COPY Caddyfile /etc/caddy/Caddyfile
 
-# Start script that runs both Caddy and the FastAPI server
-RUN echo '#!/bin/sh' > /start.sh && \
-    echo 'cd /app/api && python -m uvicorn server:app --host 0.0.0.0 --port 8000 &' >> /start.sh && \
-    echo 'caddy run --config /etc/caddy/Caddyfile --adapter caddyfile' >> /start.sh && \
-    chmod +x /start.sh
+# Start script: FastAPI in background, Caddy in foreground
+RUN printf '#!/bin/sh\ncd /app/api && python -m uvicorn server:app --host 0.0.0.0 --port 8000 &\ncaddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n' > /start.sh \
+    && chmod +x /start.sh
 
 ENV TILE_DIR=/data/tiles
 
-CMD ["/start.sh"]
+CMD ["/bin/sh", "/start.sh"]

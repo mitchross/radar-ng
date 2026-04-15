@@ -14,7 +14,7 @@ import pygrib
 from PIL import Image
 
 # Add shared module
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "shared"))
 from tiler import apply_color_table, render_tiles
 
 MRMS_BASE = "https://noaa-mrms-pds.s3.amazonaws.com"

@@ -15,7 +15,7 @@ import httpx
 import numpy as np
 import pygrib
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "shared"))
 from tiler import apply_color_table, apply_categorical_color_table, render_tiles
 
 HRRR_BASE = "https://noaa-hrrr-bdp-pds.s3.amazonaws.com"
