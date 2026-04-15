@@ -2,7 +2,9 @@ import { Stack } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet } from "react-native";
+import { StyleSheet, LogBox } from "react-native";
+
+LogBox.ignoreLogs(["this._listeners.forEach"]);
 
 const queryClient = new QueryClient({
   defaultOptions: {

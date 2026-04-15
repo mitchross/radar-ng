@@ -12,7 +12,6 @@
     "test": "jest"
   },
   "dependencies": {
-    "@gorhom/bottom-sheet": "^5.2.9",
     "@maplibre/maplibre-react-native": "^10.4.2",
     "@react-native-community/slider": "5.1.2",
     "@react-navigation/bottom-tabs": "^7.15.5",
