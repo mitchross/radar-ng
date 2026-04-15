@@ -5,7 +5,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -39,11 +39,12 @@ def load_color_table() -> dict:
 
 def list_recent_files(client: httpx.Client) -> list[str]:
     """List MRMS GRIB2 files from S3 using XML listing."""
-    url = f"{MRMS_BASE}?prefix={MRMS_PREFIX}&list-type=2&max-keys=30"
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    prefix = f"{MRMS_PREFIX}/{today}"
+    url = f"{MRMS_BASE}?prefix={prefix}&list-type=2&max-keys=30"
     resp = client.get(url, timeout=30)
     resp.raise_for_status()
 
-    # Parse XML response for Key elements
     import xml.etree.ElementTree as ET
     root = ET.fromstring(resp.text)
     ns = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
@@ -51,6 +52,19 @@ def list_recent_files(client: httpx.Client) -> list[str]:
     for content in root.findall(".//s3:Contents/s3:Key", ns):
         if content.text and content.text.endswith(".grib2.gz"):
             keys.append(content.text)
+
+    # If no files today, try yesterday
+    if not keys:
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y%m%d")
+        prefix = f"{MRMS_PREFIX}/{yesterday}"
+        url = f"{MRMS_BASE}?prefix={prefix}&list-type=2&max-keys=30"
+        resp = client.get(url, timeout=30)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+        for content in root.findall(".//s3:Contents/s3:Key", ns):
+            if content.text and content.text.endswith(".grib2.gz"):
+                keys.append(content.text)
+
     return sorted(keys)
 
 
