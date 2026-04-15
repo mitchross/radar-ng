@@ -13,18 +13,18 @@ export const MAP_STYLES = {
 
 export const RADAR = {
   TILE_SIZE: 256,
-  COLOR_SCHEME: 1,
+  COLOR_SCHEME: 6,
   SMOOTH: true,
   SNOW: true,
   MIN_ZOOM: 1,
   MAX_ZOOM: 7,
-  DEFAULT_OPACITY: 0.7,
+  DEFAULT_OPACITY: 0.8,
 } as const;
 
 export const DEFAULTS = {
   LATITUDE: 42.9634,
   LONGITUDE: -85.6681,
-  ZOOM: 7,
+  ZOOM: 8,
   PLAYBACK_FPS: 5,
   MANIFEST_REFETCH_MS: 30_000,
   FORECAST_REFETCH_MS: 15 * 60_000,

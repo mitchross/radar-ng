@@ -17,7 +17,7 @@ describe("useWeatherStore", () => {
     expect(state.frames).toEqual([]);
     expect(state.currentFrameIndex).toBe(-1);
     expect(state.isPlaying).toBe(false);
-    expect(state.radarOpacity).toBe(0.7);
+    expect(state.radarOpacity).toBe(0.8);
     expect(state.activeLayer).toBe("radar");
     expect(state.dataSource).toBe("rainviewer");
   });

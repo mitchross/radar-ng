@@ -19,13 +19,10 @@ export function TimeSlider() {
     : "";
 
   const isLatest = currentFrameIndex === frames.length - 1;
-
-  // Calculate how long ago this frame is
   const nowSec = Math.floor(Date.now() / 1000);
   const frameSec = currentFrame?.time ?? nowSec;
   const diffMin = Math.round((nowSec - frameSec) / 60);
-  const agoLabel =
-    diffMin <= 1 ? "" : diffMin < 60 ? `${diffMin}m ago` : `${Math.round(diffMin / 60)}h ago`;
+  const agoLabel = diffMin <= 1 ? "" : diffMin < 60 ? `${diffMin}m ago` : `${Math.round(diffMin / 60)}h ago`;
 
   return (
     <View style={styles.container}>
@@ -38,6 +35,8 @@ export function TimeSlider() {
         ) : agoLabel ? (
           <Text style={styles.agoText}>{agoLabel}</Text>
         ) : null}
+        <View style={{ flex: 1 }} />
+        <Text style={styles.frameText}>{currentFrameIndex + 1}/{frames.length}</Text>
       </View>
       <Slider
         style={styles.slider}
@@ -50,61 +49,52 @@ export function TimeSlider() {
           setCurrentFrameIndex(Math.round(value));
         }}
         minimumTrackTintColor="#4fc3f7"
-        maximumTrackTintColor="#444"
+        maximumTrackTintColor="#333"
         thumbTintColor="#fff"
       />
-      <View style={styles.frameCount}>
-        <Text style={styles.frameText}>
-          {currentFrameIndex + 1}/{frames.length}
-        </Text>
-      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingBottom: 4,
+    paddingHorizontal: 12,
   },
   labelRow: {
     flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
-    gap: 8,
-    paddingTop: 8,
+    gap: 6,
+    paddingBottom: 2,
   },
   timeText: {
-    color: "#fff",
-    fontSize: 16,
+    color: "#ddd",
+    fontSize: 14,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
   liveBadge: {
     backgroundColor: "#4caf50",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 3,
   },
   liveText: {
     color: "#fff",
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: "700",
+    letterSpacing: 0.5,
   },
   agoText: {
-    color: "#888",
-    fontSize: 12,
+    color: "#666",
+    fontSize: 11,
+  },
+  frameText: {
+    color: "#444",
+    fontSize: 10,
+    fontVariant: ["tabular-nums"],
   },
   slider: {
     width: "100%",
-    height: 36,
-  },
-  frameCount: {
-    alignItems: "flex-end",
-  },
-  frameText: {
-    color: "#555",
-    fontSize: 10,
-    fontVariant: ["tabular-nums"],
+    height: 30,
   },
 });

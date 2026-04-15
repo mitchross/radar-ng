@@ -6,8 +6,6 @@ import {
   ScrollView,
   Pressable,
   Modal,
-  SafeAreaView,
-  useWindowDimensions,
 } from "react-native";
 import { useForecast } from "../../hooks/useForecast";
 import { CurrentConditions } from "./CurrentConditions";
@@ -31,13 +29,12 @@ export function ForecastPeek() {
         <Text style={styles.peekTemp}>
           {Math.round(forecast.current.temperature_2m)}{"\u00B0"}
         </Text>
-        <Text style={styles.peekCondition}>
-          {weather.icon} {weather.label}
-        </Text>
+        <Text style={styles.peekDivider}>{"\u2022"}</Text>
+        <Text style={styles.peekCondition}>{weather.label}</Text>
+        <View style={styles.peekSpacer} />
         <Text style={styles.peekHighLow}>
           {high}{"\u00B0"}/{low}{"\u00B0"}
         </Text>
-        <Text style={styles.peekChevron}>{"\u25B2"}</Text>
       </Pressable>
 
       <Modal
@@ -65,43 +62,44 @@ export function ForecastPeek() {
   );
 }
 
-// Keep the old name as re-export for backward compat
 export const ForecastSheet = ForecastPeek;
 
 const styles = StyleSheet.create({
   peek: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "rgba(10, 10, 20, 0.85)",
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
+    paddingVertical: 8,
+    gap: 6,
   },
   peekTemp: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: "700",
   },
-  peekCondition: {
-    color: "#bbb",
-    fontSize: 14,
-    flex: 1,
-  },
-  peekHighLow: {
-    color: "#888",
-    fontSize: 13,
-    fontVariant: ["tabular-nums"],
-  },
-  peekChevron: {
+  peekDivider: {
     color: "#555",
     fontSize: 10,
   },
+  peekCondition: {
+    color: "#aaa",
+    fontSize: 13,
+  },
+  peekSpacer: {
+    flex: 1,
+  },
+  peekHighLow: {
+    color: "#777",
+    fontSize: 13,
+    fontVariant: ["tabular-nums"],
+  },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
   modalSheet: {
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#0a0a14",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: "80%",
@@ -115,6 +113,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#555",
+    backgroundColor: "#444",
   },
 });

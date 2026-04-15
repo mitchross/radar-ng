@@ -7,7 +7,7 @@ describe("buildRadarTileUrl", () => {
   it("builds correct tile URL with defaults", () => {
     const url = buildRadarTileUrl(host, frame);
     expect(url).toBe(
-      "https://tilecache.rainviewer.com/v2/radar/abc123/256/{z}/{x}/{y}/1/1_1.png"
+      "https://tilecache.rainviewer.com/v2/radar/abc123/256/{z}/{x}/{y}/6/1_1.png"
     );
   });
 

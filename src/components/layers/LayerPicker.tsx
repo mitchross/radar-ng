@@ -50,26 +50,34 @@ export function LayerPicker() {
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
-    right: 12,
-    top: 100,
-    gap: 8,
+    right: 10,
+    top: 90,
+    gap: 6,
     zIndex: 50,
   },
   button: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "rgba(26, 26, 46, 0.85)",
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(10, 10, 20, 0.75)",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 2,
-    borderColor: "transparent",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   buttonActive: {
     borderColor: "#4fc3f7",
-    backgroundColor: "rgba(79, 195, 247, 0.15)",
+    backgroundColor: "rgba(79, 195, 247, 0.2)",
   },
-  icon: { fontSize: 18 },
-  label: { fontSize: 9, color: "#888", marginTop: 1 },
-  labelActive: { color: "#4fc3f7" },
+  icon: {
+    fontSize: 16,
+  },
+  label: {
+    fontSize: 8,
+    color: "#666",
+    marginTop: 1,
+  },
+  labelActive: {
+    color: "#4fc3f7",
+  },
 });

@@ -23,6 +23,7 @@ export default function MapScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Full-bleed map */}
       <WeatherMap>
         {activeLayer === "radar" && <RadarOverlay />}
         {activeLayer === "temperature" && dataSource === "selfhosted" && (
@@ -40,28 +41,44 @@ export default function MapScreen() {
         <AlertPolygon />
       </WeatherMap>
 
+      {/* Floating overlays */}
       <AlertBanner />
       <LayerPicker />
 
-      <View style={styles.timelineBar}>
-        <PlayButton />
-        <View style={styles.sliderContainer}>
-          <TimeSlider />
+      {/* Bottom controls — floating over map */}
+      <View style={styles.bottomControls}>
+        <ForecastPeek />
+        <View style={styles.timelineBar}>
+          <PlayButton />
+          <View style={styles.sliderContainer}>
+            <TimeSlider />
+          </View>
         </View>
       </View>
-      <ForecastPeek />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
+  container: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  bottomControls: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingBottom: 60, // space for tab bar
+  },
   timelineBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1a1a2e",
-    paddingBottom: 4,
-    paddingTop: 4,
+    backgroundColor: "rgba(10, 10, 20, 0.85)",
+    paddingVertical: 6,
+    paddingHorizontal: 4,
   },
-  sliderContainer: { flex: 1 },
+  sliderContainer: {
+    flex: 1,
+  },
 });

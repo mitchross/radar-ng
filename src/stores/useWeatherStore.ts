@@ -48,7 +48,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   activeLayer: "radar" as LayerType,
   visibleOverlays: new Set<LayerType>(),
   temperatureUnit: "fahrenheit",
-  mapStyle: "light",
+  mapStyle: "dark",
   dataSource: (getString("dataSource", "rainviewer") as DataSource),
   serverUrl: getString("serverUrl", SELF_HOSTED.DEFAULT_URL),
 

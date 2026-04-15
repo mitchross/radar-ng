@@ -7,15 +7,17 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: "#1a1a2e",
-          borderTopColor: "#333",
-          height: 56,
-          paddingBottom: 6,
+          backgroundColor: "rgba(10, 10, 20, 0.9)",
+          borderTopWidth: 0,
+          height: 50,
+          paddingBottom: 4,
+          position: "absolute",
+          elevation: 0,
         },
         tabBarActiveTintColor: "#4fc3f7",
-        tabBarInactiveTintColor: "#888",
+        tabBarInactiveTintColor: "#555",
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: "600",
         },
       }}
@@ -25,7 +27,7 @@ export default function TabLayout() {
         options={{
           title: "Map",
           tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 20, color }}>{"\uD83D\uDDFA\uFE0F"}</Text>
+            <Text style={{ fontSize: 18, color }}>{"\uD83D\uDDFA\uFE0F"}</Text>
           ),
         }}
       />
@@ -34,7 +36,7 @@ export default function TabLayout() {
         options={{
           title: "Settings",
           tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 20, color }}>{"\u2699\uFE0F"}</Text>
+            <Text style={{ fontSize: 18, color }}>{"\u2699\uFE0F"}</Text>
           ),
         }}
       />
