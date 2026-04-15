@@ -68,3 +68,37 @@ describe("fetchAlerts", () => {
     );
   });
 });
+
+describe("fetchSelfHostedManifest", () => {
+  it("fetches manifest from server URL", async () => {
+    const { fetchSelfHostedManifest } = require("../../src/lib/api");
+    const manifest = {
+      layers: { radar: { timestamps: ["2026-04-14T18:00:00Z"] } },
+      tile_url_template: "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
+      updated_at: "2026-04-14T18:04:00Z",
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(manifest),
+    });
+    const result = await fetchSelfHostedManifest("http://localhost:8080");
+    expect(result).toEqual(manifest);
+    expect(mockFetch).toHaveBeenCalledWith("http://localhost:8080/api/manifest.json");
+  });
+});
+
+describe("checkServerHealth", () => {
+  it("returns true when server is healthy", async () => {
+    const { checkServerHealth } = require("../../src/lib/api");
+    mockFetch.mockResolvedValueOnce({ ok: true });
+    const result = await checkServerHealth("http://localhost:8080");
+    expect(result).toBe(true);
+  });
+
+  it("returns false when server is unreachable", async () => {
+    const { checkServerHealth } = require("../../src/lib/api");
+    mockFetch.mockRejectedValueOnce(new Error("Network error"));
+    const result = await checkServerHealth("http://localhost:8080");
+    expect(result).toBe(false);
+  });
+});

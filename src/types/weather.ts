@@ -82,3 +82,33 @@ export interface NWSAlert {
 export type TemperatureUnit = "fahrenheit" | "celsius";
 export type WindUnit = "mph" | "kmh";
 export type MapStyle = "light" | "dark";
+
+// --- Self-Hosted Tile Server ---
+
+export interface SelfHostedManifest {
+  layers: Record<string, { timestamps: string[] }>;
+  tile_url_template: string;
+  updated_at: string;
+}
+
+// --- Layers ---
+
+export type LayerType =
+  | "radar"
+  | "radar-hrrr"
+  | "temperature"
+  | "wind"
+  | "cape"
+  | "precip-type";
+
+export type DataSource = "rainviewer" | "selfhosted";
+
+export interface LayerConfig {
+  id: LayerType;
+  label: string;
+  icon: string;
+  isFillLayer: boolean;
+  defaultVisible: boolean;
+  minZoom: number;
+  maxZoom: number;
+}

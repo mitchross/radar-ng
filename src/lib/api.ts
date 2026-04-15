@@ -3,6 +3,7 @@ import type {
   RainViewerManifest,
   OpenMeteoResponse,
   NWSAlertCollection,
+  SelfHostedManifest,
 } from "../types/weather";
 
 export async function fetchRadarManifest(): Promise<RainViewerManifest> {
@@ -44,4 +45,21 @@ export async function fetchAlerts(
   });
   if (!res.ok) throw new Error(`NWS API error: ${res.status}`);
   return res.json();
+}
+
+export async function fetchSelfHostedManifest(
+  serverUrl: string
+): Promise<SelfHostedManifest> {
+  const res = await fetch(`${serverUrl}/api/manifest.json`);
+  if (!res.ok) throw new Error(`Tile server error: ${res.status}`);
+  return res.json();
+}
+
+export async function checkServerHealth(serverUrl: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${serverUrl}/api/health`, { signal: AbortSignal.timeout(5000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

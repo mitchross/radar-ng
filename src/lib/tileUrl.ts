@@ -1,4 +1,4 @@
-import type { RadarFrame } from "../types/weather";
+import type { RadarFrame, LayerType } from "../types/weather";
 import { RADAR } from "./constants";
 
 export function buildRadarTileUrl(
@@ -18,4 +18,12 @@ export function buildRadarTileUrl(
     snow = RADAR.SNOW,
   } = options;
   return `${host}${frame.path}/${size}/{z}/{x}/{y}/${color}/${smooth ? 1 : 0}_${snow ? 1 : 0}.png`;
+}
+
+export function buildSelfHostedTileUrl(
+  serverUrl: string,
+  layer: LayerType,
+  timestamp: string
+): string {
+  return `${serverUrl}/tiles/${layer}/${timestamp}/{z}/{x}/{y}.png`;
 }

@@ -1,3 +1,5 @@
+import type { LayerConfig } from "../types/weather";
+
 export const API = {
   RAINVIEWER_MANIFEST: "https://api.rainviewer.com/public/weather-maps.json",
   OPEN_METEO: "https://api.open-meteo.com/v1/forecast",
@@ -28,3 +30,18 @@ export const DEFAULTS = {
   FORECAST_REFETCH_MS: 15 * 60_000,
   ALERTS_REFETCH_MS: 60_000,
 } as const;
+
+export const SELF_HOSTED = {
+  DEFAULT_URL: "http://localhost:8080",
+  MANIFEST_PATH: "/api/manifest.json",
+  TILE_PATTERN: "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
+  FORECAST_PATH: "/api/forecast",
+} as const;
+
+export const LAYERS: LayerConfig[] = [
+  { id: "radar", label: "Radar", icon: "\uD83D\uDFE2", isFillLayer: true, defaultVisible: true, minZoom: 1, maxZoom: 12 },
+  { id: "wind", label: "Wind", icon: "\uD83D\uDCA8", isFillLayer: false, defaultVisible: false, minZoom: 1, maxZoom: 9 },
+  { id: "temperature", label: "Temp", icon: "\uD83C\uDF21\uFE0F", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
+  { id: "precip-type", label: "Precip", icon: "\uD83C\uDF27\uFE0F", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
+  { id: "cape", label: "Severe", icon: "\u26A1", isFillLayer: false, defaultVisible: false, minZoom: 1, maxZoom: 9 },
+];
