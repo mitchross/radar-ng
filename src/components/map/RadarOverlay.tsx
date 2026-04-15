@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import MapLibreGL from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { useManifest } from "../../hooks/useManifest";
@@ -19,25 +20,25 @@ export function RadarOverlay() {
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
 
-  if (!manifest || frames.length === 0 || currentFrameIndex < 0) {
-    return null;
-  }
-
   const frame = frames[currentFrameIndex];
-  if (!frame) return null;
 
-  const tileUrl = isRainViewerManifest(manifest)
-    ? buildRadarTileUrl(manifest.host, frame)
-    : buildSelfHostedTileUrl(serverUrl, activeLayer, frame.path);
+  const tileUrl = useMemo(() => {
+    if (!manifest || !frame) return null;
+    return isRainViewerManifest(manifest)
+      ? buildRadarTileUrl(manifest.host, frame)
+      : buildSelfHostedTileUrl(serverUrl, activeLayer, frame.path);
+  }, [manifest, frame, serverUrl, activeLayer, dataSource]);
+
+  if (!tileUrl) return null;
 
   return (
     <MapLibreGL.RasterSource
       id="radar-source"
-      key={frame.path}
+      key={tileUrl}
       tileUrlTemplates={[tileUrl]}
       tileSize={RADAR.TILE_SIZE}
       minZoomLevel={RADAR.MIN_ZOOM}
-      maxZoomLevel={RADAR.MAX_ZOOM}
+      maxZoomLevel={dataSource === "selfhosted" ? 12 : RADAR.MAX_ZOOM}
     >
       <MapLibreGL.RasterLayer
         id="radar-layer"

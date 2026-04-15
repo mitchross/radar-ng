@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { TouchableOpacity, Text, StyleSheet } from "react-native";
+import { TouchableOpacity, View, StyleSheet } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 
 export function PlayButton() {
@@ -29,7 +29,14 @@ export function PlayButton() {
       onPress={togglePlaying}
       activeOpacity={0.7}
     >
-      <Text style={styles.icon}>{isPlaying ? "\u23F8" : "\u25B6\uFE0F"}</Text>
+      {isPlaying ? (
+        <View style={styles.pauseIcon}>
+          <View style={styles.pauseBar} />
+          <View style={styles.pauseBar} />
+        </View>
+      ) : (
+        <View style={styles.playIcon} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -39,12 +46,30 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: "rgba(26, 26, 46, 0.9)",
+    backgroundColor: "#4fc3f7",
     justifyContent: "center",
     alignItems: "center",
     marginLeft: 12,
   },
-  icon: {
-    fontSize: 20,
+  playIcon: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 14,
+    borderTopWidth: 9,
+    borderBottomWidth: 9,
+    borderLeftColor: "#fff",
+    borderTopColor: "transparent",
+    borderBottomColor: "transparent",
+    marginLeft: 3,
+  },
+  pauseIcon: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  pauseBar: {
+    width: 5,
+    height: 16,
+    backgroundColor: "#fff",
+    borderRadius: 1,
   },
 });
