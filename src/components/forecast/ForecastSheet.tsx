@@ -1,57 +1,70 @@
-import { useCallback, useMemo, useRef } from "react";
-import { View, Text, StyleSheet } from "react-native";
-import { ScrollView } from "react-native-gesture-handler";
-import BottomSheet from "@gorhom/bottom-sheet";
+import { useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Dimensions,
+  useWindowDimensions,
+} from "react-native";
 import { useForecast } from "../../hooks/useForecast";
 import { CurrentConditions } from "./CurrentConditions";
 import { HourlyScroll } from "./HourlyScroll";
 import { DailyForecast } from "./DailyForecast";
 
-export function ForecastSheet() {
-  const bottomSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => [80, "35%", "80%"], []);
-  const { data: forecast, isLoading } = useForecast();
+type SheetState = "collapsed" | "half" | "full";
 
-  const renderHandle = useCallback(
-    () => (
-      <View style={styles.handle}>
-        <View style={styles.handleBar} />
-      </View>
-    ),
-    []
-  );
+export function ForecastSheet() {
+  const { data: forecast, isLoading } = useForecast();
+  const [state, setState] = useState<SheetState>("collapsed");
+  const { height: screenHeight } = useWindowDimensions();
+
+  const heights: Record<SheetState, number> = {
+    collapsed: 80,
+    half: screenHeight * 0.35,
+    full: screenHeight * 0.8,
+  };
+
+  const cycleState = () => {
+    const order: SheetState[] = ["collapsed", "half", "full"];
+    const idx = order.indexOf(state);
+    setState(order[(idx + 1) % order.length]);
+  };
 
   if (!forecast && !isLoading) return null;
 
   return (
-    <BottomSheet
-      ref={bottomSheetRef}
-      index={0}
-      snapPoints={snapPoints}
-      handleComponent={renderHandle}
-      backgroundStyle={styles.background}
-      enablePanDownToClose={false}
-    >
+    <View style={[styles.container, { height: heights[state] }]}>
+      <TouchableOpacity onPress={cycleState} activeOpacity={0.9}>
+        <View style={styles.handle}>
+          <View style={styles.handleBar} />
+        </View>
+      </TouchableOpacity>
       {isLoading ? (
         <View style={styles.loading}>
           <Text style={styles.loadingText}>Loading forecast...</Text>
         </View>
       ) : forecast ? (
-        <ScrollView>
+        <ScrollView
+          scrollEnabled={state !== "collapsed"}
+          showsVerticalScrollIndicator={false}
+        >
           <CurrentConditions forecast={forecast} />
-          <HourlyScroll forecast={forecast} />
-          <DailyForecast forecast={forecast} />
+          {state !== "collapsed" && <HourlyScroll forecast={forecast} />}
+          {state === "full" && <DailyForecast forecast={forecast} />}
         </ScrollView>
       ) : null}
-    </BottomSheet>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
+  container: {
     backgroundColor: "#1a1a2e",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
+    overflow: "hidden",
   },
   handle: {
     alignItems: "center",

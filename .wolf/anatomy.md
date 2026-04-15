@@ -13,8 +13,8 @@ Expo SDK 55 React Native weather radar app (StormScope). Uses expo-router for fi
 
 - `src/app/_layout.tsx` — Root layout. Sets up GestureHandlerRootView, QueryClientProvider (retry:2, gcTime:10min), StatusBar light, Stack with (tabs) and alert/[id] (modal). ~50 tokens.
 - `src/app/(tabs)/_layout.tsx` — Tab navigator. Dark theme (#1a1a2e bg), Map and Settings tabs. ~40 tokens.
-- `src/app/(tabs)/index.tsx` — Map screen. Calls useLocation + useManifest, renders WeatherMap with RadarOverlay child. ~30 tokens.
-- `src/app/(tabs)/settings.tsx` — Full Settings screen. SafeAreaView, Section/Row/SegmentedControl helpers. Controls: map dark mode (Switch), temp unit (SegmentedControl F/C), radar opacity (Slider 0.1–1), playback speed (Slider 1–15 FPS). Footer attribution. ~200 tokens.
+- `src/app/(tabs)/index.tsx` — Map screen. Calls useLocation + useManifest. Reads activeLayer/visibleOverlays/radarOpacity/dataSource from store. Renders WeatherMap with RadarOverlay, WeatherLayerOverlay (self-hosted layers), AlertPolygon, AlertBanner, LayerPicker, timeline bar, ForecastSheet. ~70 tokens.
+- `src/app/(tabs)/settings.tsx` — Full Settings screen. SafeAreaView, Section/Row/SegmentedControl helpers. Controls: map dark mode, temp unit, radar opacity, playback speed, data source toggle (Free/Self-Hosted), server URL TextInput (shown when selfhosted). Footer attribution. ~230 tokens.
 - `src/app/alert/[id].tsx` — Alert detail modal screen. Uses useLocalSearchParams to get id. ~30 tokens.
 
 ## Source: Hooks
@@ -44,8 +44,12 @@ Expo SDK 55 React Native weather radar app (StormScope). Uses expo-router for fi
 - `src/components/timeline/PlayButton.tsx` — Play/pause button. Uses setInterval at playbackSpeed fps to call nextFrame when playing. ~40 tokens.
 - `src/components/forecast/CurrentConditions.tsx` — Current weather card. Renders temp, condition icon/label, H/L, feels-like, wind, humidity, gusts from OpenMeteoResponse. ~50 tokens.
 - `src/components/forecast/HourlyScroll.tsx` — Horizontal 24-hour forecast scroll. Shows icon, temp, precip%, wind per hour from OpenMeteoResponse. ~50 tokens.
-- `src/components/forecast/ForecastSheet.tsx` — @gorhom/bottom-sheet panel. Snap points [80, 35%, 70%]. Renders CurrentConditions + HourlyScroll from useForecast data. ~45 tokens.
+- `src/components/forecast/ForecastSheet.tsx` — @gorhom/bottom-sheet panel. Snap points [80, 35%, 80%]. Wraps content in ScrollView (react-native-gesture-handler). Renders CurrentConditions + HourlyScroll + DailyForecast from useForecast data. ~55 tokens.
+- `src/components/forecast/DailyForecast.tsx` — 7-day daily forecast rows. Shows day name, weather icon, min/max temps with bar, precip sum. Uses getWeatherInfo for codes. ~60 tokens.
 - `src/components/alerts/AlertBanner.tsx` — NWS alert banner. Reads worst-severity alert from useAlerts, colored by severity. Navigates to /alert/[id] on press. ~45 tokens.
+- `src/components/layers/LayerPicker.tsx` — FAB stack (right side, top:100). Shows only radar layer for rainviewer, all 5 layers for self-hosted. Fill layers use setActiveLayer (mutually exclusive); non-fill use toggleOverlay. Active state highlighted in #4fc3f7. ~70 tokens.
+- `src/components/map/WeatherLayerOverlay.tsx` — Generic RasterSource/RasterLayer for self-hosted non-radar layers (temperature, wind, cape, precip-type). Uses buildSelfHostedTileUrl + LAYERS config for zoom bounds. ~50 tokens.
+- `src/components/map/AlertPolygon.tsx` — MapLibre ShapeSource rendering NWS alert polygons. FillLayer + LineLayer colored by severity (Extreme/Severe/Moderate/Minor). Filters out alerts without geometry. ~60 tokens.
 
 ## Source: Types
 
