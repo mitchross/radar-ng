@@ -1,5 +1,5 @@
+import MapLibreGL, { type MapViewRef } from "@maplibre/maplibre-react-native";
 import { useRef } from "react";
-import MapLibreGL from "@maplibre/maplibre-react-native";
 import { StyleSheet } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { MAP_STYLES, DEFAULTS } from "../../lib/constants";
@@ -11,7 +11,7 @@ interface WeatherMapProps {
 }
 
 export function WeatherMap({ children }: WeatherMapProps) {
-  const mapRef = useRef<MapLibreGL.MapView>(null);
+  const mapRef = useRef<MapViewRef>(null);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const latitude = useWeatherStore((s) => s.latitude);
   const longitude = useWeatherStore((s) => s.longitude);
@@ -25,7 +25,7 @@ export function WeatherMap({ children }: WeatherMapProps) {
     <MapLibreGL.MapView
       ref={mapRef}
       style={styles.map}
-      styleURL={MAP_STYLES[mapStyle]}
+      mapStyle={MAP_STYLES[mapStyle]}
       logoEnabled={false}
       attributionEnabled={true}
       attributionPosition={{ bottom: 8, left: 8 }}
