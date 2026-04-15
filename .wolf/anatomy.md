@@ -12,24 +12,24 @@ Expo SDK 55 React Native weather radar app (StormScope). Uses expo-router for fi
 ## Source: App Routes (expo-router)
 
 - `src/app/_layout.tsx` — Root layout. Sets up GestureHandlerRootView, QueryClientProvider (retry:2, gcTime:10min), StatusBar light, Stack with (tabs) and alert/[id] (modal). ~50 tokens.
-- `src/app/(tabs)/_layout.tsx` — Tab navigator. Translucent dark (rgba 10,10,20,0.9), position:absolute, borderTopWidth:0, height 50, paddingBottom 4, label fontSize 10. ~50 tokens.
-- `src/app/(tabs)/index.tsx` — Map screen. Full-bleed WeatherMap, floating bottomControls (position:absolute, bottom:0, paddingBottom:60) containing ForecastPeek above timelineBar. AlertBanner + LayerPicker float over map. ~70 tokens.
+- `src/app/(tabs)/_layout.tsx` — Tab navigator. Translucent dark, no icons (tabBarIcon: () => null), label-only uppercase with letterSpacing:1, fontSize:12, fontWeight:700. ~50 tokens.
+- `src/app/(tabs)/index.tsx` — Map screen. Full-bleed WeatherMap. Floating timelineBar (absolute bottom:88, rounded, play+slider). Separate forecastBar (absolute bottom:50). AlertBanner + LayerPicker float over map. ~70 tokens.
 - `src/app/(tabs)/settings.tsx` — Full Settings screen. SafeAreaView, Section/Row/SegmentedControl helpers. Controls: map dark mode, temp unit, radar opacity, playback speed, data source toggle (Free/Self-Hosted), server URL TextInput (shown when selfhosted). Footer attribution. ~230 tokens.
 - `src/app/alert/[id].tsx` — Alert detail modal screen. Uses useLocalSearchParams to get id. ~30 tokens.
 
 ## Source: Hooks
 
-- `src/hooks/useManifest.ts` — Dual-source manifest hook. Runs rainviewerQuery (enabled when dataSource=rainviewer) and selfHostedQuery (enabled when dataSource=selfhosted). Syncs frames to store. Returns active query. ~90 tokens.
+- `src/hooks/useManifest.ts` — Dual-source manifest hook. IEM frames built deterministically via buildIEMFrames() on interval (no API call for free tier). selfHostedQuery for self-hosted mode. Syncs frames to store. ~90 tokens.
 - `src/hooks/useForecast.ts` — React Query hook for Open-Meteo forecast. Enabled when lat/lon set. refetchInterval: 15min. ~35 tokens.
 - `src/hooks/useAlerts.ts` — React Query hook for NWS alerts. Enabled when lat/lon set. refetchInterval: 60s. ~35 tokens.
 - `src/hooks/useLocation.ts` — expo-location hook. Requests foreground permission, falls back to DEFAULTS lat/lon on denial. Sets location in Zustand. ~45 tokens.
 
 ## Source: Lib
 
-- `src/lib/api.ts` — fetchRadarManifest, fetchForecast, fetchAlerts, fetchSelfHostedManifest, checkServerHealth. ~110 tokens.
-- `src/lib/constants.ts` — API URLs, MAP_STYLES, RADAR config (COLOR_SCHEME:6 NEXRAD, DEFAULT_OPACITY:0.8), DEFAULTS (ZOOM:8), SELF_HOSTED, LAYERS (LayerConfig[]). ~70 tokens.
+- `src/lib/api.ts` — fetchRadarManifest, buildIEMFrames (deterministic IEM NEXRAD frame list), fetchForecast, fetchAlerts, fetchSelfHostedManifest, checkServerHealth. ~130 tokens.
+- `src/lib/constants.ts` — API URLs, MAP_STYLES, RADAR config, IEM config (BASE URL, PRODUCT nexrad-n0q, MAX_MINUTES_AGO:50, STEP:5, ZOOM 1-12), DEFAULTS, SELF_HOSTED, LAYERS (text letter icons, no emoji). ~90 tokens.
 - `src/lib/storage.ts` — MMKV wrapper using createMMKV({id:"stormscope"}). getString, setString, getBoolean, setBoolean helpers. ~40 tokens.
-- `src/lib/tileUrl.ts` — buildRadarTileUrl (RainViewer), buildSelfHostedTileUrl (self-hosted). ~50 tokens.
+- `src/lib/tileUrl.ts` — buildRadarTileUrl (RainViewer), buildIEMTileUrl (IEM NEXRAD), buildSelfHostedTileUrl (self-hosted). ~60 tokens.
 - `src/lib/weatherCodes.ts` — WMO weather code descriptions. ~60 tokens.
 
 ## Source: Stores
@@ -39,7 +39,7 @@ Expo SDK 55 React Native weather radar app (StormScope). Uses expo-router for fi
 ## Source: Components
 
 - `src/components/map/WeatherMap.tsx` — MapLibre MapView wrapper. Reads mapStyle/lat/lon from Zustand, renders Camera + UserLocation. Accepts children for overlays. Sets access token null. ~50 tokens.
-- `src/components/map/RadarOverlay.tsx` — Radar tile overlay. useMemo to compute tileUrl from manifest+frame. key={tileUrl} on RasterSource (not frame.path). maxZoomLevel 12 for selfhosted, RADAR.MAX_ZOOM for rainviewer. isRainViewerManifest() type guard. ~75 tokens.
+- `src/components/map/RadarOverlay.tsx` — Radar tile overlay. IEM NEXRAD tiles for free tier (tms=true, zoom 1-12), self-hosted tiles for selfhosted mode. No manifest dependency for free tier. ~75 tokens.
 - `src/components/timeline/TimeSlider.tsx` — Radar timeline slider. Compact dark style (paddingHorizontal:12, slider height:30). Label row is inline (time + LIVE/ago + spacer + frame counter). maximumTrackTintColor #333. ~60 tokens.
 - `src/components/timeline/PlayButton.tsx` — Play/pause button. Size 40x40 (down from 48), bg rgba(79,195,247,0.9), marginLeft:8 marginRight:4. Play triangle 12/7/7, pause bars 4x14. ~50 tokens.
 - `src/components/forecast/CurrentConditions.tsx` — Current weather card. Renders temp, condition icon/label, H/L, feels-like, wind, humidity, gusts from OpenMeteoResponse. ~50 tokens.
@@ -47,7 +47,7 @@ Expo SDK 55 React Native weather radar app (StormScope). Uses expo-router for fi
 - `src/components/forecast/ForecastSheet.tsx` — Translucent peek bar (rgba 10,10,20,0.85) with temp + bullet + condition + spacer + H/L. Tap opens Modal slide-up sheet (bg #0a0a14). Exports ForecastPeek and ForecastSheet alias. ~70 tokens.
 - `src/components/forecast/DailyForecast.tsx` — 7-day daily forecast rows. Shows day name, weather icon, min/max temps with bar, precip sum. Uses getWeatherInfo for codes. ~60 tokens.
 - `src/components/alerts/AlertBanner.tsx` — NWS alert banner. paddingTop:44 (tighter to status bar). Reads worst-severity alert from useAlerts, colored by severity. Navigates to /alert/[id] on press. ~45 tokens.
-- `src/components/layers/LayerPicker.tsx` — FAB stack (right:10, top:90). Buttons 48x48 (down from 56), borderWidth:1.5, bg rgba(10,10,20,0.75). Icon fontSize:16, label fontSize:8. Active: borderColor #4fc3f7, bg rgba(79,195,247,0.2). ~65 tokens.
+- `src/components/layers/LayerPicker.tsx` — FAB stack (right:10, top:90). Buttons 44x44 pill, bg rgba(0,0,0,0.6), borderColor rgba(255,255,255,0.08). Text letter icons (fontWeight:800), label fontSize:7 uppercase. Active: borderColor #4fc3f7, bg rgba(79,195,247,0.15). ~65 tokens.
 - `src/components/map/WeatherLayerOverlay.tsx` — Generic RasterSource/RasterLayer for self-hosted non-radar layers (temperature, wind, cape, precip-type). Uses buildSelfHostedTileUrl + LAYERS config for zoom bounds. ~50 tokens.
 - `src/components/map/AlertPolygon.tsx` — MapLibre ShapeSource rendering NWS alert polygons. FillLayer + LineLayer colored by severity (Extreme/Severe/Moderate/Minor). Filters out alerts without geometry. ~60 tokens.
 

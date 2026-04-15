@@ -26,7 +26,7 @@ export function RadarOverlay() {
         tileSize={256}
         minZoomLevel={IEM.MIN_ZOOM}
         maxZoomLevel={IEM.MAX_ZOOM}
-        tms={true}
+        tms={false}
       >
         <MapLibreGL.RasterLayer
           id="radar-layer"

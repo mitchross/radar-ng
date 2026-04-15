@@ -59,8 +59,8 @@ export function buildIEMFrames(): RadarFrame[] {
       path: `nexrad-n0q-m${padded}m`,
     });
   }
-  // Current frame
-  frames.push({ time: now, path: "nexrad-n0q-0" });
+  // Current frame (no suffix — "nexrad-n0q" is the current mosaic)
+  frames.push({ time: now, path: "nexrad-n0q" });
   return frames;
 }
 
