@@ -1,4 +1,3 @@
-import { Text } from "react-native";
 import { Tabs } from "expo-router";
 
 export default function TabLayout() {
@@ -17,8 +16,10 @@ export default function TabLayout() {
         tabBarActiveTintColor: "#4fc3f7",
         tabBarInactiveTintColor: "#555",
         tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: "600",
+          fontSize: 12,
+          fontWeight: "700",
+          textTransform: "uppercase",
+          letterSpacing: 1,
         },
       }}
     >
@@ -26,18 +27,14 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Map",
-          tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 18, color }}>{"\uD83D\uDDFA\uFE0F"}</Text>
-          ),
+          tabBarIcon: () => null,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 18, color }}>{"\u2699\uFE0F"}</Text>
-          ),
+          tabBarIcon: () => null,
         }}
       />
     </Tabs>

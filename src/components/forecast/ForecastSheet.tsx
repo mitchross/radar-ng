@@ -68,14 +68,14 @@ const styles = StyleSheet.create({
   peek: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(10, 10, 20, 0.85)",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 6,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    gap: 5,
   },
   peekTemp: {
     color: "#fff",
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "700",
   },
   peekDivider: {
@@ -83,15 +83,15 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   peekCondition: {
-    color: "#aaa",
-    fontSize: 13,
+    color: "#999",
+    fontSize: 12,
   },
   peekSpacer: {
     flex: 1,
   },
   peekHighLow: {
-    color: "#777",
-    fontSize: 13,
+    color: "#666",
+    fontSize: 12,
     fontVariant: ["tabular-nums"],
   },
   modalBackdrop: {

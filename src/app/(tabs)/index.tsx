@@ -46,14 +46,14 @@ export default function MapScreen() {
       <LayerPicker />
 
       {/* Bottom controls — floating over map */}
-      <View style={styles.bottomControls}>
-        <ForecastPeek />
-        <View style={styles.timelineBar}>
-          <PlayButton />
-          <View style={styles.sliderContainer}>
-            <TimeSlider />
-          </View>
+      <View style={styles.timelineBar}>
+        <PlayButton />
+        <View style={styles.sliderFlex}>
+          <TimeSlider />
         </View>
+      </View>
+      <View style={styles.forecastBar}>
+        <ForecastPeek />
       </View>
     </View>
   );
@@ -64,21 +64,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000",
   },
-  bottomControls: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingBottom: 60, // space for tab bar
-  },
   timelineBar: {
+    position: "absolute",
+    bottom: 88,
+    left: 8,
+    right: 8,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(10, 10, 20, 0.85)",
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    borderRadius: 12,
+    paddingVertical: 4,
   },
-  sliderContainer: {
+  sliderFlex: {
     flex: 1,
+  },
+  forecastBar: {
+    position: "absolute",
+    bottom: 50,
+    left: 0,
+    right: 0,
   },
 });

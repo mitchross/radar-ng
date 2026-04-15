@@ -20,6 +20,10 @@ export function buildRadarTileUrl(
   return `${host}${frame.path}/${size}/{z}/{x}/{y}/${color}/${smooth ? 1 : 0}_${snow ? 1 : 0}.png`;
 }
 
+export function buildIEMTileUrl(product: string): string {
+  return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${product}/{z}/{x}/{y}.png`;
+}
+
 export function buildSelfHostedTileUrl(
   serverUrl: string,
   layer: LayerType,

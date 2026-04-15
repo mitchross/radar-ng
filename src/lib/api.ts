@@ -1,5 +1,6 @@
 import { API } from "./constants";
 import type {
+  RadarFrame,
   RainViewerManifest,
   OpenMeteoResponse,
   NWSAlertCollection,
@@ -45,6 +46,22 @@ export async function fetchAlerts(
   });
   if (!res.ok) throw new Error(`NWS API error: ${res.status}`);
   return res.json();
+}
+
+export function buildIEMFrames(): RadarFrame[] {
+  const now = Math.floor(Date.now() / 1000);
+  const frames: RadarFrame[] = [];
+  // Build frames from 50 min ago to current, every 5 min
+  for (let m = 50; m >= 5; m -= 5) {
+    const padded = String(m).padStart(2, "0");
+    frames.push({
+      time: now - m * 60,
+      path: `nexrad-n0q-m${padded}m`,
+    });
+  }
+  // Current frame
+  frames.push({ time: now, path: "nexrad-n0q-0" });
+  return frames;
 }
 
 export async function fetchSelfHostedManifest(

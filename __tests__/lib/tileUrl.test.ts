@@ -1,4 +1,4 @@
-import { buildRadarTileUrl } from "../../src/lib/tileUrl";
+import { buildRadarTileUrl, buildIEMTileUrl } from "../../src/lib/tileUrl";
 
 describe("buildRadarTileUrl", () => {
   const host = "https://tilecache.rainviewer.com";
@@ -19,5 +19,14 @@ describe("buildRadarTileUrl", () => {
   it("respects smooth=false and snow=false", () => {
     const url = buildRadarTileUrl(host, frame, { smooth: false, snow: false });
     expect(url).toMatch(/\/0_0\.png$/);
+  });
+});
+
+describe("buildIEMTileUrl", () => {
+  it("builds correct IEM tile URL", () => {
+    const url = buildIEMTileUrl("nexrad-n0q-m15m");
+    expect(url).toBe(
+      "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-m15m/{z}/{x}/{y}.png"
+    );
   });
 });

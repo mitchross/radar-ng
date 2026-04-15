@@ -51,14 +51,14 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    paddingTop: 44,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
+    paddingTop: 36,
+    paddingBottom: 8,
+    paddingHorizontal: 12,
     zIndex: 100,
   },
   text: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
   },
 });

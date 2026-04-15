@@ -37,7 +37,7 @@ export function LayerPicker() {
           onPress={() => handlePress(layer)}
           activeOpacity={0.7}
         >
-          <Text style={styles.icon}>{layer.icon}</Text>
+          <Text style={[styles.icon, isActive(layer) && styles.iconActive]}>{layer.icon}</Text>
           <Text style={[styles.label, isActive(layer) && styles.labelActive]}>
             {layer.label}
           </Text>
@@ -56,26 +56,33 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
   button: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "rgba(10, 10, 20, 0.75)",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
   buttonActive: {
     borderColor: "#4fc3f7",
-    backgroundColor: "rgba(79, 195, 247, 0.2)",
+    backgroundColor: "rgba(79, 195, 247, 0.15)",
   },
   icon: {
     fontSize: 16,
+    fontWeight: "800",
+    color: "#666",
+  },
+  iconActive: {
+    color: "#fff",
   },
   label: {
-    fontSize: 8,
-    color: "#666",
+    fontSize: 7,
+    color: "#555",
     marginTop: 1,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   labelActive: {
     color: "#4fc3f7",

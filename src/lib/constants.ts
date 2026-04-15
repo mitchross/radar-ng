@@ -31,6 +31,15 @@ export const DEFAULTS = {
   ALERTS_REFETCH_MS: 60_000,
 } as const;
 
+export const IEM = {
+  BASE: "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0",
+  PRODUCT: "nexrad-n0q",
+  MAX_MINUTES_AGO: 50,
+  STEP_MINUTES: 5,
+  MIN_ZOOM: 1,
+  MAX_ZOOM: 12,
+} as const;
+
 export const SELF_HOSTED = {
   DEFAULT_URL: "http://10.0.2.2:8080",
   MANIFEST_PATH: "/api/manifest.json",
@@ -39,9 +48,9 @@ export const SELF_HOSTED = {
 } as const;
 
 export const LAYERS: LayerConfig[] = [
-  { id: "radar", label: "Radar", icon: "\uD83D\uDFE2", isFillLayer: true, defaultVisible: true, minZoom: 1, maxZoom: 12 },
-  { id: "wind", label: "Wind", icon: "\uD83D\uDCA8", isFillLayer: false, defaultVisible: false, minZoom: 1, maxZoom: 9 },
-  { id: "temperature", label: "Temp", icon: "\uD83C\uDF21\uFE0F", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
-  { id: "precip-type", label: "Precip", icon: "\uD83C\uDF27\uFE0F", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
-  { id: "cape", label: "Severe", icon: "\u26A1", isFillLayer: false, defaultVisible: false, minZoom: 1, maxZoom: 9 },
+  { id: "radar", label: "Radar", icon: "R", isFillLayer: true, defaultVisible: true, minZoom: 1, maxZoom: 12 },
+  { id: "wind", label: "Wind", icon: "W", isFillLayer: false, defaultVisible: false, minZoom: 1, maxZoom: 9 },
+  { id: "temperature", label: "Temp", icon: "T", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
+  { id: "precip-type", label: "Precip", icon: "P", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
+  { id: "cape", label: "CAPE", icon: "S", isFillLayer: false, defaultVisible: false, minZoom: 1, maxZoom: 9 },
 ];

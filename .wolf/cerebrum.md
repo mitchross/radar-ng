@@ -34,3 +34,4 @@
 
 - (2026-04-14) Tasks 6/7: Replaced custom splash/tab layout with QueryClient + GestureHandlerRootView root layout. The old layout used @react-navigation directly; new one delegates tab routing to expo-router's (tabs) group.
 - (2026-04-14) Tasks 1-9: Added layer system and self-hosted tile server support. Store persists dataSource/serverUrl to MMKV. useManifest now runs two separate queries with `enabled` guards rather than a single query with conditional queryFn.
+- (2026-04-14) Dark theme overhaul: RainViewer COLOR_SCHEME 6 = NEXRAD Level III colors (green/yellow/red/magenta). Tab bar uses position:absolute so map bleeds underneath. bottomControls uses position:absolute with paddingBottom:60 to clear tab bar. ForecastPeek is a translucent bar, not a bottom sheet handle.

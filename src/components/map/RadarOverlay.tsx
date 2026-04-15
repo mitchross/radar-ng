@@ -1,17 +1,9 @@
-import { useMemo } from "react";
 import MapLibreGL from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { useManifest } from "../../hooks/useManifest";
-import { buildRadarTileUrl, buildSelfHostedTileUrl } from "../../lib/tileUrl";
-import { RADAR } from "../../lib/constants";
-import type { RainViewerManifest } from "../../types/weather";
-
-function isRainViewerManifest(m: unknown): m is RainViewerManifest {
-  return typeof m === "object" && m !== null && "host" in m;
-}
+import { buildIEMTileUrl, buildSelfHostedTileUrl } from "../../lib/tileUrl";
+import { IEM } from "../../lib/constants";
 
 export function RadarOverlay() {
-  const { data: manifest } = useManifest();
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
@@ -21,32 +13,50 @@ export function RadarOverlay() {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
 
   const frame = frames[currentFrameIndex];
+  if (!frame) return null;
 
-  const tileUrl = useMemo(() => {
-    if (!manifest || !frame) return null;
-    return isRainViewerManifest(manifest)
-      ? buildRadarTileUrl(manifest.host, frame)
-      : buildSelfHostedTileUrl(serverUrl, activeLayer, frame.path);
-  }, [manifest, frame, serverUrl, activeLayer, dataSource]);
-
-  if (!tileUrl) return null;
-
-  return (
-    <MapLibreGL.RasterSource
-      id="radar-source"
-      key={tileUrl}
-      tileUrlTemplates={[tileUrl]}
-      tileSize={RADAR.TILE_SIZE}
-      minZoomLevel={RADAR.MIN_ZOOM}
-      maxZoomLevel={dataSource === "selfhosted" ? 12 : RADAR.MAX_ZOOM}
-    >
-      <MapLibreGL.RasterLayer
-        id="radar-layer"
-        style={{
-          rasterOpacity: radarVisible ? radarOpacity : 0,
-          rasterFadeDuration: 0,
-        }}
-      />
-    </MapLibreGL.RasterSource>
-  );
+  if (dataSource !== "selfhosted") {
+    // IEM NEXRAD tiles (free, proper NWS colors)
+    const tileUrl = buildIEMTileUrl(frame.path);
+    return (
+      <MapLibreGL.RasterSource
+        id="radar-source"
+        key={frame.path}
+        tileUrlTemplates={[tileUrl]}
+        tileSize={256}
+        minZoomLevel={IEM.MIN_ZOOM}
+        maxZoomLevel={IEM.MAX_ZOOM}
+        tms={true}
+      >
+        <MapLibreGL.RasterLayer
+          id="radar-layer"
+          style={{
+            rasterOpacity: radarVisible ? radarOpacity : 0,
+            rasterFadeDuration: 0,
+          }}
+        />
+      </MapLibreGL.RasterSource>
+    );
+  } else {
+    // Self-hosted tiles
+    const tileUrl = buildSelfHostedTileUrl(serverUrl, activeLayer, frame.path);
+    return (
+      <MapLibreGL.RasterSource
+        id="radar-source"
+        key={frame.path}
+        tileUrlTemplates={[tileUrl]}
+        tileSize={256}
+        minZoomLevel={1}
+        maxZoomLevel={12}
+      >
+        <MapLibreGL.RasterLayer
+          id="radar-layer"
+          style={{
+            rasterOpacity: radarVisible ? radarOpacity : 0,
+            rasterFadeDuration: 0,
+          }}
+        />
+      </MapLibreGL.RasterSource>
+    );
+  }
 }
