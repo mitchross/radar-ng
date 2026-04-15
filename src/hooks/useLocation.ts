@@ -17,11 +17,16 @@ export function useLocation() {
         setLocation(DEFAULTS.LATITUDE, DEFAULTS.LONGITUDE);
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      if (!cancelled) {
-        setLocation(loc.coords.latitude, loc.coords.longitude);
+      try {
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (!cancelled) {
+          setLocation(loc.coords.latitude, loc.coords.longitude);
+        }
+      } catch (e) {
+        setError("Location unavailable");
+        setLocation(DEFAULTS.LATITUDE, DEFAULTS.LONGITUDE);
       }
     }
 
