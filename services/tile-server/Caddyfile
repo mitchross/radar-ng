@@ -1,0 +1,22 @@
+:8080 {
+    # Static tile serving
+    handle /tiles/* {
+        root * /data
+        file_server {
+            precompressed gzip
+        }
+        header Cache-Control "public, max-age=120"
+        header Access-Control-Allow-Origin "*"
+    }
+
+    # API endpoints (proxied to FastAPI)
+    handle /api/* {
+        reverse_proxy localhost:8000
+        header Access-Control-Allow-Origin "*"
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}

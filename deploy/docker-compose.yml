@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+  ingest-mrms:
+    build:
+      context: ../services
+      dockerfile: ingest-mrms/Dockerfile
+    volumes:
+      - tiles:/data/tiles
+    environment:
+      - TILE_DIR=/data/tiles
+      - POLL_INTERVAL=120
+    restart: unless-stopped
+
+  ingest-hrrr:
+    build:
+      context: ../services
+      dockerfile: ingest-hrrr/Dockerfile
+    volumes:
+      - tiles:/data/tiles
+    environment:
+      - TILE_DIR=/data/tiles
+      - POLL_INTERVAL=3600
+    restart: unless-stopped
+
+  tile-server:
+    build:
+      context: ../services/tile-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - tiles:/data/tiles:ro
+    environment:
+      - TILE_DIR=/data/tiles
+    restart: unless-stopped
+
+  tile-cleanup:
+    image: alpine:3.19
+    volumes:
+      - tiles:/data/tiles
+      - ../services/tile-cleanup/cleanup.sh:/cleanup.sh:ro
+    entrypoint: /bin/sh
+    command: ["-c", "while true; do /bin/sh /cleanup.sh; sleep 1800; done"]
+    environment:
+      - TILE_DIR=/data/tiles
+    restart: unless-stopped
+
+volumes:
+  tiles:
+    driver: local
