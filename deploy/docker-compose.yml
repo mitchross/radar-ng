@@ -1,37 +1,121 @@
-version: "3.8"
+# Shared Python base image for every ingestor.
+# Not a long-running service — pinned behind the "build-only" profile.
+# Build first:
+#   docker compose -f deploy/docker-compose.yml --profile build-only build base
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
+  base:
+    image: stormscope-base:latest
+    build:
+      context: ../services
+      dockerfile: base/Dockerfile
+    command: ["true"]
+    profiles: ["build-only"]
+
   ingest-mrms:
     build:
       context: ../services
       dockerfile: ingest-mrms/Dockerfile
+    image: stormscope-ingest-mrms:latest
     volumes:
       - tiles:/data/tiles
+      - state:/data/state
     environment:
       - TILE_DIR=/data/tiles
+      - STATE_DIR=/data/state
       - POLL_INTERVAL=120
+      - LOG_LEVEL=INFO
+    logging: *default-logging
     restart: unless-stopped
 
   ingest-hrrr:
     build:
       context: ../services
       dockerfile: ingest-hrrr/Dockerfile
+    image: stormscope-ingest-hrrr:latest
     volumes:
       - tiles:/data/tiles
+      - state:/data/state
     environment:
       - TILE_DIR=/data/tiles
+      - STATE_DIR=/data/state
       - POLL_INTERVAL=3600
+      - FORECAST_HOURS=18
+      - EXTENDED_FORECAST_HOURS=48
+      - LOG_LEVEL=INFO
+    logging: *default-logging
+    restart: unless-stopped
+
+  # Self-hosted Open-Meteo. First run requires `sync` to populate models.
+  # See https://github.com/open-meteo/open-meteo for full variable docs.
+  open-meteo:
+    image: ghcr.io/open-meteo/open-meteo:latest
+    volumes:
+      - open-meteo-data:/app/data
+    command: ["serve"]
+    environment:
+      - HTTPBIND=0.0.0.0
+      - PORT=8080
+    logging: *default-logging
+    restart: unless-stopped
+
+  # One-shot (profile-gated) sync that pulls GFS + HRRR model data into
+  # the shared open-meteo-data volume. Run periodically:
+  #   docker compose -f deploy/docker-compose.yml --profile sync run --rm open-meteo-sync
+  open-meteo-sync:
+    image: ghcr.io/open-meteo/open-meteo:latest
+    volumes:
+      - open-meteo-data:/app/data
+    profiles: ["sync"]
+    command: >-
+      sh -c "
+        openmeteo-api sync ncep_gfs025
+          temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,
+          wind_speed_10m,wind_direction_10m,wind_gusts_10m,
+          weather_code,precipitation,precipitation_probability,
+          surface_pressure,uv_index
+          --past-days 2 &&
+        openmeteo-api sync ncep_hrrr_conus
+          temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,
+          wind_speed_10m,wind_direction_10m,wind_gusts_10m,
+          weather_code,precipitation,precipitation_probability,
+          surface_pressure
+          --past-days 1
+      "
+    restart: "no"
+
+  # Self-hosted Protomaps basemap. A planet (or regional) PMTiles file must
+  # be present in ./pmtiles-data/basemap.pmtiles. See services/basemap/README.md.
+  basemap:
+    image: protomaps/go-pmtiles:latest
+    volumes:
+      - ../pmtiles-data:/data:ro
+    command: ["serve", "/data", "--port", "8081", "--cors", "*"]
+    logging: *default-logging
     restart: unless-stopped
 
   tile-server:
     build:
       context: ../services/tile-server
+    image: stormscope-tile-server:latest
+    depends_on:
+      - open-meteo
+      - basemap
     ports:
       - "8080:8080"
     volumes:
       - tiles:/data/tiles:ro
     environment:
       - TILE_DIR=/data/tiles
+      - OPEN_METEO_BASE=http://open-meteo:8080/v1/forecast
+      - MRMS_MAX_AGE_S=600
+    logging: *default-logging
     restart: unless-stopped
 
   tile-cleanup:
@@ -43,8 +127,13 @@ services:
     command: ["-c", "while true; do /bin/sh /cleanup.sh; sleep 1800; done"]
     environment:
       - TILE_DIR=/data/tiles
+    logging: *default-logging
     restart: unless-stopped
 
 volumes:
   tiles:
+    driver: local
+  state:
+    driver: local
+  open-meteo-data:
     driver: local

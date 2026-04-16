@@ -1,0 +1,110 @@
+{
+  "version": 8,
+  "name": "StormScope Dark (Dark Matter)",
+  "glyphs": "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
+  "sources": {
+    "protomaps": {
+      "type": "vector",
+      "tiles": ["/basemap/tiles/{z}/{x}/{y}.mvt"],
+      "minzoom": 0,
+      "maxzoom": 14,
+      "attribution": "<a href=\"https://protomaps.com\">Protomaps</a> © <a href=\"https://openstreetmap.org\">OpenStreetMap</a>"
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": "#0f1117" }
+    },
+    {
+      "id": "earth",
+      "type": "fill",
+      "source": "protomaps",
+      "source-layer": "earth",
+      "paint": { "fill-color": "#14171f" }
+    },
+    {
+      "id": "landuse_park",
+      "type": "fill",
+      "source": "protomaps",
+      "source-layer": "landuse",
+      "filter": ["in", "kind", "park", "forest", "nature_reserve", "cemetery", "wood"],
+      "paint": { "fill-color": "#1b2821" }
+    },
+    {
+      "id": "water",
+      "type": "fill",
+      "source": "protomaps",
+      "source-layer": "water",
+      "paint": { "fill-color": "#10212e" }
+    },
+    {
+      "id": "roads_minor",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "roads",
+      "filter": ["in", "kind", "minor_road"],
+      "minzoom": 11,
+      "paint": {
+        "line-color": "#2a2f3a",
+        "line-width": { "stops": [[11, 0.5], [14, 1.5], [18, 6]] }
+      }
+    },
+    {
+      "id": "roads_major",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "roads",
+      "filter": ["in", "kind", "major_road", "medium_road"],
+      "paint": {
+        "line-color": "#333a47",
+        "line-width": { "stops": [[6, 0.5], [12, 2], [18, 10]] }
+      }
+    },
+    {
+      "id": "roads_highway",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "roads",
+      "filter": ["in", "kind", "highway"],
+      "paint": {
+        "line-color": "#42A5F5",
+        "line-width": { "stops": [[4, 0.5], [8, 2], [16, 12]] }
+      }
+    },
+    {
+      "id": "boundaries_country",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "boundaries",
+      "filter": ["<=", "kind_detail", 2],
+      "paint": { "line-color": "#4a4f5a", "line-width": 1 }
+    },
+    {
+      "id": "boundaries_state",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "boundaries",
+      "filter": ["==", "kind_detail", 4],
+      "paint": { "line-color": "#3a3f48", "line-width": 0.75, "line-dasharray": [2, 2] }
+    },
+    {
+      "id": "places_city",
+      "type": "symbol",
+      "source": "protomaps",
+      "source-layer": "places",
+      "filter": ["in", "kind", "city", "locality"],
+      "layout": {
+        "text-field": "{name}",
+        "text-font": ["Noto Sans Regular"],
+        "text-size": { "stops": [[4, 10], [10, 14]] }
+      },
+      "paint": {
+        "text-color": "#e6e6e6",
+        "text-halo-color": "#0f1117",
+        "text-halo-width": 1.2
+      }
+    }
+  ]
+}

@@ -1,10 +1,11 @@
-import { API } from "./constants";
+import { API, SELF_HOSTED } from "./constants";
 import type {
   RadarFrame,
   RainViewerManifest,
   OpenMeteoResponse,
   NWSAlertCollection,
   SelfHostedManifest,
+  DataSource,
 } from "../types/weather";
 
 export async function fetchRadarManifest(): Promise<RainViewerManifest> {
@@ -13,19 +14,35 @@ export async function fetchRadarManifest(): Promise<RainViewerManifest> {
   return res.json();
 }
 
+interface ForecastOptions {
+  dataSource?: DataSource;
+  serverUrl?: string;
+}
+
 export async function fetchForecast(
   lat: number,
-  lon: number
+  lon: number,
+  opts: ForecastOptions = {}
 ): Promise<OpenMeteoResponse> {
+  // Self-hosted: route through the tile-server proxy. The server talks to the
+  // local Open-Meteo container when OPEN_METEO_BASE points at it.
+  if (opts.dataSource === "selfhosted" && opts.serverUrl) {
+    const url = `${opts.serverUrl}${SELF_HOSTED.FORECAST_PATH}/${lat}/${lon}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Self-hosted forecast error: ${res.status}`);
+    return res.json();
+  }
+
+  // Public path — straight to api.open-meteo.com.
   const params = new URLSearchParams({
     latitude: String(lat),
     longitude: String(lon),
     current:
-      "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+      "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dew_point_2m,surface_pressure",
     hourly:
-      "temperature_2m,precipitation_probability,weather_code,wind_speed_10m",
+      "temperature_2m,precipitation_probability,weather_code,wind_speed_10m,relative_humidity_2m,apparent_temperature",
     daily:
-      "temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum,sunrise,sunset",
+      "temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum,precipitation_probability_max,uv_index_max,sunrise,sunset",
     temperature_unit: "fahrenheit",
     wind_speed_unit: "mph",
     precipitation_unit: "inch",
@@ -51,7 +68,6 @@ export async function fetchAlerts(
 export function buildIEMFrames(): RadarFrame[] {
   const now = Math.floor(Date.now() / 1000);
   const frames: RadarFrame[] = [];
-  // Build frames from 50 min ago to current, every 5 min
   for (let m = 50; m >= 5; m -= 5) {
     const padded = String(m).padStart(2, "0");
     frames.push({
@@ -59,7 +75,6 @@ export function buildIEMFrames(): RadarFrame[] {
       path: `nexrad-n0q-m${padded}m`,
     });
   }
-  // Current frame (no suffix — "nexrad-n0q" is the current mosaic)
   frames.push({ time: now, path: "nexrad-n0q" });
   return frames;
 }

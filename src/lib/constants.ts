@@ -6,10 +6,32 @@ export const API = {
   NWS_ALERTS: "https://api.weather.gov/alerts/active",
 } as const;
 
-export const MAP_STYLES = {
+// Public base map tiles (OpenFreeMap). Used when dataSource !== "selfhosted".
+export const MAP_STYLES_PUBLIC = {
   light: "https://tiles.openfreemap.org/styles/liberty",
   dark: "https://tiles.openfreemap.org/styles/dark",
 } as const;
+
+// Self-hosted base map (Protomaps served through tile-server Caddy). Paths are
+// relative to the configured serverUrl.
+export const MAP_STYLES_SELFHOSTED = {
+  light: "/basemap/styles/positron.json",
+  dark: "/basemap/styles/dark-matter.json",
+} as const;
+
+// Legacy alias used by settings/tests — resolves to the public set.
+export const MAP_STYLES = MAP_STYLES_PUBLIC;
+
+export function resolveMapStyleUrl(
+  dataSource: "rainviewer" | "selfhosted",
+  serverUrl: string,
+  mapStyle: "light" | "dark"
+): string {
+  if (dataSource === "selfhosted" && serverUrl) {
+    return `${serverUrl}${MAP_STYLES_SELFHOSTED[mapStyle]}`;
+  }
+  return MAP_STYLES_PUBLIC[mapStyle];
+}
 
 export const RADAR = {
   TILE_SIZE: 256,
@@ -45,6 +67,9 @@ export const SELF_HOSTED = {
   MANIFEST_PATH: "/api/manifest.json",
   TILE_PATTERN: "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
   FORECAST_PATH: "/api/forecast",
+  HEALTH_PATH: "/api/health",
+  METRICS_PATH: "/api/metrics",
+  BASEMAP_TILE_PATTERN: "/basemap/tiles/{z}/{x}/{y}.mvt",
 } as const;
 
 export const LAYERS: LayerConfig[] = [

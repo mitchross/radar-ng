@@ -33,6 +33,14 @@
 - react-native-mmkv v3+ uses `createMMKV({ id })` factory (not `new MMKV()`). `MMKV` is only a type export.
 - Store tests mock `../../src/lib/storage` entirely via jest.mock to avoid native module initialization at test time.
 - For dual-source hooks (rainviewer + self-hosted), use two `useQuery` calls each with `enabled` flag based on `dataSource` — only one runs at a time.
+- Compose `depends_on` cannot reference a service hidden behind a `profiles:` list — validation fails "service X depends on undefined service Y". If the base image is profile-gated, omit `depends_on: [base]` on child services; build-order is enforced by Dockerfile `FROM` + explicit `docker compose build base` step.
+- HRRR `.idx` sidecar format: one record per line, colon-delimited: `num:byte_offset:d=YYYYMMDDHH:var_name:level:fcst_time:`. To byte-range subset: fetch the idx, find records whose matcher substrings all appear in the raw line, then issue `Range: bytes=start-end` GETs. Concatenated bytes decode cleanly via pygrib (each GRIB2 record is self-contained).
+- Open-Meteo self-hosted: official image is `ghcr.io/open-meteo/open-meteo`, CLI is `openmeteo-api sync <model> <vars> [--past-days N]`, REST endpoint is `/v1/forecast`. Requires a one-time + recurring `sync` invocation to populate model data — we gate that behind a compose profile so it doesn't auto-start.
+- Protomaps self-host stack: drop a `.pmtiles` file on disk → serve via `protomaps/go-pmtiles serve <dir>` on :8081 → proxy through Caddy for CORS/caching → point MapLibre style at `/basemap/tiles/{z}/{x}/{y}.mvt`. The style JSONs live in `services/basemap/styles/` and are baked into the tile-server image at `/srv/basemap/styles/`.
+
+## Decision Log
+- (2026-04-16) Phase 1 hardening: chose idx-parse byte-range subsetting over adding the `herbie-data` dep. Reasoning: a ~30-line parser is simpler than pulling in herbie's xarray+cfgrib dep chain, and the existing pygrib pipeline keeps working on the subsetted concatenated bytes. Full-file fallback kicks in automatically if the .idx is missing.
+- (2026-04-16) Phase 1 self-hosting: new services (open-meteo, basemap) route through the existing Caddy on :8080 rather than exposing extra ports. App only needs one serverUrl. `OPEN_METEO_BASE=http://open-meteo:8080/v1/forecast` in the tile-server so the public path and self-hosted path share the same `/api/forecast/{lat}/{lon}` contract.
 
 ## Key Learnings
 
