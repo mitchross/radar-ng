@@ -25,6 +25,8 @@
 - (2026-04-14) react-native-mmkv v3+ exports `MMKV` as `export type` only — it cannot be instantiated with `new MMKV()`. Use `createMMKV({ id: "..." })` from `react-native-mmkv` instead.
 - (2026-04-14) When useManifest returns a union type (RainViewerManifest | SelfHostedManifest), consuming components must use a type guard to access properties specific to one variant (e.g. `manifest.host` only exists on RainViewerManifest).
 - (2026-04-14) `tabBarShowIcon` does not exist in expo-router Tabs options. Use `tabBarIcon: () => null` to hide icons instead.
+- (2026-04-15) Nullish coalescing `??` mixed with `||` or `&&` requires explicit parentheses: `x ?? (a || b)` not `x ?? a || b`. JavaScript spec/Babel error.
+- (2026-04-15) Adding a new expo native module (e.g. expo-linear-gradient) requires full native rebuild via `npx expo run:android`. Dev client must be reinstalled; Expo Go won't include it.
 
 ## Key Learnings
 
@@ -32,7 +34,17 @@
 - Store tests mock `../../src/lib/storage` entirely via jest.mock to avoid native module initialization at test time.
 - For dual-source hooks (rainviewer + self-hosted), use two `useQuery` calls each with `enabled` flag based on `dataSource` — only one runs at a time.
 
+## Key Learnings
+
+- Design system v2 (CARROT-style): weather-adaptive gradient backgrounds via getWeatherTheme(), glassmorphism cards (rgba white 0.08-0.15, borderRadius 20), accent #42A5F5, temperature-adaptive font weight via getTempFontWeight(), color-coded temps via getTempColor(). Tab bar semi-transparent rgba(13,17,23,0.95).
+- Forecast (Weather tab) is the default hero tab — index.tsx. Radar is second tab (radar.tsx). Settings is third.
+- expo-linear-gradient requires native rebuild (not in Expo Go or old dev builds). Must run `npx expo run:android` after adding.
+- `size` param from tabBarIcon destructure is unused — safe to omit from destructuring to avoid lint warnings.
+
 ## Decision Log
+
+- (2026-04-15) CARROT Weather v2 redesign: Weather-adaptive gradient backgrounds (11 categories × day/night), temperature-adaptive font weight (CARROT's signature), snarky personality quotes, glassmorphism cards, color-coded temps, LinearGradient temp bars in daily forecast, custom View-based tab icons (no emoji). Dependencies: expo-linear-gradient added (requires native rebuild).
+- (2026-04-14) CARROT Weather redesign v1: Forecast promoted to hero default tab. Radar moved to dedicated tab. All 4 forecast modal/peek components deleted — forecast fully inlined into the screen. Settings wrapped in card views. ForecastSheet peek-bar pattern abandoned in favor of full-screen forecast tab.
 
 - (2026-04-14) Tasks 6/7: Replaced custom splash/tab layout with QueryClient + GestureHandlerRootView root layout. The old layout used @react-navigation directly; new one delegates tab routing to expo-router's (tabs) group.
 - (2026-04-14) Tasks 1-9: Added layer system and self-hosted tile server support. Store persists dataSource/serverUrl to MMKV. useManifest now runs two separate queries with `enabled` guards rather than a single query with conditional queryFn.

@@ -10,5 +10,17 @@
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-04-14T14:30:00Z"
+  },
+  {
+    "id": "bug-002",
+    "timestamp": "2026-04-15T21:49:00Z",
+    "error_message": "SyntaxError: Nullish coalescing operator(??) requires parens when mixing with logical operators. (133:55) at weatherTheme.ts:133:55",
+    "file": "src/lib/weatherTheme.ts",
+    "root_cause": "Used `isNight ?? new Date().getHours() >= 19 || new Date().getHours() < 6` — mixing ?? with || requires explicit parentheses per spec.",
+    "fix": "Wrapped the logical expression in parens: `isNight ?? (new Date().getHours() >= 19 || new Date().getHours() < 6)`",
+    "tags": ["syntax", "nullish-coalescing", "operator-precedence"],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-15T21:49:00Z"
   }
 ]

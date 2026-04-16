@@ -12,9 +12,10 @@ Expo SDK 55 React Native weather radar app (StormScope). Uses expo-router for fi
 ## Source: App Routes (expo-router)
 
 - `src/app/_layout.tsx` — Root layout. Sets up GestureHandlerRootView, QueryClientProvider (retry:2, gcTime:10min), StatusBar light, Stack with (tabs) and alert/[id] (modal). ~50 tokens.
-- `src/app/(tabs)/_layout.tsx` — Tab navigator. Translucent dark, no icons (tabBarIcon: () => null), label-only uppercase with letterSpacing:1, fontSize:12, fontWeight:700. ~50 tokens.
-- `src/app/(tabs)/index.tsx` — Map screen. Full-bleed WeatherMap. Floating timelineBar (absolute bottom:88, rounded, play+slider). Separate forecastBar (absolute bottom:50). AlertBanner + LayerPicker float over map. ~70 tokens.
-- `src/app/(tabs)/settings.tsx` — Full Settings screen. SafeAreaView, Section/Row/SegmentedControl helpers. Controls: map dark mode, temp unit, radar opacity, playback speed, data source toggle (Free/Self-Hosted), server URL TextInput (shown when selfhosted). Footer attribution. ~230 tokens.
+- `src/app/(tabs)/_layout.tsx` — 3-tab layout (Weather/Radar/Settings). Semi-transparent tab bar (rgba 0d1117 0.95), custom View-based icons (SunIcon/RadarIcon/GearIcon — no emoji), accent #42A5F5, hairline border. ~80 tokens.
+- `src/app/(tabs)/index.tsx` — CARROT-style forecast hero screen. LinearGradient background (weather-adaptive via getWeatherTheme), hero temp (96px, weight varies with temperature via getTempFontWeight), snarky personality quote card, glassmorphism cards (rgba bg + border), stats with dividers, hourly chart with temp dots + connecting lines + color-coded temps, 7-day daily with LinearGradient temp bars, detail cards with emoji icons. Uses sunrise/sunset for day/night detection. ~350 tokens.
+- `src/app/(tabs)/radar.tsx` — Radar map screen (moved from old index.tsx). Full-bleed WeatherMap + overlays. Floating timelineBar (absolute bottom:58). AlertBanner + LayerPicker. ~60 tokens.
+- `src/app/(tabs)/settings.tsx` — Settings screen with LinearGradient background (#0D1B2A→#263238). Glassmorphism cards (rgba white 0.08, borderRadius 20). Section/Row/SegmentedControl helpers. Accent #42A5F5. ~240 tokens.
 - `src/app/alert/[id].tsx` — Alert detail modal screen. Uses useLocalSearchParams to get id. ~30 tokens.
 
 ## Source: Hooks
@@ -31,6 +32,7 @@ Expo SDK 55 React Native weather radar app (StormScope). Uses expo-router for fi
 - `src/lib/storage.ts` — MMKV wrapper using createMMKV({id:"stormscope"}). getString, setString, getBoolean, setBoolean helpers. ~40 tokens.
 - `src/lib/tileUrl.ts` — buildRadarTileUrl (RainViewer), buildIEMTileUrl (IEM NEXRAD), buildSelfHostedTileUrl (self-hosted). ~60 tokens.
 - `src/lib/weatherCodes.ts` — WMO weather code descriptions. ~60 tokens.
+- `src/lib/weatherTheme.ts` — CARROT-style weather theme system: weather-adaptive gradients (categorizes WMO codes → 11 weather categories × day/night), temperature-adaptive font weight (getTempFontWeight), color-coded temps (getTempColor), snarky personality quotes (getWeatherQuip). ~250 tokens.
 
 ## Source: Stores
 
@@ -42,10 +44,10 @@ Expo SDK 55 React Native weather radar app (StormScope). Uses expo-router for fi
 - `src/components/map/RadarOverlay.tsx` — Radar tile overlay. IEM NEXRAD tiles for free tier (tms=true, zoom 1-12), self-hosted tiles for selfhosted mode. No manifest dependency for free tier. ~75 tokens.
 - `src/components/timeline/TimeSlider.tsx` — Radar timeline slider. Compact dark style (paddingHorizontal:12, slider height:30). Label row is inline (time + LIVE/ago + spacer + frame counter). maximumTrackTintColor #333. ~60 tokens.
 - `src/components/timeline/PlayButton.tsx` — Play/pause button. Size 40x40 (down from 48), bg rgba(79,195,247,0.9), marginLeft:8 marginRight:4. Play triangle 12/7/7, pause bars 4x14. ~50 tokens.
-- `src/components/forecast/CurrentConditions.tsx` — Current weather card. Renders temp, condition icon/label, H/L, feels-like, wind, humidity, gusts from OpenMeteoResponse. ~50 tokens.
-- `src/components/forecast/HourlyScroll.tsx` — Horizontal 24-hour forecast scroll. Shows icon, temp, precip%, wind per hour from OpenMeteoResponse. ~50 tokens.
-- `src/components/forecast/ForecastSheet.tsx` — Translucent peek bar (rgba 10,10,20,0.85) with temp + bullet + condition + spacer + H/L. Tap opens Modal slide-up sheet (bg #0a0a14). Exports ForecastPeek and ForecastSheet alias. ~70 tokens.
-- `src/components/forecast/DailyForecast.tsx` — 7-day daily forecast rows. Shows day name, weather icon, min/max temps with bar, precip sum. Uses getWeatherInfo for codes. ~60 tokens.
+- ~~`src/components/forecast/CurrentConditions.tsx`~~ — DELETED (forecast inlined into index.tsx).
+- ~~`src/components/forecast/HourlyScroll.tsx`~~ — DELETED (forecast inlined into index.tsx).
+- ~~`src/components/forecast/ForecastSheet.tsx`~~ — DELETED (forecast is now its own tab).
+- ~~`src/components/forecast/DailyForecast.tsx`~~ — DELETED (forecast inlined into index.tsx).
 - `src/components/alerts/AlertBanner.tsx` — NWS alert banner. paddingTop:44 (tighter to status bar). Reads worst-severity alert from useAlerts, colored by severity. Navigates to /alert/[id] on press. ~45 tokens.
 - `src/components/layers/LayerPicker.tsx` — FAB stack (right:10, top:90). Buttons 44x44 pill, bg rgba(0,0,0,0.6), borderColor rgba(255,255,255,0.08). Text letter icons (fontWeight:800), label fontSize:7 uppercase. Active: borderColor #4fc3f7, bg rgba(79,195,247,0.15). ~65 tokens.
 - `src/components/map/WeatherLayerOverlay.tsx` — Generic RasterSource/RasterLayer for self-hosted non-radar layers (temperature, wind, cape, precip-type). Uses buildSelfHostedTileUrl + LAYERS config for zoom bounds. ~50 tokens.
