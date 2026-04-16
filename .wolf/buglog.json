@@ -22,5 +22,53 @@
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-04-15T21:49:00Z"
+  },
+  {
+    "id": "bug-003",
+    "timestamp": "2026-04-16T15:23:00Z",
+    "error_message": "MapLibre error {mous.stormscope}[ParseStyle]: Failed to parse style: The document is empty. at offset 0",
+    "file": "src/components/map/WeatherMap.tsx",
+    "root_cause": "resolveMapStyleUrl() routed the map style through the self-hosted tile server when dataSource=selfhosted. MMKV had a leftover dataSource=selfhosted from a prior testing session, so the app pointed at http://10.0.2.2:8080/basemap/styles/positron.json — which returned nothing because the backend wasn't running. Pre-Phase-1 code hard-coded MAP_STYLES_PUBLIC regardless, which masked the issue.",
+    "fix": "One-time dev fix: cleared persisted state via `adb shell run-as com.anonymous.stormscope rm files/mmkv/stormscope*`. Durable fix TBD: either fall back to public basemap when the self-hosted one is unreachable, or surface a 'self-hosted server unreachable' banner in Settings.",
+    "tags": ["map", "maplibre", "mmkv", "self-hosted", "persistence"],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-16T15:23:00Z"
+  },
+  {
+    "id": "bug-004",
+    "timestamp": "2026-04-16T15:55:00Z",
+    "error_message": "ERROR [TypeError: this._listeners.forEach is not a function (it is undefined)] (AnimatedNode.js:125)",
+    "file": "app.json",
+    "root_cause": "React Compiler (experiments.reactCompiler=true in app.json) miscompiles React Native's Animated module — AnimatedNode.__callListeners() is invoked with this._listeners undefined because the compiler hoists/elides the constructor assignment. The error fires every animation frame, spamming the log and obscuring real errors. Already has LogBox.ignoreLogs() in _layout.tsx but that only hides the UI warning, not the console noise.",
+    "fix": "Set experiments.reactCompiler=false in app.json. Revisit when React Compiler reaches stable or RN's Animated is compatibility-flagged.",
+    "tags": ["react-compiler", "animated", "expo-config", "rn-0.83"],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-16T15:55:00Z"
+  },
+  {
+    "id": "bug-005",
+    "timestamp": "2026-04-16T15:58:00Z",
+    "error_message": "Failed to get NitroModules: The native \"NitroModules\" Turbo/Native-Module could not be found",
+    "file": "android/app/",
+    "root_cause": "react-native-mmkv v4 requires react-native-nitro-modules as a transitive dep. The APK on the emulator was built before MMKV v4 was installed, so it had no NitroModules .so. Running metro + the old APK produced the bundle-time error even though the JS module was present in node_modules.",
+    "fix": "`npx expo run:android` with the current package.json rebuilds the native layer including react-native-nitro-modules (0.35.4) and the problem goes away. No code change needed — this is a native-linking state issue.",
+    "tags": ["native-modules", "mmkv", "nitro-modules", "apk", "rebuild"],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-16T15:58:00Z"
+  },
+  {
+    "id": "bug-006",
+    "timestamp": "2026-04-16T16:00:00Z",
+    "error_message": "target tile-server: failed to solve: failed to compute cache key: failed to calculate checksum of ref ... \"/basemap/styles\": not found",
+    "file": "deploy/docker-compose.yml + services/tile-server/Dockerfile",
+    "root_cause": "tile-server Dockerfile COPYs basemap/styles/ into /srv/basemap/styles/ (Phase 1.3), but the compose build context was services/tile-server/, which doesn't see its sibling basemap/ directory. Build failed at COPY step.",
+    "fix": "Move tile-server's build context up to services/ and switch COPY paths to tile-server/api/, tile-server/Caddyfile so the sibling basemap/styles/ is reachable in the same context.",
+    "tags": ["docker", "compose", "build-context", "tile-server"],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-16T16:00:00Z"
   }
 ]
