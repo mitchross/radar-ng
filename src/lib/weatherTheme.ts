@@ -1,16 +1,38 @@
 /**
- * Weather-adaptive theme system inspired by CARROT Weather.
- * Maps WMO weather codes to gradient backgrounds, personality quotes,
- * and visual properties. Includes time-of-day awareness.
+ * Weather-adaptive theme system inspired by CARROT Weather Premium.
+ * Maps WMO weather codes to rich gradient backgrounds, personality quotes,
+ * scene illustration config, and visual properties.
+ * Includes time-of-day awareness with dramatic multi-stop gradients.
  */
 
+export type SceneType =
+  | "sunny"
+  | "night_clear"
+  | "cloudy"
+  | "night_cloudy"
+  | "overcast"
+  | "foggy"
+  | "rainy"
+  | "stormy"
+  | "snowy"
+  | "thunderstorm";
+
 export interface WeatherTheme {
-  gradient: [string, string, string];
+  gradient: [string, string, string, string, string];
   cardBg: string;
   cardBorder: string;
   textPrimary: string;
   textSecondary: string;
   accent: string;
+  sceneType: SceneType;
+  /** Colors for the skyline/scene illustration */
+  scene: {
+    skyline: string;
+    skylineLight: string;
+    celestial: string;
+    celestialGlow: string;
+    particles: string;
+  };
 }
 
 type WeatherCategory =
@@ -28,92 +50,180 @@ type WeatherCategory =
 
 const THEMES: Record<WeatherCategory, WeatherTheme> = {
   clear_day: {
-    gradient: ["#1565C0", "#1E88E5", "#42A5F5"],
-    cardBg: "rgba(255,255,255,0.15)",
-    cardBorder: "rgba(255,255,255,0.25)",
-    textPrimary: "#fff",
-    textSecondary: "rgba(255,255,255,0.7)",
+    gradient: ["#0A47A0", "#1565C0", "#1E88E5", "#42A5F5", "#64B5F6"],
+    cardBg: "rgba(255,255,255,0.12)",
+    cardBorder: "rgba(255,255,255,0.20)",
+    textPrimary: "#FFFFFF",
+    textSecondary: "rgba(255,255,255,0.75)",
     accent: "#FFD54F",
+    sceneType: "sunny",
+    scene: {
+      skyline: "rgba(0,40,100,0.6)",
+      skylineLight: "rgba(0,60,140,0.3)",
+      celestial: "#FFD54F",
+      celestialGlow: "rgba(255,213,79,0.3)",
+      particles: "rgba(255,255,255,0.1)",
+    },
   },
   clear_night: {
-    gradient: ["#0D1B2A", "#1B2838", "#2C3E50"],
-    cardBg: "rgba(255,255,255,0.08)",
-    cardBorder: "rgba(255,255,255,0.12)",
-    textPrimary: "#fff",
-    textSecondary: "rgba(255,255,255,0.6)",
+    gradient: ["#050A18", "#0D1B2A", "#152238", "#1B2D4A", "#243B5C"],
+    cardBg: "rgba(255,255,255,0.07)",
+    cardBorder: "rgba(255,255,255,0.10)",
+    textPrimary: "#FFFFFF",
+    textSecondary: "rgba(255,255,255,0.60)",
     accent: "#90CAF9",
+    sceneType: "night_clear",
+    scene: {
+      skyline: "rgba(10,15,30,0.8)",
+      skylineLight: "rgba(20,30,60,0.4)",
+      celestial: "#E0E0E0",
+      celestialGlow: "rgba(200,200,255,0.15)",
+      particles: "rgba(255,255,255,0.6)",
+    },
   },
   partly_cloudy_day: {
-    gradient: ["#37474F", "#546E7A", "#78909C"],
-    cardBg: "rgba(255,255,255,0.12)",
-    cardBorder: "rgba(255,255,255,0.18)",
-    textPrimary: "#fff",
-    textSecondary: "rgba(255,255,255,0.65)",
+    gradient: ["#2C5282", "#3A6EA5", "#5A8AB5", "#7BA3C7", "#9BBCD8"],
+    cardBg: "rgba(255,255,255,0.10)",
+    cardBorder: "rgba(255,255,255,0.16)",
+    textPrimary: "#FFFFFF",
+    textSecondary: "rgba(255,255,255,0.68)",
     accent: "#4FC3F7",
+    sceneType: "cloudy",
+    scene: {
+      skyline: "rgba(30,50,80,0.6)",
+      skylineLight: "rgba(40,70,110,0.3)",
+      celestial: "#FFE082",
+      celestialGlow: "rgba(255,224,130,0.2)",
+      particles: "rgba(255,255,255,0.15)",
+    },
   },
   partly_cloudy_night: {
-    gradient: ["#1A237E", "#283593", "#3949AB"],
-    cardBg: "rgba(255,255,255,0.08)",
-    cardBorder: "rgba(255,255,255,0.12)",
-    textPrimary: "#fff",
-    textSecondary: "rgba(255,255,255,0.6)",
+    gradient: ["#0A0E2A", "#151B4A", "#1F2768", "#2A3480", "#354196"],
+    cardBg: "rgba(255,255,255,0.07)",
+    cardBorder: "rgba(255,255,255,0.10)",
+    textPrimary: "#FFFFFF",
+    textSecondary: "rgba(255,255,255,0.58)",
     accent: "#7986CB",
+    sceneType: "night_cloudy",
+    scene: {
+      skyline: "rgba(10,12,35,0.8)",
+      skylineLight: "rgba(15,20,50,0.4)",
+      celestial: "#C5CAE9",
+      celestialGlow: "rgba(180,190,230,0.12)",
+      particles: "rgba(255,255,255,0.4)",
+    },
   },
   overcast: {
-    gradient: ["#455A64", "#607D8B", "#78909C"],
-    cardBg: "rgba(255,255,255,0.10)",
-    cardBorder: "rgba(255,255,255,0.15)",
-    textPrimary: "#fff",
-    textSecondary: "rgba(255,255,255,0.6)",
+    gradient: ["#37474F", "#455A64", "#546E7A", "#607D8B", "#78909C"],
+    cardBg: "rgba(255,255,255,0.09)",
+    cardBorder: "rgba(255,255,255,0.13)",
+    textPrimary: "#FFFFFF",
+    textSecondary: "rgba(255,255,255,0.60)",
     accent: "#B0BEC5",
+    sceneType: "overcast",
+    scene: {
+      skyline: "rgba(40,50,55,0.7)",
+      skylineLight: "rgba(55,70,80,0.35)",
+      celestial: "#90A4AE",
+      celestialGlow: "rgba(144,164,174,0.15)",
+      particles: "rgba(255,255,255,0.08)",
+    },
   },
   fog: {
-    gradient: ["#546E7A", "#78909C", "#90A4AE"],
-    cardBg: "rgba(255,255,255,0.12)",
-    cardBorder: "rgba(255,255,255,0.18)",
-    textPrimary: "#fff",
+    gradient: ["#455A64", "#607D8B", "#78909C", "#90A4AE", "#B0BEC5"],
+    cardBg: "rgba(255,255,255,0.10)",
+    cardBorder: "rgba(255,255,255,0.16)",
+    textPrimary: "#FFFFFF",
     textSecondary: "rgba(255,255,255,0.65)",
     accent: "#B0BEC5",
+    sceneType: "foggy",
+    scene: {
+      skyline: "rgba(60,75,85,0.5)",
+      skylineLight: "rgba(80,100,115,0.25)",
+      celestial: "#CFD8DC",
+      celestialGlow: "rgba(207,216,220,0.2)",
+      particles: "rgba(255,255,255,0.25)",
+    },
   },
   drizzle: {
-    gradient: ["#37474F", "#455A64", "#607D8B"],
-    cardBg: "rgba(255,255,255,0.10)",
-    cardBorder: "rgba(255,255,255,0.15)",
-    textPrimary: "#fff",
-    textSecondary: "rgba(255,255,255,0.6)",
+    gradient: ["#263238", "#37474F", "#455A64", "#546E7A", "#607D8B"],
+    cardBg: "rgba(255,255,255,0.08)",
+    cardBorder: "rgba(255,255,255,0.12)",
+    textPrimary: "#FFFFFF",
+    textSecondary: "rgba(255,255,255,0.60)",
     accent: "#4FC3F7",
+    sceneType: "rainy",
+    scene: {
+      skyline: "rgba(30,40,45,0.7)",
+      skylineLight: "rgba(40,55,65,0.35)",
+      celestial: "#78909C",
+      celestialGlow: "rgba(120,144,156,0.1)",
+      particles: "rgba(130,180,220,0.6)",
+    },
   },
   rain: {
-    gradient: ["#1A237E", "#1565C0", "#1976D2"],
-    cardBg: "rgba(255,255,255,0.10)",
-    cardBorder: "rgba(255,255,255,0.15)",
-    textPrimary: "#fff",
-    textSecondary: "rgba(255,255,255,0.6)",
+    gradient: ["#0D2137", "#153050", "#1A4068", "#1E5080", "#236098"],
+    cardBg: "rgba(255,255,255,0.08)",
+    cardBorder: "rgba(255,255,255,0.12)",
+    textPrimary: "#FFFFFF",
+    textSecondary: "rgba(255,255,255,0.60)",
     accent: "#42A5F5",
+    sceneType: "rainy",
+    scene: {
+      skyline: "rgba(10,25,45,0.7)",
+      skylineLight: "rgba(15,35,60,0.35)",
+      celestial: "#546E7A",
+      celestialGlow: "rgba(84,110,122,0.1)",
+      particles: "rgba(100,160,220,0.7)",
+    },
   },
   heavy_rain: {
-    gradient: ["#0D1B2A", "#1A237E", "#283593"],
-    cardBg: "rgba(255,255,255,0.08)",
-    cardBorder: "rgba(255,255,255,0.12)",
-    textPrimary: "#fff",
+    gradient: ["#0A1628", "#0D1F3C", "#102850", "#133264", "#163C78"],
+    cardBg: "rgba(255,255,255,0.06)",
+    cardBorder: "rgba(255,255,255,0.10)",
+    textPrimary: "#FFFFFF",
     textSecondary: "rgba(255,255,255,0.55)",
     accent: "#5C6BC0",
+    sceneType: "stormy",
+    scene: {
+      skyline: "rgba(8,15,30,0.8)",
+      skylineLight: "rgba(12,22,42,0.4)",
+      celestial: "#455A64",
+      celestialGlow: "rgba(69,90,100,0.08)",
+      particles: "rgba(80,140,200,0.8)",
+    },
   },
   snow: {
-    gradient: ["#546E7A", "#78909C", "#B0BEC5"],
-    cardBg: "rgba(255,255,255,0.15)",
-    cardBorder: "rgba(255,255,255,0.25)",
-    textPrimary: "#fff",
-    textSecondary: "rgba(255,255,255,0.7)",
+    gradient: ["#3E5060", "#526878", "#688090", "#7E98A8", "#94B0C0"],
+    cardBg: "rgba(255,255,255,0.12)",
+    cardBorder: "rgba(255,255,255,0.20)",
+    textPrimary: "#FFFFFF",
+    textSecondary: "rgba(255,255,255,0.70)",
     accent: "#E0E0E0",
+    sceneType: "snowy",
+    scene: {
+      skyline: "rgba(45,60,70,0.6)",
+      skylineLight: "rgba(60,80,95,0.3)",
+      celestial: "#CFD8DC",
+      celestialGlow: "rgba(207,216,220,0.2)",
+      particles: "rgba(255,255,255,0.8)",
+    },
   },
   thunderstorm: {
-    gradient: ["#1A0A2E", "#2D1B4E", "#4A148C"],
-    cardBg: "rgba(255,255,255,0.08)",
-    cardBorder: "rgba(255,255,255,0.12)",
-    textPrimary: "#fff",
+    gradient: ["#0A0518", "#1A0A2E", "#2D1548", "#3D1F62", "#4A2878"],
+    cardBg: "rgba(255,255,255,0.07)",
+    cardBorder: "rgba(255,255,255,0.10)",
+    textPrimary: "#FFFFFF",
     textSecondary: "rgba(255,255,255,0.55)",
     accent: "#CE93D8",
+    sceneType: "thunderstorm",
+    scene: {
+      skyline: "rgba(10,5,20,0.8)",
+      skylineLight: "rgba(20,10,40,0.4)",
+      celestial: "#7E57C2",
+      celestialGlow: "rgba(126,87,194,0.15)",
+      particles: "rgba(200,180,255,0.6)",
+    },
   },
 };
 
@@ -164,6 +274,38 @@ export function getTempColor(tempF: number): string {
   if (tempF < 85) return "#FFB74D";  // orange
   if (tempF < 95) return "#FF8A65";  // deep orange
   return "#EF5350";                   // red — extreme heat
+}
+
+/**
+ * Wind speed to descriptive label and color.
+ */
+export function getWindInfo(mph: number): { label: string; color: string } {
+  if (mph < 5) return { label: "Calm", color: "#81C784" };
+  if (mph < 15) return { label: "Light", color: "#4FC3F7" };
+  if (mph < 25) return { label: "Moderate", color: "#FFD54F" };
+  if (mph < 35) return { label: "Strong", color: "#FFB74D" };
+  if (mph < 50) return { label: "Very Strong", color: "#FF8A65" };
+  return { label: "Extreme", color: "#EF5350" };
+}
+
+/**
+ * UV index to risk level and color.
+ */
+export function getUVInfo(uv: number): { label: string; color: string } {
+  if (uv <= 2) return { label: "Low", color: "#81C784" };
+  if (uv <= 5) return { label: "Moderate", color: "#FFD54F" };
+  if (uv <= 7) return { label: "High", color: "#FFB74D" };
+  if (uv <= 10) return { label: "Very High", color: "#FF8A65" };
+  return { label: "Extreme", color: "#EF5350" };
+}
+
+/**
+ * Wind direction degrees to compass label.
+ */
+export function getWindDirection(degrees: number): string {
+  const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  const index = Math.round(degrees / 22.5) % 16;
+  return dirs[index];
 }
 
 // Snarky weather personality quotes (CARROT-style)

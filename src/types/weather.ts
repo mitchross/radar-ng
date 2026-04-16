@@ -32,6 +32,8 @@ export interface OpenMeteoResponse {
     wind_speed_10m: number;
     wind_direction_10m: number;
     wind_gusts_10m: number;
+    dew_point_2m: number;
+    surface_pressure: number;
   };
   hourly: {
     time: string[];
@@ -46,6 +48,8 @@ export interface OpenMeteoResponse {
     temperature_2m_min: number[];
     weather_code: number[];
     precipitation_sum: number[];
+    precipitation_probability_max: number[];
+    uv_index_max: number[];
     sunrise: string[];
     sunset: string[];
   };

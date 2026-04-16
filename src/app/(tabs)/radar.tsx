@@ -1,12 +1,12 @@
-import { View, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { WeatherMap } from "../../components/map/WeatherMap";
 import { RadarOverlay } from "../../components/map/RadarOverlay";
 import { WeatherLayerOverlay } from "../../components/map/WeatherLayerOverlay";
 import { AlertPolygon } from "../../components/map/AlertPolygon";
-import { TimeSlider } from "../../components/timeline/TimeSlider";
-import { PlayButton } from "../../components/timeline/PlayButton";
+import { TimelineBar } from "../../components/timeline/TimelineBar";
+import { RadarFABs } from "../../components/map/RadarFABs";
 import { AlertBanner } from "../../components/alerts/AlertBanner";
-import { LayerPicker } from "../../components/layers/LayerPicker";
 import { useManifest } from "../../hooks/useManifest";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 
@@ -37,15 +37,14 @@ export default function RadarScreen() {
         <AlertPolygon />
       </WeatherMap>
 
+      {/* Top: alert banner */}
       <AlertBanner />
-      <LayerPicker />
 
-      <View style={styles.timelineBar}>
-        <PlayButton />
-        <View style={styles.sliderFlex}>
-          <TimeSlider />
-        </View>
-      </View>
+      {/* Right: CARROT-style FABs */}
+      <RadarFABs />
+
+      {/* Bottom: timeline bar */}
+      <TimelineBar />
     </View>
   );
 }
@@ -53,20 +52,6 @@ export default function RadarScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
-  },
-  timelineBar: {
-    position: "absolute",
-    bottom: 58,
-    left: 8,
-    right: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    borderRadius: 12,
-    paddingVertical: 4,
-  },
-  sliderFlex: {
-    flex: 1,
+    backgroundColor: "#f0f0f0",
   },
 });
