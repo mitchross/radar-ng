@@ -70,5 +70,29 @@
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-04-16T16:00:00Z"
+  },
+  {
+    "id": "bug-007",
+    "timestamp": "2026-04-16T16:13:00Z",
+    "error_message": "ingest-mrms reports tiles: 0 on every render; only one 'processing' log from a key 20 hours old; no subsequent polls caught up to current files",
+    "file": "services/ingest-mrms/ingest.py",
+    "root_cause": "_list_keys() fetched only max-keys=30 with no pagination. S3 ListObjectsV2 sorts ascending by key, so for today's prefix the first 30 keys are from midnight. new_keys[-1] picked the 30th-oldest file (hours stale), then the full new_keys batch was marked processed — locking us out of the actual recent files until the next day's prefix.",
+    "fix": "Paginate with ContinuationToken until IsTruncated=false; raised per-page max-keys to 1000. After rebuild, backlog=577 files for the day and the ingestor processes the genuinely-latest key (timestamp within the last 2 min).",
+    "tags": ["s3", "pagination", "mrms", "ingest"],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-16T16:13:00Z"
+  },
+  {
+    "id": "bug-008",
+    "timestamp": "2026-04-16T16:15:00Z",
+    "error_message": "After fixing pagination, ingest-mrms still logs tiles: 0 per render. HRRR radar-hrrr layer also 0 tiles. Temperature/wind/cape/precip-type render 80k+ tiles each, so the pipeline works in aggregate.",
+    "file": "services/shared/tiler.py (color table) + services/shared/color_tables.json",
+    "root_cause": "reflectivity color table has no_data_below: 5 dBZ. render_tiles also skips any tile whose region[:, :, 3].max() == 0. So grid cells with reflectivity below 5 dBZ render alpha=0, and tiles that overlap only no-precip areas get skipped. On a quiet-weather day most CONUS tiles would be empty — but 0 across z4-z9 is suspicious: z4 covers roughly half of CONUS, so an active storm should trigger at least one non-transparent tile. Leaving for deeper inspection: likely either (a) MRMS sentinel values (-99) below no_data_below=5 but also > -999, so they're neither masked nor transparent, (b) lat-inversion interaction with np.flipud, or (c) apply_color_table range boundaries miss an edge case.",
+    "fix": "Not yet fixed. HRRR non-radar layers all render correctly so the pipeline/lat ordering works for regular grids. Will revisit when Phase 2 (nowcast/48h timeline) or Phase 3 (palettes) forces us back into render_tiles.",
+    "tags": ["mrms", "hrrr", "radar", "tile-rendering", "open-bug", "color-table"],
+    "related_bugs": ["bug-001", "bug-007"],
+    "occurrences": 1,
+    "last_seen": "2026-04-16T16:15:00Z"
   }
 ]
