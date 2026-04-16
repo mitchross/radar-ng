@@ -21,79 +21,87 @@ export default function SettingsScreen() {
     <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Settings</Text>
 
-      <Section title="Map">
-        <Row label="Dark Mode">
-          <Switch
-            value={mapStyle === "dark"}
-            onValueChange={(v) => setMapStyle(v ? "dark" : "light")}
-            trackColor={{ true: "#4fc3f7" }}
-          />
-        </Row>
-      </Section>
-
-      <Section title="Units">
-        <Row label="Temperature">
-          <SegmentedControl
-            options={["F", "C"]}
-            selected={temperatureUnit === "fahrenheit" ? "F" : "C"}
-            onSelect={(v) =>
-              setTemperatureUnit(v === "F" ? "fahrenheit" : "celsius")
-            }
-          />
-        </Row>
-      </Section>
-
-      <Section title="Radar">
-        <Row label={`Opacity: ${Math.round(radarOpacity * 100)}%`}>
-          <Slider
-            style={styles.slider}
-            minimumValue={0.1}
-            maximumValue={1}
-            step={0.05}
-            value={radarOpacity}
-            onValueChange={setRadarOpacity}
-            minimumTrackTintColor="#4fc3f7"
-            maximumTrackTintColor="#555"
-            thumbTintColor="#4fc3f7"
-          />
-        </Row>
-        <Row label={`Playback: ${playbackSpeed} FPS`}>
-          <Slider
-            style={styles.slider}
-            minimumValue={1}
-            maximumValue={15}
-            step={1}
-            value={playbackSpeed}
-            onValueChange={setPlaybackSpeed}
-            minimumTrackTintColor="#4fc3f7"
-            maximumTrackTintColor="#555"
-            thumbTintColor="#4fc3f7"
-          />
-        </Row>
-      </Section>
-
-      <Section title="Data Source">
-        <Row label="Source">
-          <SegmentedControl
-            options={["Free", "Self-Hosted"]}
-            selected={dataSource === "rainviewer" ? "Free" : "Self-Hosted"}
-            onSelect={(v) => setDataSource(v === "Free" ? "rainviewer" : "selfhosted")}
-          />
-        </Row>
-        {dataSource === "selfhosted" && (
-          <Row label="Server URL">
-            <TextInput
-              style={styles.textInput}
-              value={serverUrl}
-              onChangeText={setServerUrl}
-              placeholder="http://192.168.1.x:8080"
-              placeholderTextColor="#555"
-              autoCapitalize="none"
-              autoCorrect={false}
+      <View style={styles.sectionCard}>
+        <Section title="Map">
+          <Row label="Dark Mode">
+            <Switch
+              value={mapStyle === "dark"}
+              onValueChange={(v) => setMapStyle(v ? "dark" : "light")}
+              trackColor={{ true: "#1E88E5" }}
             />
           </Row>
-        )}
-      </Section>
+        </Section>
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Section title="Units">
+          <Row label="Temperature">
+            <SegmentedControl
+              options={["F", "C"]}
+              selected={temperatureUnit === "fahrenheit" ? "F" : "C"}
+              onSelect={(v) =>
+                setTemperatureUnit(v === "F" ? "fahrenheit" : "celsius")
+              }
+            />
+          </Row>
+        </Section>
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Section title="Radar">
+          <Row label={`Opacity: ${Math.round(radarOpacity * 100)}%`}>
+            <Slider
+              style={styles.slider}
+              minimumValue={0.1}
+              maximumValue={1}
+              step={0.05}
+              value={radarOpacity}
+              onValueChange={setRadarOpacity}
+              minimumTrackTintColor="#1E88E5"
+              maximumTrackTintColor="#555"
+              thumbTintColor="#1E88E5"
+            />
+          </Row>
+          <Row label={`Playback: ${playbackSpeed} FPS`}>
+            <Slider
+              style={styles.slider}
+              minimumValue={1}
+              maximumValue={15}
+              step={1}
+              value={playbackSpeed}
+              onValueChange={setPlaybackSpeed}
+              minimumTrackTintColor="#1E88E5"
+              maximumTrackTintColor="#555"
+              thumbTintColor="#1E88E5"
+            />
+          </Row>
+        </Section>
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Section title="Data Source">
+          <Row label="Source">
+            <SegmentedControl
+              options={["Free", "Self-Hosted"]}
+              selected={dataSource === "rainviewer" ? "Free" : "Self-Hosted"}
+              onSelect={(v) => setDataSource(v === "Free" ? "rainviewer" : "selfhosted")}
+            />
+          </Row>
+          {dataSource === "selfhosted" && (
+            <Row label="Server URL">
+              <TextInput
+                style={styles.textInput}
+                value={serverUrl}
+                onChangeText={setServerUrl}
+                placeholder="http://192.168.1.x:8080"
+                placeholderTextColor="#555"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </Row>
+          )}
+        </Section>
+      </View>
 
       <Text style={styles.footer}>
         StormScope v1.0{"\n"}
@@ -170,7 +178,7 @@ function SegmentedControl({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#0d1117",
     padding: 16,
   },
   title: {
@@ -179,14 +187,23 @@ const styles = StyleSheet.create({
     color: "#fff",
     marginBottom: 24,
   },
+  sectionCard: {
+    backgroundColor: "#161b22",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#21262d",
+    padding: 16,
+    marginBottom: 16,
+  },
   section: {
-    marginBottom: 24,
+    marginBottom: 0,
   },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#888",
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#8b949e",
     textTransform: "uppercase",
+    letterSpacing: 1,
     marginBottom: 8,
   },
   row: {
@@ -195,11 +212,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#333",
+    borderBottomColor: "#21262d",
   },
   rowLabel: {
     fontSize: 16,
-    color: "#ddd",
+    color: "#c9d1d9",
   },
   slider: {
     width: 150,
@@ -215,19 +232,19 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   segmentSelected: {
-    backgroundColor: "#4fc3f7",
+    backgroundColor: "#1E88E5",
   },
   segmentText: {
     color: "#aaa",
     fontWeight: "600",
   },
   segmentTextSelected: {
-    color: "#000",
+    color: "#fff",
   },
   footer: {
     marginTop: "auto",
     textAlign: "center",
-    color: "#555",
+    color: "#484f58",
     fontSize: 12,
     lineHeight: 18,
   },

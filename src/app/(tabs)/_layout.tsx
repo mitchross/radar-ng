@@ -1,3 +1,4 @@
+import { Text } from "react-native";
 import { Tabs } from "expo-router";
 
 export default function TabLayout() {
@@ -6,35 +7,46 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: "rgba(10, 10, 20, 0.9)",
-          borderTopWidth: 0,
-          height: 50,
-          paddingBottom: 4,
-          position: "absolute",
-          elevation: 0,
+          backgroundColor: "#0d1117",
+          borderTopColor: "#21262d",
+          borderTopWidth: 1,
+          height: 56,
+          paddingBottom: 6,
+          paddingTop: 4,
         },
-        tabBarActiveTintColor: "#4fc3f7",
-        tabBarInactiveTintColor: "#555",
+        tabBarActiveTintColor: "#1E88E5",
+        tabBarInactiveTintColor: "#484f58",
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: "700",
-          textTransform: "uppercase",
-          letterSpacing: 1,
+          fontSize: 11,
+          fontWeight: "600",
         },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: "Map",
-          tabBarIcon: () => null,
+          title: "Forecast",
+          tabBarIcon: ({ color }) => (
+            <Text style={{ fontSize: 20, color }}>{"\u2600\uFE0F"}</Text>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="radar"
+        options={{
+          title: "Radar",
+          tabBarIcon: ({ color }) => (
+            <Text style={{ fontSize: 20, color }}>{"\uD83D\uDEF0\uFE0F"}</Text>
+          ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: () => null,
+          tabBarIcon: ({ color }) => (
+            <Text style={{ fontSize: 20, color }}>{"\u2699\uFE0F"}</Text>
+          ),
         }}
       />
     </Tabs>
