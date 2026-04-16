@@ -102,11 +102,9 @@ services:
 
   tile-server:
     build:
-      context: ../services/tile-server
+      context: ../services
+      dockerfile: tile-server/Dockerfile
     image: stormscope-tile-server:latest
-    depends_on:
-      - open-meteo
-      - basemap
     ports:
       - "8080:8080"
     volumes:

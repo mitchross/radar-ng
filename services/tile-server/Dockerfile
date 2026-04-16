@@ -9,11 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY api/requirements.txt .
+COPY tile-server/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY api/ /app/api/
-COPY Caddyfile /etc/caddy/Caddyfile
+COPY tile-server/api/ /app/api/
+COPY tile-server/Caddyfile /etc/caddy/Caddyfile
 COPY basemap/styles/ /srv/basemap/styles/
 
 RUN printf '#!/bin/sh\ncd /app/api && python -m uvicorn server:app --host 0.0.0.0 --port 8000 &\ncaddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n' > /start.sh \

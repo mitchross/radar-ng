@@ -24,7 +24,7 @@ export function useLocation() {
         if (!cancelled) {
           setLocation(loc.coords.latitude, loc.coords.longitude);
         }
-      } catch (e) {
+      } catch {
         setError("Location unavailable");
         setLocation(DEFAULTS.LATITUDE, DEFAULTS.LONGITUDE);
       }
