@@ -52,15 +52,26 @@ def load_color_table() -> dict:
 
 @retry(attempts=4, base_delay=2.0, log=log, exceptions=(httpx.HTTPError,))
 def _list_keys(client: httpx.Client, prefix: str) -> list[str]:
-    url = f"{MRMS_BASE}?prefix={prefix}&list-type=2&max-keys=30"
-    resp = client.get(url, timeout=30)
-    resp.raise_for_status()
-    root = ET.fromstring(resp.text)
+    """List all GRIB2 keys under a prefix, paginating past S3's 1000-key cap."""
     ns = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
-    keys = []
-    for content in root.findall(".//s3:Contents/s3:Key", ns):
-        if content.text and content.text.endswith(".grib2.gz"):
-            keys.append(content.text)
+    keys: list[str] = []
+    continuation: str | None = None
+    while True:
+        url = f"{MRMS_BASE}?prefix={prefix}&list-type=2&max-keys=1000"
+        if continuation:
+            url += f"&continuation-token={continuation}"
+        resp = client.get(url, timeout=30)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+        for content in root.findall(".//s3:Contents/s3:Key", ns):
+            if content.text and content.text.endswith(".grib2.gz"):
+                keys.append(content.text)
+        is_truncated = root.findtext(".//s3:IsTruncated", default="false", namespaces=ns)
+        if is_truncated != "true":
+            break
+        continuation = root.findtext(".//s3:NextContinuationToken", namespaces=ns)
+        if not continuation:
+            break
     return keys
 
 
