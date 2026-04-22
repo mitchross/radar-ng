@@ -9,20 +9,23 @@
         header Access-Control-Allow-Origin "*"
     }
 
-    # Protomaps basemap — PMTiles tile server
-    handle /basemap/tiles/* {
-        uri strip_prefix /basemap/tiles
-        reverse_proxy basemap:8081
-        header Cache-Control "public, max-age=86400"
-        header Access-Control-Allow-Origin "*"
-    }
-
-    # Protomaps basemap style JSONs (shipped in image)
+    # Protomaps basemap style JSONs (shipped in image at /srv/basemap/styles/)
     handle /basemap/styles/* {
         uri strip_prefix /basemap
         root * /srv/basemap
         file_server
         header Cache-Control "public, max-age=3600"
+        header Access-Control-Allow-Origin "*"
+    }
+
+    # Protomaps PMTiles tile server. go-pmtiles exposes tiles at
+    # /{archive}/{z}/{x}/{y}.mvt — our archive is basemap.pmtiles so
+    # archive = "basemap". Client requests /basemap/tiles/{z}/{x}/{y}.mvt,
+    # which we rewrite to /basemap/{z}/{x}/{y}.mvt internally.
+    handle_path /basemap/tiles/* {
+        rewrite * /basemap{uri}
+        reverse_proxy basemap:8081
+        header Cache-Control "public, max-age=86400"
         header Access-Control-Allow-Origin "*"
     }
 

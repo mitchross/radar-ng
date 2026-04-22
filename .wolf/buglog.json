@@ -2,11 +2,16 @@
   {
     "id": "bug-001",
     "timestamp": "2026-04-14T14:30:00Z",
-    "error_message": "test_render_tiles_creates_files: assert 0 > 0 — render_tiles returned 0 tiles written",
+    "error_message": "test_render_tiles_creates_files: assert 0 > 0 \u2014 render_tiles returned 0 tiles written",
     "file": "services/shared/tiler.py",
-    "root_cause": "In render_tiles(), _lat_lon_to_tile(lat_max, lon_min, z) returns (tx_min, ty_min) — the top-left tile — but was incorrectly destructured as (tx_min, ty_max). Similarly _lat_lon_to_tile(lat_min, lon_max, z) was destructured as (tx_max, ty_min). This swapped ty_min and ty_max so range(ty_min, ty_max+1) was always empty (e.g. range(6,6) instead of range(5,7)).",
+    "root_cause": "In render_tiles(), _lat_lon_to_tile(lat_max, lon_min, z) returns (tx_min, ty_min) \u2014 the top-left tile \u2014 but was incorrectly destructured as (tx_min, ty_max). Similarly _lat_lon_to_tile(lat_min, lon_max, z) was destructured as (tx_max, ty_min). This swapped ty_min and ty_max so range(ty_min, ty_max+1) was always empty (e.g. range(6,6) instead of range(5,7)).",
     "fix": "Swapped the destructuring: tx_min, ty_min = _lat_lon_to_tile(lat_max, lon_min, z) and tx_max, ty_max = _lat_lon_to_tile(lat_min, lon_max, z).",
-    "tags": ["tile-rendering", "coordinate-math", "off-by-one", "y-axis-inversion"],
+    "tags": [
+      "tile-rendering",
+      "coordinate-math",
+      "off-by-one",
+      "y-axis-inversion"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-04-14T14:30:00Z"
@@ -16,9 +21,13 @@
     "timestamp": "2026-04-15T21:49:00Z",
     "error_message": "SyntaxError: Nullish coalescing operator(??) requires parens when mixing with logical operators. (133:55) at weatherTheme.ts:133:55",
     "file": "src/lib/weatherTheme.ts",
-    "root_cause": "Used `isNight ?? new Date().getHours() >= 19 || new Date().getHours() < 6` — mixing ?? with || requires explicit parentheses per spec.",
+    "root_cause": "Used `isNight ?? new Date().getHours() >= 19 || new Date().getHours() < 6` \u2014 mixing ?? with || requires explicit parentheses per spec.",
     "fix": "Wrapped the logical expression in parens: `isNight ?? (new Date().getHours() >= 19 || new Date().getHours() < 6)`",
-    "tags": ["syntax", "nullish-coalescing", "operator-precedence"],
+    "tags": [
+      "syntax",
+      "nullish-coalescing",
+      "operator-precedence"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-04-15T21:49:00Z"
@@ -28,9 +37,15 @@
     "timestamp": "2026-04-16T15:23:00Z",
     "error_message": "MapLibre error {mous.stormscope}[ParseStyle]: Failed to parse style: The document is empty. at offset 0",
     "file": "src/components/map/WeatherMap.tsx",
-    "root_cause": "resolveMapStyleUrl() routed the map style through the self-hosted tile server when dataSource=selfhosted. MMKV had a leftover dataSource=selfhosted from a prior testing session, so the app pointed at http://10.0.2.2:8080/basemap/styles/positron.json — which returned nothing because the backend wasn't running. Pre-Phase-1 code hard-coded MAP_STYLES_PUBLIC regardless, which masked the issue.",
+    "root_cause": "resolveMapStyleUrl() routed the map style through the self-hosted tile server when dataSource=selfhosted. MMKV had a leftover dataSource=selfhosted from a prior testing session, so the app pointed at http://10.0.2.2:8080/basemap/styles/positron.json \u2014 which returned nothing because the backend wasn't running. Pre-Phase-1 code hard-coded MAP_STYLES_PUBLIC regardless, which masked the issue.",
     "fix": "One-time dev fix: cleared persisted state via `adb shell run-as com.anonymous.stormscope rm files/mmkv/stormscope*`. Durable fix TBD: either fall back to public basemap when the self-hosted one is unreachable, or surface a 'self-hosted server unreachable' banner in Settings.",
-    "tags": ["map", "maplibre", "mmkv", "self-hosted", "persistence"],
+    "tags": [
+      "map",
+      "maplibre",
+      "mmkv",
+      "self-hosted",
+      "persistence"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-04-16T15:23:00Z"
@@ -40,9 +55,14 @@
     "timestamp": "2026-04-16T15:55:00Z",
     "error_message": "ERROR [TypeError: this._listeners.forEach is not a function (it is undefined)] (AnimatedNode.js:125)",
     "file": "app.json",
-    "root_cause": "React Compiler (experiments.reactCompiler=true in app.json) miscompiles React Native's Animated module — AnimatedNode.__callListeners() is invoked with this._listeners undefined because the compiler hoists/elides the constructor assignment. The error fires every animation frame, spamming the log and obscuring real errors. Already has LogBox.ignoreLogs() in _layout.tsx but that only hides the UI warning, not the console noise.",
+    "root_cause": "React Compiler (experiments.reactCompiler=true in app.json) miscompiles React Native's Animated module \u2014 AnimatedNode.__callListeners() is invoked with this._listeners undefined because the compiler hoists/elides the constructor assignment. The error fires every animation frame, spamming the log and obscuring real errors. Already has LogBox.ignoreLogs() in _layout.tsx but that only hides the UI warning, not the console noise.",
     "fix": "Set experiments.reactCompiler=false in app.json. Revisit when React Compiler reaches stable or RN's Animated is compatibility-flagged.",
-    "tags": ["react-compiler", "animated", "expo-config", "rn-0.83"],
+    "tags": [
+      "react-compiler",
+      "animated",
+      "expo-config",
+      "rn-0.83"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-04-16T15:55:00Z"
@@ -53,8 +73,14 @@
     "error_message": "Failed to get NitroModules: The native \"NitroModules\" Turbo/Native-Module could not be found",
     "file": "android/app/",
     "root_cause": "react-native-mmkv v4 requires react-native-nitro-modules as a transitive dep. The APK on the emulator was built before MMKV v4 was installed, so it had no NitroModules .so. Running metro + the old APK produced the bundle-time error even though the JS module was present in node_modules.",
-    "fix": "`npx expo run:android` with the current package.json rebuilds the native layer including react-native-nitro-modules (0.35.4) and the problem goes away. No code change needed — this is a native-linking state issue.",
-    "tags": ["native-modules", "mmkv", "nitro-modules", "apk", "rebuild"],
+    "fix": "`npx expo run:android` with the current package.json rebuilds the native layer including react-native-nitro-modules (0.35.4) and the problem goes away. No code change needed \u2014 this is a native-linking state issue.",
+    "tags": [
+      "native-modules",
+      "mmkv",
+      "nitro-modules",
+      "apk",
+      "rebuild"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-04-16T15:58:00Z"
@@ -66,7 +92,12 @@
     "file": "deploy/docker-compose.yml + services/tile-server/Dockerfile",
     "root_cause": "tile-server Dockerfile COPYs basemap/styles/ into /srv/basemap/styles/ (Phase 1.3), but the compose build context was services/tile-server/, which doesn't see its sibling basemap/ directory. Build failed at COPY step.",
     "fix": "Move tile-server's build context up to services/ and switch COPY paths to tile-server/api/, tile-server/Caddyfile so the sibling basemap/styles/ is reachable in the same context.",
-    "tags": ["docker", "compose", "build-context", "tile-server"],
+    "tags": [
+      "docker",
+      "compose",
+      "build-context",
+      "tile-server"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-04-16T16:00:00Z"
@@ -76,23 +107,207 @@
     "timestamp": "2026-04-16T16:13:00Z",
     "error_message": "ingest-mrms reports tiles: 0 on every render; only one 'processing' log from a key 20 hours old; no subsequent polls caught up to current files",
     "file": "services/ingest-mrms/ingest.py",
-    "root_cause": "_list_keys() fetched only max-keys=30 with no pagination. S3 ListObjectsV2 sorts ascending by key, so for today's prefix the first 30 keys are from midnight. new_keys[-1] picked the 30th-oldest file (hours stale), then the full new_keys batch was marked processed — locking us out of the actual recent files until the next day's prefix.",
+    "root_cause": "_list_keys() fetched only max-keys=30 with no pagination. S3 ListObjectsV2 sorts ascending by key, so for today's prefix the first 30 keys are from midnight. new_keys[-1] picked the 30th-oldest file (hours stale), then the full new_keys batch was marked processed \u2014 locking us out of the actual recent files until the next day's prefix.",
     "fix": "Paginate with ContinuationToken until IsTruncated=false; raised per-page max-keys to 1000. After rebuild, backlog=577 files for the day and the ingestor processes the genuinely-latest key (timestamp within the last 2 min).",
-    "tags": ["s3", "pagination", "mrms", "ingest"],
+    "tags": [
+      "s3",
+      "pagination",
+      "mrms",
+      "ingest"
+    ],
     "related_bugs": [],
     "occurrences": 1,
     "last_seen": "2026-04-16T16:13:00Z"
+  },
+  {
+    "id": "bug-012",
+    "timestamp": "2026-04-17T18:50:00Z",
+    "error_message": "PINPOINT inspector showed literal '\\u2014' text instead of em-dash character",
+    "file": "src/app/(tabs)/radar.tsx",
+    "root_cause": "JSX attribute values in double-quoted form are raw strings: value=\"\\u2014\" renders the 6 literal characters. Only brace-wrapped expressions value={\"\\u2014\"} get JS string parsing.",
+    "fix": "Wrap escapes in braces: value={\"\\u2014\"}. Rule of thumb: any non-ASCII escape in JSX attributes needs braces.",
+    "tags": [
+      "jsx",
+      "string-escape",
+      "unicode"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-17T18:50:00Z"
+  },
+  {
+    "id": "bug-013",
+    "timestamp": "2026-04-17T18:50:30Z",
+    "error_message": "Radar timeline opens at +1.7d (far future HRRR frame) instead of NOW on layer switch",
+    "file": "src/hooks/useManifest.ts",
+    "root_cause": "useManifest defaulted currentFrameIndex to allFrames.length-1 (last frame). For HRRR-backed layers with 34 timestamps extending to +48h, that's +2d in the future \u2014 not useful UX.",
+    "fix": "Snap to the frame whose unix-seconds are closest to Date.now() when frames first populate or the old index falls out of bounds.",
+    "tags": [
+      "timeline",
+      "ux",
+      "frame-index",
+      "hrrr"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-17T18:50:30Z"
+  },
+  {
+    "id": "bug-014",
+    "timestamp": "2026-04-17T18:55:00Z",
+    "error_message": "Cumulus tab bar rendered as a flat edge-to-edge bar instead of the floating rounded-pill design.",
+    "file": "src/app/(tabs)/_layout.tsx",
+    "root_cause": "Expo Router's Tabs component overrides position/left/right/bottom/borderRadius on the tabBarStyle root \u2014 those props on the outer bar don't take effect. To get a floating pill, the outer bar must stay transparent/full-width and tabBarBackground must render the pill as an inset child.",
+    "fix": "Moved the dark pill (rgba(10,10,20,0.92), borderRadius 22, inset 16px) into tabBarBackground as a pointerEvents=none absolute View. Outer tabBarStyle is transparent, height 78, bottom 0.",
+    "tags": [
+      "expo-router",
+      "tabs",
+      "tabBarBackground",
+      "floating-pill"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-17T18:55:00Z"
+  },
+  {
+    "id": "bug-015",
+    "timestamp": "2026-04-17T18:56:00Z",
+    "error_message": "Fog weather icon invisible in 7-day 'Today' row when weather_code=45",
+    "file": "src/components/weather/WeatherIcon.tsx",
+    "root_cause": "FogBars used height=3u (3*size/64). At icon size 28, that's 1.3px \u2014 below sub-pixel rendering threshold on Android.",
+    "fix": "Bumped bar thickness to Math.max(3.5, 5u). All scale-invariant primitives should have a minimum absolute-px floor or they vanish at small sizes.",
+    "tags": [
+      "weather-icons",
+      "scale",
+      "sub-pixel"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-17T18:56:00Z"
+  },
+  {
+    "id": "bug-016",
+    "timestamp": "2026-04-17T18:57:00Z",
+    "error_message": "Nowcast PEAK card displayed '+0m 0.00\"/hr' when no rain expected",
+    "file": "src/screens/NowcastScreen.tsx",
+    "root_cause": "peakMin = minutes.reduce((best, m, i) => m.intensity > minutes[best].intensity ? i : best, 0) picks index 0 when all intensities are 0 \u2014 then the KeyCard prints '+0m'.",
+    "fix": "Guard the value/sub with rainStart < 0 (no rain detected) \u2192 show em-dash; still compute peakMin for the case where rainStart >= 0.",
+    "tags": [
+      "nowcast",
+      "ux",
+      "edge-case",
+      "no-rain"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-17T18:57:00Z"
+  },
+  {
+    "id": "bug-017",
+    "timestamp": "2026-04-17T18:53:00Z",
+    "error_message": "Self-hosted tile-server /api/forecast returned null for every current field except wind_gusts_10m",
+    "file": "services/tile-server + deploy/docker-compose.yml (open-meteo-sync)",
+    "root_cause": "The open-meteo sync profile has been run at least once but other variables' .om data files are stale \u2014 the sync only re-downloaded wind_gusts_10m (3 files / 466 MB). Either the local cached files predate current forecast runs, or the sync incremental-update logic skipped them.",
+    "fix": "Not yet fixed. Workaround: the app's Settings modal lets the user toggle Data Source \u2192 Free (public Open-Meteo) which returns complete data. Durable fix ideas: (a) force re-sync with --reload flag if open-meteo cli supports it, (b) nuke the open-meteo-data volume and re-run both sync profiles, (c) add a smoke test that curls /api/forecast for a fixed point and alerts if any current field is null.",
+    "tags": [
+      "open-meteo",
+      "self-host",
+      "sync",
+      "stale-data",
+      "open-bug"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-17T18:53:00Z"
+  },
+  {
+    "id": "bug-011",
+    "timestamp": "2026-04-17T18:37:00Z",
+    "error_message": "Render Error: Cannot read property 'toString' of null at index.tsx:360 value={humidity.toString()}",
+    "file": "src/app/(tabs)/index.tsx",
+    "root_cause": "Open-Meteo can return null for optional current fields (relative_humidity_2m, wind_speed_10m, wind_direction_10m, apparent_temperature etc.) depending on the reporting station. OpenMeteoResponse types mark them non-null so TS doesn't warn, but runtime values are null when the station lacks that sensor.",
+    "fix": "Null-guard every `forecast.current.*` access on Home with `?? 0` (or sensible default). Also guard temperature_2m / apparent_temperature / temperature_2m_max|min in case of boundary data. Long-term: mark those fields optional in src/types/weather.ts to push the guards up-front at the type layer.",
+    "tags": [
+      "open-meteo",
+      "null-safety",
+      "runtime-render-error",
+      "home-screen"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-17T18:37:00Z"
+  },
+  {
+    "id": "bug-009",
+    "timestamp": "2026-04-17T17:30:00Z",
+    "error_message": "TS2345: Argument of type '\"/nowcast\"' is not assignable to parameter of type 'RelativePathString | ExternalPathString | ...' (expo-router typed route)",
+    "file": "src/app/(tabs)/index.tsx",
+    "root_cause": "Expo Router generates a typed RouteName union from the file tree, but the typegen hadn't picked up the newly-created src/app/(tabs)/nowcast.tsx yet when I added router.push(\"/nowcast\"). Typed routes require a fresh typegen (`npx expo ...`) after adding a route, or the string has to be cast.",
+    "fix": "Cast to `never` for the push call: `router.push(\"/nowcast\" as never)`. A cleaner fix once typegen runs is to drop the cast.",
+    "tags": [
+      "expo-router",
+      "typed-routes",
+      "typegen"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-17T17:30:00Z"
+  },
+  {
+    "id": "bug-010",
+    "timestamp": "2026-04-17T17:31:00Z",
+    "error_message": "TS2769 on LinearGradient `colors` prop: Type 'string[]' is not assignable to type 'readonly [ColorValue, ColorValue, ...ColorValue[]]'",
+    "file": "src/app/(tabs)/radar.tsx",
+    "root_cause": "expo-linear-gradient typings require a tuple with at least 2 colors; passing the result of `.map()` yields plain string[] which TS won't narrow.",
+    "fix": "Cast the mapped array: `colors={DBZ_SCALE.map(s => s.color) as [string, string, ...string[]]}`. Alternatively: add `as const` to the scale array and spread hard-coded entries.",
+    "tags": [
+      "typescript",
+      "expo-linear-gradient",
+      "tuple-types"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-17T17:31:00Z"
   },
   {
     "id": "bug-008",
     "timestamp": "2026-04-16T16:15:00Z",
     "error_message": "After fixing pagination, ingest-mrms still logs tiles: 0 per render. HRRR radar-hrrr layer also 0 tiles. Temperature/wind/cape/precip-type render 80k+ tiles each, so the pipeline works in aggregate.",
     "file": "services/shared/tiler.py (color table) + services/shared/color_tables.json",
-    "root_cause": "reflectivity color table has no_data_below: 5 dBZ. render_tiles also skips any tile whose region[:, :, 3].max() == 0. So grid cells with reflectivity below 5 dBZ render alpha=0, and tiles that overlap only no-precip areas get skipped. On a quiet-weather day most CONUS tiles would be empty — but 0 across z4-z9 is suspicious: z4 covers roughly half of CONUS, so an active storm should trigger at least one non-transparent tile. Leaving for deeper inspection: likely either (a) MRMS sentinel values (-99) below no_data_below=5 but also > -999, so they're neither masked nor transparent, (b) lat-inversion interaction with np.flipud, or (c) apply_color_table range boundaries miss an edge case.",
+    "root_cause": "reflectivity color table has no_data_below: 5 dBZ. render_tiles also skips any tile whose region[:, :, 3].max() == 0. So grid cells with reflectivity below 5 dBZ render alpha=0, and tiles that overlap only no-precip areas get skipped. On a quiet-weather day most CONUS tiles would be empty \u2014 but 0 across z4-z9 is suspicious: z4 covers roughly half of CONUS, so an active storm should trigger at least one non-transparent tile. Leaving for deeper inspection: likely either (a) MRMS sentinel values (-99) below no_data_below=5 but also > -999, so they're neither masked nor transparent, (b) lat-inversion interaction with np.flipud, or (c) apply_color_table range boundaries miss an edge case.",
     "fix": "Not yet fixed. HRRR non-radar layers all render correctly so the pipeline/lat ordering works for regular grids. Will revisit when Phase 2 (nowcast/48h timeline) or Phase 3 (palettes) forces us back into render_tiles.",
-    "tags": ["mrms", "hrrr", "radar", "tile-rendering", "open-bug", "color-table"],
-    "related_bugs": ["bug-001", "bug-007"],
+    "tags": [
+      "mrms",
+      "hrrr",
+      "radar",
+      "tile-rendering",
+      "open-bug",
+      "color-table"
+    ],
+    "related_bugs": [
+      "bug-001",
+      "bug-007"
+    ],
     "occurrences": 1,
     "last_seen": "2026-04-16T16:15:00Z"
+  },
+  {
+    "id": "bug-018",
+    "timestamp": "2026-04-22T00:00:00Z",
+    "error_message": "Skia wind-particle trails invisible; Canvas rendered but pathSlow/Med/Fast/Extreme were empty. Debug path inlined inside useDerivedValue rendered fine.",
+    "file": "src/components/map/WindParticlesOverlay.tsx",
+    "root_cause": "useDerivedValue was wrapping `() => buildPath(lo, hi)` where buildPath was a separate const arrow with a 'worklet' directive. Reanimated's Babel transform did not promote buildPath to the UI thread in this indirection, so the loop inside returned an empty SkPath. The outer arrow ran on the UI thread but called buildPath as a JS-thread function that silently returned Skia.Path.Make() with no segments.",
+    "fix": "Inlined the particle-tail loop directly inside each useDerivedValue callback (one per speed bin). Removed the separate buildPath const. Also addressed a secondary issue: particles spread over CONUS (26\u00b0\u00d750\u00b0) left only a handful in-viewport at zoom 8 \u2014 added SEED_HALF_DEG=3 seed box centered on the camera with respawn-on-outOfBox. Added a dark outline pass under each bright core so trails are legible on both the green wind heatmap and blue water.",
+    "tags": [
+      "reanimated",
+      "worklet",
+      "skia",
+      "useDerivedValue",
+      "closure-capture",
+      "new-architecture"
+    ],
+    "related_bugs": [],
+    "occurrences": 1,
+    "last_seen": "2026-04-22T00:00:00Z"
   }
 ]

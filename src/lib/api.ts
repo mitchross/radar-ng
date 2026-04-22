@@ -40,7 +40,8 @@ export async function fetchForecast(
     current:
       "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dew_point_2m,surface_pressure",
     hourly:
-      "temperature_2m,precipitation_probability,weather_code,wind_speed_10m,relative_humidity_2m,apparent_temperature",
+      "temperature_2m,precipitation,precipitation_probability,weather_code,wind_speed_10m,relative_humidity_2m,apparent_temperature,visibility",
+    minutely_15: "precipitation,precipitation_probability",
     daily:
       "temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum,precipitation_probability_max,uv_index_max,sunrise,sunset",
     temperature_unit: "fahrenheit",

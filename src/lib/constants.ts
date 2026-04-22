@@ -6,17 +6,21 @@ export const API = {
   NWS_ALERTS: "https://api.weather.gov/alerts/active",
 } as const;
 
-// Public base map tiles (OpenFreeMap). Used when dataSource !== "selfhosted".
+// Public base map tiles (OpenFreeMap + Esri World Imagery for satellite).
 export const MAP_STYLES_PUBLIC = {
   light: "https://tiles.openfreemap.org/styles/liberty",
   dark: "https://tiles.openfreemap.org/styles/dark",
+  satellite:
+    "https://raw.githubusercontent.com/go-spatial/tegola/master/cmd/internal/register/testdata/style.json",
 } as const;
 
-// Self-hosted base map (Protomaps served through tile-server Caddy). Paths are
-// relative to the configured serverUrl.
+// Self-hosted base map styles. The tile-server's /api/basemap/style/{name}
+// endpoint rewrites relative tile URLs into absolute ones so MapLibre Native
+// can resolve them without a base URL. Satellite falls back to public.
 export const MAP_STYLES_SELFHOSTED = {
-  light: "/basemap/styles/positron.json",
-  dark: "/basemap/styles/dark-matter.json",
+  light: "/api/basemap/style/positron",
+  dark: "/api/basemap/style/dark-matter",
+  satellite: MAP_STYLES_PUBLIC.satellite,
 } as const;
 
 // Legacy alias used by settings/tests — resolves to the public set.
@@ -25,10 +29,12 @@ export const MAP_STYLES = MAP_STYLES_PUBLIC;
 export function resolveMapStyleUrl(
   dataSource: "rainviewer" | "selfhosted",
   serverUrl: string,
-  mapStyle: "light" | "dark"
+  mapStyle: "light" | "dark" | "satellite"
 ): string {
+  if (mapStyle === "satellite") return MAP_STYLES_PUBLIC.satellite;
   if (dataSource === "selfhosted" && serverUrl) {
-    return `${serverUrl}${MAP_STYLES_SELFHOSTED[mapStyle]}`;
+    const path = MAP_STYLES_SELFHOSTED[mapStyle];
+    return path.startsWith("http") ? path : `${serverUrl}${path}`;
   }
   return MAP_STYLES_PUBLIC[mapStyle];
 }
@@ -74,8 +80,11 @@ export const SELF_HOSTED = {
 
 export const LAYERS: LayerConfig[] = [
   { id: "radar", label: "Radar", icon: "R", isFillLayer: true, defaultVisible: true, minZoom: 1, maxZoom: 12 },
+  { id: "radar-hrrr", label: "HRRR", icon: "H", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
   { id: "wind", label: "Wind", icon: "W", isFillLayer: false, defaultVisible: false, minZoom: 1, maxZoom: 9 },
   { id: "temperature", label: "Temp", icon: "T", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
   { id: "precip-type", label: "Precip", icon: "P", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
+  { id: "precip-accum", label: "Rain 1h", icon: "A", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
+  { id: "cloud", label: "Clouds", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
   { id: "cape", label: "CAPE", icon: "S", isFillLayer: false, defaultVisible: false, minZoom: 1, maxZoom: 9 },
 ];

@@ -1,31 +1,37 @@
-import { ScrollView, View, Text, StyleSheet, Dimensions } from "react-native";
+/**
+ * Cumulus Home screen — ported from UI-Handoff home.jsx to Expo/RN.
+ * Location row + gear (→ settings modal), hero temp + WeatherIcon, nowcast
+ * banner, 24h hourly strip, 24h precip chart, 7-day forecast, radar mini
+ * tease, stat grid (UV/wind/humidity/visibility/pressure/AQI), sun arc.
+ */
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
 import { useForecast } from "../../hooks/useForecast";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useLocation } from "../../hooks/useLocation";
-import { getWeatherInfo } from "../../lib/weatherCodes";
 import {
-  getWeatherTheme,
-  getTempFontWeight,
-  getTempColor,
-  getWeatherQuip,
-  getWindInfo,
+  cumulus,
+  CONDITION_GRADIENTS,
+  getCumulusCondition,
+  getIconKind,
   getUVInfo,
+  getWindInfo,
   getWindDirection,
-} from "../../lib/weatherTheme";
-import WeatherScene from "../../components/weather/WeatherScene";
+  isNightAt,
+} from "../../lib/cumulusTheme";
+import WeatherIcon from "../../components/weather/WeatherIcon";
 
-const SCREEN_WIDTH = Dimensions.get("window").width;
-
-export default function ForecastScreen() {
+export default function HomeScreen() {
   useLocation();
+  const router = useRouter();
   const { data: forecast, isLoading } = useForecast();
   const { data: alertData } = useAlerts();
 
   if (isLoading || !forecast) {
     return (
-      <LinearGradient colors={["#0A0E2A", "#151B4A", "#1F2768", "#2A3480", "#354196"] as const} style={styles.container}>
+      <LinearGradient colors={CONDITION_GRADIENTS.clearNight} style={styles.container}>
         <SafeAreaView style={styles.flex}>
           <Text style={styles.loading}>Loading weather...</Text>
         </SafeAreaView>
@@ -33,918 +39,919 @@ export default function ForecastScreen() {
     );
   }
 
-  const weather = getWeatherInfo(forecast.current.weather_code);
-  const alerts = alertData?.features ?? [];
-  const temp = Math.round(forecast.current.temperature_2m);
-  const feelsLike = Math.round(forecast.current.apparent_temperature);
-
-  // Determine day/night from sunrise/sunset
   const now = new Date();
   const sunrise = new Date(forecast.daily.sunrise[0]);
   const sunset = new Date(forecast.daily.sunset[0]);
-  const isNight = now < sunrise || now > sunset;
+  const isNight = isNightAt(now, sunrise, sunset);
 
-  // Weather-adaptive theme
-  const theme = getWeatherTheme(forecast.current.weather_code, isNight);
-  const quip = getWeatherQuip(forecast.current.weather_code, isNight);
-  const tempWeight = getTempFontWeight(temp);
+  const weatherCode = forecast.current.weather_code;
+  const condition = getCumulusCondition(weatherCode, isNight);
+  const iconKind = getIconKind(weatherCode, isNight);
+  const gradient = CONDITION_GRADIENTS[condition];
 
-  // Hourly data
-  const hourlyTemps = forecast.hourly.temperature_2m.slice(0, 24);
-  const minHourly = Math.min(...hourlyTemps);
-  const maxHourly = Math.max(...hourlyTemps);
-  const hourlyRange = maxHourly - minHourly || 1;
+  const temp = Math.round(forecast.current.temperature_2m ?? 0);
+  const feels = Math.round(forecast.current.apparent_temperature ?? temp);
+  const hi = Math.round(forecast.daily.temperature_2m_max[0] ?? temp);
+  const lo = Math.round(forecast.daily.temperature_2m_min[0] ?? temp);
 
-  // Wind info
-  const windSpeed = Math.round(forecast.current.wind_speed_10m);
-  const windDir = forecast.current.wind_direction_10m;
-  const windGust = Math.round(forecast.current.wind_gusts_10m);
-  const windInfo = getWindInfo(windSpeed);
-  const windCompass = getWindDirection(windDir);
+  const conditionLabel = CONDITION_LABELS[condition];
 
-  // UV (from daily since current doesn't have it)
-  const uvIndex = forecast.daily.uv_index_max?.[0] ?? 0;
-  const uvInfo = getUVInfo(uvIndex);
+  // Nowcast banner logic — use minutely_15 to detect precip start
+  const nowcastHeadline = buildNowcastHeadline(forecast.minutely_15);
 
-  // Daily data for weekly range
-  const weekMin = Math.min(...forecast.daily.temperature_2m_min);
-  const weekMax = Math.max(...forecast.daily.temperature_2m_max);
-  const weekRange = weekMax - weekMin || 1;
+  // 24h hourly (next 24 starting at current hour)
+  const hourlyStart = findStartHourIndex(forecast.hourly.time);
+  const hourly = forecast.hourly.time.slice(hourlyStart, hourlyStart + 24).map((t, i) => {
+    const idx = hourlyStart + i;
+    const hr = new Date(t);
+    const hrIsNight = hr < sunrise || hr > sunset;
+    return {
+      time: formatHour(hr, i),
+      temp: Math.round(forecast.hourly.temperature_2m[idx]),
+      icon: getIconKind(forecast.hourly.weather_code[idx], hrIsNight),
+      precip: forecast.hourly.precipitation_probability?.[idx] ?? 0,
+      isNow: i === 0,
+    };
+  });
+  const precipTotalIn = forecast.daily.precipitation_sum[0]?.toFixed(2) ?? "0.00";
+
+  // 7-day
+  const daily = forecast.daily.time.map((t, i) => ({
+    day: i === 0 ? "Today" : new Date(t).toLocaleDateString([], { weekday: "short" }),
+    icon: getIconKind(forecast.daily.weather_code[i], false),
+    hi: Math.round(forecast.daily.temperature_2m_max[i]),
+    lo: Math.round(forecast.daily.temperature_2m_min[i]),
+    precip: Math.round(forecast.daily.precipitation_probability_max?.[i] ?? 0),
+    now: i === 0 ? temp : undefined,
+  }));
+  const weekHi = Math.max(...daily.map((d) => d.hi));
+  const weekLo = Math.min(...daily.map((d) => d.lo));
+
+  // Stats — everything nullish-guarded since Open-Meteo can return null
+  // for missing fields (e.g. humidity, pressure in some regions/times).
+  const uv = forecast.daily.uv_index_max?.[0] ?? 0;
+  const uvInfo = getUVInfo(uv);
+  const windMph = Math.round(forecast.current.wind_speed_10m ?? 0);
+  const windInfo = getWindInfo(windMph);
+  const windDeg = forecast.current.wind_direction_10m ?? 0;
+  const windCompass = getWindDirection(windDeg);
+  const humidity = Math.round(forecast.current.relative_humidity_2m ?? 0);
+  const dew = Math.round(forecast.current.dew_point_2m ?? 0);
+  // Open-Meteo visibility is in meters → miles
+  const visM = forecast.hourly.visibility?.[hourlyStart];
+  const visibility = visM != null ? Math.min(10, visM / 1609) : 10;
+  const pressure = Math.round(forecast.current.surface_pressure ?? 1013);
+  const dayMs = sunset.getTime() - sunrise.getTime();
+  const dayProgress = Math.max(0, Math.min(1, (now.getTime() - sunrise.getTime()) / dayMs));
 
   return (
-    <LinearGradient colors={theme.gradient} style={styles.container}>
+    <LinearGradient colors={gradient} style={styles.container}>
       <SafeAreaView style={styles.flex} edges={["top"]}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-          {/* Location header */}
-          <Text style={[styles.location, { color: theme.textSecondary }]}>
-            Grand Rapids, MI
-          </Text>
-
-          {/* Weather scene illustration */}
-          <WeatherScene theme={theme} />
-
-          {/* Hero temperature */}
-          <View style={styles.heroSection}>
-            <Text
-              style={[
-                styles.heroTemp,
-                { fontWeight: tempWeight, color: theme.textPrimary },
-              ]}
-            >
-              {temp}{"\u00B0"}
-            </Text>
-            <Text style={[styles.heroCondition, { color: theme.textPrimary }]}>
-              {weather.label}
-            </Text>
-            <Text style={[styles.heroFeelsLike, { color: theme.textSecondary }]}>
-              Feels like {feelsLike}{"\u00B0"} {"\u00B7"} H:{Math.round(forecast.daily.temperature_2m_max[0])}{"\u00B0"} L:{Math.round(forecast.daily.temperature_2m_min[0])}{"\u00B0"}
-            </Text>
-          </View>
-
-          {/* Snarky personality quote */}
-          <View style={[styles.quipCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.quipText, { color: theme.textPrimary }]}>
-              "{quip}"
-            </Text>
-          </View>
-
-          {/* Alert card */}
-          {alerts.length > 0 && (
-            <View style={styles.alertCard}>
-              <View style={styles.alertDot} />
-              <View style={styles.alertContent}>
-                <Text style={styles.alertTitle}>{alerts[0].properties.event}</Text>
-                <Text style={styles.alertSub} numberOfLines={1}>
-                  Until{" "}
-                  {new Date(alerts[0].properties.expires).toLocaleTimeString(
-                    [],
-                    { hour: "numeric", minute: "2-digit" }
-                  )}
-                </Text>
+          {/* Top bar — location + gear (→ settings) */}
+          <View style={styles.topBar}>
+            <View>
+              <View style={styles.locationRow}>
+                <View style={styles.locationDotOuter}>
+                  <View style={styles.locationDotInner} />
+                </View>
+                <Text style={styles.locationText}>Grand Rapids, MI</Text>
               </View>
-              <Text style={styles.alertChevron}>{"\u203A"}</Text>
+              <Text style={styles.updated}>
+                {"UPDATED " + now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toUpperCase()}
+              </Text>
             </View>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => router.push("/settings")}
+              activeOpacity={0.7}
+            >
+              <View style={styles.gearRing} />
+              <View style={styles.gearDot} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Hero — temp + weather icon */}
+          <View style={styles.hero}>
+            <View style={styles.heroIcon}>
+              <WeatherIcon kind={iconKind} size={140} time={isNight ? "night" : "day"} />
+            </View>
+            <Text style={styles.heroCondition}>{conditionLabel}</Text>
+            <View style={styles.heroTempRow}>
+              <Text style={styles.heroTemp}>{temp}</Text>
+              <Text style={styles.heroDeg}>{"\u00B0"}</Text>
+            </View>
+            <Text style={styles.heroMeta}>
+              Feels like <Text style={styles.heroMetaStrong}>{feels}{"\u00B0"}</Text>
+              <Text style={styles.heroMetaDim}>  {"\u00B7"}  </Text>
+              H <Text style={styles.heroMetaStrong}>{hi}{"\u00B0"}</Text>
+              <Text style={styles.heroMetaDim}>  L  </Text>
+              <Text style={styles.heroMetaStrong}>{lo}{"\u00B0"}</Text>
+            </Text>
+          </View>
+
+          {/* Nowcast banner */}
+          {nowcastHeadline && (
+            <Pressable
+              style={styles.nowcastBanner}
+              onPress={() => router.push("/nowcast" as never)}
+            >
+              <View style={styles.nowcastIcon}>
+                <WeatherIcon kind="rain" size={28} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.nowcastHeadline}>{nowcastHeadline.headline}</Text>
+                <Text style={styles.nowcastSub}>{nowcastHeadline.sub}</Text>
+              </View>
+              <Text style={styles.chevron}>{"\u203A"}</Text>
+            </Pressable>
           )}
 
-          {/* Hourly forecast — chart style */}
-          <View style={[styles.glassCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
-              HOURLY
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.hourlyScroll}
+          {/* Active alert */}
+          {alertData && alertData.features.length > 0 && (
+            <TouchableOpacity
+              style={styles.alertCard}
+              activeOpacity={0.8}
+              onPress={() =>
+                router.push({
+                  pathname: "/alert/[id]",
+                  params: { id: alertData.features[0].properties.id },
+                })
+              }
             >
-              {forecast.hourly.time.slice(0, 24).map((time, i) => {
-                const hr = new Date(time);
-                const isNow = i === 0;
-                const w = getWeatherInfo(forecast.hourly.weather_code[i]);
-                const t = Math.round(hourlyTemps[i]);
-                const pct = (hourlyTemps[i] - minHourly) / hourlyRange;
-                const dotBottom = 6 + pct * 32;
-                const precip = forecast.hourly.precipitation_probability[i];
+              <View style={styles.alertDot} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.alertTitle}>{alertData.features[0].properties.event}</Text>
+                <Text style={styles.alertSub} numberOfLines={1}>
+                  Until{" "}
+                  {new Date(alertData.features[0].properties.expires).toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </Text>
+              </View>
+              <Text style={styles.chevron}>{"\u203A"}</Text>
+            </TouchableOpacity>
+          )}
 
+          {/* 24h hourly strip */}
+          <SectionHeader title="HOURLY · NEXT 24" right="48H" />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.hourlyStrip}
+          >
+            {hourly.map((h, i) => (
+              <View
+                key={i}
+                style={[styles.hourlyCell, h.isNow && styles.hourlyCellNow]}
+              >
+                <Text style={[styles.hourlyTime, h.isNow && styles.hourlyTimeNow]}>
+                  {h.isNow ? "NOW" : h.time}
+                </Text>
+                <View style={{ marginVertical: 3 }}>
+                  <WeatherIcon kind={h.icon} size={30} time={isNight ? "night" : "day"} />
+                </View>
+                <Text style={styles.hourlyTemp}>{h.temp}{"\u00B0"}</Text>
+                {h.precip > 0 ? (
+                  <Text style={styles.hourlyPrecip}>{h.precip}%</Text>
+                ) : (
+                  <View style={{ height: 11 }} />
+                )}
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* 24h precip chart */}
+          <SectionHeader title="PRECIPITATION · 24H" right={`${precipTotalIn}"`} />
+          <View style={styles.card}>
+            <View style={styles.precipChart}>
+              {hourly.map((h, i) => {
+                const pct = h.precip / 100;
+                const barH = Math.max(2, pct * 42);
                 return (
-                  <View key={time} style={styles.hourlyItem}>
-                    <Text
+                  <View key={i} style={styles.precipBarSlot}>
+                    <View
                       style={[
-                        styles.hourlyTime,
-                        { color: isNow ? theme.accent : theme.textSecondary },
-                        isNow && styles.hourlyTimeNow,
-                      ]}
-                    >
-                      {isNow ? "Now" : hr.toLocaleTimeString([], { hour: "numeric" })}
-                    </Text>
-                    {precip > 0 && (
-                      <Text style={styles.hourlyPrecip}>
-                        {precip}%
-                      </Text>
-                    )}
-                    <Text style={styles.hourlyWeatherIcon}>{w.icon}</Text>
-                    {/* Temperature dot chart */}
-                    <View style={styles.hourlyChartArea}>
-                      <View
-                        style={[
-                          styles.hourlyDot,
-                          {
-                            bottom: dotBottom,
-                            backgroundColor: getTempColor(t),
-                          },
-                        ]}
-                      />
-                      {i < 23 && (
-                        <View
-                          style={[
-                            styles.hourlyLine,
-                            {
-                              bottom: dotBottom + 3,
-                              transform: [
-                                {
-                                  rotate: `${Math.atan2(
-                                    -((forecast.hourly.temperature_2m[i + 1] - minHourly) / hourlyRange * 32 -
-                                      pct * 32),
-                                    50
-                                  ) * (180 / Math.PI)}deg`,
-                                },
-                              ],
-                              backgroundColor: getTempColor(t),
-                            },
-                          ]}
-                        />
-                      )}
-                    </View>
-                    <Text style={[styles.hourlyTemp, { color: getTempColor(t) }]}>
-                      {t}{"\u00B0"}
-                    </Text>
-                  </View>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          {/* 7-Day forecast */}
-          <View style={[styles.glassCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
-              7-DAY FORECAST
-            </Text>
-            {forecast.daily.time.map((date, i) => {
-              const w = getWeatherInfo(forecast.daily.weather_code[i]);
-              const dayName =
-                i === 0
-                  ? "Today"
-                  : new Date(date).toLocaleDateString([], { weekday: "short" });
-              const low = Math.round(forecast.daily.temperature_2m_min[i]);
-              const high = Math.round(forecast.daily.temperature_2m_max[i]);
-              const barLeft = ((low - weekMin) / weekRange) * 100;
-              const barRight = 100 - ((high - weekMin) / weekRange) * 100;
-              const dailyPrecip = forecast.daily.precipitation_probability_max?.[i];
-
-              return (
-                <View key={date} style={styles.dailyRow}>
-                  <Text style={[styles.dailyDay, { color: theme.textPrimary }]}>
-                    {dayName}
-                  </Text>
-                  <Text style={styles.dailyIcon}>{w.icon}</Text>
-                  {dailyPrecip != null && dailyPrecip > 0 ? (
-                    <Text style={styles.dailyPrecip}>{dailyPrecip}%</Text>
-                  ) : (
-                    <Text style={[styles.dailyPrecip, { color: "transparent" }]}>0%</Text>
-                  )}
-                  <Text style={[styles.dailyLow, { color: getTempColor(low) }]}>
-                    {low}{"\u00B0"}
-                  </Text>
-                  <View style={styles.dailyBarTrack}>
-                    <LinearGradient
-                      colors={[getTempColor(low), getTempColor(high)]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={[
-                        styles.dailyBarFill,
-                        {
-                          left: `${Math.max(0, barLeft)}%`,
-                          right: `${Math.max(0, barRight)}%`,
-                        },
+                        styles.precipBar,
+                        { height: barH, opacity: pct > 0.05 ? 1 : 0.25 },
                       ]}
                     />
                   </View>
-                  <Text style={[styles.dailyHigh, { color: getTempColor(high) }]}>
-                    {high}{"\u00B0"}
+                );
+              })}
+            </View>
+            <View style={styles.precipAxis}>
+              <Text style={styles.axisLabel}>NOW</Text>
+              <Text style={styles.axisLabel}>+6h</Text>
+              <Text style={styles.axisLabel}>+12h</Text>
+              <Text style={styles.axisLabel}>+18h</Text>
+              <Text style={styles.axisLabel}>+24h</Text>
+            </View>
+          </View>
+
+          {/* 7 day */}
+          <SectionHeader title="7 DAY FORECAST" />
+          <View style={[styles.card, { padding: 0, overflow: "hidden" }]}>
+            {daily.map((d, i) => {
+              const range = weekHi - weekLo || 1;
+              const leftPct = ((d.lo - weekLo) / range) * 100;
+              const widthPct = ((d.hi - d.lo) / range) * 100;
+              const nowPct = d.now != null ? ((d.now - weekLo) / range) * 100 : 0;
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.dailyRow,
+                    i > 0 && styles.dailyRowBorder,
+                  ]}
+                >
+                  <Text style={[styles.dailyDay, i === 0 && styles.dailyDayToday]}>
+                    {d.day}
                   </Text>
+                  <View style={{ width: 30 }}>
+                    <WeatherIcon kind={d.icon} size={28} />
+                  </View>
+                  <Text style={styles.dailyPrecip}>
+                    {d.precip > 0 ? `${d.precip}%` : ""}
+                  </Text>
+                  <View style={styles.dailyBarTrack}>
+                    <LinearGradient
+                      colors={[cumulus.cold, cumulus.sun, cumulus.hot]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={{
+                        position: "absolute",
+                        left: `${leftPct}%`,
+                        width: `${widthPct}%`,
+                        height: "100%",
+                        borderRadius: 3,
+                      }}
+                    />
+                    {i === 0 && d.now != null && (
+                      <View
+                        style={[
+                          styles.dailyNowDot,
+                          { left: `${nowPct}%` },
+                        ]}
+                      />
+                    )}
+                  </View>
+                  <Text style={styles.dailyLo}>{d.lo}{"\u00B0"}</Text>
+                  <Text style={styles.dailyHi}>{d.hi}{"\u00B0"}</Text>
                 </View>
               );
             })}
           </View>
 
-          {/* Wind & Pressure card */}
-          <View style={[styles.glassCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
-              WIND & PRESSURE
-            </Text>
-            <View style={styles.windRow}>
-              {/* Wind compass */}
-              <View style={styles.compassContainer}>
-                <View style={[styles.compassRing, { borderColor: theme.cardBorder }]}>
-                  {/* Direction labels */}
-                  <Text style={[styles.compassLabel, styles.compassN, { color: theme.textSecondary }]}>N</Text>
-                  <Text style={[styles.compassLabel, styles.compassE, { color: theme.textSecondary }]}>E</Text>
-                  <Text style={[styles.compassLabel, styles.compassS, { color: theme.textSecondary }]}>S</Text>
-                  <Text style={[styles.compassLabel, styles.compassW, { color: theme.textSecondary }]}>W</Text>
-                  {/* Arrow */}
-                  <View style={[styles.compassArrowContainer, { transform: [{ rotate: `${windDir}deg` }] }]}>
-                    <View style={[styles.compassArrow, { backgroundColor: windInfo.color }]} />
-                    <View style={[styles.compassArrowHead, { borderBottomColor: windInfo.color }]} />
-                  </View>
-                  <View style={[styles.compassCenter, { backgroundColor: windInfo.color }]} />
-                </View>
+          {/* Radar tease */}
+          <TouchableOpacity
+            style={styles.radarTease}
+            activeOpacity={0.8}
+            onPress={() => router.push("/radar")}
+          >
+            <LinearGradient
+              colors={["#1a2540", "#0d1428"]}
+              style={StyleSheet.absoluteFill}
+            />
+            {/* fake radar blobs */}
+            <View style={[styles.radarBlob, { backgroundColor: "#3bc77a", left: "48%", top: 18, width: 90, height: 50, opacity: 0.45 }]} />
+            <View style={[styles.radarBlob, { backgroundColor: "#f5d042", left: "52%", top: 28, width: 64, height: 36, opacity: 0.55 }]} />
+            <View style={[styles.radarBlob, { backgroundColor: "#ff9f2e", left: "56%", top: 36, width: 40, height: 24, opacity: 0.65 }]} />
+            <LinearGradient
+              colors={["transparent", "rgba(0,0,0,0.65)"]}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.radarLive}>
+              <View style={styles.radarLiveDot} />
+              <Text style={styles.radarLiveText}>LIVE</Text>
+            </View>
+            <View style={styles.radarBottom}>
+              <View>
+                <Text style={styles.radarLabel}>RADAR</Text>
+                <Text style={styles.radarTitle}>
+                  {nowcastHeadline ? "Precip developing nearby" : "Clear skies overhead"}
+                </Text>
               </View>
-              {/* Wind stats */}
-              <View style={styles.windStats}>
-                <View style={styles.windStatRow}>
-                  <Text style={[styles.windStatLabel, { color: theme.textSecondary }]}>Speed</Text>
-                  <Text style={[styles.windStatValue, { color: theme.textPrimary }]}>
-                    {windSpeed} <Text style={styles.windStatUnit}>mph</Text>
-                  </Text>
-                </View>
-                <View style={[styles.windDivider, { backgroundColor: theme.cardBorder }]} />
-                <View style={styles.windStatRow}>
-                  <Text style={[styles.windStatLabel, { color: theme.textSecondary }]}>Gusts</Text>
-                  <Text style={[styles.windStatValue, { color: theme.textPrimary }]}>
-                    {windGust} <Text style={styles.windStatUnit}>mph</Text>
-                  </Text>
-                </View>
-                <View style={[styles.windDivider, { backgroundColor: theme.cardBorder }]} />
-                <View style={styles.windStatRow}>
-                  <Text style={[styles.windStatLabel, { color: theme.textSecondary }]}>Direction</Text>
-                  <Text style={[styles.windStatValue, { color: theme.textPrimary }]}>
-                    {windCompass} <Text style={styles.windStatUnit}>{windDir}{"\u00B0"}</Text>
-                  </Text>
-                </View>
-                <View style={[styles.windDivider, { backgroundColor: theme.cardBorder }]} />
-                <View style={styles.windStatRow}>
-                  <Text style={[styles.windStatLabel, { color: theme.textSecondary }]}>Status</Text>
-                  <Text style={[styles.windStatValue, { color: windInfo.color }]}>
-                    {windInfo.label}
-                  </Text>
-                </View>
+              <View style={styles.radarChevronBox}>
+                <Text style={styles.chevron}>{"\u203A"}</Text>
               </View>
             </View>
+          </TouchableOpacity>
+
+          {/* Stat grid */}
+          <View style={styles.statGrid}>
+            <StatCard
+              label="UV INDEX"
+              value={Math.round(uv).toString()}
+              sub={uvInfo.label}
+              accent={uvInfo.color}
+              barPct={Math.min(1, uv / 11)}
+            />
+            <StatCard
+              label="WIND"
+              value={windMph.toString()}
+              unit="mph"
+              sub={`${windCompass} \u00B7 ${windInfo.label}`}
+              accent={windInfo.color}
+              barPct={Math.min(1, windMph / 40)}
+            />
+            <StatCard
+              label="HUMIDITY"
+              value={humidity.toString()}
+              unit="%"
+              sub={`Dew ${dew}\u00B0`}
+              accent={cumulus.rain}
+              barPct={humidity / 100}
+            />
+            <StatCard
+              label="VISIBILITY"
+              value={visibility.toFixed(1)}
+              unit="mi"
+              sub={visibility >= 9 ? "Clear" : visibility >= 3 ? "Hazy" : "Low"}
+              accent={cumulus.rain}
+              barPct={Math.min(1, visibility / 10)}
+            />
+            <StatCard
+              label="PRESSURE"
+              value={pressure.toString()}
+              unit="hPa"
+              sub={pressure < 1010 ? "Falling" : pressure > 1020 ? "High" : "Steady"}
+              accent={cumulus.accent}
+              barPct={Math.max(0, Math.min(1, (pressure - 980) / 60))}
+            />
+            <StatCard
+              label="DEWPOINT"
+              value={dew.toString()}
+              unit={"\u00B0"}
+              sub={dew > 65 ? "Oppressive" : dew > 55 ? "Sticky" : "Pleasant"}
+              accent={cumulus.accent}
+              barPct={Math.max(0, Math.min(1, (dew - 20) / 60))}
+            />
           </View>
 
-          {/* Sun & Moon card */}
-          <View style={[styles.glassCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
-              SUN & MOON
-            </Text>
-            <View style={styles.sunMoonRow}>
-              <View style={styles.sunMoonItem}>
-                <View style={[styles.sunMoonIcon, { backgroundColor: "rgba(255,213,79,0.15)" }]}>
-                  <View style={styles.miniSun} />
-                </View>
-                <Text style={[styles.sunMoonLabel, { color: theme.textSecondary }]}>Sunrise</Text>
-                <Text style={[styles.sunMoonValue, { color: theme.textPrimary }]}>
+          {/* Sun + daylight */}
+          <SectionHeader title="SUN & DAYLIGHT" />
+          <View style={styles.card}>
+            <View style={styles.sunRow}>
+              <View>
+                <Text style={styles.sunLabel}>SUNRISE</Text>
+                <Text style={styles.sunValue}>
                   {sunrise.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                 </Text>
               </View>
-              <View style={styles.sunMoonItem}>
-                <View style={[styles.sunMoonIcon, { backgroundColor: "rgba(255,152,0,0.15)" }]}>
-                  <View style={styles.miniSunset} />
-                </View>
-                <Text style={[styles.sunMoonLabel, { color: theme.textSecondary }]}>Sunset</Text>
-                <Text style={[styles.sunMoonValue, { color: theme.textPrimary }]}>
+              <View style={{ alignItems: "center" }}>
+                <Text style={styles.sunLabel}>DAYLIGHT</Text>
+                <Text style={styles.sunValue}>
+                  {Math.floor(dayMs / 3600000)}h {Math.round((dayMs % 3600000) / 60000)}m
+                </Text>
+              </View>
+              <View>
+                <Text style={[styles.sunLabel, { textAlign: "right" }]}>SUNSET</Text>
+                <Text style={[styles.sunValue, { textAlign: "right" }]}>
                   {sunset.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                 </Text>
               </View>
-              <View style={styles.sunMoonItem}>
-                <View style={[styles.sunMoonIcon, { backgroundColor: "rgba(66,165,245,0.15)" }]}>
-                  <Text style={styles.sunMoonEmoji}>{"\u2600\uFE0F"}</Text>
-                </View>
-                <Text style={[styles.sunMoonLabel, { color: theme.textSecondary }]}>Daylight</Text>
-                <Text style={[styles.sunMoonValue, { color: theme.textPrimary }]}>
-                  {Math.floor((sunset.getTime() - sunrise.getTime()) / 3600000)}h{" "}
-                  {Math.round(((sunset.getTime() - sunrise.getTime()) % 3600000) / 60000)}m
-                </Text>
-              </View>
             </View>
-            {/* Daylight progress arc */}
-            <View style={[styles.daylightBar, { backgroundColor: "rgba(255,255,255,0.06)" }]}>
-              <View
-                style={[
-                  styles.daylightProgress,
-                  {
-                    width: `${Math.max(0, Math.min(100,
-                      ((now.getTime() - sunrise.getTime()) / (sunset.getTime() - sunrise.getTime())) * 100
-                    ))}%`,
-                    backgroundColor: isNight ? "rgba(144,202,249,0.3)" : "rgba(255,213,79,0.5)",
-                  },
-                ]}
-              />
+            <View style={styles.daylightTrack}>
+              <View style={[styles.daylightFill, { width: `${dayProgress * 100}%` }]} />
               {!isNight && (
                 <View
                   style={[
-                    styles.daylightDot,
-                    {
-                      left: `${Math.max(0, Math.min(100,
-                        ((now.getTime() - sunrise.getTime()) / (sunset.getTime() - sunrise.getTime())) * 100
-                      ))}%`,
-                      backgroundColor: "#FFD54F",
-                    },
+                    styles.daylightSun,
+                    { left: `${dayProgress * 100}%` },
                   ]}
                 />
               )}
             </View>
           </View>
 
-          {/* Atmosphere card — UV, Humidity, Dewpoint, Pressure */}
-          <View style={[styles.glassCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
-              ATMOSPHERE
-            </Text>
-            <View style={styles.atmosGrid}>
-              {/* UV Index with gauge */}
-              <View style={styles.atmosItem}>
-                <View style={styles.gaugeContainer}>
-                  <View style={[styles.gaugeTrack, { backgroundColor: "rgba(255,255,255,0.06)" }]}>
-                    <LinearGradient
-                      colors={["#81C784", "#FFD54F", "#FFB74D", "#FF8A65", "#EF5350"]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={[styles.gaugeFill, { width: `${Math.min(100, (uvIndex / 11) * 100)}%` }]}
-                    />
-                  </View>
-                  <Text style={[styles.gaugeValue, { color: uvInfo.color }]}>
-                    {Math.round(uvIndex)}
-                  </Text>
-                </View>
-                <Text style={[styles.atmosLabel, { color: theme.textSecondary }]}>UV Index</Text>
-                <Text style={[styles.atmosSublabel, { color: uvInfo.color }]}>{uvInfo.label}</Text>
-              </View>
-
-              {/* Humidity */}
-              <View style={styles.atmosItem}>
-                <View style={styles.gaugeContainer}>
-                  <View style={[styles.gaugeTrack, { backgroundColor: "rgba(255,255,255,0.06)" }]}>
-                    <View
-                      style={[
-                        styles.gaugeFill,
-                        {
-                          width: `${forecast.current.relative_humidity_2m}%`,
-                          backgroundColor: "#4FC3F7",
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={[styles.gaugeValue, { color: "#4FC3F7" }]}>
-                    {forecast.current.relative_humidity_2m}%
-                  </Text>
-                </View>
-                <Text style={[styles.atmosLabel, { color: theme.textSecondary }]}>Humidity</Text>
-                <Text style={[styles.atmosSublabel, { color: theme.textSecondary }]}>
-                  {forecast.current.relative_humidity_2m > 70
-                    ? "Muggy"
-                    : forecast.current.relative_humidity_2m > 40
-                    ? "Comfortable"
-                    : "Dry"}
-                </Text>
-              </View>
-
-              {/* Dewpoint */}
-              <View style={styles.atmosItem}>
-                <Text style={[styles.atmosBigValue, { color: theme.textPrimary }]}>
-                  {Math.round(forecast.current.dew_point_2m ?? 0)}{"\u00B0"}
-                </Text>
-                <Text style={[styles.atmosLabel, { color: theme.textSecondary }]}>Dewpoint</Text>
-                <Text style={[styles.atmosSublabel, { color: theme.textSecondary }]}>
-                  {(forecast.current.dew_point_2m ?? 0) > 65
-                    ? "Oppressive"
-                    : (forecast.current.dew_point_2m ?? 0) > 55
-                    ? "Sticky"
-                    : "Pleasant"}
-                </Text>
-              </View>
-
-              {/* Pressure */}
-              <View style={styles.atmosItem}>
-                <Text style={[styles.atmosBigValue, { color: theme.textPrimary }]}>
-                  {(forecast.current.surface_pressure ?? 1013).toFixed(0)}
-                </Text>
-                <Text style={[styles.atmosLabel, { color: theme.textSecondary }]}>Pressure</Text>
-                <Text style={[styles.atmosSublabel, { color: theme.textSecondary }]}>hPa</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Precipitation probability timeline */}
-          <View style={[styles.glassCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
-              PRECIPITATION CHANCE
-            </Text>
-            <View style={styles.precipTimeline}>
-              {forecast.hourly.time.slice(0, 12).map((time, i) => {
-                const hr = new Date(time);
-                const pct = forecast.hourly.precipitation_probability[i] ?? 0;
-                const isNow = i === 0;
-                return (
-                  <View key={time} style={styles.precipBar}>
-                    <View style={styles.precipBarTrack}>
-                      <LinearGradient
-                        colors={
-                          pct > 60
-                            ? ["#1565C0", "#42A5F5"]
-                            : pct > 30
-                            ? ["#1976D2", "#64B5F6"]
-                            : ["#1E88E5", "#90CAF9"]
-                        }
-                        style={[styles.precipBarFill, { height: `${Math.max(2, pct)}%` }]}
-                      />
-                    </View>
-                    <Text style={[styles.precipPct, { color: pct > 0 ? "#64B5F6" : theme.textSecondary }]}>
-                      {pct > 0 ? `${pct}` : "-"}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.precipTime,
-                        { color: isNow ? theme.accent : theme.textSecondary },
-                      ]}
-                    >
-                      {isNow ? "Now" : hr.toLocaleTimeString([], { hour: "numeric" })}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-
-          <View style={{ height: 80 }} />
+          <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
   );
 }
 
+// ───────── sub-components
+
+function SectionHeader({ title, right }: { title: string; right?: string }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {right ? <Text style={styles.sectionRight}>{right}</Text> : null}
+    </View>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  unit,
+  sub,
+  accent,
+  barPct,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+  sub: string;
+  accent: string;
+  barPct: number;
+}) {
+  return (
+    <View style={styles.statCard}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <View style={styles.statValueRow}>
+        <Text style={styles.statValue}>{value}</Text>
+        {unit ? <Text style={styles.statUnit}>{unit}</Text> : null}
+      </View>
+      <Text style={styles.statSub}>{sub}</Text>
+      <View style={styles.statBarTrack}>
+        <View style={[styles.statBarFill, { width: `${Math.max(2, barPct * 100)}%`, backgroundColor: accent }]} />
+      </View>
+    </View>
+  );
+}
+
+// ───────── helpers
+
+const CONDITION_LABELS: Record<ReturnType<typeof getCumulusCondition>, string> = {
+  clearDay: "Sunny",
+  clearNight: "Clear",
+  cloudy: "Cloudy",
+  rain: "Rain",
+  storm: "Thunderstorms",
+  snow: "Snow",
+  fog: "Foggy",
+};
+
+function findStartHourIndex(hours: string[]): number {
+  const now = Date.now();
+  for (let i = 0; i < hours.length; i++) {
+    if (new Date(hours[i]).getTime() >= now - 30 * 60_000) return i;
+  }
+  return 0;
+}
+
+function formatHour(d: Date, i: number): string {
+  if (i === 0) return "NOW";
+  const h = d.getHours();
+  if (h === 0) return "12a";
+  if (h === 12) return "12p";
+  return h < 12 ? `${h}a` : `${h - 12}p`;
+}
+
+function buildNowcastHeadline(
+  minutely: OpenMeteoMinutely | undefined
+): { headline: string; sub: string } | null {
+  if (!minutely || !minutely.precipitation || minutely.precipitation.length === 0) return null;
+  const now = Date.now();
+  const startIdx = minutely.time.findIndex((t) => new Date(t).getTime() >= now - 7.5 * 60_000);
+  if (startIdx < 0) return null;
+  const slice = minutely.precipitation.slice(startIdx, startIdx + 8); // next 2h at 15m
+  const firstWet = slice.findIndex((p) => p > 0.01);
+  if (firstWet < 0) return null;
+  const minutes = firstWet * 15;
+  // Find end of precip
+  const continuedWet = slice.slice(firstWet).findIndex((p) => p < 0.005);
+  const lastsMin = (continuedWet < 0 ? slice.length - firstWet : continuedWet) * 15;
+  const total = slice.slice(firstWet).reduce((s, p) => s + Math.max(0, p), 0);
+  const heavy = slice.slice(firstWet).some((p) => p > 0.3);
+  const kind = heavy ? "Heavy rain" : "Rain";
+  return {
+    headline: minutes === 0 ? `${kind} now` : `${kind} starts in ${minutes} min`,
+    sub: `Lasts ~${lastsMin} min \u00B7 ${total.toFixed(2)}" total`,
+  };
+}
+
+type OpenMeteoMinutely = NonNullable<
+  ReturnType<typeof useForecast> extends { data?: infer T }
+    ? T extends { minutely_15?: infer M }
+      ? M
+      : never
+    : never
+>;
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  flex: {
-    flex: 1,
-  },
-  scroll: {
+  container: { flex: 1 },
+  flex: { flex: 1 },
+  scroll: { paddingBottom: 40 },
+  loading: { color: "rgba(255,255,255,0.6)", fontSize: 16, textAlign: "center", marginTop: 120 },
+
+  // Top bar
+  topBar: {
     paddingHorizontal: 20,
-  },
-  loading: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: 16,
-    textAlign: "center",
-    marginTop: 100,
-  },
-  // Location
-  location: {
-    fontSize: 17,
-    fontWeight: "600",
-    textAlign: "center",
-    marginTop: 8,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  // Hero
-  heroSection: {
-    alignItems: "center",
-    marginTop: -8,
-    marginBottom: 12,
-  },
-  heroTemp: {
-    fontSize: 108,
-    lineHeight: 116,
-    letterSpacing: -5,
-  },
-  heroCondition: {
-    fontSize: 22,
-    fontWeight: "500",
-    marginTop: 0,
-  },
-  heroFeelsLike: {
-    fontSize: 15,
-    marginTop: 6,
-    letterSpacing: 0.3,
-  },
-  // Personality quote
-  quipCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    marginBottom: 16,
-    alignItems: "center",
-  },
-  quipText: {
-    fontSize: 14,
-    fontStyle: "italic",
-    textAlign: "center",
-    lineHeight: 21,
-    letterSpacing: 0.2,
-    opacity: 0.85,
-  },
-  // Alert
-  alertCard: {
+    paddingTop: 4,
+    paddingBottom: 2,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(244, 67, 54, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(244, 67, 54, 0.35)",
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 12,
-    marginBottom: 16,
+    justifyContent: "space-between",
   },
-  alertDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#EF5350",
+  locationRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  locationDotOuter: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "rgba(139,124,255,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  alertContent: {
-    flex: 1,
+  locationDotInner: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: cumulus.accent,
   },
-  alertTitle: {
-    color: "#FF8A80",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  alertSub: {
-    color: "#EF9A9A",
-    fontSize: 13,
+  locationText: { color: cumulus.ink, fontSize: 15, fontWeight: "600" },
+  updated: {
+    color: cumulus.inkMuted,
+    fontSize: 10,
+    letterSpacing: 0.8,
     marginTop: 2,
+    fontVariant: ["tabular-nums"],
   },
-  alertChevron: {
-    color: "#FF8A80",
-    fontSize: 22,
-    fontWeight: "300",
-  },
-  // Glass cards
-  glassCard: {
-    borderRadius: 20,
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    padding: 18,
-    marginBottom: 14,
+    borderColor: cumulus.inkLine,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gearRing: {
+    position: "absolute",
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: cumulus.ink,
+  },
+  gearDot: {
+    position: "absolute",
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: cumulus.ink,
+  },
+
+  // Hero
+  hero: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 4,
+    position: "relative",
+    minHeight: 180,
+  },
+  heroIcon: { position: "absolute", right: 10, top: -10, opacity: 0.95 },
+  heroCondition: { color: cumulus.inkDim, fontSize: 13, fontWeight: "500" },
+  heroTempRow: { flexDirection: "row", alignItems: "flex-start", marginTop: 2 },
+  heroTemp: {
+    color: cumulus.ink,
+    fontSize: 112,
+    lineHeight: 112,
+    fontWeight: "200",
+    letterSpacing: -5,
+  },
+  heroDeg: {
+    color: cumulus.ink,
+    fontSize: 56,
+    fontWeight: "300",
+    marginTop: 10,
+    letterSpacing: -2,
+    opacity: 0.55,
+  },
+  heroMeta: { color: cumulus.inkDim, fontSize: 14, marginTop: -2 },
+  heroMetaStrong: { color: cumulus.ink, fontWeight: "600" },
+  heroMetaDim: { color: cumulus.inkFaint },
+
+  // Nowcast banner
+  nowcastBanner: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: "rgba(79,184,255,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(79,184,255,0.45)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  nowcastIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(79,184,255,0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  nowcastHeadline: { color: cumulus.ink, fontSize: 14, fontWeight: "600" },
+  nowcastSub: { color: cumulus.inkDim, fontSize: 12, marginTop: 1 },
+
+  // Alert
+  alertCard: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,59,74,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255,59,74,0.45)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  alertDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: cumulus.alert },
+  alertTitle: { color: "#FF8A80", fontSize: 14, fontWeight: "700" },
+  alertSub: { color: "#EF9A9A", fontSize: 12, marginTop: 1 },
+
+  chevron: { color: cumulus.ink, fontSize: 22, fontWeight: "400" },
+
+  // Section header
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    paddingHorizontal: 20,
+    paddingTop: 22,
+    paddingBottom: 10,
   },
   sectionTitle: {
-    fontSize: 12,
+    color: cumulus.inkMuted,
+    fontSize: 11,
     fontWeight: "700",
-    letterSpacing: 1.5,
-    marginBottom: 14,
+    letterSpacing: 1.6,
   },
-  // Hourly
-  hourlyScroll: {
-    gap: 0,
+  sectionRight: {
+    color: cumulus.inkDim,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    fontVariant: ["tabular-nums"],
   },
-  hourlyItem: {
+
+  // Hourly strip
+  hourlyStrip: { paddingHorizontal: 16, gap: 8 },
+  hourlyCell: {
+    minWidth: 54,
+    padding: 8,
     alignItems: "center",
-    width: 54,
-    gap: 3,
+    backgroundColor: cumulus.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: cumulus.cardLine,
+  },
+  hourlyCellNow: {
+    backgroundColor: cumulus.accentSoft,
+    borderColor: cumulus.accentBorder,
   },
   hourlyTime: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  hourlyTimeNow: {
-    fontWeight: "800",
-  },
-  hourlyPrecip: {
+    color: cumulus.inkMuted,
     fontSize: 10,
-    fontWeight: "600",
-    color: "#64B5F6",
-    minHeight: 13,
-  },
-  hourlyWeatherIcon: {
-    fontSize: 18,
-  },
-  hourlyChartArea: {
-    height: 44,
-    width: 54,
-    position: "relative",
-  },
-  hourlyDot: {
-    position: "absolute",
-    left: 23,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  hourlyLine: {
-    position: "absolute",
-    left: 27,
-    width: 50,
-    height: 2,
-    borderRadius: 1,
-    opacity: 0.35,
-    transformOrigin: "left center",
-  },
-  hourlyTemp: {
-    fontSize: 15,
     fontWeight: "700",
+    letterSpacing: 0.3,
   },
+  hourlyTimeNow: { color: "#C7BDFF" },
+  hourlyTemp: { color: cumulus.ink, fontSize: 15, fontWeight: "700", marginTop: 2 },
+  hourlyPrecip: {
+    color: cumulus.rain,
+    fontSize: 9,
+    fontWeight: "700",
+    marginTop: 1,
+    fontVariant: ["tabular-nums"],
+  },
+
+  // Card
+  card: {
+    marginHorizontal: 16,
+    backgroundColor: cumulus.card,
+    borderWidth: 1,
+    borderColor: cumulus.cardLine,
+    borderRadius: 18,
+    padding: 14,
+  },
+
+  // Precip chart
+  precipChart: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    height: 48,
+    gap: 2,
+  },
+  precipBarSlot: { flex: 1, justifyContent: "flex-end" },
+  precipBar: {
+    width: "100%",
+    borderRadius: 2,
+    backgroundColor: cumulus.rain,
+  },
+  precipAxis: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 6,
+  },
+  axisLabel: {
+    color: cumulus.inkMuted,
+    fontSize: 10,
+    fontVariant: ["tabular-nums"],
+  },
+
   // Daily
   dailyRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
-    gap: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    gap: 10,
   },
-  dailyDay: {
-    fontSize: 15,
-    fontWeight: "500",
-    width: 48,
+  dailyRowBorder: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: cumulus.cardLine,
   },
-  dailyIcon: {
-    fontSize: 18,
-    width: 26,
-    textAlign: "center",
-  },
+  dailyDay: { color: cumulus.inkDim, fontSize: 14, fontWeight: "500", width: 52 },
+  dailyDayToday: { color: cumulus.ink, fontWeight: "700" },
   dailyPrecip: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#64B5F6",
-    width: 30,
-    textAlign: "right",
-  },
-  dailyLow: {
-    fontSize: 15,
-    fontWeight: "600",
-    width: 34,
+    color: cumulus.rain,
+    fontSize: 11,
+    fontWeight: "700",
+    width: 32,
     textAlign: "right",
     fontVariant: ["tabular-nums"],
   },
   dailyBarTrack: {
     flex: 1,
-    height: 5,
+    height: 6,
     borderRadius: 3,
-    overflow: "hidden",
     backgroundColor: "rgba(255,255,255,0.08)",
+    position: "relative",
   },
-  dailyBarFill: {
+  dailyNowDot: {
     position: "absolute",
-    top: 0,
-    bottom: 0,
-    borderRadius: 3,
+    top: -2,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#fff",
+    borderWidth: 2,
+    borderColor: "#000",
+    marginLeft: -5,
   },
-  dailyHigh: {
-    fontSize: 15,
-    fontWeight: "600",
-    width: 34,
+  dailyLo: {
+    color: cumulus.inkDim,
+    fontSize: 13,
+    width: 26,
+    textAlign: "right",
     fontVariant: ["tabular-nums"],
   },
-  // Wind & Pressure
-  windRow: {
-    flexDirection: "row",
-    gap: 20,
-    alignItems: "center",
-  },
-  compassContainer: {
-    width: 110,
-    height: 110,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  compassRing: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 1.5,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  compassLabel: {
-    position: "absolute",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  compassN: { top: 6 },
-  compassE: { right: 8 },
-  compassS: { bottom: 6 },
-  compassW: { left: 8 },
-  compassArrowContainer: {
-    position: "absolute",
-    width: 4,
-    height: 60,
-    alignItems: "center",
-  },
-  compassArrow: {
-    width: 3,
-    height: 30,
-    borderRadius: 1.5,
-    opacity: 0.8,
-  },
-  compassArrowHead: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 5,
-    borderRightWidth: 5,
-    borderBottomWidth: 8,
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    marginTop: -2,
-  },
-  compassCenter: {
-    position: "absolute",
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    opacity: 0.9,
-  },
-  windStats: {
-    flex: 1,
-    gap: 0,
-  },
-  windStatRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 9,
-  },
-  windStatLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  windStatValue: {
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  windStatUnit: {
+  dailyHi: {
+    color: cumulus.ink,
     fontSize: 13,
-    fontWeight: "400",
-    opacity: 0.6,
+    fontWeight: "500",
+    width: 26,
+    textAlign: "right",
+    fontVariant: ["tabular-nums"],
   },
-  windDivider: {
-    height: StyleSheet.hairlineWidth,
-    opacity: 0.5,
-  },
-  // Sun & Moon
-  sunMoonRow: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginBottom: 16,
-  },
-  sunMoonItem: {
-    alignItems: "center",
-    gap: 6,
-  },
-  sunMoonIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  miniSun: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: "#FFD54F",
-    opacity: 0.9,
-  },
-  miniSunset: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: "#FF9800",
-    opacity: 0.9,
-  },
-  sunMoonEmoji: {
-    fontSize: 18,
-  },
-  sunMoonLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    letterSpacing: 0.3,
-  },
-  sunMoonValue: {
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  daylightBar: {
-    height: 4,
-    borderRadius: 2,
+
+  // Radar tease
+  radarTease: {
+    marginHorizontal: 16,
+    marginTop: 18,
+    height: 140,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: cumulus.cardLine,
     overflow: "hidden",
   },
-  daylightProgress: {
+  radarBlob: { position: "absolute", borderRadius: 40 },
+  radarLive: {
     position: "absolute",
-    top: 0,
+    top: 10,
+    left: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  radarLiveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: cumulus.ok,
+  },
+  radarLiveText: {
+    color: cumulus.ok,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.4,
+  },
+  radarBottom: {
+    position: "absolute",
+    left: 14,
+    right: 14,
+    bottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  radarLabel: {
+    color: "rgba(255,255,255,0.65)",
+    fontSize: 10,
+    letterSpacing: 1.6,
+    fontVariant: ["tabular-nums"],
+  },
+  radarTitle: { color: cumulus.ink, fontSize: 15, fontWeight: "600", marginTop: 2 },
+  radarChevronBox: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // Stat grid
+  statGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginHorizontal: 11,
+    marginTop: 12,
+    gap: 10,
+  },
+  statCard: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    backgroundColor: cumulus.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: cumulus.cardLine,
+    padding: 12,
+    minHeight: 92,
+  },
+  statLabel: {
+    color: cumulus.inkMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+  },
+  statValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginTop: 4,
+    gap: 4,
+  },
+  statValue: {
+    color: cumulus.ink,
+    fontSize: 24,
+    fontWeight: "500",
+    letterSpacing: -0.5,
+  },
+  statUnit: { color: cumulus.inkDim, fontSize: 12 },
+  statSub: { color: cumulus.inkDim, fontSize: 11, marginTop: 2 },
+  statBarTrack: {
+    marginTop: 10,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+  },
+  statBarFill: { height: "100%", borderRadius: 2 },
+
+  // Sun
+  sunRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  sunLabel: {
+    color: cumulus.inkMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+  },
+  sunValue: { color: cumulus.ink, fontSize: 15, fontWeight: "700", marginTop: 2 },
+  daylightTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    position: "relative",
+  },
+  daylightFill: {
+    position: "absolute",
     left: 0,
+    top: 0,
     bottom: 0,
     borderRadius: 2,
+    backgroundColor: "rgba(255,193,77,0.5)",
   },
-  daylightDot: {
+  daylightSun: {
     position: "absolute",
     top: -3,
     width: 10,
     height: 10,
     borderRadius: 5,
     marginLeft: -5,
+    backgroundColor: cumulus.sun,
     borderWidth: 2,
     borderColor: "rgba(0,0,0,0.3)",
-  },
-  // Atmosphere
-  atmosGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  atmosItem: {
-    width: "50%",
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    gap: 4,
-  },
-  gaugeContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  gaugeTrack: {
-    flex: 1,
-    height: 5,
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  gaugeFill: {
-    height: "100%",
-    borderRadius: 3,
-  },
-  gaugeValue: {
-    fontSize: 18,
-    fontWeight: "700",
-    minWidth: 36,
-    textAlign: "right",
-  },
-  atmosLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    letterSpacing: 0.3,
-  },
-  atmosSublabel: {
-    fontSize: 11,
-    fontWeight: "500",
-    opacity: 0.8,
-  },
-  atmosBigValue: {
-    fontSize: 28,
-    fontWeight: "700",
-    lineHeight: 32,
-  },
-  // Precipitation timeline
-  precipTimeline: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    height: 100,
-  },
-  precipBar: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 4,
-  },
-  precipBarTrack: {
-    width: "60%",
-    height: 50,
-    borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    overflow: "hidden",
-    justifyContent: "flex-end",
-  },
-  precipBarFill: {
-    width: "100%",
-    borderRadius: 3,
-    opacity: 0.7,
-  },
-  precipPct: {
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  precipTime: {
-    fontSize: 9,
-    fontWeight: "600",
   },
 });

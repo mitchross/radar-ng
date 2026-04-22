@@ -1,57 +1,149 @@
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+/**
+ * Cumulus radar screen — full-bleed MapLibre with Apple-Weather polish.
+ *
+ *   • LayerLegendCard  (top-left, layer-aware vertical scale)
+ *   • LayerLocationMarker  (user location pill w/ live layer value + tail)
+ *   • RadarFABs        (right rail + layer-tinted popover)
+ *   • MapStylePicker   (theme + projection, summoned by the rail)
+ *   • EyedropperPin    (long-press map → readout)
+ *   • TimelineBar      ("Reflectivity / Sunday, April 19 2026" header)
+ */
+import { useState } from "react";
+import { View, StyleSheet, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WeatherMap } from "../../components/map/WeatherMap";
 import { RadarOverlay } from "../../components/map/RadarOverlay";
 import { WeatherLayerOverlay } from "../../components/map/WeatherLayerOverlay";
 import { AlertPolygon } from "../../components/map/AlertPolygon";
+import { LightningOverlay } from "../../components/map/LightningOverlay";
+import { TropicalOverlay } from "../../components/map/TropicalOverlay";
+import { StormCellsOverlay } from "../../components/map/StormCellsOverlay";
+import { WindParticlesOverlay, useSharedCamera } from "../../components/map/WindParticlesOverlay";
+import { DEFAULTS } from "../../lib/constants";
+import { LayerLegendCard } from "../../components/map/LayerLegendCard";
+import { LayerLocationMarker } from "../../components/map/LayerLocationMarker";
 import { TimelineBar } from "../../components/timeline/TimelineBar";
+import { CurrentForecastToggle } from "../../components/timeline/CurrentForecastToggle";
 import { RadarFABs } from "../../components/map/RadarFABs";
-import { AlertBanner } from "../../components/alerts/AlertBanner";
+import { MapStylePicker } from "../../components/map/MapStylePicker";
+import { EyedropperPin, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { useAlerts } from "../../hooks/useAlerts";
+import { cumulus } from "../../lib/cumulusTheme";
 
 export default function RadarScreen() {
   useManifest();
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);
-  const visibleOverlays = useWeatherStore((s) => s.visibleOverlays);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
   const dataSource = useWeatherStore((s) => s.dataSource);
+  const { data: alertData } = useAlerts();
+
+  const [pinned, setPinned] = useState<PinnedPoint | null>(null);
+  const [stylePickerOpen, setStylePickerOpen] = useState(false);
+
+  const camera = useSharedCamera(DEFAULTS.LONGITUDE, DEFAULTS.LATITUDE, DEFAULTS.ZOOM);
+  const windParticlesOn = activeLayer === "wind";
+
+  const topAlert = alertData?.features?.[0];
 
   return (
     <View style={styles.container}>
-      <WeatherMap>
-        {activeLayer === "radar" && <RadarOverlay />}
+      <WeatherMap
+        onLongPress={(lat, lon) => setPinned({ lat, lon })}
+        onCameraChanged={(c) => {
+          camera.lon.value = c.lon;
+          camera.lat.value = c.lat;
+          camera.zoom.value = c.zoom;
+        }}
+      >
+        {(activeLayer === "radar" || activeLayer === "radar-hrrr") && <RadarOverlay />}
         {activeLayer === "temperature" && dataSource === "selfhosted" && (
           <WeatherLayerOverlay layerId="temperature" opacity={radarOpacity} />
         )}
         {activeLayer === "precip-type" && dataSource === "selfhosted" && (
           <WeatherLayerOverlay layerId="precip-type" opacity={radarOpacity} />
         )}
-        {visibleOverlays.has("wind") && dataSource === "selfhosted" && (
+        {activeLayer === "wind" && dataSource === "selfhosted" && (
           <WeatherLayerOverlay layerId="wind" opacity={0.6} />
         )}
-        {visibleOverlays.has("cape") && dataSource === "selfhosted" && (
+        {activeLayer === "cape" && dataSource === "selfhosted" && (
           <WeatherLayerOverlay layerId="cape" opacity={0.5} />
         )}
+        {activeLayer === "precip-accum" && dataSource === "selfhosted" && (
+          <WeatherLayerOverlay layerId="precip-accum" opacity={radarOpacity} />
+        )}
+        {activeLayer === "cloud" && dataSource === "selfhosted" && (
+          <WeatherLayerOverlay layerId="cloud" opacity={0.65} />
+        )}
         <AlertPolygon />
+        <TropicalOverlay />
+        <StormCellsOverlay />
+        <LightningOverlay />
+        <LayerLocationMarker />
+        {pinned && <EyedropperPin pinned={pinned} onClear={() => setPinned(null)} />}
       </WeatherMap>
 
-      {/* Top: alert banner */}
-      <AlertBanner />
+      {/* Top safe area — alert banner only (the layer title lives in the timeline now). */}
+      <SafeAreaView style={styles.safeTop} edges={["top"]} pointerEvents="box-none">
+        {topAlert && (
+          <View style={styles.alertBanner}>
+            <View style={styles.alertDot} />
+            <Text style={styles.alertText} numberOfLines={1}>
+              {topAlert.properties.event}
+            </Text>
+          </View>
+        )}
+      </SafeAreaView>
 
-      {/* Right: CARROT-style FABs */}
-      <RadarFABs />
+      {/* Wind particles — Skia canvas overlay, active on the wind layer */}
+      <WindParticlesOverlay enabled={windParticlesOn} camera={camera} />
 
-      {/* Bottom: timeline bar */}
+      {/* Vertical legend card (top-left) */}
+      <LayerLegendCard activeLayer={activeLayer} />
+
+      {/* Right-side controls — crosshair button clears a pinned inspector if any. */}
+      <RadarFABs
+        inspectorActive={pinned != null}
+        onToggleInspector={() => setPinned(null)}
+        onOpenStylePicker={() => setStylePickerOpen(true)}
+      />
+
+      {/* Map style + projection picker */}
+      <MapStylePicker visible={stylePickerOpen} onClose={() => setStylePickerOpen(false)} />
+
+      {/* Current / Forecast segmented toggle (above timeline) */}
+      <CurrentForecastToggle />
+
+      {/* Timeline */}
       <TimelineBar />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f0f0f0",
+  container: { flex: 1, backgroundColor: "#0a0e1a" },
+  safeTop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 15,
   },
+  alertBanner: {
+    marginHorizontal: 12,
+    marginTop: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,59,74,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255,59,74,0.45)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  alertDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: cumulus.alert },
+  alertText: { color: "#FF8A80", fontSize: 12, fontWeight: "600", flex: 1 },
 });

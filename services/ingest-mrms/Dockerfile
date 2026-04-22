@@ -5,7 +5,8 @@ COPY ingest-mrms/ingest.py /app/ingest.py
 
 ENV TILE_DIR=/data/tiles \
     STATE_DIR=/data/state \
-    COLOR_TABLE_PATH=/app/shared/color_tables.json \
+    GRID_DIR=/data/grids \
+    PALETTES=classic \
     POLL_INTERVAL=120
 
 CMD ["python", "-u", "/app/ingest.py"]

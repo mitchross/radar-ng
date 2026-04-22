@@ -1,0 +1,68 @@
+/**
+ * Storm cell markers — red/orange diamonds at the centroid of each
+ * connected-component region ≥40dBZ in the live MRMS field. Size scales by
+ * area, color by peak intensity.
+ */
+import MapLibreGL from "@maplibre/maplibre-react-native";
+import { useStormCells } from "../../hooks/useStormCells";
+
+export function StormCellsOverlay() {
+  const { data } = useStormCells();
+  if (!data || data.features.length === 0) return null;
+
+  return (
+    <MapLibreGL.ShapeSource id="storms-src" shape={data as GeoJSON.FeatureCollection}>
+      {/* Halo — soft glow sized by area_km2 */}
+      <MapLibreGL.CircleLayer
+        id="storms-halo"
+        style={{
+          circleRadius: [
+            "interpolate",
+            ["linear"],
+            ["get", "area_km2"],
+            25, 6,
+            500, 18,
+            5000, 36,
+          ] as never,
+          circleColor: [
+            "interpolate",
+            ["linear"],
+            ["get", "peak_dbz"],
+            40, "#ff9f2e",
+            50, "#ff4040",
+            60, "#d02058",
+            70, "#b24bff",
+          ] as never,
+          circleOpacity: 0.18,
+          circleBlur: 0.6,
+        }}
+      />
+      {/* Core dot */}
+      <MapLibreGL.CircleLayer
+        id="storms-core"
+        style={{
+          circleRadius: [
+            "interpolate",
+            ["linear"],
+            ["get", "peak_dbz"],
+            40, 4,
+            60, 7,
+            70, 9,
+          ] as never,
+          circleColor: [
+            "interpolate",
+            ["linear"],
+            ["get", "peak_dbz"],
+            40, "#ff9f2e",
+            50, "#ff4040",
+            60, "#d02058",
+            70, "#b24bff",
+          ] as never,
+          circleStrokeColor: "#ffffff",
+          circleStrokeWidth: 1.4,
+          circleOpacity: 0.95,
+        }}
+      />
+    </MapLibreGL.ShapeSource>
+  );
+}

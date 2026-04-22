@@ -27,6 +27,9 @@
 - (2026-04-14) `tabBarShowIcon` does not exist in expo-router Tabs options. Use `tabBarIcon: () => null` to hide icons instead.
 - (2026-04-15) Nullish coalescing `??` mixed with `||` or `&&` requires explicit parentheses: `x ?? (a || b)` not `x ?? a || b`. JavaScript spec/Babel error.
 - (2026-04-15) Adding a new expo native module (e.g. expo-linear-gradient) requires full native rebuild via `npx expo run:android`. Dev client must be reinstalled; Expo Go won't include it.
+- (2026-04-22) Reanimated `useDerivedValue(() => helperFn(...))` does NOT reliably promote a separately-defined `const helperFn = () => { "worklet"; ... }` to the UI thread. Symptom: the outer worklet runs but the inner helper silently returns an empty value (e.g. empty Skia Path). Always INLINE the worklet body directly inside useDerivedValue (and useFrameCallback). Repeat the body across bins/paths rather than factoring into a shared helper.
+- (2026-04-22) For Skia particle overlays on top of colored basemap/heatmap, always draw a dark outline pass (strokeWidth ~2× core, color rgba(10,15,30,0.85)) UNDER the bright core pass. Without the outline, white/light-blue particles disappear against green heatmap tiles.
+- (2026-04-22) For camera-relative particle systems: seed particles in a bounded box (±3° lat/lon at zoom 7-8) around camera center and respawn-on-outOfBox each frame. Seeding uniformly across the data's full extent (CONUS ~26°×50°) puts >95% of particles off-screen at typical zoom.
 
 ## Key Learnings
 
@@ -39,6 +42,7 @@
 - Protomaps self-host stack: drop a `.pmtiles` file on disk → serve via `protomaps/go-pmtiles serve <dir>` on :8081 → proxy through Caddy for CORS/caching → point MapLibre style at `/basemap/tiles/{z}/{x}/{y}.mvt`. The style JSONs live in `services/basemap/styles/` and are baked into the tile-server image at `/srv/basemap/styles/`.
 
 ## Decision Log
+- (2026-04-17) Cumulus redesign adopted from UI-Handoff/design_handoff_cumulus_weather. 3 tabs (Home/Nowcast/Radar), violet #8B7CFF accent, condition gradient backgrounds. Settings → modal via gear icon on Home (keeps self-hosted toggle reachable). Timeline renders past/nowcast/HRRR/long-range segments based on frame unix-time vs now; maps naturally to self-hosted MRMS + HRRR pipeline. New src/lib/cumulusTheme.ts; legacy weatherTheme.ts kept untouched for older WeatherScene.tsx. View-based WeatherIcon (no react-native-svg). New layer `radar-hrrr` added to LAYERS + activeLayer type.
 - (2026-04-16) Phase 1 hardening: chose idx-parse byte-range subsetting over adding the `herbie-data` dep. Reasoning: a ~30-line parser is simpler than pulling in herbie's xarray+cfgrib dep chain, and the existing pygrib pipeline keeps working on the subsetted concatenated bytes. Full-file fallback kicks in automatically if the .idx is missing.
 - (2026-04-16) Phase 1 self-hosting: new services (open-meteo, basemap) route through the existing Caddy on :8080 rather than exposing extra ports. App only needs one serverUrl. `OPEN_METEO_BASE=http://open-meteo:8080/v1/forecast` in the tile-server so the public path and self-hosted path share the same `/api/forecast/{lat}/{lon}` contract.
 

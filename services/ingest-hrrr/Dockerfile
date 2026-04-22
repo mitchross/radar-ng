@@ -5,7 +5,8 @@ COPY ingest-hrrr/ingest.py /app/ingest.py
 
 ENV TILE_DIR=/data/tiles \
     STATE_DIR=/data/state \
-    COLOR_TABLE_PATH=/app/shared/color_tables.json \
+    GRID_DIR=/data/grids \
+    PALETTES=classic \
     POLL_INTERVAL=3600 \
     FORECAST_HOURS=18 \
     EXTENDED_FORECAST_HOURS=48

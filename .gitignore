@@ -45,3 +45,7 @@ pmtiles-data/*.pmtiles
 
 # OpenWolf capture scratch
 .wolf/designqc-captures/
+
+# Reference material (not source)
+UI-Handoff/
+*.zip

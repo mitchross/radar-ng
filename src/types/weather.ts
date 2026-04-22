@@ -16,6 +16,12 @@ export interface RainViewerManifest {
 export interface RadarFrame {
   time: number; // Unix epoch seconds
   path: string; // e.g. "/v2/radar/32a737032949"
+  /**
+   * Optional source layer — only set on merged radar timelines so the
+   * overlay knows which subtree to pull from (past=radar, nowcast=nowcast,
+   * future=radar-hrrr). Omitted on single-source timelines.
+   */
+  source?: "radar" | "nowcast" | "radar-hrrr";
 }
 
 // --- Open-Meteo API ---
@@ -39,8 +45,10 @@ export interface OpenMeteoResponse {
     time: string[];
     temperature_2m: number[];
     precipitation_probability: number[];
+    precipitation: number[];
     weather_code: number[];
     wind_speed_10m: number[];
+    visibility?: number[];
   };
   daily: {
     time: string[];
@@ -52,6 +60,11 @@ export interface OpenMeteoResponse {
     uv_index_max: number[];
     sunrise: string[];
     sunset: string[];
+  };
+  minutely_15?: {
+    time: string[];
+    precipitation: number[];
+    precipitation_probability?: number[];
   };
 }
 
@@ -85,7 +98,10 @@ export interface NWSAlert {
 
 export type TemperatureUnit = "fahrenheit" | "celsius";
 export type WindUnit = "mph" | "kmh";
-export type MapStyle = "light" | "dark";
+export type MapStyle = "light" | "dark" | "satellite";
+export type MapProjection = "flat" | "globe";
+export type Palette = "classic" | "vivid" | "muted";
+export type TimelineMode = "current" | "forecast";
 
 // --- Self-Hosted Tile Server ---
 
@@ -103,7 +119,9 @@ export type LayerType =
   | "temperature"
   | "wind"
   | "cape"
-  | "precip-type";
+  | "precip-type"
+  | "precip-accum"
+  | "cloud";
 
 export type DataSource = "rainviewer" | "selfhosted";
 

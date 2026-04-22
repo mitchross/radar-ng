@@ -28,15 +28,14 @@ sys.path.insert(0, "/app/shared")
 from logger import get_logger, retry  # type: ignore  # noqa: E402
 from state import ProcessedSet  # type: ignore  # noqa: E402
 from tiler import apply_color_table, render_tiles  # type: ignore  # noqa: E402
+from palettes import get_palette_names, load_palette  # type: ignore  # noqa: E402
+from grid_dump import cleanup_old_grids, write_grid  # type: ignore  # noqa: E402
+from storms import write_storms_json  # type: ignore  # noqa: E402
 
 MRMS_BASE = "https://noaa-mrms-pds.s3.amazonaws.com"
 MRMS_PREFIX = "CONUS/MergedBaseReflectivity_00.50"
 TILE_DIR = os.environ.get("TILE_DIR", "/data/tiles")
 STATE_DIR = os.environ.get("STATE_DIR", "/data/state")
-COLOR_TABLE_PATH = os.environ.get(
-    "COLOR_TABLE_PATH",
-    str(Path(__file__).resolve().parent.parent / "shared" / "color_tables.json"),
-)
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "120"))
 ZOOM_LEVELS = [4, 5, 6, 7, 8, 9]
 RETENTION_HOURS = 4
@@ -44,10 +43,18 @@ RETENTION_HOURS = 4
 log = get_logger("ingest-mrms")
 
 
-def load_color_table() -> dict:
-    import json
-    with open(COLOR_TABLE_PATH) as f:
-        return json.load(f)["reflectivity"]
+def load_palette_tables() -> dict[str, dict]:
+    """Load reflectivity color-table per active palette name."""
+    tables: dict[str, dict] = {}
+    for name in get_palette_names():
+        try:
+            tables[name] = load_palette(name)["reflectivity"]
+        except (FileNotFoundError, KeyError) as exc:
+            log.warning("palette_missing", extra={"palette": name, "err": str(exc)})
+    if not tables:
+        # Absolute fallback so the container never fails cold.
+        tables["classic"] = load_palette("classic")["reflectivity"]
+    return tables
 
 
 @retry(attempts=4, base_delay=2.0, log=log, exceptions=(httpx.HTTPError,))
@@ -136,24 +143,37 @@ def extract_timestamp(key: str) -> str:
 
 
 def cleanup_old_tiles(base_dir: Path, retention_hours: int) -> None:
+    """Remove timestamp subtrees older than cutoff across every palette."""
     radar_dir = base_dir / "radar"
     if not radar_dir.exists():
         return
     cutoff = time.time() - (retention_hours * 3600)
-    for ts_dir in sorted(radar_dir.iterdir()):
-        if not ts_dir.is_dir():
+
+    # Two layouts are possible for backward compat:
+    #   /radar/{timestamp}/{z}/...            (legacy, no palette)
+    #   /radar/{palette}/{timestamp}/{z}/...  (multi-palette)
+    candidates: list[Path] = []
+    for entry in sorted(radar_dir.iterdir()):
+        if not entry.is_dir():
             continue
+        # Heuristic: timestamp dirs start with a digit (ISO date); palette dirs are alpha.
+        if entry.name[:1].isdigit():
+            candidates.append(entry)
+        else:
+            candidates.extend(p for p in entry.iterdir() if p.is_dir())
+
+    for ts_dir in candidates:
         try:
             dt = datetime.fromisoformat(ts_dir.name)
         except ValueError:
             continue
         if dt.timestamp() < cutoff:
             shutil.rmtree(ts_dir, ignore_errors=True)
-            log.info("retention_expired", extra={"layer": "radar", "timestamp": ts_dir.name})
+            log.info("retention_expired", extra={"layer": "radar", "timestamp": ts_dir.name, "path": str(ts_dir)})
 
 
 def run() -> None:
-    color_table = load_color_table()
+    palette_tables = load_palette_tables()
     client = httpx.Client()
     tile_base = Path(TILE_DIR)
     tmp_dir = Path("/tmp/mrms_work")
@@ -162,7 +182,12 @@ def run() -> None:
     state = ProcessedSet(Path(STATE_DIR) / "ingest-mrms.json", max_entries=2000)
     log.info(
         "startup",
-        extra={"tile_dir": str(tile_base), "poll_interval_s": POLL_INTERVAL, "processed": len(state._items)},
+        extra={
+            "tile_dir": str(tile_base),
+            "poll_interval_s": POLL_INTERVAL,
+            "processed": len(state._items),
+            "palettes": list(palette_tables.keys()),
+        },
     )
 
     while True:
@@ -176,27 +201,51 @@ def run() -> None:
                 log.info("processing", extra={"key": latest, "backlog": len(new_keys)})
                 result = download_and_decode(client, latest, tmp_dir)
                 if result is not None:
-                    data, lats, lons = result
-                    rgba = apply_color_table(data, color_table)
-                    if lats[0] > lats[-1]:
-                        rgba = np.flipud(rgba)
-                        lats = lats[::-1]
+                    data, lats_arr, lons_arr = result
+                    # Flip once — palette render is just recoloring the same grid.
+                    flip = lats_arr[0] > lats_arr[-1]
+                    if flip:
+                        lats_arr = lats_arr[::-1]
                     timestamp = extract_timestamp(latest)
-                    out_dir = str(tile_base / "radar" / timestamp)
-                    count = render_tiles(
-                        rgba=rgba,
-                        lats=lats,
-                        lons=lons,
-                        output_dir=out_dir,
-                        zoom_levels=ZOOM_LEVELS,
-                    )
-                    log.info(
-                        "rendered",
-                        extra={"layer": "radar", "timestamp": timestamp, "tiles": count},
-                    )
+
+                    # Inspector grid dump (palette-independent — raw dBZ values)
+                    try:
+                        grid_data = np.flipud(data) if flip else data
+                        write_grid(
+                            "radar", timestamp, grid_data, lats_arr, lons_arr, unit="dBZ"
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("grid_dump_failed", extra={"err": str(exc)})
+
+                    # Storm cell detection — grid_data + ascending lats_arr are
+                    # consistent here; centroid math uses `lats[0]` → row 0.
+                    try:
+                        write_storms_json(
+                            Path(STATE_DIR), grid_data, lats_arr, lons_arr, timestamp,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("storm_detect_failed", extra={"err": str(exc)})
+
+                    for pname, ctable in palette_tables.items():
+                        rgba = apply_color_table(data, ctable)
+                        if flip:
+                            rgba = np.flipud(rgba)
+                        out_dir = str(tile_base / "radar" / pname / timestamp)
+                        count = render_tiles(
+                            rgba=rgba,
+                            lats=lats_arr,
+                            lons=lons_arr,
+                            output_dir=out_dir,
+                            zoom_levels=ZOOM_LEVELS,
+                        )
+                        log.info(
+                            "rendered",
+                            extra={"layer": "radar", "palette": pname, "timestamp": timestamp, "tiles": count},
+                        )
                     state.update(new_keys)  # latest + older keys in one flush
 
             cleanup_old_tiles(tile_base, RETENTION_HOURS)
+            cleanup_old_grids()
 
         except Exception as exc:  # noqa: BLE001
             log.exception("loop_error", extra={"err": str(exc)})

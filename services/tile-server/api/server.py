@@ -11,17 +11,21 @@ Endpoints:
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 TILE_DIR = os.environ.get("TILE_DIR", "/data/tiles")
+GRID_DIR = os.environ.get("GRID_DIR", "/data/grids")
+STATE_DIR = os.environ.get("STATE_DIR", "/data/state")
 OPEN_METEO_BASE = os.environ.get("OPEN_METEO_BASE", "https://api.open-meteo.com/v1/forecast")
+STYLE_DIR = os.environ.get("STYLE_DIR", "/srv/basemap/styles")
 MRMS_MAX_AGE_S = int(os.environ.get("MRMS_MAX_AGE_S", "600"))  # tiles older than this → degraded
 FORECAST_TTL = int(os.environ.get("FORECAST_TTL_S", "900"))  # 15min
 
@@ -70,20 +74,37 @@ async def get_manifest() -> JSONResponse:
         for layer_dir in sorted(tile_base.iterdir()):
             if not layer_dir.is_dir():
                 continue
-            timestamps: list[str] = []
-            for ts_dir in sorted(layer_dir.iterdir()):
-                if ts_dir.is_dir() and any(ts_dir.iterdir()):
-                    timestamps.append(ts_dir.name)
+            # Two possible layouts — fold both into a flat timestamp set:
+            #   /{layer}/{timestamp}/           (legacy, single palette)
+            #   /{layer}/{palette}/{timestamp}/ (multi-palette)
+            timestamp_set: set[str] = set()
+            palettes: set[str] = set()
+            for entry in layer_dir.iterdir():
+                if not entry.is_dir():
+                    continue
+                if entry.name[:1].isdigit():
+                    # legacy timestamp dir
+                    if any(entry.iterdir()):
+                        timestamp_set.add(entry.name)
+                else:
+                    # palette dir
+                    palettes.add(entry.name)
+                    for ts_dir in entry.iterdir():
+                        if ts_dir.is_dir() and any(ts_dir.iterdir()):
+                            timestamp_set.add(ts_dir.name)
+            timestamps = sorted(timestamp_set)
             if timestamps:
                 layers[layer_dir.name] = {
                     "timestamps": timestamps,
                     "latest": timestamps[-1],
+                    "palettes": sorted(palettes) if palettes else ["classic"],
                 }
 
     return JSONResponse(
         {
             "layers": layers,
-            "tile_url_template": "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
+            "tile_url_template": "/tiles/{layer}/{palette}/{timestamp}/{z}/{x}/{y}.png",
+            "tile_url_template_legacy": "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
     )
@@ -130,6 +151,253 @@ async def get_forecast(lat: float, lon: float) -> JSONResponse:
     return JSONResponse(data)
 
 
+@app.get("/api/inspect/{layer}/{timestamp}/{lat}/{lon}")
+async def inspect_point(layer: str, timestamp: str, lat: float, lon: float) -> JSONResponse:
+    """Bilinear-interpolate a single point from a stored Float32 grid.
+
+    Ingestors dump downsampled grids to GRID_DIR/{layer}/{timestamp}.bin with
+    a sidecar .meta.json describing shape + lat/lon bounds. Returns a 404 body
+    (status 200 — so the app can handle gracefully) when the grid isn't there.
+    """
+    safe_layer = "".join(ch for ch in layer if ch.isalnum() or ch in "-_")
+    safe_ts = "".join(ch for ch in timestamp if ch.isalnum() or ch in ":-_+.T")
+    grid_base = Path(GRID_DIR) / safe_layer / safe_ts
+    bin_path = grid_base.with_suffix(".bin")
+    meta_path = grid_base.with_suffix(".meta.json")
+
+    if not (bin_path.exists() and meta_path.exists()):
+        return JSONResponse(
+            {"ok": False, "reason": "grid_missing", "layer": layer, "timestamp": timestamp},
+            status_code=200,
+        )
+
+    try:
+        meta = json.loads(meta_path.read_text())
+        h = int(meta["height"])
+        w = int(meta["width"])
+        lat_min = float(meta["lat_min"])
+        lat_max = float(meta["lat_max"])
+        lon_min = float(meta["lon_min"])
+        lon_max = float(meta["lon_max"])
+        unit = meta.get("unit", "")
+        fill = float(meta.get("fill", float("nan")))
+    except (OSError, KeyError, ValueError) as exc:
+        return JSONResponse({"ok": False, "reason": "meta_invalid", "err": str(exc)}, status_code=200)
+
+    if lat < lat_min or lat > lat_max or lon < lon_min or lon > lon_max:
+        return JSONResponse(
+            {"ok": False, "reason": "out_of_bounds", "lat": lat, "lon": lon},
+            status_code=200,
+        )
+
+    # Bilinear interpolation — read only the 4 values we need instead of the full grid.
+    fx = (lon - lon_min) / (lon_max - lon_min) * (w - 1)
+    fy = (lat_max - lat) / (lat_max - lat_min) * (h - 1)
+    x0 = max(0, min(int(fx), w - 2))
+    y0 = max(0, min(int(fy), h - 2))
+    dx = fx - x0
+    dy = fy - y0
+
+    import struct
+
+    def read_cell(ix: int, iy: int) -> float:
+        offset = (iy * w + ix) * 4
+        with open(bin_path, "rb") as f:
+            f.seek(offset)
+            return struct.unpack("<f", f.read(4))[0]
+
+    try:
+        v00 = read_cell(x0, y0)
+        v10 = read_cell(x0 + 1, y0)
+        v01 = read_cell(x0, y0 + 1)
+        v11 = read_cell(x0 + 1, y0 + 1)
+    except OSError as exc:
+        return JSONResponse({"ok": False, "reason": "read_error", "err": str(exc)}, status_code=200)
+
+    def is_fill(v: float) -> bool:
+        return v != v or abs(v - fill) < 1e-6
+
+    valid = [v for v in (v00, v10, v01, v11) if not is_fill(v)]
+    if not valid:
+        return JSONResponse(
+            {"ok": True, "value": None, "unit": unit, "reason": "no_data"},
+            status_code=200,
+        )
+
+    v0 = v00 * (1 - dx) + v10 * dx if not (is_fill(v00) or is_fill(v10)) else (valid[0])
+    v1 = v01 * (1 - dx) + v11 * dx if not (is_fill(v01) or is_fill(v11)) else (valid[-1])
+    value = v0 * (1 - dy) + v1 * dy
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "value": float(value),
+            "unit": unit,
+            "layer": layer,
+            "timestamp": timestamp,
+            "lat": lat,
+            "lon": lon,
+        }
+    )
+
+
+@app.get("/api/wind-field/{timestamp}")
+async def wind_field(timestamp: str) -> JSONResponse:
+    """Return packed U/V wind components for a timestamp, decimated + scaled.
+
+    Reads the paired Float32 grids (wind_u + wind_v) dumped by ingest-hrrr,
+    downsamples to a ~120x60 grid (small payload <70 kB), and returns:
+
+        {
+          "width": W, "height": H,
+          "lat_min": ..., "lat_max": ..., "lon_min": ..., "lon_max": ...,
+          "umin": ..., "umax": ..., "u": [int8 * N],
+          "vmin": ..., "vmax": ..., "v": [int8 * N]
+        }
+
+    The app maps int8 [-127..127] back to the real mph range via umin/umax +
+    vmin/vmax so the payload stays JSON-friendly (no binary endpoint plumbing).
+    """
+    safe_ts = "".join(ch for ch in timestamp if ch.isalnum() or ch in ":-_+.T")
+    u_dir = Path(GRID_DIR) / "wind_u"
+    v_dir = Path(GRID_DIR) / "wind_v"
+
+    # Resolve "latest" or any timestamp without a matching grid to the most
+    # recent wind dump that has both U and V on disk. The MRMS frame timeline
+    # spans further back than HRRR wind grids, so falling back keeps the
+    # particle overlay alive instead of returning grid_missing.
+    u_meta = u_dir / f"{safe_ts}.meta.json"
+    v_meta = v_dir / f"{safe_ts}.meta.json"
+    if safe_ts.lower() == "latest" or not (u_meta.exists() and v_meta.exists()):
+        try:
+            u_stems = {p.stem.replace(".meta", "") for p in u_dir.glob("*.meta.json")}
+            v_stems = {p.stem.replace(".meta", "") for p in v_dir.glob("*.meta.json")}
+            common = sorted(u_stems & v_stems)
+        except OSError:
+            common = []
+        if not common:
+            return JSONResponse(
+                {"ok": False, "reason": "grid_missing", "timestamp": timestamp},
+                status_code=200,
+            )
+        safe_ts = common[-1]
+        u_meta = u_dir / f"{safe_ts}.meta.json"
+        v_meta = v_dir / f"{safe_ts}.meta.json"
+
+    import struct
+
+    try:
+        u_m = json.loads(u_meta.read_text())
+        v_m = json.loads(v_meta.read_text())
+        H = int(u_m["height"])
+        W = int(u_m["width"])
+        u_bin = (Path(GRID_DIR) / "wind_u" / f"{safe_ts}.bin").read_bytes()
+        v_bin = (Path(GRID_DIR) / "wind_v" / f"{safe_ts}.bin").read_bytes()
+    except (OSError, KeyError, ValueError) as exc:
+        return JSONResponse({"ok": False, "reason": "grid_read_failed", "err": str(exc)}, status_code=200)
+
+    # Target downsampled grid — 240x120 is enough detail for a continent-scale
+    # particle field and keeps the payload under ~60 kB.
+    target_w = 240
+    target_h = 120
+    sx = max(1, W // target_w)
+    sy = max(1, H // target_h)
+    out_w = W // sx
+    out_h = H // sy
+
+    # Walk the source grids, decimating + finding min/max of each channel.
+    u_vals: list[float] = []
+    v_vals: list[float] = []
+    for ry in range(out_h):
+        for rx in range(out_w):
+            src_i = (ry * sy) * W + (rx * sx)
+            u_vals.append(struct.unpack_from("<f", u_bin, src_i * 4)[0])
+            v_vals.append(struct.unpack_from("<f", v_bin, src_i * 4)[0])
+
+    u_min = min(u_vals)
+    u_max = max(u_vals)
+    v_min = min(v_vals)
+    v_max = max(v_vals)
+    u_span = max(1e-6, u_max - u_min)
+    v_span = max(1e-6, v_max - v_min)
+
+    # Scale to int8 [-127..127]. -128 is reserved as a fill sentinel (unused now).
+    u_scaled = [int(round((u - u_min) / u_span * 254 - 127)) for u in u_vals]
+    v_scaled = [int(round((v - v_min) / v_span * 254 - 127)) for v in v_vals]
+
+    return JSONResponse({
+        "ok": True,
+        "timestamp": timestamp,
+        "width": out_w,
+        "height": out_h,
+        "lat_min": u_m["lat_min"],
+        "lat_max": u_m["lat_max"],
+        "lon_min": u_m["lon_min"],
+        "lon_max": u_m["lon_max"],
+        "u_min": u_min,
+        "u_max": u_max,
+        "v_min": v_min,
+        "v_max": v_max,
+        "u": u_scaled,
+        "v": v_scaled,
+    })
+
+
+@app.get("/api/lightning")
+async def lightning() -> JSONResponse:
+    """Return the rolling 15-min GeoJSON FeatureCollection of lightning strikes.
+
+    The ingest-lightning container streams from Blitzortung and writes this
+    file every couple of seconds. If the file is missing (service down), we
+    return an empty collection so the app's overlay fails gracefully.
+    """
+    path = Path(STATE_DIR) / "lightning.json"
+    if not path.exists():
+        return JSONResponse(
+            {"type": "FeatureCollection", "features": [], "generated_at": 0, "reason": "no_data"},
+        )
+    try:
+        body = json.loads(path.read_text())
+        return JSONResponse(body)
+    except (OSError, json.JSONDecodeError) as exc:
+        return JSONResponse(
+            {"type": "FeatureCollection", "features": [], "error": str(exc)},
+            status_code=200,
+        )
+
+
+@app.get("/api/storms")
+async def storms() -> JSONResponse:
+    """Return the latest storm-cell GeoJSON from ingest-mrms.
+
+    Each feature is a point at a storm cell's centroid with properties:
+    peak_dbz, area_km2, pixel_count, cell_id. Missing file → empty collection.
+    """
+    path = Path(STATE_DIR) / "storms.json"
+    if not path.exists():
+        return JSONResponse({"type": "FeatureCollection", "features": [], "reason": "no_data"})
+    try:
+        return JSONResponse(json.loads(path.read_text()))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JSONResponse({"type": "FeatureCollection", "features": [], "error": str(exc)})
+
+
+@app.get("/api/tropical")
+async def tropical() -> JSONResponse:
+    """Return the active tropical cyclone GeoJSON from ingest-tropical.
+
+    Expect a merged FeatureCollection with one feature per storm (current
+    position point + forecast track line + cone polygon). Missing file → empty.
+    """
+    path = Path(STATE_DIR) / "tropical.json"
+    if not path.exists():
+        return JSONResponse({"type": "FeatureCollection", "features": [], "reason": "no_data"})
+    try:
+        return JSONResponse(json.loads(path.read_text()))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JSONResponse({"type": "FeatureCollection", "features": [], "error": str(exc)})
+
+
 @app.get("/api/health")
 async def health() -> JSONResponse:
     """Returns 'ok' when MRMS tiles are fresh, 'degraded' when stale."""
@@ -158,6 +426,45 @@ async def health() -> JSONResponse:
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }
     return JSONResponse(body, status_code=200 if status == "ok" else 503)
+
+
+@app.get("/api/basemap/style/{name}")
+async def get_basemap_style(name: str, request: Request) -> JSONResponse:
+    """Return a MapLibre style JSON with absolute tile URLs baked in.
+
+    MapLibre Native requires absolute URLs in `sources.*.tiles`. The shipped
+    style files use a relative `/basemap/tiles/{z}/{x}/{y}.mvt` so they stay
+    portable; we rewrite that to `{request_origin}/basemap/tiles/...` here.
+    """
+    if not name.isalnum() and name not in ("positron", "dark-matter"):
+        # Defence in depth against path traversal — reject anything non-alphanumeric
+        # other than our two known style names.
+        if "/" in name or ".." in name or "\\" in name:
+            raise HTTPException(status_code=400, detail="invalid style name")
+
+    style_path = Path(STYLE_DIR) / f"{name}.json"
+    if not style_path.exists():
+        raise HTTPException(status_code=404, detail="style not found")
+
+    style = json.loads(style_path.read_text())
+
+    # Reconstruct the client-facing origin. x-forwarded-* takes precedence so
+    # the app sees the same origin it used to fetch this style (important when
+    # serverUrl differs from the container-internal address).
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    origin = f"{proto}://{host}"
+
+    for src in style.get("sources", {}).values():
+        tiles = src.get("tiles")
+        if not tiles:
+            continue
+        src["tiles"] = [
+            (origin + t) if isinstance(t, str) and t.startswith("/") else t
+            for t in tiles
+        ]
+
+    return JSONResponse(style)
 
 
 @app.get("/api/metrics", response_class=PlainTextResponse)

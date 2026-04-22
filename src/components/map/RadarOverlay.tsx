@@ -11,6 +11,7 @@ export function RadarOverlay() {
   const dataSource = useWeatherStore((s) => s.dataSource);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
+  const activePalette = useWeatherStore((s) => s.activePalette);
 
   const frame = frames[currentFrameIndex];
   if (!frame) return null;
@@ -38,12 +39,14 @@ export function RadarOverlay() {
       </MapLibreGL.RasterSource>
     );
   } else {
-    // Self-hosted tiles
-    const tileUrl = buildSelfHostedTileUrl(serverUrl, activeLayer, frame.path);
+    // Self-hosted tiles. In forecast mode the frame list is a merged radar +
+    // nowcast + HRRR stream — per-frame `source` tells us which subtree to hit.
+    const layerForUrl = frame.source ?? activeLayer;
+    const tileUrl = buildSelfHostedTileUrl(serverUrl, layerForUrl, frame.path, activePalette);
     return (
       <MapLibreGL.RasterSource
         id="radar-source"
-        key={frame.path}
+        key={`${activePalette}-${layerForUrl}-${frame.path}`}
         tileUrlTemplates={[tileUrl]}
         tileSize={256}
         minZoomLevel={1}

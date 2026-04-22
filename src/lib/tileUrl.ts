@@ -1,4 +1,4 @@
-import type { RadarFrame, LayerType } from "../types/weather";
+import type { RadarFrame, LayerType, Palette } from "../types/weather";
 import { RADAR } from "./constants";
 
 export function buildRadarTileUrl(
@@ -26,8 +26,12 @@ export function buildIEMTileUrl(product: string): string {
 
 export function buildSelfHostedTileUrl(
   serverUrl: string,
-  layer: LayerType,
-  timestamp: string
+  layer: LayerType | "nowcast",
+  timestamp: string,
+  palette: Palette = "classic",
 ): string {
-  return `${serverUrl}/tiles/${layer}/${timestamp}/{z}/{x}/{y}.png`;
+  // Palette segment is optional on the server side — Caddy/tile-cleanup
+  // accept both `/tiles/{layer}/{timestamp}/...` (legacy) and
+  // `/tiles/{layer}/{palette}/{timestamp}/...` (multi-palette).
+  return `${serverUrl}/tiles/${layer}/${palette}/${timestamp}/{z}/{x}/{y}.png`;
 }

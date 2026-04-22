@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, DataSource } from "../types/weather";
+import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, DataSource, MapProjection, Palette, TimelineMode } from "../types/weather";
 import { DEFAULTS, RADAR, SELF_HOSTED } from "../lib/constants";
 import { getString, setString } from "../lib/storage";
 
@@ -16,6 +16,9 @@ interface WeatherState {
   visibleOverlays: Set<LayerType>;
   temperatureUnit: TemperatureUnit;
   mapStyle: MapStyle;
+  mapProjection: MapProjection;
+  activePalette: Palette;
+  timelineMode: TimelineMode;
   dataSource: DataSource;
   serverUrl: string;
 
@@ -29,6 +32,9 @@ interface WeatherState {
   setRadarVisible: (visible: boolean) => void;
   setTemperatureUnit: (unit: TemperatureUnit) => void;
   setMapStyle: (style: MapStyle) => void;
+  setMapProjection: (projection: MapProjection) => void;
+  setActivePalette: (palette: Palette) => void;
+  setTimelineMode: (mode: TimelineMode) => void;
   setActiveLayer: (layer: LayerType) => void;
   toggleOverlay: (layer: LayerType) => void;
   setDataSource: (source: DataSource) => void;
@@ -48,7 +54,10 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   activeLayer: "radar" as LayerType,
   visibleOverlays: new Set<LayerType>(),
   temperatureUnit: "fahrenheit",
-  mapStyle: "light",
+  mapStyle: (getString("mapStyle", "light") as MapStyle),
+  mapProjection: (getString("mapProjection", "flat") as MapProjection),
+  activePalette: (getString("activePalette", "classic") as Palette),
+  timelineMode: (getString("timelineMode", "current") as TimelineMode),
   dataSource: (getString("dataSource", "rainviewer") as DataSource),
   serverUrl: getString("serverUrl", SELF_HOSTED.DEFAULT_URL),
 
@@ -61,7 +70,22 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setRadarOpacity: (opacity) => set({ radarOpacity: opacity }),
   setRadarVisible: (visible) => set({ radarVisible: visible }),
   setTemperatureUnit: (unit) => set({ temperatureUnit: unit }),
-  setMapStyle: (style) => set({ mapStyle: style }),
+  setMapStyle: (style) => {
+    setString("mapStyle", style);
+    set({ mapStyle: style });
+  },
+  setMapProjection: (projection) => {
+    setString("mapProjection", projection);
+    set({ mapProjection: projection });
+  },
+  setActivePalette: (palette) => {
+    setString("activePalette", palette);
+    set({ activePalette: palette });
+  },
+  setTimelineMode: (mode) => {
+    setString("timelineMode", mode);
+    set({ timelineMode: mode });
+  },
   setActiveLayer: (layer) => set({ activeLayer: layer }),
   toggleOverlay: (layer) => set((s) => {
     const next = new Set(s.visibleOverlays);

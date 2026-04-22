@@ -1,3 +1,8 @@
+/**
+ * Settings modal — reachable via the gear icon on the Home screen.
+ * Keeps the self-hosted data source + server URL config alive now that
+ * the Settings tab is retired in the Cumulus design.
+ */
 import {
   View,
   Text,
@@ -10,9 +15,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Slider from "@react-native-community/slider";
-import { useWeatherStore } from "../../stores/useWeatherStore";
+import { useRouter } from "expo-router";
+import { useWeatherStore } from "../stores/useWeatherStore";
+import { cumulus, CONDITION_GRADIENTS } from "../lib/cumulusTheme";
+import { PaletteSelector } from "../components/palette/PaletteSelector";
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const setMapStyle = useWeatherStore((s) => s.setMapStyle);
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
@@ -27,18 +36,24 @@ export default function SettingsScreen() {
   const setServerUrl = useWeatherStore((s) => s.setServerUrl);
 
   return (
-    <LinearGradient colors={["#0D1B2A", "#1B2838", "#263238"]} style={styles.container}>
-      <SafeAreaView style={styles.flex}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+    <LinearGradient colors={CONDITION_GRADIENTS.clearNight} style={styles.container}>
+      <SafeAreaView style={styles.flex} edges={["top"]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+            <Text style={styles.closeIcon}>{"\u2715"}</Text>
+          </TouchableOpacity>
           <Text style={styles.title}>Settings</Text>
+          <View style={{ width: 36 }} />
+        </View>
 
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>MAP</Text>
-            <Row label="Dark Mode">
+            <Row label="Dark Basemap">
               <Switch
                 value={mapStyle === "dark"}
                 onValueChange={(v) => setMapStyle(v ? "dark" : "light")}
-                trackColor={{ true: "#42A5F5", false: "rgba(255,255,255,0.15)" }}
+                trackColor={{ true: cumulus.accent, false: "rgba(255,255,255,0.15)" }}
                 thumbColor="#fff"
               />
             </Row>
@@ -50,11 +65,20 @@ export default function SettingsScreen() {
               <SegmentedControl
                 options={["F", "C"]}
                 selected={temperatureUnit === "fahrenheit" ? "F" : "C"}
-                onSelect={(v) =>
-                  setTemperatureUnit(v === "F" ? "fahrenheit" : "celsius")
-                }
+                onSelect={(v) => setTemperatureUnit(v === "F" ? "fahrenheit" : "celsius")}
               />
             </Row>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>PALETTE</Text>
+            <View style={{ marginTop: 6 }}>
+              <PaletteSelector />
+            </View>
+            <Text style={styles.hint}>
+              Color scheme for radar + HRRR layers. Self-hosted servers need
+              PALETTES=classic,vivid,muted on the ingestors to render every swatch.
+            </Text>
           </View>
 
           <View style={styles.card}>
@@ -67,7 +91,7 @@ export default function SettingsScreen() {
                 step={0.05}
                 value={radarOpacity}
                 onValueChange={setRadarOpacity}
-                minimumTrackTintColor="#42A5F5"
+                minimumTrackTintColor={cumulus.accent}
                 maximumTrackTintColor="rgba(255,255,255,0.15)"
                 thumbTintColor="#fff"
               />
@@ -80,7 +104,7 @@ export default function SettingsScreen() {
                 step={1}
                 value={playbackSpeed}
                 onValueChange={setPlaybackSpeed}
-                minimumTrackTintColor="#42A5F5"
+                minimumTrackTintColor={cumulus.accent}
                 maximumTrackTintColor="rgba(255,255,255,0.15)"
                 thumbTintColor="#fff"
               />
@@ -93,9 +117,7 @@ export default function SettingsScreen() {
               <SegmentedControl
                 options={["Free", "Self-Hosted"]}
                 selected={dataSource === "rainviewer" ? "Free" : "Self-Hosted"}
-                onSelect={(v) =>
-                  setDataSource(v === "Free" ? "rainviewer" : "selfhosted")
-                }
+                onSelect={(v) => setDataSource(v === "Free" ? "rainviewer" : "selfhosted")}
               />
             </Row>
             {dataSource === "selfhosted" && (
@@ -111,27 +133,25 @@ export default function SettingsScreen() {
                 />
               </Row>
             )}
+            <Text style={styles.hint}>
+              Self-hosted uses MRMS radar + HRRR forecast tiles from your docker
+              stack. Leave on Free to use public IEM NEXRAD + Open-Meteo.
+            </Text>
           </View>
 
           <Text style={styles.footer}>
-            StormScope v1.0{"\n"}
-            Data: IEM NEXRAD, Open-Meteo, NWS
+            StormScope v1.0 · Cumulus UI{"\n"}
+            Data: IEM NEXRAD, Open-Meteo, NWS · MRMS, HRRR (self-hosted)
           </Text>
 
-          <View style={{ height: 100 }} />
+          <View style={{ height: 60 }} />
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
   );
 }
 
-function Row({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -157,12 +177,7 @@ function SegmentedControl({
           style={[styles.segment, opt === selected && styles.segmentSelected]}
           onPress={() => onSelect(opt)}
         >
-          <Text
-            style={[
-              styles.segmentText,
-              opt === selected && styles.segmentTextSelected,
-            ]}
-          >
+          <Text style={[styles.segmentText, opt === selected && styles.segmentTextSelected]}>
             {opt}
           </Text>
         </TouchableOpacity>
@@ -172,90 +187,89 @@ function SegmentedControl({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { flex: 1 },
+  flex: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
-  flex: {
-    flex: 1,
-  },
-  scroll: {
-    padding: 20,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#fff",
-    marginBottom: 28,
-    letterSpacing: -0.5,
-  },
-  card: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 20,
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: cumulus.cardStrong,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    padding: 18,
-    marginBottom: 16,
+    borderColor: cumulus.inkLine,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeIcon: { color: cumulus.ink, fontSize: 16, fontWeight: "600" },
+  title: {
+    flex: 1,
+    textAlign: "center",
+    color: cumulus.ink,
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  scroll: { padding: 16 },
+  card: {
+    backgroundColor: cumulus.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: cumulus.cardLine,
+    padding: 14,
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.5)",
-    letterSpacing: 1.2,
-    marginBottom: 8,
+    color: cumulus.inkMuted,
+    letterSpacing: 1.4,
+    marginBottom: 4,
   },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.08)",
+    paddingVertical: 10,
   },
-  rowLabel: {
-    fontSize: 16,
-    color: "rgba(255,255,255,0.85)",
-    fontWeight: "500",
-  },
-  slider: {
-    width: 150,
-  },
+  rowLabel: { fontSize: 15, color: cumulus.inkDim, fontWeight: "500" },
+  slider: { width: 150 },
   segmented: {
     flexDirection: "row",
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderRadius: 10,
     overflow: "hidden",
   },
-  segment: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  segmentSelected: {
-    backgroundColor: "#42A5F5",
-    borderRadius: 8,
-  },
-  segmentText: {
-    color: "rgba(255,255,255,0.5)",
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  segmentTextSelected: {
-    color: "#fff",
-  },
+  segment: { paddingHorizontal: 14, paddingVertical: 7 },
+  segmentSelected: { backgroundColor: cumulus.accent, borderRadius: 8 },
+  segmentText: { color: "rgba(255,255,255,0.5)", fontWeight: "600", fontSize: 13 },
+  segmentTextSelected: { color: "#fff" },
   textInput: {
-    color: "#fff",
-    fontSize: 14,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    color: cumulus.ink,
+    fontSize: 13,
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 7,
     width: 200,
     textAlign: "right",
   },
+  hint: {
+    fontSize: 11,
+    color: cumulus.inkMuted,
+    lineHeight: 16,
+    paddingTop: 8,
+    paddingHorizontal: 2,
+  },
   footer: {
-    marginTop: 24,
+    marginTop: 12,
     textAlign: "center",
-    color: "rgba(255,255,255,0.3)",
-    fontSize: 12,
-    lineHeight: 18,
+    color: cumulus.inkFaint,
+    fontSize: 11,
+    lineHeight: 17,
   },
 });

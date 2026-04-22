@@ -8,9 +8,11 @@ MapLibreGL.setAccessToken(null);
 
 interface WeatherMapProps {
   children?: React.ReactNode;
+  onLongPress?: (lat: number, lon: number) => void;
+  onCameraChanged?: (camera: { lon: number; lat: number; zoom: number }) => void;
 }
 
-export function WeatherMap({ children }: WeatherMapProps) {
+export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMapProps) {
   const mapRef = useRef<MapViewRef>(null);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const dataSource = useWeatherStore((s) => s.dataSource);
@@ -33,6 +35,28 @@ export function WeatherMap({ children }: WeatherMapProps) {
       logoEnabled={false}
       attributionEnabled={true}
       attributionPosition={{ bottom: 8, left: 8 }}
+      onLongPress={(feature) => {
+        const coords = (feature?.geometry as { coordinates?: [number, number] } | undefined)?.coordinates;
+        if (coords && onLongPress) onLongPress(coords[1], coords[0]);
+      }}
+      onRegionIsChanging={(feature) => {
+        if (!onCameraChanged) return;
+        const coords = feature.geometry.coordinates as [number, number];
+        onCameraChanged({
+          lon: coords[0],
+          lat: coords[1],
+          zoom: feature.properties.zoomLevel,
+        });
+      }}
+      onRegionDidChange={(feature) => {
+        if (!onCameraChanged) return;
+        const coords = feature.geometry.coordinates as [number, number];
+        onCameraChanged({
+          lon: coords[0],
+          lat: coords[1],
+          zoom: feature.properties.zoomLevel,
+        });
+      }}
     >
       <MapLibreGL.Camera
         defaultSettings={{
