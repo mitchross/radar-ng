@@ -58,7 +58,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   mapProjection: (getString("mapProjection", "flat") as MapProjection),
   activePalette: (getString("activePalette", "classic") as Palette),
   timelineMode: (getString("timelineMode", "current") as TimelineMode),
-  dataSource: (getString("dataSource", "rainviewer") as DataSource),
+  dataSource: (getString("dataSource", "selfhosted") as DataSource),
   serverUrl: getString("serverUrl", SELF_HOSTED.DEFAULT_URL),
 
   setFrames: (frames) => set({ frames }),

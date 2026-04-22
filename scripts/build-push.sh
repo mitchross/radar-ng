@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Build and push all radar-ng container images to registry.vanillax.me.
+# Registry is anonymous-push (no docker login needed).
+#
+# Usage:
+#   ./scripts/build-push.sh            # build + push everything
+#   ./scripts/build-push.sh tile-server # just one
+#
+# Image naming:
+#   registry.vanillax.me/radar-ng-{service}:latest
+#   registry.vanillax.me/radar-ng-{service}:git-<short-sha>
+
+set -euo pipefail
+
+REGISTRY="${REGISTRY:-registry.vanillax.me}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SHA="$(cd "$REPO_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo dirty)"
+
+# Build the shared python base image locally (not pushed — only deployable
+# images are pushed). Ingestor Dockerfiles `FROM stormscope-base:latest`.
+build_base() {
+  echo "[base] building stormscope-base:latest (local only)"
+  docker build -t stormscope-base:latest \
+    -f "$REPO_ROOT/services/base/Dockerfile" \
+    "$REPO_ROOT/services"
+}
+
+# Map: service => "<dockerfile-rel-path>;<context-rel-path>"
+declare -A SERVICES=(
+  [tile-server]="services/tile-server/Dockerfile;services"
+  [ingest-mrms]="services/ingest-mrms/Dockerfile;services"
+  [ingest-hrrr]="services/ingest-hrrr/Dockerfile;services"
+  [ingest-lightning]="services/ingest-lightning/Dockerfile;services"
+  [ingest-tropical]="services/ingest-tropical/Dockerfile;services"
+  [nowcast]="services/nowcast/Dockerfile;services"
+  [basemap]="services/basemap/Dockerfile;."
+)
+
+# Ingestors + nowcast + tile-server FROM stormscope-base:latest.
+# basemap is standalone (FROM protomaps/go-pmtiles:latest).
+NEEDS_BASE=(tile-server ingest-mrms ingest-hrrr ingest-lightning ingest-tropical nowcast)
+
+build_push() {
+  local name="$1"
+  local spec="${SERVICES[$name]}"
+  local dockerfile="${spec%%;*}"
+  local context="${spec##*;}"
+  local latest_tag="${REGISTRY}/radar-ng-${name}:latest"
+  local sha_tag="${REGISTRY}/radar-ng-${name}:git-${SHA}"
+
+  echo ""
+  echo "──────────────────────────────────────────"
+  echo "  $name"
+  echo "  dockerfile: $dockerfile"
+  echo "  context:    $context"
+  echo "  tags:       $latest_tag, $sha_tag"
+  echo "──────────────────────────────────────────"
+
+  docker build \
+    -t "$latest_tag" \
+    -t "$sha_tag" \
+    -f "$REPO_ROOT/$dockerfile" \
+    "$REPO_ROOT/$context"
+
+  docker push "$latest_tag"
+  docker push "$sha_tag"
+  echo "[done] $name"
+}
+
+TARGETS=()
+if [[ $# -eq 0 ]]; then
+  TARGETS=(tile-server ingest-mrms ingest-hrrr ingest-lightning ingest-tropical nowcast basemap)
+else
+  TARGETS=("$@")
+fi
+
+needs_base=false
+for t in "${TARGETS[@]}"; do
+  for b in "${NEEDS_BASE[@]}"; do
+    if [[ "$t" == "$b" ]]; then needs_base=true; fi
+  done
+done
+$needs_base && build_base
+
+for t in "${TARGETS[@]}"; do
+  build_push "$t"
+done
+
+echo ""
+echo "All done. Pushed to $REGISTRY"

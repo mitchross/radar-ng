@@ -69,7 +69,7 @@ export const IEM = {
 } as const;
 
 export const SELF_HOSTED = {
-  DEFAULT_URL: "http://10.0.2.2:8080",
+  DEFAULT_URL: "https://radar-ng-api.vanillax.me",
   MANIFEST_PATH: "/api/manifest.json",
   TILE_PATTERN: "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
   FORECAST_PATH: "/api/forecast",
