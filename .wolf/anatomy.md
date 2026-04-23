@@ -130,6 +130,22 @@ UI design system: **Cumulus** (2026-04-17) — 3 tabs Home/Nowcast/Radar, violet
 
 - `docs/PLAN.md` — StormScope v3.0 master implementation plan (7 phases). Phase 1: Self-hosting foundation (base Docker image, self-hosted Open-Meteo, Protomaps base map, backend hardening). Phase 2: Complete radar timeline (nowcast-pysteps, 48h HRRR, Current/Forecast toggle, blend). Phase 3: Inspector tool (eyedropper), 3 color palettes, 6 map themes + globe. Phase 4: 6 map types (temp, rain totals, snow, humidity, wind particles via Skia). Phase 5: NEXRAD L3 per-station, lightning, storm cells, warnings sub-layers. Phase 6: Cloud cover, tropical, fronts, widgets, notifications, offline. Phase 7: K8s deployment (Talos/ArgoCD). Dependency graph, resource requirements (~32 CPU, ~36GB RAM, ~650GB disk). ~1200 tokens.
 
+## Native Targets (CarPlay + watchOS)
+
+- `targets/carplay/RadarCarPlaySceneDelegate.swift` — CPTemplateApplicationSceneDelegate. Holds CPInterfaceController + RadarMapController; sets map template as root on scene connect. ~60 tokens.
+- `targets/carplay/RadarMapController.swift` — CPMapTemplate host. MKMapView (mutedStandard) + RadarTileOverlay + user location. Bar buttons: recenter / refresh / opacity cycle (40/60/80/100). 5min auto-refresh timer. ~200 tokens.
+- `targets/carplay/RadarTileOverlay.swift` — MKTileOverlay pointed at IEM `nexrad-n0q-0` (TMS — Y flipped: `tmsY = (1<<z)-1 - y`). cacheKey query param bumped on refresh to bust tile cache. ~60 tokens.
+- `targets/carplay/RadarLocationManager.swift` — CLLocationManager wrapper. onUpdate callback + lastCoordinate cached. ~40 tokens.
+- `targets/carplay/RadarAPI.swift` — Static URLs for forecast (`radar-ng-api.vanillax.me`) + NWS alerts. ~20 tokens.
+- `targets/watch/expo-target.config.js` — @bacons/apple-targets config. type:"watch", name:StormScopeWatch, deploymentTarget 10.0, $accent violet. ~20 tokens.
+- `targets/watch/RadarWatchApp.swift` — @main SwiftUI App. Creates WatchStore and refreshes on task. ~20 tokens.
+- `targets/watch/WatchStore.swift` — ObservableObject + CLLocationManagerDelegate. Refreshes forecast + alerts in parallel via async let. Falls back to DEFAULT lat/lon on location denial. ~120 tokens.
+- `targets/watch/WatchAPI.swift` — async URLSession. Forecast via `/api/forecast/{lat}/{lon}` (self-hosted), alerts via NWS. Codable Forecast/Alert/AlertsEnvelope types. ~150 tokens.
+- `targets/watch/ContentView.swift` — NavigationStack + ScrollView. CurrentCard (52pt Thin temp), NowcastCard (60-min precip bars), HourlyRow (12h horizontal), DailyList (5 days), AlertBadge (severity-colored). SF Symbol weather icons via WeatherCodes enum. ~400 tokens.
+- `targets/watch/Info.plist` — WKApplication true, NSLocationWhenInUseUsageDescription. ~20 tokens.
+- `plugins/withCarPlayScene.js` — Config plugin: withEntitlementsPlist adds `com.apple.developer.carplay-maps`, withDangerousMod copies targets/carplay/*.swift → ios/<app>/CarPlay/, withXcodeProject adds group + source files to main target. ~100 tokens.
+- `docs/carplay-watch-setup.md` — Mac build + sideload guide. Covers CarPlay Simulator (no hack), xcodebuild archive + codesign re-sign with patched entitlements (real-car hack), and Watch standard flow. ~800 tokens.
+
 ## Tests
 
 - `__tests__/lib/api.test.ts` — API function tests. ~60 tokens.

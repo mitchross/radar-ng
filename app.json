@@ -8,9 +8,25 @@
     "scheme": "radarng",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.anonymous.stormscope",
       "icon": "./assets/expo.icon",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "StormScope uses your location to show local weather radar and forecasts."
+        "NSLocationWhenInUseUsageDescription": "StormScope uses your location to show local weather radar and forecasts.",
+        "UIApplicationSceneManifest": {
+          "UIApplicationSupportsMultipleScenes": true,
+          "UISceneConfigurations": {
+            "CPTemplateApplicationSceneSessionRoleApplication": [
+              {
+                "UISceneClassName": "CPTemplateApplicationScene",
+                "UISceneConfigurationName": "RadarCarPlayScene",
+                "UISceneDelegateClassName": "RadarCarPlaySceneDelegate"
+              }
+            ]
+          }
+        }
+      },
+      "entitlements": {
+        "com.apple.developer.carplay-maps": true
       }
     },
     "android": {
@@ -22,8 +38,6 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
       ],
@@ -53,7 +67,9 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "@bacons/apple-targets",
+      "./plugins/withCarPlayScene.js"
     ],
     "experiments": {
       "typedRoutes": true,
