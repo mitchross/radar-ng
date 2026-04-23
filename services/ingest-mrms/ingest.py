@@ -121,6 +121,10 @@ def download_and_decode(
         lats, lons = grb.latlons()
         lat_col = lats[:, 0]
         lon_row = lons[0, :]
+        # MRMS GRIB2 uses 0..360 longitudes; the tiler and every downstream
+        # consumer wants -180..180. Monotonicity is preserved for CONUS since
+        # the domain (230..300) doesn't cross the dateline.
+        lon_row = np.where(lon_row > 180.0, lon_row - 360.0, lon_row)
         if hasattr(data, "filled"):
             data = data.filled(np.nan)
         grbs.close()
