@@ -21,7 +21,6 @@ export interface TropicalCollection {
 }
 
 export function useTropical() {
-  const dataSource = useWeatherStore((s) => s.dataSource);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
 
   return useQuery({
@@ -31,7 +30,6 @@ export function useTropical() {
       if (!r.ok) throw new Error(`tropical fetch ${r.status}`);
       return r.json();
     },
-    enabled: dataSource === "selfhosted",
     refetchInterval: 5 * 60_000,
     staleTime: 5 * 60_000,
   });

@@ -1,21 +1,7 @@
-// --- RainViewer API ---
-
-export interface RainViewerManifest {
-  version: string;
-  generated: number;
-  host: string;
-  radar: {
-    past: RadarFrame[];
-    nowcast: RadarFrame[];
-  };
-  satellite: {
-    infrared: RadarFrame[];
-  };
-}
-
 export interface RadarFrame {
   time: number; // Unix epoch seconds
-  path: string; // e.g. "/v2/radar/32a737032949"
+  /** ISO timestamp string used as the tile-server path segment. */
+  path: string;
   /**
    * Optional source layer — only set on merged radar timelines so the
    * overlay knows which subtree to pull from (past=radar, nowcast=nowcast,
@@ -122,8 +108,6 @@ export type LayerType =
   | "precip-type"
   | "precip-accum"
   | "cloud";
-
-export type DataSource = "rainviewer" | "selfhosted";
 
 export interface LayerConfig {
   id: LayerType;

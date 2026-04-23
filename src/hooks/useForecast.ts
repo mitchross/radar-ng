@@ -6,13 +6,11 @@ import { DEFAULTS } from "../lib/constants";
 export function useForecast() {
   const latitude = useWeatherStore((s) => s.latitude);
   const longitude = useWeatherStore((s) => s.longitude);
-  const dataSource = useWeatherStore((s) => s.dataSource);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
 
   return useQuery({
-    queryKey: ["forecast", latitude, longitude, dataSource, serverUrl],
-    queryFn: () =>
-      fetchForecast(latitude!, longitude!, { dataSource, serverUrl }),
+    queryKey: ["forecast", latitude, longitude, serverUrl],
+    queryFn: () => fetchForecast(serverUrl, latitude!, longitude!),
     enabled: latitude !== null && longitude !== null,
     refetchInterval: DEFAULTS.FORECAST_REFETCH_MS,
     staleTime: DEFAULTS.FORECAST_REFETCH_MS,

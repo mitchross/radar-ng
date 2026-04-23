@@ -8,7 +8,6 @@ export function LayerPicker() {
   const setActiveLayer = useWeatherStore((s) => s.setActiveLayer);
   const visibleOverlays = useWeatherStore((s) => s.visibleOverlays);
   const toggleOverlay = useWeatherStore((s) => s.toggleOverlay);
-  const dataSource = useWeatherStore((s) => s.dataSource);
 
   const handlePress = (layer: LayerConfig) => {
     if (layer.isFillLayer) {
@@ -23,14 +22,9 @@ export function LayerPicker() {
     return visibleOverlays.has(layer.id);
   };
 
-  const availableLayers =
-    dataSource === "rainviewer"
-      ? LAYERS.filter((l) => l.id === "radar")
-      : LAYERS;
-
   return (
     <View style={styles.container}>
-      {availableLayers.map((layer) => (
+      {LAYERS.map((layer) => (
         <TouchableOpacity
           key={layer.id}
           style={[styles.button, isActive(layer) && styles.buttonActive]}

@@ -84,12 +84,11 @@ export function WindParticlesOverlay({
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
-  const dataSource = useWeatherStore((s) => s.dataSource);
 
   const frame = frames[currentFrameIndex];
   const timestamp = frame?.path ?? null;
   const shouldFetch =
-    enabled && dataSource === "selfhosted" &&
+    enabled &&
     (activeLayer === "wind" || activeLayer === "radar" || activeLayer === "radar-hrrr");
   const { data: fieldData } = useWindField(shouldFetch ? timestamp : null);
   const field: WindField | null =

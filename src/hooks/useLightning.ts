@@ -14,10 +14,8 @@ interface LightningCollection {
   retention_min?: number;
 }
 
-/** Fetches the rolling 15-min lightning GeoJSON from the self-hosted server.
- *  No-ops on the free/public tier — lightning requires self-hosted backend. */
+/** Rolling 15-min lightning GeoJSON from the self-hosted server. */
 export function useLightning() {
-  const dataSource = useWeatherStore((s) => s.dataSource);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
 
   return useQuery({
@@ -27,7 +25,6 @@ export function useLightning() {
       if (!r.ok) throw new Error(`lightning fetch ${r.status}`);
       return r.json();
     },
-    enabled: dataSource === "selfhosted",
     refetchInterval: 10_000,
     staleTime: 8_000,
   });

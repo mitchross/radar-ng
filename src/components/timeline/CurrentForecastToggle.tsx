@@ -16,7 +16,6 @@ const SEGMENTS: { id: TimelineMode; label: string }[] = [
 export function CurrentForecastToggle() {
   const mode = useWeatherStore((s) => s.timelineMode);
   const setMode = useWeatherStore((s) => s.setTimelineMode);
-  const dataSource = useWeatherStore((s) => s.dataSource);
 
   return (
     <View style={styles.wrap}>
@@ -37,9 +36,6 @@ export function CurrentForecastToggle() {
           );
         })}
       </View>
-      {dataSource !== "selfhosted" && mode === "forecast" && (
-        <Text style={styles.hint}>Self-host to unlock forecast frames</Text>
-      )}
     </View>
   );
 }
@@ -69,13 +65,4 @@ const styles = StyleSheet.create({
   segActive: { backgroundColor: cumulus.accent },
   segLabel: { color: cumulus.inkDim, fontSize: 12, fontWeight: "600" },
   segLabelActive: { color: "#fff", fontWeight: "700" },
-  hint: {
-    marginTop: 4,
-    fontSize: 10,
-    color: cumulus.inkMuted,
-    backgroundColor: "rgba(10,14,26,0.6)",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
 });

@@ -1,51 +1,34 @@
 import type { LayerConfig } from "../types/weather";
 
+// NWS alerts are the one remaining non-self-hosted dependency (free US-gov
+// API, no auth, stable). Everything else goes through the tile-server at
+// SELF_HOSTED.DEFAULT_URL.
 export const API = {
-  RAINVIEWER_MANIFEST: "https://api.rainviewer.com/public/weather-maps.json",
-  OPEN_METEO: "https://api.open-meteo.com/v1/forecast",
   NWS_ALERTS: "https://api.weather.gov/alerts/active",
 } as const;
 
-// Public base map tiles (OpenFreeMap + Esri World Imagery for satellite).
-export const MAP_STYLES_PUBLIC = {
-  light: "https://tiles.openfreemap.org/styles/liberty",
-  dark: "https://tiles.openfreemap.org/styles/dark",
+// Basemap styles live in the tile-server image at /srv/basemap/styles/.
+// Satellite falls back to a public Esri-style JSON — the others are served
+// locally via Caddy.
+export const MAP_STYLES_SELFHOSTED = {
+  light: "/basemap/styles/positron.json",
+  dark: "/basemap/styles/dark-matter.json",
   satellite:
     "https://raw.githubusercontent.com/go-spatial/tegola/master/cmd/internal/register/testdata/style.json",
 } as const;
 
-// Self-hosted base map styles. The tile-server's /api/basemap/style/{name}
-// endpoint rewrites relative tile URLs into absolute ones so MapLibre Native
-// can resolve them without a base URL. Satellite falls back to public.
-export const MAP_STYLES_SELFHOSTED = {
-  light: "/api/basemap/style/positron",
-  dark: "/api/basemap/style/dark-matter",
-  satellite: MAP_STYLES_PUBLIC.satellite,
-} as const;
-
-// Legacy alias used by settings/tests — resolves to the public set.
-export const MAP_STYLES = MAP_STYLES_PUBLIC;
-
 export function resolveMapStyleUrl(
-  dataSource: "rainviewer" | "selfhosted",
   serverUrl: string,
   mapStyle: "light" | "dark" | "satellite"
 ): string {
-  if (mapStyle === "satellite") return MAP_STYLES_PUBLIC.satellite;
-  if (dataSource === "selfhosted" && serverUrl) {
-    const path = MAP_STYLES_SELFHOSTED[mapStyle];
-    return path.startsWith("http") ? path : `${serverUrl}${path}`;
-  }
-  return MAP_STYLES_PUBLIC[mapStyle];
+  const path = MAP_STYLES_SELFHOSTED[mapStyle];
+  return path.startsWith("http") ? path : `${serverUrl}${path}`;
 }
 
 export const RADAR = {
   TILE_SIZE: 256,
-  COLOR_SCHEME: 6,
-  SMOOTH: true,
-  SNOW: true,
   MIN_ZOOM: 1,
-  MAX_ZOOM: 7,
+  MAX_ZOOM: 12,
   DEFAULT_OPACITY: 0.8,
 } as const;
 
@@ -59,19 +42,10 @@ export const DEFAULTS = {
   ALERTS_REFETCH_MS: 60_000,
 } as const;
 
-export const IEM = {
-  BASE: "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0",
-  PRODUCT: "nexrad-n0q",
-  MAX_MINUTES_AGO: 50,
-  STEP_MINUTES: 5,
-  MIN_ZOOM: 1,
-  MAX_ZOOM: 12,
-} as const;
-
 export const SELF_HOSTED = {
   DEFAULT_URL: "https://radar-ng-api.vanillax.me",
   MANIFEST_PATH: "/api/manifest.json",
-  TILE_PATTERN: "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
+  TILE_PATTERN: "/tiles/{layer}/{palette}/{timestamp}/{z}/{x}/{y}.png",
   FORECAST_PATH: "/api/forecast",
   HEALTH_PATH: "/api/health",
   METRICS_PATH: "/api/metrics",

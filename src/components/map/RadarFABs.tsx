@@ -39,12 +39,9 @@ export function RadarFABs({
 }) {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const setActiveLayer = useWeatherStore((s) => s.setActiveLayer);
-  const dataSource = useWeatherStore((s) => s.dataSource);
   const [layerOpen, setLayerOpen] = useState(false);
 
-  const options = LAYER_OPTIONS.filter(
-    (o) => !o.selfHostedOnly || dataSource === "selfhosted",
-  );
+  const options = LAYER_OPTIONS;
   const activeOpt = options.find((o) => o.id === activeLayer) ?? options[0];
   const popoverBg = activeOpt?.tint ?? "#E8EFFA";
 
@@ -90,11 +87,6 @@ export function RadarFABs({
                 </TouchableOpacity>
               );
             })}
-            {dataSource !== "selfhosted" && (
-              <Text style={styles.panelHint}>
-                Self-host to unlock HRRR forecast + weather layers.
-              </Text>
-            )}
           </View>
         </>
       )}

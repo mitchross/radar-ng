@@ -22,7 +22,6 @@ export interface StormCellCollection {
 }
 
 export function useStormCells() {
-  const dataSource = useWeatherStore((s) => s.dataSource);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
 
   return useQuery({
@@ -32,7 +31,6 @@ export function useStormCells() {
       if (!r.ok) throw new Error(`storms fetch ${r.status}`);
       return r.json();
     },
-    enabled: dataSource === "selfhosted",
     refetchInterval: 60_000,
     staleTime: 60_000,
   });

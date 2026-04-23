@@ -1,7 +1,6 @@
 /**
  * Inspector/eyedropper client — asks the self-hosted tile-server for the
- * interpolated layer value at a point. Falls back to Open-Meteo for
- * temperature/wind so the feature still works on the free/public tier.
+ * interpolated layer value at a point.
  */
 import type { LayerType, Palette } from "../types/weather";
 
@@ -9,12 +8,11 @@ export interface InspectReading {
   ok: boolean;
   value: number | null;
   unit: string;
-  source: "grid" | "forecast" | "unavailable";
+  source: "grid" | "unavailable";
   reason?: string;
 }
 
 interface InspectOptions {
-  dataSource: "rainviewer" | "selfhosted";
   serverUrl: string;
   layer: LayerType;
   timestamp: string;
@@ -23,48 +21,25 @@ interface InspectOptions {
 }
 
 export async function inspectPoint(opts: InspectOptions): Promise<InspectReading> {
-  // Self-hosted tile-server has the grid-backed endpoint.
-  if (opts.dataSource === "selfhosted" && opts.serverUrl) {
-    try {
-      const url = `${opts.serverUrl}/api/inspect/${opts.layer}/${encodeURIComponent(opts.timestamp)}/${opts.lat}/${opts.lon}`;
-      const resp = await fetch(url);
-      if (resp.ok) {
-        const json = await resp.json();
-        if (json.ok && json.value != null) {
-          return { ok: true, value: json.value, unit: json.unit ?? "", source: "grid" };
-        }
-        return {
-          ok: false,
-          value: null,
-          unit: json.unit ?? "",
-          source: "unavailable",
-          reason: json.reason ?? "no_value",
-        };
+  try {
+    const url = `${opts.serverUrl}/api/inspect/${opts.layer}/${encodeURIComponent(opts.timestamp)}/${opts.lat}/${opts.lon}`;
+    const resp = await fetch(url);
+    if (resp.ok) {
+      const json = await resp.json();
+      if (json.ok && json.value != null) {
+        return { ok: true, value: json.value, unit: json.unit ?? "", source: "grid" };
       }
-    } catch {
-      // fall through to forecast
+      return {
+        ok: false,
+        value: null,
+        unit: json.unit ?? "",
+        source: "unavailable",
+        reason: json.reason ?? "no_value",
+      };
     }
+  } catch {
+    // fall through
   }
-
-  // Free-tier fallback: for temp/wind use Open-Meteo. Radar/reflectivity has
-  // no free point endpoint — return unavailable.
-  if (opts.layer === "temperature" || opts.layer === "wind") {
-    try {
-      const r = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${opts.lat}&longitude=${opts.lon}&current=temperature_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`,
-      );
-      const json = await r.json();
-      if (opts.layer === "temperature" && json?.current?.temperature_2m != null) {
-        return { ok: true, value: json.current.temperature_2m, unit: "°F", source: "forecast" };
-      }
-      if (opts.layer === "wind" && json?.current?.wind_speed_10m != null) {
-        return { ok: true, value: json.current.wind_speed_10m, unit: "mph", source: "forecast" };
-      }
-    } catch {
-      // fall through
-    }
-  }
-
   return { ok: false, value: null, unit: "", source: "unavailable", reason: "no_source" };
 }
 

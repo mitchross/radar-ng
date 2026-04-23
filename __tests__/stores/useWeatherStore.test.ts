@@ -1,7 +1,7 @@
 import { useWeatherStore } from "../../src/stores/useWeatherStore";
 
 jest.mock("../../src/lib/storage", () => ({
-  getString: jest.fn(() => "rainviewer"),
+  getString: jest.fn((_k: string, d: string) => d),
   setString: jest.fn(),
   getBoolean: jest.fn(() => false),
   setBoolean: jest.fn(),
@@ -19,7 +19,7 @@ describe("useWeatherStore", () => {
     expect(state.isPlaying).toBe(false);
     expect(state.radarOpacity).toBe(0.8);
     expect(state.activeLayer).toBe("radar");
-    expect(state.dataSource).toBe("rainviewer");
+    expect(state.serverUrl).toContain("radar-ng-api");
   });
 
   it("setFrames updates frames", () => {

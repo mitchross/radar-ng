@@ -25,7 +25,6 @@ interface WindFieldMissing {
 
 /** Fetches the U/V wind vector field for a given HRRR timestamp. */
 export function useWindField(timestamp: string | null) {
-  const dataSource = useWeatherStore((s) => s.dataSource);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
 
   return useQuery({
@@ -38,7 +37,7 @@ export function useWindField(timestamp: string | null) {
       if (!r.ok) throw new Error(`wind-field ${r.status}`);
       return r.json();
     },
-    enabled: dataSource === "selfhosted" && !!timestamp,
+    enabled: !!timestamp,
     staleTime: 15 * 60 * 1000,
     refetchInterval: false,
   });

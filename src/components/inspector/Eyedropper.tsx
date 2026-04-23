@@ -37,7 +37,6 @@ export function EyedropperPin({ pinned, onClear }: Props) {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
-  const dataSource = useWeatherStore((s) => s.dataSource);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
 
   const [reading, setReading] = useState<InspectReading | null>(null);
@@ -53,7 +52,6 @@ export function EyedropperPin({ pinned, onClear }: Props) {
     let cancelled = false;
     setLoading(true);
     inspectPoint({
-      dataSource,
       serverUrl,
       layer: activeLayer,
       timestamp: frame.path,
@@ -69,13 +67,12 @@ export function EyedropperPin({ pinned, onClear }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [pinned?.lat, pinned?.lon, activeLayer, frame?.path, dataSource, serverUrl]);
+  }, [pinned?.lat, pinned?.lon, activeLayer, frame?.path, serverUrl]);
 
   if (!pinned) return null;
 
   const readout = loading ? "…" : reading ? formatReading(activeLayer, reading) : "\u2014";
-  const sourceLabel =
-    reading?.source === "grid" ? "Grid" : reading?.source === "forecast" ? "Forecast" : "N/A";
+  const sourceLabel = reading?.source === "grid" ? "Grid" : "N/A";
 
   return (
     <>

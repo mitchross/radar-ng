@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, DataSource, MapProjection, Palette, TimelineMode } from "../types/weather";
+import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, MapProjection, Palette, TimelineMode } from "../types/weather";
 import { DEFAULTS, RADAR, SELF_HOSTED } from "../lib/constants";
 import { getString, setString } from "../lib/storage";
 
@@ -19,7 +19,6 @@ interface WeatherState {
   mapProjection: MapProjection;
   activePalette: Palette;
   timelineMode: TimelineMode;
-  dataSource: DataSource;
   serverUrl: string;
 
   setFrames: (frames: RadarFrame[]) => void;
@@ -37,7 +36,6 @@ interface WeatherState {
   setTimelineMode: (mode: TimelineMode) => void;
   setActiveLayer: (layer: LayerType) => void;
   toggleOverlay: (layer: LayerType) => void;
-  setDataSource: (source: DataSource) => void;
   setServerUrl: (url: string) => void;
   nextFrame: () => void;
 }
@@ -58,7 +56,6 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   mapProjection: (getString("mapProjection", "flat") as MapProjection),
   activePalette: (getString("activePalette", "classic") as Palette),
   timelineMode: (getString("timelineMode", "current") as TimelineMode),
-  dataSource: (getString("dataSource", "selfhosted") as DataSource),
   serverUrl: getString("serverUrl", SELF_HOSTED.DEFAULT_URL),
 
   setFrames: (frames) => set({ frames }),
@@ -93,10 +90,6 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     else next.add(layer);
     return { visibleOverlays: next };
   }),
-  setDataSource: (source) => {
-    setString("dataSource", source);
-    set({ dataSource: source });
-  },
   setServerUrl: (url) => {
     setString("serverUrl", url);
     set({ serverUrl: url });

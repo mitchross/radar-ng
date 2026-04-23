@@ -37,7 +37,6 @@ export default function RadarScreen() {
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
-  const dataSource = useWeatherStore((s) => s.dataSource);
   const { data: alertData } = useAlerts();
 
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
@@ -59,24 +58,12 @@ export default function RadarScreen() {
         }}
       >
         {(activeLayer === "radar" || activeLayer === "radar-hrrr") && <RadarOverlay />}
-        {activeLayer === "temperature" && dataSource === "selfhosted" && (
-          <WeatherLayerOverlay layerId="temperature" opacity={radarOpacity} />
-        )}
-        {activeLayer === "precip-type" && dataSource === "selfhosted" && (
-          <WeatherLayerOverlay layerId="precip-type" opacity={radarOpacity} />
-        )}
-        {activeLayer === "wind" && dataSource === "selfhosted" && (
-          <WeatherLayerOverlay layerId="wind" opacity={0.6} />
-        )}
-        {activeLayer === "cape" && dataSource === "selfhosted" && (
-          <WeatherLayerOverlay layerId="cape" opacity={0.5} />
-        )}
-        {activeLayer === "precip-accum" && dataSource === "selfhosted" && (
-          <WeatherLayerOverlay layerId="precip-accum" opacity={radarOpacity} />
-        )}
-        {activeLayer === "cloud" && dataSource === "selfhosted" && (
-          <WeatherLayerOverlay layerId="cloud" opacity={0.65} />
-        )}
+        {activeLayer === "temperature" && <WeatherLayerOverlay layerId="temperature" opacity={radarOpacity} />}
+        {activeLayer === "precip-type" && <WeatherLayerOverlay layerId="precip-type" opacity={radarOpacity} />}
+        {activeLayer === "wind" && <WeatherLayerOverlay layerId="wind" opacity={0.6} />}
+        {activeLayer === "cape" && <WeatherLayerOverlay layerId="cape" opacity={0.5} />}
+        {activeLayer === "precip-accum" && <WeatherLayerOverlay layerId="precip-accum" opacity={radarOpacity} />}
+        {activeLayer === "cloud" && <WeatherLayerOverlay layerId="cloud" opacity={0.65} />}
         <AlertPolygon />
         <TropicalOverlay />
         <StormCellsOverlay />

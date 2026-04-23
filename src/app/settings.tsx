@@ -30,8 +30,6 @@ export default function SettingsScreen() {
   const setRadarOpacity = useWeatherStore((s) => s.setRadarOpacity);
   const playbackSpeed = useWeatherStore((s) => s.playbackSpeed);
   const setPlaybackSpeed = useWeatherStore((s) => s.setPlaybackSpeed);
-  const dataSource = useWeatherStore((s) => s.dataSource);
-  const setDataSource = useWeatherStore((s) => s.setDataSource);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const setServerUrl = useWeatherStore((s) => s.setServerUrl);
 
@@ -112,36 +110,27 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>DATA SOURCE</Text>
-            <Row label="Source">
-              <SegmentedControl
-                options={["Free", "Self-Hosted"]}
-                selected={dataSource === "rainviewer" ? "Free" : "Self-Hosted"}
-                onSelect={(v) => setDataSource(v === "Free" ? "rainviewer" : "selfhosted")}
+            <Text style={styles.sectionTitle}>BACKEND</Text>
+            <Row label="Server URL">
+              <TextInput
+                style={styles.textInput}
+                value={serverUrl}
+                onChangeText={setServerUrl}
+                placeholder="https://radar-ng-api.vanillax.me"
+                placeholderTextColor="rgba(255,255,255,0.25)"
+                autoCapitalize="none"
+                autoCorrect={false}
               />
             </Row>
-            {dataSource === "selfhosted" && (
-              <Row label="Server URL">
-                <TextInput
-                  style={styles.textInput}
-                  value={serverUrl}
-                  onChangeText={setServerUrl}
-                  placeholder="http://192.168.1.x:8080"
-                  placeholderTextColor="rgba(255,255,255,0.25)"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </Row>
-            )}
             <Text style={styles.hint}>
-              Self-hosted uses MRMS radar + HRRR forecast tiles from your docker
-              stack. Leave on Free to use public IEM NEXRAD + Open-Meteo.
+              Point at your radar-ng tile-server. All weather data — radar,
+              HRRR forecast, basemap, lightning, storms — comes from here.
             </Text>
           </View>
 
           <Text style={styles.footer}>
-            StormScope v1.0 · Cumulus UI{"\n"}
-            Data: IEM NEXRAD, Open-Meteo, NWS · MRMS, HRRR (self-hosted)
+            radar-ng · Cumulus UI{"\n"}
+            Self-hosted: MRMS, HRRR, Open-Meteo, Protomaps · NWS alerts (gov)
           </Text>
 
           <View style={{ height: 60 }} />
