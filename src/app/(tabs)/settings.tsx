@@ -535,7 +535,7 @@ const DOCKER_CONTAINERS: Array<{
 const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
-  scroll: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 40 },
+  scroll: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 140 },
 
   headerRow: {
     flexDirection: "row",

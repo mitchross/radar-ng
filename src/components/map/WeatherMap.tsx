@@ -1,5 +1,5 @@
 import MapLibreGL, { type MapViewRef } from "@maplibre/maplibre-react-native";
-import { useEffect, useRef, useState } from "react";
+import { Children, isValidElement, useEffect, useRef, useState } from "react";
 import { StyleSheet } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS, resolveMapStyleUrl } from "../../lib/constants";
@@ -109,7 +109,7 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
         }}
       />
       <MapLibreGL.UserLocation visible={true} />
-      {children}
+      {Children.toArray(children).filter(isValidElement)}
     </MapLibreGL.MapView>
   );
 }

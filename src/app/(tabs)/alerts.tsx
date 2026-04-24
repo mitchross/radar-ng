@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
   },
   refreshText: { color: cumulus.ink, fontSize: 18, fontWeight: "700" },
 
-  scroll: { paddingHorizontal: 16, paddingTop: 4 },
+  scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 140 },
   muted: { color: cumulus.inkMuted, textAlign: "center", paddingVertical: 20 },
 
   card: {

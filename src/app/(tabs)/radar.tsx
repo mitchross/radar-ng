@@ -9,8 +9,9 @@
  *   • TimelineBar      ("Reflectivity / Sunday, April 19 2026" header)
  */
 import { useState } from "react";
-import { View, StyleSheet, Text } from "react-native";
+import { View, StyleSheet, Text, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { WeatherMap } from "../../components/map/WeatherMap";
 import { RadarOverlay } from "../../components/map/RadarOverlay";
 import { WeatherLayerOverlay } from "../../components/map/WeatherLayerOverlay";
@@ -34,6 +35,7 @@ import { cumulus } from "../../lib/cumulusTheme";
 
 export default function RadarScreen() {
   useManifest();
+  const router = useRouter();
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
@@ -72,8 +74,18 @@ export default function RadarScreen() {
         {pinned && <EyedropperPin pinned={pinned} onClear={() => setPinned(null)} />}
       </WeatherMap>
 
-      {/* Top safe area — alert banner only (the layer title lives in the timeline now). */}
+      {/* Top safe area — close button + alert banner. */}
       <SafeAreaView style={styles.safeTop} edges={["top"]} pointerEvents="box-none">
+        <Pressable
+          style={styles.closeBtn}
+          onPress={() => router.navigate("/" as never)}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Close radar"
+        >
+          <View style={[styles.closeLine, styles.closeLineA]} />
+          <View style={[styles.closeLine, styles.closeLineB]} />
+        </Pressable>
         {topAlert && (
           <View style={styles.alertBanner}>
             <View style={styles.alertDot} />
@@ -133,4 +145,26 @@ const styles = StyleSheet.create({
   },
   alertDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: cumulus.alert },
   alertText: { color: "#FF8A80", fontSize: 12, fontWeight: "600", flex: 1 },
+  closeBtn: {
+    alignSelf: "flex-start",
+    marginLeft: 12,
+    marginTop: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(10,10,20,0.78)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeLine: {
+    position: "absolute",
+    width: 16,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  closeLineA: { transform: [{ rotate: "45deg" }] },
+  closeLineB: { transform: [{ rotate: "-45deg" }] },
 });

@@ -1,32 +1,17 @@
 {
   "expo": {
-    "name": "StormScope",
-    "slug": "stormscope",
+    "name": "radar-ng",
+    "slug": "radar-ng",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "radarng",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "bundleIdentifier": "com.anonymous.stormscope",
+      "bundleIdentifier": "com.vanillax.radar-ng",
       "icon": "./assets/expo.icon",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "StormScope uses your location to show local weather radar and forecasts.",
-        "UIApplicationSceneManifest": {
-          "UIApplicationSupportsMultipleScenes": true,
-          "UISceneConfigurations": {
-            "CPTemplateApplicationSceneSessionRoleApplication": [
-              {
-                "UISceneClassName": "CPTemplateApplicationScene",
-                "UISceneConfigurationName": "RadarCarPlayScene",
-                "UISceneDelegateClassName": "RadarCarPlaySceneDelegate"
-              }
-            ]
-          }
-        }
-      },
-      "entitlements": {
-        "com.apple.developer.carplay-maps": true
+        "NSLocationWhenInUseUsageDescription": "radar-ng uses your location to show local weather radar and forecasts."
       }
     },
     "android": {
@@ -41,7 +26,7 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
       ],
-      "package": "com.anonymous.stormscope"
+      "package": "com.vanillax.radar-ng"
     },
     "web": {
       "output": "static",
@@ -68,8 +53,7 @@
           }
         }
       ],
-      "@bacons/apple-targets",
-      "./plugins/withCarPlayScene.js"
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true,

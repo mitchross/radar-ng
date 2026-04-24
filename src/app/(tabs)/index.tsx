@@ -314,14 +314,14 @@ export default function HomeScreen() {
               colors={["#1a2540", "#0d1428"]}
               style={StyleSheet.absoluteFill}
             />
-            {/* fake radar blobs */}
-            <View style={[styles.radarBlob, { backgroundColor: "#3bc77a", left: "48%", top: 18, width: 90, height: 50, opacity: 0.45 }]} />
-            <View style={[styles.radarBlob, { backgroundColor: "#f5d042", left: "52%", top: 28, width: 64, height: 36, opacity: 0.55 }]} />
-            <View style={[styles.radarBlob, { backgroundColor: "#ff9f2e", left: "56%", top: 36, width: 40, height: 24, opacity: 0.65 }]} />
-            <LinearGradient
-              colors={["transparent", "rgba(0,0,0,0.65)"]}
-              style={StyleSheet.absoluteFill}
-            />
+            {/* Concentric radar sweep motif on the right */}
+            <View style={styles.radarSweepWrap} pointerEvents="none">
+              <View style={[styles.radarRing, styles.radarRing1]} />
+              <View style={[styles.radarRing, styles.radarRing2]} />
+              <View style={[styles.radarRing, styles.radarRing3]} />
+              <View style={styles.radarCenter} />
+              <View style={styles.radarArm} />
+            </View>
             <View style={styles.radarLive}>
               <View style={styles.radarLiveDot} />
               <Text style={styles.radarLiveText}>LIVE</Text>
@@ -536,7 +536,7 @@ type OpenMeteoMinutely = NonNullable<
 const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
-  scroll: { paddingBottom: 40 },
+  scroll: { paddingBottom: 140 },
   loading: { color: "rgba(255,255,255,0.6)", fontSize: 16, textAlign: "center", marginTop: 120 },
 
   // Top bar
@@ -824,6 +824,41 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   radarBlob: { position: "absolute", borderRadius: 40 },
+  radarSweepWrap: {
+    position: "absolute",
+    right: 18,
+    top: 18,
+    bottom: 18,
+    width: 104,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  radarRing: {
+    position: "absolute",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(139,124,255,0.35)",
+  },
+  radarRing1: { width: 100, height: 100, opacity: 0.28 },
+  radarRing2: { width: 70, height: 70, opacity: 0.5 },
+  radarRing3: { width: 42, height: 42, opacity: 0.75 },
+  radarCenter: {
+    position: "absolute",
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: cumulus.accent,
+  },
+  radarArm: {
+    position: "absolute",
+    width: 2,
+    height: 50,
+    top: 6,
+    borderRadius: 1,
+    backgroundColor: cumulus.accent,
+    opacity: 0.85,
+    transform: [{ rotate: "38deg" }, { translateY: 18 }],
+  },
   radarLive: {
     position: "absolute",
     top: 10,

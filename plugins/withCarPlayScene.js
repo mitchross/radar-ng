@@ -46,7 +46,7 @@ function withCarPlayPbxproj(config) {
     proj.addToPbxGroup(groupKey, mainGroup);
     const target = proj.getFirstTarget().uuid;
     for (const f of CARPLAY_FILES) {
-      proj.addSourceFile(`${appName}/CarPlay/${f}`, { target }, groupKey);
+      proj.addSourceFile(f, { target }, groupKey);
     }
     return c;
   });

@@ -359,7 +359,7 @@ function estimateConfidence(forecast: { current: { time: string } }): number {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
-  scroll: { paddingBottom: 40 },
+  scroll: { paddingBottom: 140 },
   loading: { color: "rgba(255,255,255,0.6)", fontSize: 16, textAlign: "center", marginTop: 120 },
 
   header: {
