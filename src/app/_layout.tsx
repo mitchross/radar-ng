@@ -1,3 +1,7 @@
+// Telemetry must be imported first so OTEL providers are registered before
+// any component code runs fetch() or starts a span.
+import "../lib/telemetry";
+
 import { Stack } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
