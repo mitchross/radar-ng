@@ -9,6 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.vanillax.radar-ng",
+      "appleTeamId": "FVU6RGL532",
       "icon": "./assets/expo.icon",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "radar-ng uses your location to show local weather radar and forecasts."
@@ -48,11 +49,16 @@
       [
         "expo-build-properties",
         {
+          "ios": {
+            "deploymentTarget": "26.0"
+          },
           "android": {
             "usesCleartextTraffic": true
           }
         }
       ],
+      "./plugins/withCarPlayScene",
+      "./plugins/withScriptSandboxOff",
       "@bacons/apple-targets"
     ],
     "experiments": {

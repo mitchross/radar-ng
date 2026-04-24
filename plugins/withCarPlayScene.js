@@ -1,4 +1,8 @@
-const { withEntitlementsPlist, withDangerousMod, withXcodeProject } = require("@expo/config-plugins");
+const {
+  withInfoPlist,
+  withDangerousMod,
+  withXcodeProject,
+} = require("@expo/config-plugins");
 const fs = require("fs");
 const path = require("path");
 
@@ -11,9 +15,30 @@ const CARPLAY_FILES = [
   "RadarAPI.swift",
 ];
 
-function withCarPlayEntitlement(config) {
-  return withEntitlementsPlist(config, (c) => {
-    c.modResults["com.apple.developer.carplay-maps"] = true;
+// NOTE: `com.apple.developer.carplay-maps` is intentionally NOT added here.
+// Apple does not grant it to individual developer accounts, and Xcode auto-
+// signing aborts if the entitlement is in the .entitlements file but missing
+// from the dev portal. `scripts/carplay-resign.sh` injects it post-archive
+// at codesign time for sideload builds intended for the actual car.
+
+// Declare ONLY the CarPlay scene and keep UIApplicationSupportsMultipleScenes=false
+// so the AppDelegate's `window` continues to own the main UI. Declaring the main
+// window scene here (or flipping multi-scene to true) breaks RN startup on launch.
+function withCarPlaySceneManifest(config) {
+  return withInfoPlist(config, (c) => {
+    const projectName = c.modRequest.projectName || "radarng";
+    c.modResults.UIApplicationSceneManifest = {
+      UIApplicationSupportsMultipleScenes: false,
+      UISceneConfigurations: {
+        CPTemplateApplicationSceneSessionRoleApplication: [
+          {
+            UISceneClassName: "CPTemplateApplicationScene",
+            UISceneConfigurationName: "CarPlay",
+            UISceneDelegateClassName: `${projectName}.RadarCarPlaySceneDelegate`,
+          },
+        ],
+      },
+    };
     return c;
   });
 }
@@ -53,7 +78,7 @@ function withCarPlayPbxproj(config) {
 }
 
 module.exports = (config) => {
-  config = withCarPlayEntitlement(config);
+  config = withCarPlaySceneManifest(config);
   config = withCarPlayFiles(config);
   config = withCarPlayPbxproj(config);
   return config;
