@@ -475,8 +475,17 @@ async def metrics() -> PlainTextResponse:
     layer_counts: dict[str, int] = {}
     if tile_base.exists():
         for layer_dir in tile_base.iterdir():
-            if layer_dir.is_dir():
-                layer_counts[layer_dir.name] = sum(1 for p in layer_dir.iterdir() if p.is_dir())
+            # Skip filesystem artifacts like ext4's lost+found — the PVC root
+            # isn't a pure layer-only directory. Layer names in this app are
+            # [a-z][a-z0-9_-]*.
+            if not layer_dir.is_dir():
+                continue
+            name = layer_dir.name
+            if not name or not name[0].isalpha() or not all(
+                c.isalnum() or c in ("-", "_") for c in name
+            ):
+                continue
+            layer_counts[name] = sum(1 for p in layer_dir.iterdir() if p.is_dir())
 
     for k, v in _metrics.items():
         lines.append(f"# TYPE stormscope_{k} counter")
@@ -484,9 +493,7 @@ async def metrics() -> PlainTextResponse:
 
     lines.append("# TYPE stormscope_tile_timestamps gauge")
     for layer, count in sorted(layer_counts.items()):
-        safe = layer.replace("-", "_")
         lines.append(f'stormscope_tile_timestamps{{layer="{layer}"}} {count}')
-        lines.append(f"stormscope_tile_timestamps_{safe} {count}")
 
     radar_dir = tile_base / "radar"
     newest = _newest_mtime(radar_dir)
