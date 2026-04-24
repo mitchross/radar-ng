@@ -123,7 +123,7 @@ export default function HomeScreen() {
             </View>
             <TouchableOpacity
               style={styles.iconBtn}
-              onPress={() => router.push("/settings")}
+              onPress={() => router.push("/(tabs)/settings" as any)}
               activeOpacity={0.7}
             >
               <View style={styles.gearRing} />

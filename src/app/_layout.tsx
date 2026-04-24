@@ -30,10 +30,6 @@ export default function RootLayout() {
               headerTitle: "Alert Details",
             }}
           />
-          <Stack.Screen
-            name="settings"
-            options={{ presentation: "modal", headerShown: false }}
-          />
         </Stack>
       </QueryClientProvider>
     </GestureHandlerRootView>

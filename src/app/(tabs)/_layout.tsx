@@ -1,13 +1,12 @@
 /**
- * Cumulus tab bar — Home · Nowcast · Radar.
- *
- * Floating rounded card, violet accent pill on the active tab, bold custom
- * icons (no emoji, no icon-font dep). Opaque so content doesn't bleed under.
+ * Cumulus 5-tab bar — Home · Nowcast · Radar · Alerts · Settings.
+ * Matches design_handoff_radar_app: persistent dark translucent pill, hidden on Radar.
  */
 import { View, StyleSheet, Text, Pressable } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { Tabs } from "expo-router";
 import { cumulus } from "../../lib/cumulusTheme";
+import { useAlerts } from "../../hooks/useAlerts";
 
 export default function TabLayout() {
   return (
@@ -18,11 +17,19 @@ export default function TabLayout() {
       <Tabs.Screen name="index" options={{ title: "Home" }} />
       <Tabs.Screen name="nowcast" options={{ title: "Nowcast" }} />
       <Tabs.Screen name="radar" options={{ title: "Radar" }} />
+      <Tabs.Screen name="alerts" options={{ title: "Alerts" }} />
+      <Tabs.Screen name="settings" options={{ title: "Settings" }} />
     </Tabs>
   );
 }
 
 function CumulusTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const activeRoute = state.routes[state.index]?.name;
+  // Hide on Radar for full-bleed map
+  if (activeRoute === "radar") return null;
+  const alertsQuery = useAlerts();
+  const alertCount = alertsQuery.data?.features?.length ?? 0;
+
   return (
     <View pointerEvents="box-none" style={bar.wrap}>
       <View style={bar.pill}>
@@ -41,6 +48,7 @@ function CumulusTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             }
           };
           const Icon = ICONS[route.name] ?? HomeIcon;
+          const showBadge = route.name === "alerts" && alertCount > 0;
           return (
             <Pressable
               key={route.key}
@@ -52,6 +60,11 @@ function CumulusTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             >
               <View style={[bar.iconWrap, active && bar.iconWrapActive]}>
                 <Icon active={active} />
+                {showBadge && (
+                  <View style={bar.badge}>
+                    <Text style={bar.badgeText}>{alertCount > 9 ? "9+" : alertCount}</Text>
+                  </View>
+                )}
               </View>
               <Text style={[bar.label, active && bar.labelActive]}>{label}</Text>
             </Pressable>
@@ -64,10 +77,7 @@ function CumulusTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
 const ICON_COLOR = cumulus.inkMuted;
 const ICON_COLOR_ACTIVE = "#FFFFFF";
-
-function col(active: boolean) {
-  return active ? ICON_COLOR_ACTIVE : ICON_COLOR;
-}
+const col = (active: boolean) => (active ? ICON_COLOR_ACTIVE : ICON_COLOR);
 
 function HomeIcon({ active }: { active: boolean }) {
   const c = col(active);
@@ -104,10 +114,33 @@ function RadarIcon({ active }: { active: boolean }) {
   );
 }
 
+function AlertsIcon({ active }: { active: boolean }) {
+  const c = col(active);
+  return (
+    <View style={icon.box}>
+      <View style={[icon.alertTri, { borderBottomColor: c }]} />
+      <View style={[icon.alertBar, { backgroundColor: active ? cumulus.alert : "rgba(0,0,0,0.55)" }]} />
+      <View style={[icon.alertDot, { backgroundColor: active ? cumulus.alert : "rgba(0,0,0,0.55)" }]} />
+    </View>
+  );
+}
+
+function SettingsIcon({ active }: { active: boolean }) {
+  const c = col(active);
+  return (
+    <View style={icon.box}>
+      <View style={[icon.gearRing, { borderColor: c }]} />
+      <View style={[icon.gearDot, { backgroundColor: active ? cumulus.accent : c }]} />
+    </View>
+  );
+}
+
 const ICONS: Record<string, React.ComponentType<{ active: boolean }>> = {
   index: HomeIcon,
   nowcast: NowcastIcon,
   radar: RadarIcon,
+  alerts: AlertsIcon,
+  settings: SettingsIcon,
 };
 
 const bar = StyleSheet.create({
@@ -116,30 +149,25 @@ const bar = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     paddingBottom: 18,
     paddingTop: 8,
   },
   pill: {
     flexDirection: "row",
-    backgroundColor: "#0B0D1A",
+    backgroundColor: "rgba(10,10,20,0.78)",
     borderRadius: 26,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
     paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.45,
     shadowRadius: 22,
     elevation: 14,
   },
-  item: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 4,
-  },
+  item: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 4 },
   iconWrap: {
     width: 42,
     height: 30,
@@ -153,84 +181,57 @@ const bar = StyleSheet.create({
     borderWidth: 1,
     borderColor: cumulus.accentBorder,
   },
-  label: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: cumulus.inkMuted,
-    letterSpacing: 0.3,
+  badge: {
+    position: "absolute",
+    top: -2,
+    right: 2,
+    minWidth: 14,
+    height: 14,
+    paddingHorizontal: 3,
+    borderRadius: 7,
+    backgroundColor: cumulus.alert,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  labelActive: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
+  badgeText: { color: "#fff", fontSize: 9, fontWeight: "800", lineHeight: 12 },
+  label: { fontSize: 10.5, fontWeight: "600", color: cumulus.inkMuted, letterSpacing: 0.2 },
+  labelActive: { color: "#FFFFFF", fontWeight: "700" },
 });
 
 const icon = StyleSheet.create({
   box: { width: 22, height: 22, alignItems: "center", justifyContent: "center" },
 
-  // Home: solid filled house, no outline feel
   homeRoof: {
-    position: "absolute",
-    top: 2,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 11,
-    borderRightWidth: 11,
-    borderBottomWidth: 8,
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
+    position: "absolute", top: 2, width: 0, height: 0,
+    borderLeftWidth: 11, borderRightWidth: 11, borderBottomWidth: 8,
+    borderLeftColor: "transparent", borderRightColor: "transparent",
   },
-  homeBody: {
-    position: "absolute",
-    bottom: 2,
-    width: 16,
-    height: 11,
-    borderRadius: 2,
-  },
-  homeDoor: {
-    position: "absolute",
-    bottom: 2,
-    width: 4,
-    height: 6,
-    borderTopLeftRadius: 1.5,
-    borderTopRightRadius: 1.5,
-  },
+  homeBody: { position: "absolute", bottom: 2, width: 16, height: 11, borderRadius: 2 },
+  homeDoor: { position: "absolute", bottom: 2, width: 4, height: 6, borderTopLeftRadius: 1.5, borderTopRightRadius: 1.5 },
 
-  // Nowcast: four ascending bars
   bar: { position: "absolute", bottom: 3, width: 3, borderRadius: 1.5 },
   bar1: { left: 1, height: 6 },
   bar2: { left: 6, height: 10 },
   bar3: { left: 11, height: 14 },
   bar4: { left: 16, height: 8 },
 
-  // Radar: concentric rings + dot + sweep arm
-  radarOuter: {
-    position: "absolute",
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 1.4,
-  },
-  radarMid: {
-    position: "absolute",
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 1.2,
-    opacity: 0.7,
-  },
-  radarInner: {
-    position: "absolute",
-    width: 3.5,
-    height: 3.5,
-    borderRadius: 1.75,
-  },
+  radarOuter: { position: "absolute", width: 20, height: 20, borderRadius: 10, borderWidth: 1.4 },
+  radarMid: { position: "absolute", width: 12, height: 12, borderRadius: 6, borderWidth: 1.2, opacity: 0.7 },
+  radarInner: { position: "absolute", width: 3.5, height: 3.5, borderRadius: 1.75 },
   radarSweep: {
-    position: "absolute",
-    width: 1.5,
-    height: 9,
-    top: 2,
-    borderRadius: 1,
+    position: "absolute", width: 1.5, height: 9, top: 2, borderRadius: 1,
     transform: [{ rotate: "38deg" }, { translateY: 3 }],
   },
+
+  alertTri: {
+    position: "absolute", top: 2,
+    width: 0, height: 0,
+    borderLeftWidth: 10, borderRightWidth: 10, borderBottomWidth: 16,
+    borderLeftColor: "transparent", borderRightColor: "transparent",
+  },
+  alertBar: { position: "absolute", bottom: 7, width: 2, height: 6, borderRadius: 1 },
+  alertDot: { position: "absolute", bottom: 4, width: 2.5, height: 2.5, borderRadius: 1.25 },
+
+  gearRing: { width: 16, height: 16, borderRadius: 8, borderWidth: 2 },
+  gearDot: { position: "absolute", width: 5, height: 5, borderRadius: 2.5 },
 });

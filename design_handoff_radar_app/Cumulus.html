@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cumulus — Weather</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #0a0812; overflow: hidden; height: 100%; font-family: -apple-system, "SF Pro Display", system-ui, sans-serif; color: #fff; }
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  *::-webkit-scrollbar { display: none; }
+  #root { display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; }
+  #scale-wrap { transform-origin: center center; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="src/design.js"></script>
+</head>
+<body>
+<div id="root"><div id="scale-wrap"></div></div>
+<script>
+  function rescale() {
+    const w = document.getElementById('scale-wrap');
+    if (!w) return;
+    const pad = 24;
+    const vw = window.innerWidth - pad, vh = window.innerHeight - pad;
+    const dw = 402, dh = 874;
+    const s = Math.min(vw / dw, vh / dh, 1);
+    w.style.transform = `scale(${s})`;
+    w.style.width = dw + 'px';
+    w.style.height = dh + 'px';
+  }
+  window.addEventListener('resize', rescale);
+  setTimeout(rescale, 50);
+  setInterval(rescale, 500);
+</script>
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="src/icons.jsx"></script>
+<script type="text/babel" src="src/home.jsx"></script>
+<script type="text/babel" src="src/nowcast.jsx"></script>
+<script type="text/babel" src="src/radar.jsx"></script>
+<script type="text/babel" src="src/settings.jsx"></script>
+<script type="text/babel" src="src/app.jsx"></script>
+</body>
+</html>

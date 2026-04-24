@@ -48,7 +48,7 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
-    "@bacons/apple-targets": "^0.3.0",
+    "@bacons/apple-targets": "^4.0.6",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.2.2",
     "jest": "^30.3.0",
