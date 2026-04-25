@@ -19,6 +19,17 @@ COPY basemap/styles/ /srv/basemap/styles/
 RUN printf '#!/bin/sh\ncd /app/api && python -m uvicorn server:app --host 0.0.0.0 --port 8000 &\ncaddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n' > /start.sh \
     && chmod +x /start.sh
 
+# Run as a fixed non-root user so the namespace's PodSecurity restricted
+# profile is satisfied (runAsNonRoot=true, runAsUser=1000). Caddy + uvicorn
+# both bind ports >1024 (8080/8000) so no NET_BIND_SERVICE cap needed. We
+# pre-create the dirs Caddy expects so it doesn't have to mkdir them at
+# runtime against a potentially read-only path.
+RUN useradd -u 1000 -m -s /bin/sh app \
+    && mkdir -p /home/app/.local/share/caddy /home/app/.config/caddy \
+    && chown -R app:app /app /home/app /etc/caddy
+USER app
+ENV HOME=/home/app
+
 ENV TILE_DIR=/data/tiles \
     OPEN_METEO_BASE=https://api.open-meteo.com/v1/forecast
 
