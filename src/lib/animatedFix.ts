@@ -18,13 +18,27 @@ type AnimatedNodeProto = {
   _listeners?: unknown;
 };
 
-const valueProto = Object.getPrototypeOf(Animated.Value.prototype) as object;
-const withChildrenProto = Object.getPrototypeOf(valueProto) as object;
-const nodeProto = Object.getPrototypeOf(withChildrenProto) as AnimatedNodeProto;
+// Inheritance: AnimatedValue → AnimatedWithChildren → AnimatedNode. Two
+// prototype hops from `Animated.Value.prototype` lands on AnimatedNode's
+// prototype, which is the one that owns the throwing __callListeners.
+// AnimatedWithChildren.__callListeners reaches it via `super`, so patching
+// the AnimatedNode level catches every code path.
+const withChildrenProto = Object.getPrototypeOf(
+  Animated.Value.prototype,
+) as object;
+const animatedNodeProto = Object.getPrototypeOf(
+  withChildrenProto,
+) as AnimatedNodeProto;
 
-if (nodeProto && typeof nodeProto.__callListeners === "function") {
-  const original = nodeProto.__callListeners;
-  nodeProto.__callListeners = function patched(this: AnimatedNodeProto, value: number) {
+if (
+  animatedNodeProto &&
+  typeof animatedNodeProto.__callListeners === "function"
+) {
+  const original = animatedNodeProto.__callListeners;
+  animatedNodeProto.__callListeners = function patched(
+    this: AnimatedNodeProto,
+    value: number,
+  ) {
     const listeners = this._listeners as { forEach?: unknown } | undefined;
     if (listeners && typeof listeners.forEach === "function") {
       original.call(this, value);

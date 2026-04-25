@@ -33,6 +33,9 @@ const CARPLAY_FILES = [
 function withCarPlaySceneManifest(config) {
   return withInfoPlist(config, (c) => {
     const projectName = c.modRequest.projectName || "radarng";
+    // UIRequiresFullScreen is deprecated in iOS 26 and ignored at runtime —
+    // the Expo template still emits it, so strip it whenever we touch Info.plist.
+    delete c.modResults.UIRequiresFullScreen;
     c.modResults.UIApplicationSceneManifest = {
       UIApplicationSupportsMultipleScenes: false,
       UISceneConfigurations: {

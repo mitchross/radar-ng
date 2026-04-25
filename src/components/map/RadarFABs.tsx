@@ -18,9 +18,11 @@ const LAYER_OPTIONS: {
   tint: string;
   selfHostedOnly?: boolean;
 }[] = [
-  { id: "radar", name: "Reflectivity", icon: "umbrella", tint: "#E8EFFA" },
+  { id: "radar", name: "Precipitation", icon: "umbrella", tint: "#E8EFFA" },
   { id: "radar-hrrr", name: "HRRR Forecast", icon: "umbrella", tint: "#E8EFFA", selfHostedOnly: true },
-  { id: "precip-type", name: "Precipitation", icon: "umbrella", tint: "#E8EFFA", selfHostedOnly: true },
+  // Renamed from "Precipitation" to avoid colliding with the radar layer's
+  // new label — this one is HRRR's categorical rain/snow/sleet/freezing-rain.
+  { id: "precip-type", name: "Precip Type", icon: "umbrella", tint: "#E8EFFA", selfHostedOnly: true },
   { id: "precip-accum", name: "Rainfall (1h)", icon: "drop", tint: "#DEEAFA", selfHostedOnly: true },
   { id: "cloud", name: "Cloud Cover", icon: "cloud", tint: "#ECECEF", selfHostedOnly: true },
   { id: "temperature", name: "Temperature", icon: "thermo", tint: "#D6F1FB", selfHostedOnly: true },

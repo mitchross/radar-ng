@@ -62,9 +62,8 @@ export function formatReading(layer: LayerType, r: InspectReading): string {
   const v = r.value;
 
   if (layer === "radar" || layer === "radar-hrrr") {
-    if (v < 5) return "No echo";
-    const dbz = Math.round(v);
-    return `${dbz} dBZ ${describeDBZ(dbz)}`;
+    if (v < 5) return "Clear";
+    return describeDBZ(Math.round(v));
   }
   if (layer === "temperature") return `${Math.round(v)}${r.unit || "°F"}`;
   if (layer === "wind") return `${Math.round(v)} ${r.unit || "mph"}`;

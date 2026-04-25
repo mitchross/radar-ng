@@ -5,7 +5,7 @@
 import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import type { LayerType } from "../../types/weather";
-import { cumulus, DBZ_SCALE } from "../../lib/cumulusTheme";
+import { cumulus } from "../../lib/cumulusTheme";
 
 type LegendStop = { label: string; color: string };
 
@@ -14,14 +14,27 @@ interface LegendSpec {
   stops: LegendStop[]; // top → bottom order
 }
 
+// Radar tiles ARE reflectivity (dBZ from MRMS), but the user-facing legend
+// reads as "Precipitation" with category labels mapped onto our DBZ palette
+// — nobody but a meteorologist reads "45 dBZ" intuitively. Stops match the
+// dBZ→intensity buckets in `describeDBZ` (lib/inspector.ts) so the legend
+// and the eyedropper readout agree.
+const PRECIP_STOPS: LegendStop[] = [
+  { label: "Hail",     color: "#b24bff" }, // ≥ 55 dBZ
+  { label: "Severe",   color: "#d02058" }, // 45–55
+  { label: "Heavy",    color: "#ff4040" }, // 35–45
+  { label: "Moderate", color: "#ff9f2e" }, // 25–35
+  { label: "Light",    color: "#3bc77a" }, // < 25
+];
+
 const LEGENDS: Record<LayerType, LegendSpec> = {
   radar: {
-    title: "Reflectivity (dBZ)",
-    stops: [...DBZ_SCALE].reverse().map((s) => ({ label: String(s.dbz), color: s.color })),
+    title: "Precipitation",
+    stops: PRECIP_STOPS,
   },
   "radar-hrrr": {
-    title: "HRRR Forecast (dBZ)",
-    stops: [...DBZ_SCALE].reverse().map((s) => ({ label: String(s.dbz), color: s.color })),
+    title: "Precipitation (Forecast)",
+    stops: PRECIP_STOPS,
   },
   temperature: {
     title: "Temperature",
@@ -44,7 +57,7 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
     ],
   },
   "precip-type": {
-    title: "Precipitation",
+    title: "Precip Type",
     stops: [
       { label: "Extreme", color: "#ffe57a" },
       { label: "Heavy", color: "#ffb04a" },
