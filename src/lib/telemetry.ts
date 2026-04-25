@@ -61,15 +61,13 @@ const tracerProvider = new WebTracerProvider({
 });
 tracerProvider.register();
 
-const loggerProvider = new LoggerProvider({
-  resource,
-  processors: [
-    new BatchLogRecordProcessor(
-      new OTLPLogExporter({ url: `${OTLP_BASE}/v1/logs` }),
-      { maxExportBatchSize: 32, scheduledDelayMillis: 5000 },
-    ),
-  ],
-});
+const loggerProvider = new LoggerProvider({ resource });
+loggerProvider.addLogRecordProcessor(
+  new BatchLogRecordProcessor(
+    new OTLPLogExporter({ url: `${OTLP_BASE}/v1/logs` }),
+    { maxExportBatchSize: 32, scheduledDelayMillis: 5000 },
+  ),
+);
 logs.setGlobalLoggerProvider(loggerProvider);
 
 const tracer: Tracer = otelTrace.getTracer("radar-ng-mobile");
@@ -122,6 +120,28 @@ export function logEvent(
   });
 }
 
-// Hook to wire into React error boundaries / global error handler if
-// wanted later. Currently unused — keep exports minimal until needed.
+// Pipe React Native's global JS error handler into the OTEL log stream so
+// red-screen crashes and unhandled promise rejections show up in Loki.
+// Keeps the original handler chain intact so the dev red-screen still pops.
+type GlobalErrorUtils = {
+  getGlobalHandler?: () => (err: unknown, isFatal?: boolean) => void;
+  setGlobalHandler?: (
+    handler: (err: unknown, isFatal?: boolean) => void,
+  ) => void;
+};
+const errorUtils = (globalThis as unknown as { ErrorUtils?: GlobalErrorUtils })
+  .ErrorUtils;
+if (errorUtils?.getGlobalHandler && errorUtils?.setGlobalHandler) {
+  const prev = errorUtils.getGlobalHandler();
+  errorUtils.setGlobalHandler((err, isFatal) => {
+    const e = err as Error;
+    logEvent("error", e?.message ?? String(err), {
+      "error.fatal": Boolean(isFatal),
+      "error.stack": e?.stack ?? "",
+      "error.name": e?.name ?? "Error",
+    });
+    prev(err, isFatal);
+  });
+}
+
 export { tracer, logger };

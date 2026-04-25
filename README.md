@@ -353,7 +353,7 @@ For Android emulator, the server URL is `http://10.0.2.2:8080` (magic IP for hos
 
 ### Prerequisites
 
-- Node.js 20+
+- [Bun](https://bun.sh) 1.1+ (package manager + runner)
 - Android SDK (API 35) or Xcode 16+
 - Java 17 (for Android builds)
 
@@ -361,29 +361,29 @@ For Android emulator, the server URL is `http://10.0.2.2:8080` (magic IP for hos
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Start Metro dev server
-npx expo start
+bun start
 
 # Run on Android (requires emulator or device)
-npx expo run:android
+bun run android
 
 # Run on iOS (macOS only)
-npx expo run:ios
+bun run ios
 
 # Run tests
-npm test
+bun test
 ```
 
 ### Production Build
 
 ```bash
 # Android APK
-npx expo run:android --variant release
+bunx expo run:android --variant release
 
 # Or use EAS Build
-npx eas build --platform android
+bunx eas build --platform android
 ```
 
 ---

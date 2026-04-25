@@ -3,6 +3,7 @@ import { Children, isValidElement, useEffect, useRef, useState } from "react";
 import { StyleSheet } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS, resolveMapStyleUrl } from "../../lib/constants";
+import { trace } from "../../lib/telemetry";
 
 MapLibreGL.setAccessToken(null);
 
@@ -29,9 +30,14 @@ function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark" | "sat
       return;
     }
     let cancelled = false;
-    fetch(styleUrl)
-      .then((r) => r.json())
-      .then((json: { sources?: Record<string, { tiles?: string[]; url?: string }> }) => {
+    trace(
+      "map.fetchStyle",
+      async (span) => {
+        const r = await fetch(styleUrl);
+        span.setAttribute("http.status_code", r.status);
+        const json = (await r.json()) as {
+          sources?: Record<string, { tiles?: string[]; url?: string }>;
+        };
         const sources = json.sources ?? {};
         for (const src of Object.values(sources)) {
           if (Array.isArray(src.tiles)) {
@@ -42,11 +48,12 @@ function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark" | "sat
           }
         }
         if (!cancelled) setPatched(JSON.stringify(json));
-      })
-      .catch(() => {
-        // Fall back to the URL; MapLibre will at least try to fetch it.
-        if (!cancelled) setPatched(styleUrl);
-      });
+      },
+      { "map.style": mapStyle },
+    ).catch(() => {
+      // Fall back to the URL; MapLibre will at least try to fetch it.
+      if (!cancelled) setPatched(styleUrl);
+    });
     return () => {
       cancelled = true;
     };

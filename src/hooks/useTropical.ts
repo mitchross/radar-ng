@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useWeatherStore } from "../stores/useWeatherStore";
+import { trace } from "../lib/telemetry";
 
 type TropicalFeature = GeoJSON.Feature<
   GeoJSON.Point | GeoJSON.LineString | GeoJSON.Polygon,
@@ -25,11 +26,15 @@ export function useTropical() {
 
   return useQuery({
     queryKey: ["tropical", serverUrl],
-    queryFn: async (): Promise<TropicalCollection> => {
-      const r = await fetch(`${serverUrl}/api/tropical`);
-      if (!r.ok) throw new Error(`tropical fetch ${r.status}`);
-      return r.json();
-    },
+    queryFn: (): Promise<TropicalCollection> =>
+      trace("api.fetchTropical", async (span) => {
+        const r = await fetch(`${serverUrl}/api/tropical`);
+        span.setAttribute("http.status_code", r.status);
+        if (!r.ok) throw new Error(`tropical fetch ${r.status}`);
+        const json = (await r.json()) as TropicalCollection;
+        span.setAttribute("radar.tropical.storms", json.storm_count ?? json.features.length);
+        return json;
+      }),
     refetchInterval: 5 * 60_000,
     staleTime: 5 * 60_000,
   });

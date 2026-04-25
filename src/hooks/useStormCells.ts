@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useWeatherStore } from "../stores/useWeatherStore";
+import { trace } from "../lib/telemetry";
 
 export interface StormCell {
   type: "Feature";
@@ -26,11 +27,15 @@ export function useStormCells() {
 
   return useQuery({
     queryKey: ["storms", serverUrl],
-    queryFn: async (): Promise<StormCellCollection> => {
-      const r = await fetch(`${serverUrl}/api/storms`);
-      if (!r.ok) throw new Error(`storms fetch ${r.status}`);
-      return r.json();
-    },
+    queryFn: (): Promise<StormCellCollection> =>
+      trace("api.fetchStormCells", async (span) => {
+        const r = await fetch(`${serverUrl}/api/storms`);
+        span.setAttribute("http.status_code", r.status);
+        if (!r.ok) throw new Error(`storms fetch ${r.status}`);
+        const json = (await r.json()) as StormCellCollection;
+        span.setAttribute("radar.storms.count", json.cell_count ?? json.features.length);
+        return json;
+      }),
     refetchInterval: 60_000,
     staleTime: 60_000,
   });

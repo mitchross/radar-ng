@@ -1,9 +1,15 @@
 // Telemetry must be imported first so OTEL providers are registered before
 // any component code runs fetch() or starts a span.
 import "../lib/telemetry";
+import { logEvent } from "../lib/telemetry";
 
 import { Stack } from "expo-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  QueryCache,
+  MutationCache,
+} from "@tanstack/react-query";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -18,6 +24,18 @@ const queryClient = new QueryClient({
       gcTime: 10 * 60_000,
     },
   },
+  queryCache: new QueryCache({
+    onError: (err, query) => {
+      logEvent("error", `query failed: ${(err as Error).message}`, {
+        "query.key": JSON.stringify(query.queryKey),
+      });
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (err) => {
+      logEvent("error", `mutation failed: ${(err as Error).message}`);
+    },
+  }),
 });
 
 export default function RootLayout() {

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useWeatherStore } from "../stores/useWeatherStore";
+import { trace } from "../lib/telemetry";
 
 export interface WindField {
   ok: true;
@@ -29,14 +30,20 @@ export function useWindField(timestamp: string | null) {
 
   return useQuery({
     queryKey: ["wind-field", serverUrl, timestamp],
-    queryFn: async (): Promise<WindField | WindFieldMissing> => {
-      if (!timestamp) throw new Error("no timestamp");
-      const r = await fetch(
-        `${serverUrl}/api/wind-field/${encodeURIComponent(timestamp)}`,
-      );
-      if (!r.ok) throw new Error(`wind-field ${r.status}`);
-      return r.json();
-    },
+    queryFn: (): Promise<WindField | WindFieldMissing> =>
+      trace(
+        "api.fetchWindField",
+        async (span) => {
+          if (!timestamp) throw new Error("no timestamp");
+          const r = await fetch(
+            `${serverUrl}/api/wind-field/${encodeURIComponent(timestamp)}`,
+          );
+          span.setAttribute("http.status_code", r.status);
+          if (!r.ok) throw new Error(`wind-field ${r.status}`);
+          return r.json();
+        },
+        { "radar.timestamp": timestamp ?? "" },
+      ),
     enabled: !!timestamp,
     staleTime: 15 * 60 * 1000,
     refetchInterval: false,

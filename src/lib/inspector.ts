@@ -3,6 +3,7 @@
  * interpolated layer value at a point.
  */
 import type { LayerType, Palette } from "../types/weather";
+import { trace } from "./telemetry";
 
 export interface InspectReading {
   ok: boolean;
@@ -21,26 +22,39 @@ interface InspectOptions {
 }
 
 export async function inspectPoint(opts: InspectOptions): Promise<InspectReading> {
-  try {
-    const url = `${opts.serverUrl}/api/inspect/${opts.layer}/${encodeURIComponent(opts.timestamp)}/${opts.lat}/${opts.lon}`;
-    const resp = await fetch(url);
-    if (resp.ok) {
-      const json = await resp.json();
-      if (json.ok && json.value != null) {
-        return { ok: true, value: json.value, unit: json.unit ?? "", source: "grid" };
+  return trace(
+    "api.inspectPoint",
+    async (span) => {
+      try {
+        const url = `${opts.serverUrl}/api/inspect/${opts.layer}/${encodeURIComponent(opts.timestamp)}/${opts.lat}/${opts.lon}`;
+        const resp = await fetch(url);
+        span.setAttribute("http.status_code", resp.status);
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.ok && json.value != null) {
+            span.setAttribute("inspector.value", json.value);
+            return { ok: true, value: json.value, unit: json.unit ?? "", source: "grid" };
+          }
+          return {
+            ok: false,
+            value: null,
+            unit: json.unit ?? "",
+            source: "unavailable",
+            reason: json.reason ?? "no_value",
+          };
+        }
+      } catch (err) {
+        span.recordException(err as Error);
       }
-      return {
-        ok: false,
-        value: null,
-        unit: json.unit ?? "",
-        source: "unavailable",
-        reason: json.reason ?? "no_value",
-      };
-    }
-  } catch {
-    // fall through
-  }
-  return { ok: false, value: null, unit: "", source: "unavailable", reason: "no_source" };
+      return { ok: false, value: null, unit: "", source: "unavailable", reason: "no_source" };
+    },
+    {
+      "inspector.layer": opts.layer,
+      "inspector.timestamp": opts.timestamp,
+      "geo.lat": opts.lat,
+      "geo.lon": opts.lon,
+    },
+  );
 }
 
 export function formatReading(layer: LayerType, r: InspectReading): string {

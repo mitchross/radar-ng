@@ -13,7 +13,7 @@ This doc covers building the CarPlay scene and watchOS target in `targets/` for 
 ## Install deps
 
 ```bash
-npm i -D @bacons/apple-targets
+bun add -d @bacons/apple-targets
 ```
 
 ## Prebuild
@@ -21,7 +21,7 @@ npm i -D @bacons/apple-targets
 From the project root on Mac:
 
 ```bash
-npx expo prebuild --clean --platform ios
+bunx expo prebuild --clean --platform ios
 ```
 
 This will:
