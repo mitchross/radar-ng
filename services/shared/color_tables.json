@@ -11,7 +11,7 @@
       { "min": 60, "max": 65, "rgba": [255, 0, 255, 245] },
       { "min": 65, "max": 75, "rgba": [139, 0, 139, 250] }
     ],
-    "no_data_below": 5
+    "no_data_below": 15
   },
   "temperature": {
     "unit": "fahrenheit",
