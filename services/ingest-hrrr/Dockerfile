@@ -1,4 +1,4 @@
-FROM stormscope-base:latest
+FROM registry.vanillax.me/radar-ng-base:latest
 
 COPY shared/ /app/shared/
 COPY ingest-hrrr/ingest.py /app/ingest.py

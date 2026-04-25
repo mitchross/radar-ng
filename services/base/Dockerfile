@@ -1,6 +1,9 @@
-# Shared base image for all StormScope Python ingestors.
-# Build from the services/ directory:
-#   docker build -t stormscope-base:latest -f base/Dockerfile services/
+# Shared base image for all radar-ng Python ingestors.
+# Pushed by .gitea/workflows/build-base.yml as
+#   registry.vanillax.me/radar-ng-base:latest
+# Local dev build:
+#   docker build -t registry.vanillax.me/radar-ng-base:latest \
+#     -f base/Dockerfile services/
 #
 # All ingestors FROM this image, then COPY their own ingest.py + shared/ in.
 

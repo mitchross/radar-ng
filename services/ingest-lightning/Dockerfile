@@ -1,4 +1,4 @@
-FROM stormscope-base:latest
+FROM registry.vanillax.me/radar-ng-base:latest
 
 RUN pip install --no-cache-dir websockets==12.0
 

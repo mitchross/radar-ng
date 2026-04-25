@@ -1,4 +1,4 @@
-# stormscope-base
+# radar-ng-base
 
 Shared Python 3.12 base image for every ingestor.
 
@@ -9,10 +9,15 @@ Bundles:
 
 ## Build
 
-From the repo root:
+CI builds and pushes this image automatically via `.gitea/workflows/build-base.yml`
+on any change under `services/base/**`. The pushed tag is
+`registry.vanillax.me/radar-ng-base:latest`.
+
+For local dev, from the repo root:
 
 ```sh
-docker build -t stormscope-base:latest -f services/base/Dockerfile services/
+docker build -t registry.vanillax.me/radar-ng-base:latest \
+  -f services/base/Dockerfile services/
 ```
 
 Or via compose (one-shot, does not run):
@@ -21,4 +26,4 @@ Or via compose (one-shot, does not run):
 docker compose -f deploy/docker-compose.yml --profile build-only build base
 ```
 
-Child images reference `FROM stormscope-base:latest`.
+Child images reference `FROM registry.vanillax.me/radar-ng-base:latest`.

@@ -17,11 +17,15 @@ REGISTRY="${REGISTRY:-registry.vanillax.me}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SHA="$(cd "$REPO_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo dirty)"
 
-# Build the shared python base image locally (not pushed — only deployable
-# images are pushed). Ingestor Dockerfiles `FROM stormscope-base:latest`.
+# Build the shared python base image. CI normally publishes this via
+# .gitea/workflows/build-base.yml; this local build keeps the dev loop
+# fast. Tag matches the registry path so child Dockerfiles' FROM line
+# (registry.vanillax.me/radar-ng-base:latest) resolves to the local image
+# without a registry round-trip.
 build_base() {
-  echo "[base] building stormscope-base:latest (local only)"
-  docker build -t stormscope-base:latest \
+  local tag="${REGISTRY}/radar-ng-base:latest"
+  echo "[base] building $tag (local)"
+  docker build -t "$tag" \
     -f "$REPO_ROOT/services/base/Dockerfile" \
     "$REPO_ROOT/services"
 }
@@ -37,9 +41,9 @@ declare -A SERVICES=(
   [basemap]="services/basemap/Dockerfile;."
 )
 
-# Ingestors + nowcast + tile-server FROM stormscope-base:latest.
-# basemap is standalone (FROM protomaps/go-pmtiles:latest).
-NEEDS_BASE=(tile-server ingest-mrms ingest-hrrr ingest-lightning ingest-tropical nowcast)
+# Ingestors + nowcast FROM registry.vanillax.me/radar-ng-base:latest.
+# tile-server FROMs python:3.12-slim directly; basemap FROMs protomaps/go-pmtiles.
+NEEDS_BASE=(ingest-mrms ingest-hrrr ingest-lightning ingest-tropical nowcast)
 
 build_push() {
   local name="$1"

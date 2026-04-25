@@ -11,7 +11,7 @@ x-logging: &default-logging
 
 services:
   base:
-    image: stormscope-base:latest
+    image: registry.vanillax.me/radar-ng-base:latest
     build:
       context: ../services
       dockerfile: base/Dockerfile
@@ -22,7 +22,7 @@ services:
     build:
       context: ../services
       dockerfile: ingest-mrms/Dockerfile
-    image: stormscope-ingest-mrms:latest
+    image: registry.vanillax.me/radar-ng-ingest-mrms:latest
     volumes:
       - tiles:/data/tiles
       - state:/data/state
@@ -41,7 +41,7 @@ services:
     build:
       context: ../services
       dockerfile: ingest-hrrr/Dockerfile
-    image: stormscope-ingest-hrrr:latest
+    image: registry.vanillax.me/radar-ng-ingest-hrrr:latest
     volumes:
       - tiles:/data/tiles
       - state:/data/state
@@ -64,7 +64,7 @@ services:
     build:
       context: ../services
       dockerfile: ingest-lightning/Dockerfile
-    image: stormscope-ingest-lightning:latest
+    image: registry.vanillax.me/radar-ng-ingest-lightning:latest
     volumes:
       - state:/data/state
     environment:
@@ -78,7 +78,7 @@ services:
     build:
       context: ../services
       dockerfile: ingest-tropical/Dockerfile
-    image: stormscope-ingest-tropical:latest
+    image: registry.vanillax.me/radar-ng-ingest-tropical:latest
     volumes:
       - state:/data/state
     environment:
@@ -94,7 +94,7 @@ services:
     build:
       context: ../services
       dockerfile: nowcast/Dockerfile
-    image: stormscope-nowcast:latest
+    image: registry.vanillax.me/radar-ng-nowcast:latest
     volumes:
       - tiles:/data/tiles
       - grids:/data/grids:ro
@@ -166,7 +166,7 @@ services:
     build:
       context: ../services
       dockerfile: tile-server/Dockerfile
-    image: stormscope-tile-server:latest
+    image: registry.vanillax.me/radar-ng-tile-server:latest
     ports:
       - "8080:8080"
     volumes:

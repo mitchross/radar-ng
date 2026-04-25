@@ -1,18 +1,19 @@
-name: build basemap
+name: build base
 
-# basemap is a special case:
-#   - context is the repo root (.) not services/, because the Dockerfile
-#     COPYs pmtiles-data/basemap.pmtiles into the image
-#   - watches pmtiles-data/** so a fresh PMTiles archive triggers a rebuild
-#   - does NOT watch services/base/ since basemap doesn't FROM radar-ng-base
+# Shared Python base image. Every ingest-* and nowcast Dockerfile does
+#   FROM registry.vanillax.me/radar-ng-base:latest
+# so this workflow has to push :latest to the registry before any child
+# image build will succeed on a fresh runner.
+#
+# Trigger: any change under services/base/** (or the base requirements).
+# After a push here, re-run a child workflow and it will pull the new base.
 
 on:
   push:
     branches: [master]
     paths:
-      - 'services/basemap/**'
-      - 'pmtiles-data/**'
-      - '.gitea/workflows/build-basemap.yml'
+      - 'services/base/**'
+      - '.gitea/workflows/build-base.yml'
   workflow_dispatch: {}
 
 jobs:
@@ -26,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           REGISTRY="registry.vanillax.me"
-          IMAGE="radar-ng-basemap"
+          IMAGE="radar-ng-base"
           LATEST=$(curl -sS "https://${REGISTRY}/v2/${IMAGE}/tags/list" \
             | jq -r '.tags[]?' \
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
@@ -43,17 +44,17 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: services/basemap/Dockerfile
+          context: services
+          file: services/base/Dockerfile
           push: true
           tags: |
-            registry.vanillax.me/radar-ng-basemap:${{ steps.ver.outputs.version }}
-            registry.vanillax.me/radar-ng-basemap:latest
+            registry.vanillax.me/radar-ng-base:${{ steps.ver.outputs.version }}
+            registry.vanillax.me/radar-ng-base:latest
           labels: |
             org.opencontainers.image.source=https://gitea.vanillax.me/vanillax/radar-ng
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.ver.outputs.version }}
-          cache-from: type=registry,ref=registry.vanillax.me/radar-ng-basemap:buildcache
-          cache-to:   type=registry,ref=registry.vanillax.me/radar-ng-basemap:buildcache,mode=max
+          cache-from: type=registry,ref=registry.vanillax.me/radar-ng-base:buildcache
+          cache-to:   type=registry,ref=registry.vanillax.me/radar-ng-base:buildcache,mode=max
 
-      - run: echo "✅ Pushed registry.vanillax.me/radar-ng-basemap:${{ steps.ver.outputs.version }}"
+      - run: echo "✅ Pushed registry.vanillax.me/radar-ng-base:${{ steps.ver.outputs.version }} — re-run any failed child workflows now."

@@ -1,4 +1,4 @@
-FROM stormscope-base:latest
+FROM registry.vanillax.me/radar-ng-base:latest
 
 # pysteps has no cp312 prebuilt wheel on PyPI — it builds from source. Install
 # gcc + headers, compile pysteps, then drop the toolchain to keep the image
