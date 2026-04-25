@@ -1,4 +1,7 @@
-// Telemetry must be imported first so OTEL providers are registered before
+// animatedFix patches RN's AnimatedNode.__callListeners and must run before
+// anything constructs an Animated node — keep it as the very first import.
+import "../lib/animatedFix";
+// Telemetry must be imported next so OTEL providers are registered before
 // any component code runs fetch() or starts a span.
 import "../lib/telemetry";
 import { logEvent } from "../lib/telemetry";
@@ -13,9 +16,7 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, LogBox } from "react-native";
-
-LogBox.ignoreLogs(["this._listeners.forEach"]);
+import { StyleSheet } from "react-native";
 
 const queryClient = new QueryClient({
   defaultOptions: {

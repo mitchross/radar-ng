@@ -13,6 +13,11 @@ const CARPLAY_FILES = [
   "RadarTileOverlay.swift",
   "RadarLocationManager.swift",
   "RadarAPI.swift",
+  // Required because once UIApplicationSceneManifest exists, iOS uses
+  // scene-based lifecycle for the iPhone window too. Without a UIWindowScene
+  // delegate that creates UIWindow(windowScene:), the RN root view never
+  // attaches to the active scene and the app shows a black screen.
+  "MainSceneDelegate.swift",
 ];
 
 // NOTE: `com.apple.developer.carplay-maps` is intentionally NOT added here.
@@ -21,15 +26,22 @@ const CARPLAY_FILES = [
 // from the dev portal. `scripts/carplay-resign.sh` injects it post-archive
 // at codesign time for sideload builds intended for the actual car.
 
-// Declare ONLY the CarPlay scene and keep UIApplicationSupportsMultipleScenes=false
-// so the AppDelegate's `window` continues to own the main UI. Declaring the main
-// window scene here (or flipping multi-scene to true) breaks RN startup on launch.
+// Declare BOTH the iPhone window scene and the CarPlay template scene. On
+// iOS 13+, presence of UIApplicationSceneManifest puts the app into
+// scene-based lifecycle — the main window must be constructed from a
+// UIWindowScene via MainSceneDelegate, otherwise iPhone launch is black.
 function withCarPlaySceneManifest(config) {
   return withInfoPlist(config, (c) => {
     const projectName = c.modRequest.projectName || "radarng";
     c.modResults.UIApplicationSceneManifest = {
       UIApplicationSupportsMultipleScenes: false,
       UISceneConfigurations: {
+        UIWindowSceneSessionRoleApplication: [
+          {
+            UISceneConfigurationName: "Main",
+            UISceneDelegateClassName: `${projectName}.MainSceneDelegate`,
+          },
+        ],
         CPTemplateApplicationSceneSessionRoleApplication: [
           {
             UISceneClassName: "CPTemplateApplicationScene",

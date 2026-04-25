@@ -72,6 +72,15 @@ def _newest_mtime(path: Path) -> float | None:
         return None
 
 
+def _is_layer_dirname(name: str) -> bool:
+    # Layer names in this app match [a-z][a-z0-9_-]*. Excludes filesystem
+    # artifacts like ext4's `lost+found` (root:0 mode 700, unreadable by the
+    # non-root container user → would raise PermissionError on iterdir()).
+    return bool(name) and name[0].isalpha() and all(
+        c.isalnum() or c in ("-", "_") for c in name
+    )
+
+
 @app.get("/api/manifest.json")
 async def get_manifest() -> JSONResponse:
     _metrics["manifest_requests_total"] += 1
@@ -81,6 +90,8 @@ async def get_manifest() -> JSONResponse:
     if tile_base.exists():
         for layer_dir in sorted(tile_base.iterdir()):
             if not layer_dir.is_dir():
+                continue
+            if not _is_layer_dirname(layer_dir.name):
                 continue
             # Two possible layouts — fold both into a flat timestamp set:
             #   /{layer}/{timestamp}/           (legacy, single palette)
@@ -486,16 +497,12 @@ async def metrics() -> PlainTextResponse:
     if tile_base.exists():
         for layer_dir in tile_base.iterdir():
             # Skip filesystem artifacts like ext4's lost+found — the PVC root
-            # isn't a pure layer-only directory. Layer names in this app are
-            # [a-z][a-z0-9_-]*.
-            if not layer_dir.is_dir():
+            # isn't a pure layer-only directory.
+            if not layer_dir.is_dir() or not _is_layer_dirname(layer_dir.name):
                 continue
-            name = layer_dir.name
-            if not name or not name[0].isalpha() or not all(
-                c.isalnum() or c in ("-", "_") for c in name
-            ):
-                continue
-            layer_counts[name] = sum(1 for p in layer_dir.iterdir() if p.is_dir())
+            layer_counts[layer_dir.name] = sum(
+                1 for p in layer_dir.iterdir() if p.is_dir()
+            )
 
     for k, v in _metrics.items():
         lines.append(f"# TYPE stormscope_{k} counter")
