@@ -1,0 +1,43 @@
+name: build tile-server
+
+# Auto-build + push tile-server image when its source changes. Only the
+# tile-server image is rebuilt — the other services (ingest-*, nowcast,
+# basemap) get their own workflows in this directory once we're confident
+# this one works end-to-end.
+#
+# Tags pushed:
+#   :git-<short-sha>  — every build
+#   :latest           — every build (floating)
+#   :buildcache       — BuildKit registry cache (not a runtime image)
+#
+# Semver pin (:v1.0.x) is still applied manually via the deployment file
+# in talos-argocd-proxmox; we only auto-publish tracking tags here.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'services/tile-server/**'
+      - 'services/base/**'
+      - '.gitea/workflows/build-tile-server.yml'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: services
+          file: services/tile-server/Dockerfile
+          push: true
+          tags: |
+            registry.vanillax.me/radar-ng-tile-server:git-${{ github.sha }}
+            registry.vanillax.me/radar-ng-tile-server:latest
+          cache-from: type=registry,ref=registry.vanillax.me/radar-ng-tile-server:buildcache
+          cache-to:   type=registry,ref=registry.vanillax.me/radar-ng-tile-server:buildcache,mode=max
