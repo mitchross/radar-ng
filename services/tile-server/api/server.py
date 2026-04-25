@@ -54,6 +54,14 @@ _metrics = {
 }
 
 
+def _cached(body: dict | list, max_age: int, status_code: int = 200) -> JSONResponse:
+    return JSONResponse(
+        body,
+        status_code=status_code,
+        headers={"Cache-Control": f"public, max-age={max_age}"},
+    )
+
+
 def _newest_mtime(path: Path) -> float | None:
     if not path.exists():
         return None
@@ -100,13 +108,14 @@ async def get_manifest() -> JSONResponse:
                     "palettes": sorted(palettes) if palettes else ["classic"],
                 }
 
-    return JSONResponse(
+    return _cached(
         {
             "layers": layers,
             "tile_url_template": "/tiles/{layer}/{palette}/{timestamp}/{z}/{x}/{y}.png",
             "tile_url_template_legacy": "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
             "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
+        },
+        max_age=15,
     )
 
 
@@ -120,7 +129,7 @@ async def get_forecast(lat: float, lon: float) -> JSONResponse:
     cached = _forecast_cache.get(cache_key)
     if cached and time.time() - cached[0] < FORECAST_TTL:
         _metrics["forecast_cache_hits_total"] += 1
-        return JSONResponse(cached[1])
+        return _cached(cached[1], max_age=300)
 
     params = {
         "latitude": str(grid_lat),
@@ -148,7 +157,7 @@ async def get_forecast(lat: float, lon: float) -> JSONResponse:
         )
 
     _forecast_cache[cache_key] = (time.time(), data)
-    return JSONResponse(data)
+    return _cached(data, max_age=300)
 
 
 @app.get("/api/inspect/{layer}/{timestamp}/{lat}/{lon}")
@@ -325,7 +334,7 @@ async def wind_field(timestamp: str) -> JSONResponse:
     u_scaled = [int(round((u - u_min) / u_span * 254 - 127)) for u in u_vals]
     v_scaled = [int(round((v - v_min) / v_span * 254 - 127)) for v in v_vals]
 
-    return JSONResponse({
+    return _cached({
         "ok": True,
         "timestamp": timestamp,
         "width": out_w,
@@ -340,7 +349,7 @@ async def wind_field(timestamp: str) -> JSONResponse:
         "v_max": v_max,
         "u": u_scaled,
         "v": v_scaled,
-    })
+    }, max_age=300)
 
 
 @app.get("/api/lightning")
@@ -353,16 +362,17 @@ async def lightning() -> JSONResponse:
     """
     path = Path(STATE_DIR) / "lightning.json"
     if not path.exists():
-        return JSONResponse(
+        return _cached(
             {"type": "FeatureCollection", "features": [], "generated_at": 0, "reason": "no_data"},
+            max_age=10,
         )
     try:
         body = json.loads(path.read_text())
-        return JSONResponse(body)
+        return _cached(body, max_age=10)
     except (OSError, json.JSONDecodeError) as exc:
-        return JSONResponse(
+        return _cached(
             {"type": "FeatureCollection", "features": [], "error": str(exc)},
-            status_code=200,
+            max_age=10,
         )
 
 
@@ -375,11 +385,11 @@ async def storms() -> JSONResponse:
     """
     path = Path(STATE_DIR) / "storms.json"
     if not path.exists():
-        return JSONResponse({"type": "FeatureCollection", "features": [], "reason": "no_data"})
+        return _cached({"type": "FeatureCollection", "features": [], "reason": "no_data"}, max_age=30)
     try:
-        return JSONResponse(json.loads(path.read_text()))
+        return _cached(json.loads(path.read_text()), max_age=30)
     except (OSError, json.JSONDecodeError) as exc:
-        return JSONResponse({"type": "FeatureCollection", "features": [], "error": str(exc)})
+        return _cached({"type": "FeatureCollection", "features": [], "error": str(exc)}, max_age=30)
 
 
 @app.get("/api/tropical")
@@ -391,11 +401,11 @@ async def tropical() -> JSONResponse:
     """
     path = Path(STATE_DIR) / "tropical.json"
     if not path.exists():
-        return JSONResponse({"type": "FeatureCollection", "features": [], "reason": "no_data"})
+        return _cached({"type": "FeatureCollection", "features": [], "reason": "no_data"}, max_age=180)
     try:
-        return JSONResponse(json.loads(path.read_text()))
+        return _cached(json.loads(path.read_text()), max_age=180)
     except (OSError, json.JSONDecodeError) as exc:
-        return JSONResponse({"type": "FeatureCollection", "features": [], "error": str(exc)})
+        return _cached({"type": "FeatureCollection", "features": [], "error": str(exc)}, max_age=180)
 
 
 @app.get("/api/health")
