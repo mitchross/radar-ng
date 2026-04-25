@@ -9,6 +9,7 @@
 # Image naming:
 #   registry.vanillax.me/radar-ng-{service}:latest
 #   registry.vanillax.me/radar-ng-{service}:git-<short-sha>
+#   registry.vanillax.me/radar-ng-{service}:$VERSION  (optional; e.g. v1.0.1)
 
 set -euo pipefail
 
@@ -47,23 +48,34 @@ build_push() {
   local context="${spec##*;}"
   local latest_tag="${REGISTRY}/radar-ng-${name}:latest"
   local sha_tag="${REGISTRY}/radar-ng-${name}:git-${SHA}"
+  local extra_args=()
+  local extra_tags=()
+  if [[ -n "${VERSION:-}" ]]; then
+    local ver_tag="${REGISTRY}/radar-ng-${name}:${VERSION}"
+    extra_args+=(-t "$ver_tag")
+    extra_tags+=("$ver_tag")
+  fi
 
   echo ""
   echo "──────────────────────────────────────────"
   echo "  $name"
   echo "  dockerfile: $dockerfile"
   echo "  context:    $context"
-  echo "  tags:       $latest_tag, $sha_tag"
+  echo "  tags:       $latest_tag, $sha_tag${extra_tags:+, ${extra_tags[*]}}"
   echo "──────────────────────────────────────────"
 
   docker build \
     -t "$latest_tag" \
     -t "$sha_tag" \
+    "${extra_args[@]}" \
     -f "$REPO_ROOT/$dockerfile" \
     "$REPO_ROOT/$context"
 
   docker push "$latest_tag"
   docker push "$sha_tag"
+  for t in "${extra_tags[@]}"; do
+    docker push "$t"
+  done
   echo "[done] $name"
 }
 
