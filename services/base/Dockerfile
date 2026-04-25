@@ -25,7 +25,15 @@ WORKDIR /app
 COPY base/requirements.txt /tmp/base-requirements.txt
 RUN pip install --no-cache-dir -r /tmp/base-requirements.txt
 
+# Pre-create the non-root 'app' user (UID 1000) used by every child image.
+# Children still run their RUN apt-get / pip steps as root (no USER set
+# here), then add `USER 1000` at the end of their Dockerfile to drop privs
+# for the runtime CMD. ENV HOME is set so libraries that touch ~/.cache
+# (matplotlib, pyart) have a writable place to land.
+RUN useradd -u 1000 -m -s /bin/sh app
+
 # Common env defaults — overridden per-service
 ENV TILE_DIR=/data/tiles \
     STATE_DIR=/data/state \
-    LOG_LEVEL=INFO
+    LOG_LEVEL=INFO \
+    HOME=/home/app

@@ -9,4 +9,6 @@ ENV TILE_DIR=/data/tiles \
     PALETTES=classic \
     POLL_INTERVAL=120
 
+USER 1000
+
 CMD ["python", "-u", "/app/ingest.py"]

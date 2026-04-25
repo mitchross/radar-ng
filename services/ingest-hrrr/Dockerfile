@@ -11,4 +11,6 @@ ENV TILE_DIR=/data/tiles \
     FORECAST_HOURS=18 \
     EXTENDED_FORECAST_HOURS=48
 
+USER 1000
+
 CMD ["python", "-u", "/app/ingest.py"]

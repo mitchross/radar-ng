@@ -14,4 +14,6 @@ ENV STATE_DIR=/data/state \
     LIGHTNING_LON_MIN=-130 \
     LIGHTNING_LON_MAX=-50
 
+USER 1000
+
 CMD ["python", "-u", "/app/ingest.py"]

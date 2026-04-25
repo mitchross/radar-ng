@@ -25,4 +25,6 @@ ENV TILE_DIR=/data/tiles \
     NOWCAST_STEP_MIN=5 \
     NOWCAST_INPUT_FRAMES=4
 
+USER 1000
+
 CMD ["python", "-u", "/app/nowcast.py"]
