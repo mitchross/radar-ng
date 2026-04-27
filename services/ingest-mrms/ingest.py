@@ -34,7 +34,15 @@ from grid_dump import cleanup_old_grids, write_grid  # type: ignore  # noqa: E40
 from storms import write_storms_json  # type: ignore  # noqa: E402
 
 MRMS_BASE = "https://noaa-mrms-pds.s3.amazonaws.com"
-MRMS_PREFIX = "CONUS/MergedBaseReflectivity_00.50"
+# Default to the QC-applied base reflectivity — NOAA filters ground clutter,
+# anomalous propagation, and biological returns (birds/bugs) so the rendered
+# tiles match what consumer apps like AccuWeather/RadarScope show, instead of
+# the speckly raw 0.5° slice. Override per-deployment via env var:
+#   CONUS/MergedBaseReflectivityQC_00.50   default · clean low-elevation slice
+#   CONUS/MergedReflectivityQComposite     full-atmosphere composite
+#   CONUS/MergedBaseReflectivity_00.50     raw (pre-QC) — for diagnostics
+MRMS_PREFIX = os.environ.get("MRMS_PREFIX", "CONUS/MergedBaseReflectivityQC_00.50")
+LAYER_NAME = os.environ.get("LAYER_NAME", "radar")
 TILE_DIR = os.environ.get("TILE_DIR", "/data/tiles")
 STATE_DIR = os.environ.get("STATE_DIR", "/data/state")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "120"))
@@ -152,16 +160,16 @@ def extract_timestamp(key: str) -> str:
 
 def cleanup_old_tiles(base_dir: Path, retention_hours: int) -> None:
     """Remove timestamp subtrees older than cutoff across every palette."""
-    radar_dir = base_dir / "radar"
-    if not radar_dir.exists():
+    layer_dir = base_dir / LAYER_NAME
+    if not layer_dir.exists():
         return
     cutoff = time.time() - (retention_hours * 3600)
 
     # Two layouts are possible for backward compat:
-    #   /radar/{timestamp}/{z}/...            (legacy, no palette)
-    #   /radar/{palette}/{timestamp}/{z}/...  (multi-palette)
+    #   /{layer}/{timestamp}/{z}/...            (legacy, no palette)
+    #   /{layer}/{palette}/{timestamp}/{z}/...  (multi-palette)
     candidates: list[Path] = []
-    for entry in sorted(radar_dir.iterdir()):
+    for entry in sorted(layer_dir.iterdir()):
         if not entry.is_dir():
             continue
         # Heuristic: timestamp dirs start with a digit (ISO date); palette dirs are alpha.
@@ -177,7 +185,7 @@ def cleanup_old_tiles(base_dir: Path, retention_hours: int) -> None:
             continue
         if dt.timestamp() < cutoff:
             shutil.rmtree(ts_dir, ignore_errors=True)
-            log.info("retention_expired", extra={"layer": "radar", "timestamp": ts_dir.name, "path": str(ts_dir)})
+            log.info("retention_expired", extra={"layer": LAYER_NAME, "timestamp": ts_dir.name, "path": str(ts_dir)})
 
 
 def _render_palette(
@@ -195,7 +203,7 @@ def _render_palette(
     rgba = apply_color_table(data, ctable)
     if flip:
         rgba = np.flipud(rgba)
-    out_dir = str(tile_base / "radar" / pname / timestamp)
+    out_dir = str(tile_base / LAYER_NAME / pname / timestamp)
     return render_tiles(
         rgba=rgba,
         lats=lats_arr,
@@ -227,7 +235,7 @@ def _process_key(
 
     grid_data = np.flipud(data) if flip else data
     try:
-        write_grid("radar", timestamp, grid_data, lats_arr, lons_arr, unit="dBZ")
+        write_grid(LAYER_NAME, timestamp, grid_data, lats_arr, lons_arr, unit="dBZ")
     except Exception as exc:  # noqa: BLE001
         log.warning("grid_dump_failed", extra={"err": str(exc)})
 
@@ -249,7 +257,7 @@ def _process_key(
             count = fut.result()
             log.info(
                 "rendered",
-                extra={"layer": "radar", "palette": pname, "timestamp": timestamp, "tiles": count},
+                extra={"layer": LAYER_NAME, "palette": pname, "timestamp": timestamp, "tiles": count},
             )
         except Exception as exc:  # noqa: BLE001
             log.error("palette_render_failed", extra={"palette": pname, "err": str(exc)})

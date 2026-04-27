@@ -1,6 +1,6 @@
 {
   "version": 8,
-  "name": "StormScope Light (Positron)",
+  "name": "radar-ng Light (Positron)",
   "glyphs": "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
   "sources": {
     "protomaps": {

@@ -43,7 +43,7 @@ DAILY_FIELDS = (
     "precipitation_probability_max,uv_index_max,sunrise,sunset"
 )
 
-app = FastAPI(title="StormScope Tile API")
+app = FastAPI(title="radar-ng Tile API")
 
 _forecast_cache: dict[str, tuple[float, dict]] = {}
 _metrics = {
@@ -505,18 +505,18 @@ async def metrics() -> PlainTextResponse:
             )
 
     for k, v in _metrics.items():
-        lines.append(f"# TYPE stormscope_{k} counter")
-        lines.append(f"stormscope_{k} {v}")
+        lines.append(f"# TYPE radar_ng_{k} counter")
+        lines.append(f"radar_ng_{k} {v}")
 
-    lines.append("# TYPE stormscope_tile_timestamps gauge")
+    lines.append("# TYPE radar_ng_tile_timestamps gauge")
     for layer, count in sorted(layer_counts.items()):
-        lines.append(f'stormscope_tile_timestamps{{layer="{layer}"}} {count}')
+        lines.append(f'radar_ng_tile_timestamps{{layer="{layer}"}} {count}')
 
     radar_dir = tile_base / "radar"
     newest = _newest_mtime(radar_dir)
     if newest is not None:
         age = int(time.time() - newest)
-        lines.append("# TYPE stormscope_mrms_age_seconds gauge")
-        lines.append(f"stormscope_mrms_age_seconds {age}")
+        lines.append("# TYPE radar_ng_mrms_age_seconds gauge")
+        lines.append(f"radar_ng_mrms_age_seconds {age}")
 
     return PlainTextResponse("\n".join(lines) + "\n")

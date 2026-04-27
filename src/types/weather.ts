@@ -101,6 +101,7 @@ export interface SelfHostedManifest {
 
 export type LayerType =
   | "radar"
+  | "radar-composite"
   | "radar-hrrr"
   | "temperature"
   | "wind"

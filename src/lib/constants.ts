@@ -54,6 +54,7 @@ export const SELF_HOSTED = {
 
 export const LAYERS: LayerConfig[] = [
   { id: "radar", label: "Radar", icon: "R", isFillLayer: true, defaultVisible: true, minZoom: 1, maxZoom: 12 },
+  { id: "radar-composite", label: "Composite", icon: "X", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
   { id: "radar-hrrr", label: "HRRR", icon: "H", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
   { id: "wind", label: "Wind", icon: "W", isFillLayer: false, defaultVisible: false, minZoom: 1, maxZoom: 9 },
   { id: "temperature", label: "Temp", icon: "T", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },

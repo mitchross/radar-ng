@@ -17,6 +17,7 @@ const PLAYBACK_MS = 420;
 
 const LAYER_TITLE: Record<LayerType, string> = {
   radar: "Precipitation",
+  "radar-composite": "Composite Refl.",
   "radar-hrrr": "Precipitation",
   temperature: "Temperature",
   wind: "Wind",

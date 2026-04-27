@@ -14,6 +14,7 @@ import type { LayerType } from "../../types/weather";
 
 const LAYER_LABEL: Record<LayerType, string> = {
   radar: "REFLECTIVITY",
+  "radar-composite": "COMPOSITE",
   "radar-hrrr": "HRRR FORECAST",
   temperature: "TEMPERATURE",
   wind: "WIND",

@@ -1,4 +1,4 @@
-# StormScope · radar-ng
+# radar-ng
 
 > Hyper-local weather radar with a self-hosted tile pipeline. CARROT-Weather UI energy, NWS-grade data, runs on a homelab.
 
@@ -10,9 +10,9 @@
 
 ## Why this exists
 
-Commercial radar apps rate-limit you, slap ads on the freezing-rain warning, and round your zip code to the nearest 5 miles. StormScope is the opposite: pure NOAA data, sub-2-minute refresh, every layer the public APIs offer, **rendered on hardware you own**. The phone app is the windshield. The Kubernetes pipeline is the engine.
+Commercial radar apps rate-limit you, slap ads on the freezing-rain warning, and round your zip code to the nearest 5 miles. radar-ng is the opposite: pure NOAA data, sub-2-minute refresh, every layer the public APIs offer, **rendered on hardware you own**. The phone app is the windshield. The Kubernetes pipeline is the engine.
 
-| | StormScope | Most weather apps |
+| | radar-ng | Most weather apps |
 |---|---|---|
 | Radar latency | < 3 min from NOAA | 5–15 min |
 | Data source | Direct NOAA MRMS / HRRR | Third-party aggregator |

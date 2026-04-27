@@ -22,6 +22,7 @@ import {
   isNightAt,
 } from "../../lib/cumulusTheme";
 import WeatherIcon from "../../components/weather/WeatherIcon";
+import { RadarMiniMap } from "../../components/home/RadarMiniMap";
 
 export default function HomeScreen() {
   useLocation();
@@ -304,40 +305,10 @@ export default function HomeScreen() {
             })}
           </View>
 
-          {/* Radar tease */}
-          <TouchableOpacity
-            style={styles.radarTease}
-            activeOpacity={0.8}
-            onPress={() => router.push("/radar")}
-          >
-            <LinearGradient
-              colors={["#1a2540", "#0d1428"]}
-              style={StyleSheet.absoluteFill}
-            />
-            {/* Concentric radar sweep motif on the right */}
-            <View style={styles.radarSweepWrap} pointerEvents="none">
-              <View style={[styles.radarRing, styles.radarRing1]} />
-              <View style={[styles.radarRing, styles.radarRing2]} />
-              <View style={[styles.radarRing, styles.radarRing3]} />
-              <View style={styles.radarCenter} />
-              <View style={styles.radarArm} />
-            </View>
-            <View style={styles.radarLive}>
-              <View style={styles.radarLiveDot} />
-              <Text style={styles.radarLiveText}>LIVE</Text>
-            </View>
-            <View style={styles.radarBottom}>
-              <View>
-                <Text style={styles.radarLabel}>RADAR</Text>
-                <Text style={styles.radarTitle}>
-                  {nowcastHeadline ? "Precip developing nearby" : "Clear skies overhead"}
-                </Text>
-              </View>
-              <View style={styles.radarChevronBox}>
-                <Text style={styles.chevron}>{"\u203A"}</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
+          {/* Real radar mini-map — see components/home/RadarMiniMap.tsx */}
+          <RadarMiniMap
+            headline={nowcastHeadline ? "Precip developing nearby" : "Clear skies overhead"}
+          />
 
           {/* Stat grid */}
           <View style={styles.statGrid}>

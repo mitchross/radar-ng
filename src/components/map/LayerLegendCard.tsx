@@ -6,6 +6,29 @@ import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import type { LayerType } from "../../types/weather";
 import { cumulus } from "../../lib/cumulusTheme";
+import { useWeatherStore } from "../../stores/useWeatherStore";
+
+// Source-of-truth tag shown at the top of the legend so the user knows
+// whether they're staring at observed radar (live MRMS), nowcast (pysteps
+// extrapolation), or a model forecast (HRRR). Clearer than a separate badge
+// because the legend is what people look at to understand what they see.
+const LAYER_SOURCE: Record<LayerType, "OBSERVED" | "NOWCAST" | "FORECAST"> = {
+  radar: "OBSERVED",
+  "radar-composite": "OBSERVED",
+  "radar-hrrr": "FORECAST",
+  temperature: "FORECAST",
+  wind: "FORECAST",
+  "precip-type": "FORECAST",
+  cape: "FORECAST",
+  "precip-accum": "FORECAST",
+  cloud: "FORECAST",
+};
+
+const SOURCE_COLOR: Record<"OBSERVED" | "NOWCAST" | "FORECAST", string> = {
+  OBSERVED: "#52c47a",
+  NOWCAST: "#7ec3ff",
+  FORECAST: "#d4a52e",
+};
 
 type LegendStop = { label: string; color: string };
 
@@ -30,6 +53,10 @@ const PRECIP_STOPS: LegendStop[] = [
 const LEGENDS: Record<LayerType, LegendSpec> = {
   radar: {
     title: "Precipitation",
+    stops: PRECIP_STOPS,
+  },
+  "radar-composite": {
+    title: "Composite Reflectivity",
     stops: PRECIP_STOPS,
   },
   "radar-hrrr": {
@@ -101,13 +128,32 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
 
 export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   const legend = LEGENDS[activeLayer] ?? LEGENDS.radar;
+  const timelineMode = useWeatherStore((s) => s.timelineMode);
+  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
+  const frames = useWeatherStore((s) => s.frames);
+
+  // For the radar layer, the source tag shifts based on which frame the
+  // user is sitting on: past = OBSERVED, near-future = NOWCAST, far-future
+  // = FORECAST (HRRR). Other layers are statically tagged.
+  let source = LAYER_SOURCE[activeLayer] ?? "OBSERVED";
+  if ((activeLayer === "radar" || activeLayer === "radar-hrrr") && timelineMode === "forecast") {
+    const frame = frames[currentFrameIndex];
+    if (frame?.source === "nowcast") source = "NOWCAST";
+    else if (frame?.source === "radar-hrrr") source = "FORECAST";
+    else source = "OBSERVED";
+  }
 
   return (
     <View style={styles.wrap}>
       <View style={styles.card}>
-        <Text style={styles.title} numberOfLines={1}>
-          {legend.title}
-        </Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.title} numberOfLines={1}>
+            {legend.title}
+          </Text>
+          <View style={[styles.tag, { backgroundColor: SOURCE_COLOR[source] + "33", borderColor: SOURCE_COLOR[source] }]}>
+            <Text style={[styles.tagText, { color: SOURCE_COLOR[source] }]}>{source}</Text>
+          </View>
+        </View>
         <View style={styles.scaleRow}>
           <LinearGradient
             colors={legend.stops.map((s) => s.color) as [string, string, ...string[]]}
@@ -152,11 +198,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(10,20,40,0.06)",
   },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+    gap: 6,
+  },
   title: {
     color: "#1a2030",
     fontSize: 11,
     fontWeight: "600",
-    marginBottom: 8,
+    flexShrink: 1,
+  },
+  tag: {
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  tagText: {
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 0.6,
   },
   scaleRow: {
     flexDirection: "row",

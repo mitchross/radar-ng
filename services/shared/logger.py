@@ -38,7 +38,7 @@ class JsonFormatter(logging.Formatter):
 
 def get_logger(service: str) -> logging.Logger:
     logger = logging.getLogger(service)
-    if getattr(logger, "_stormscope_configured", False):
+    if getattr(logger, "_radar_ng_configured", False):
         return logger
     handler = logging.StreamHandler(stream=sys.stdout)
     handler.setFormatter(JsonFormatter())
@@ -46,7 +46,7 @@ def get_logger(service: str) -> logging.Logger:
     logger.addHandler(handler)
     logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
     logger.propagate = False
-    logger._stormscope_configured = True  # type: ignore[attr-defined]
+    logger._radar_ng_configured = True  # type: ignore[attr-defined]
     return logger
 
 
