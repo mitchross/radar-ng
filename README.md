@@ -1,594 +1,531 @@
-# StormScope
+# StormScope · radar-ng
 
-Hyper-local weather radar app with a self-hosted tile pipeline. CARROT Weather-inspired UI with weather-adaptive gradients, snarky personality, and glassmorphism cards.
+> Hyper-local weather radar with a self-hosted tile pipeline. CARROT-Weather UI energy, NWS-grade data, runs on a homelab.
 
-Built with Expo SDK 55 (React Native) for the frontend and a Docker-based Python pipeline for the backend.
+[![Status](https://img.shields.io/badge/status-self--hosted-blue)](https://radar-ng-api.vanillax.me/api/health) [![Stack](https://img.shields.io/badge/expo-SDK%2055-000)](https://expo.dev) [![Backend](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/) [![Cluster](https://img.shields.io/badge/k8s-talos%20%2B%20argocd-326CE5)](https://argo-cd.readthedocs.io/)
 
-![App Screenshot](/docs/screenshots/hero.png)
-
----
-
-## Architecture Overview
-
-```
-                              StormScope Architecture
-  
-  +------------------------------------------------------------------+
-  |                        NOAA Public Data                          |
-  |                                                                  |
-  |   MRMS S3 Bucket              HRRR S3 Bucket                    |
-  |   (2-min radar)               (hourly forecast)                  |
-  |   s3://noaa-mrms-pds          s3://noaa-hrrr-bdp-pds            |
-  +--------+--------------------------+------------------------------+
-           |                          |
-           v                          v
-  +--------+---------+    +-----------+---------+
-  |  ingest-mrms     |    |  ingest-hrrr        |
-  |  (Python, 2min)  |    |  (Python, 60min)    |
-  |                  |    |                     |
-  |  GRIB2 decode    |    |  GRIB2 decode       |
-  |  Color table     |    |  5 variables:       |
-  |  Tile render     |    |  - reflectivity     |
-  |  z4-z9           |    |  - temperature      |
-  +--------+---------+    |  - wind (U+V)       |
-           |              |  - CAPE              |
-           |              |  - precip type       |
-           |              |  Tile render z4-z9   |
-           |              +-----------+----------+
-           |                          |
-           v                          v
-  +-----------------------------------------------+
-  |            Shared Volume: /data/tiles          |
-  |                                                |
-  |  /radar/{timestamp}/{z}/{x}/{y}.png            |
-  |  /temperature/{timestamp}/{z}/{x}/{y}.png      |
-  |  /wind/{timestamp}/{z}/{x}/{y}.png             |
-  |  /cape/{timestamp}/{z}/{x}/{y}.png             |
-  |  /precip-type/{timestamp}/{z}/{x}/{y}.png      |
-  |  /radar-hrrr/{timestamp}/{z}/{x}/{y}.png       |
-  +-----+---------------------------+--------------+
-        |                           |
-        v                           v
-  +-----+----------+     +---------+---------+
-  |  tile-cleanup   |     |  tile-server      |
-  |  (30min cron)   |     |  Caddy + FastAPI  |
-  |                 |     |  :8080            |
-  |  radar: -4h     |     |                   |
-  |  hrrr:  -8h     |     |  /tiles/* (static)|
-  +-----------------+     |  /api/manifest    |
-                          |  /api/forecast    |
-                          |  /api/health      |
-                          +--------+----------+
-                                   |
-                                   | HTTPS :8080
-                                   v
-  +-----------------------------------------------+
-  |              Mobile App (Expo SDK 55)          |
-  |                                                |
-  |  +------------------+  +--------------------+  |
-  |  | Weather Tab      |  | Radar Tab          |  |
-  |  | (forecast hero)  |  | (MapLibre map)     |  |
-  |  |                  |  |                    |  |
-  |  | Gradient bg      |  | Tile overlays      |  |
-  |  | Snarky quotes    |  | Timeline slider    |  |
-  |  | Hourly chart     |  | Layer picker       |  |
-  |  | 7-day forecast   |  | Alert polygons     |  |
-  |  | Alert cards      |  | Play/pause         |  |
-  |  +------------------+  +--------------------+  |
-  |                                                |
-  |  Data Sources:                                 |
-  |   Free: IEM NEXRAD + Open-Meteo + NWS          |
-  |   Self-Hosted: Your tile server pipeline       |
-  +------------------------------------------------+
-```
+![Hero](docs/screenshots/hero.png)
 
 ---
 
-## How It Works
+## Why this exists
 
-### Dual Data Source Model
+Commercial radar apps rate-limit you, slap ads on the freezing-rain warning, and round your zip code to the nearest 5 miles. StormScope is the opposite: pure NOAA data, sub-2-minute refresh, every layer the public APIs offer, **rendered on hardware you own**. The phone app is the windshield. The Kubernetes pipeline is the engine.
 
-StormScope runs in two modes:
-
-**Free Tier** (no server required):
-- **Radar tiles** from [IEM NEXRAD](https://mesonet.agron.iastate.edu/) — NWS-colored reflectivity, 50 minutes of history at 5-minute intervals
-- **Forecasts** from [Open-Meteo](https://open-meteo.com/) — current conditions, 24h hourly, 7-day daily
-- **Alerts** from [NWS API](https://api.weather.gov/) — active weather warnings with polygon geometry
-
-**Self-Hosted Tier** (your server):
-- **MRMS radar** — 2-minute updates, ~1km resolution, 4 hours of history
-- **HRRR forecast layers** — temperature, wind, CAPE, precipitation type, reflectivity. Hourly updates with 24-hour forecast horizon
-- **Forecast proxy** — Open-Meteo with 15-minute server-side cache
-- Switch between modes in Settings
-
-### Tile Pipeline
-
-```
-NOAA S3 (GRIB2)
-     |
-     v
-[pygrib decode] -----> 2D numpy array (lat x lon grid)
-     |
-     v
-[color table apply] -> RGBA uint8 array (NWS standard colors)
-     |
-     v
-[mercantile math] ---> Slippy map tile coordinates (z/x/y)
-     |
-     v
-[Pillow resize] -----> 256x256 PNG tiles per zoom level
-     |
-     v
-/data/tiles/{layer}/{ISO-timestamp}/{z}/{x}/{y}.png
-     |
-     v
-[Caddy static serve] -> HTTP :8080/tiles/...
-     |
-     v
-[MapLibre RasterSource] -> rendered on map
-```
-
-Each ingest service downloads GRIB2 files from NOAA's public S3 buckets, decodes the meteorological data, applies a color lookup table (NWS standard colors), and renders XYZ slippy map tiles at zoom levels 4-9.
-
-### Weather-Adaptive UI
-
-The app changes its entire appearance based on current weather conditions:
-
-| Condition | Background Gradient | Accent |
-|-----------|-------------------|--------|
-| Clear (day) | Blue sky (#1565C0 -> #42A5F5) | Gold |
-| Clear (night) | Deep navy (#0D1B2A -> #2C3E50) | Light blue |
-| Overcast | Slate gray (#455A64 -> #78909C) | Silver |
-| Rain | Dark blue (#1A237E -> #1976D2) | Blue |
-| Snow | Blue-gray (#546E7A -> #B0BEC5) | White |
-| Thunderstorm | Deep purple (#1A0A2E -> #4A148C) | Lavender |
-
-Temperature-adaptive font weight (CARROT Weather's signature): the hero temperature number gets **bolder as it gets warmer** and thinner as it gets colder.
+| | StormScope | Most weather apps |
+|---|---|---|
+| Radar latency | < 3 min from NOAA | 5–15 min |
+| Data source | Direct NOAA MRMS / HRRR | Third-party aggregator |
+| Forecast cache | Self-hosted Open-Meteo | Vendor-locked |
+| Privacy | Your server, your tiles | Sells your location |
+| Layer count | 8 (radar, temp, wind, CAPE, precip-type, precip-accum, cloud, lightning, tropical, nowcast) | 1–3 |
+| Cost at scale | $0 (you pay power) | Tier-gated |
 
 ---
 
-## Data Sources
+## System architecture
 
-### MRMS (Multi-Radar Multi-Sensor)
+```mermaid
+flowchart TB
+    subgraph Sources["☁️ Public Data Sources"]
+        MRMS[("NOAA MRMS S3<br/>base reflectivity · 2 min")]
+        HRRR[("NOAA HRRR S3<br/>forecast · hourly")]
+        GFS[("NOAA GFS<br/>global · 6 hr")]
+        NLDN[("Lightning feed<br/>NLDN · 1 min")]
+        NHC[("NHC tropical<br/>storm track")]
+        NWS[("NWS API<br/>active alerts")]
+    end
 
-| Property | Value |
-|----------|-------|
-| Source | `s3://noaa-mrms-pds/CONUS/MergedBaseReflectivity_00.50/` |
-| Format | GRIB2 (gzip compressed) |
-| Resolution | ~1 km (0.01 degree) |
-| Update frequency | Every 2 minutes |
-| Coverage | CONUS (Continental US) |
-| Retention | 4 hours |
-| Tile zooms | z4 - z9 |
+    subgraph Ingest["⚙️ Ingest Layer · Python 3.12"]
+        IM["ingest-mrms<br/><sub>parallel palette render</sub>"]
+        IH["ingest-hrrr<br/><sub>5 forecast variables</sub>"]
+        IL["ingest-lightning"]
+        IT["ingest-tropical"]
+        NOW["nowcast<br/><sub>pysteps S-PROG</sub>"]
+        OMS["open-meteo-sync<br/><sub>cron · GFS/HRRR</sub>"]
+    end
 
-### HRRR (High-Resolution Rapid Refresh)
+    subgraph Storage["💾 Shared Storage · Longhorn"]
+        TILES[("tiles PVC<br/>50 Gi")]
+        GRIDS[("grids PVC<br/>20 Gi")]
+        STATE[("state PVC<br/>5 Gi")]
+        OMD[("openmeteo-data<br/>30 Gi")]
+    end
 
-| Property | Value |
-|----------|-------|
-| Source | `s3://noaa-hrrr-bdp-pds/hrrr.{date}/conus/` |
-| Format | GRIB2 |
-| Resolution | 3 km |
-| Update frequency | Every hour |
-| Forecast horizon | 24 hours |
-| Retention | 8 hours |
-| Tile zooms | z4 - z9 |
+    subgraph Serving["🚀 Serving Layer"]
+        TS["tile-server<br/><sub>Caddy + FastAPI · HPA 2-6</sub>"]
+        BM["basemap<br/><sub>Protomaps · go-pmtiles</sub>"]
+        OM["open-meteo<br/><sub>self-hosted forecast API</sub>"]
+    end
 
-**Extracted variables:**
+    subgraph Edge["🌐 Edge"]
+        GW["Cloudflare → gateway-external<br/>radar-ng-api.vanillax.me"]
+    end
 
-| Layer | GRIB2 Variable | Unit | Output |
-|-------|---------------|------|--------|
-| Radar (HRRR) | Composite reflectivity (entire atmosphere) | dBZ | `/tiles/radar-hrrr/` |
-| Temperature | 2m temperature | Converted K -> F | `/tiles/temperature/` |
-| Wind | 10m U-wind + V-wind | Computed speed, m/s -> mph | `/tiles/wind/` |
-| CAPE | Convective Available Potential Energy | J/kg | `/tiles/cape/` |
-| Precip Type | Categorical rain/snow/freezing rain/ice | Category ID | `/tiles/precip-type/` |
+    subgraph Client["📱 Clients · Expo SDK 55"]
+        APP["Phone app<br/><sub>iOS · Android</sub>"]
+        WATCH["Apple Watch"]
+        CAR["CarPlay"]
+    end
 
-### Free Tier APIs
+    MRMS --> IM
+    HRRR --> IH
+    GFS --> OMS
+    NLDN --> IL
+    NHC --> IT
 
-| API | URL | Rate | Auth |
-|-----|-----|------|------|
-| IEM NEXRAD | `mesonet.agron.iastate.edu/cache/tile.py/1.0.0/` | Unlimited | None |
-| Open-Meteo | `api.open-meteo.com/v1/forecast` | 10k/day | None |
-| NWS Alerts | `api.weather.gov/alerts/active` | Generous | User-Agent |
+    IM --> TILES
+    IM --> GRIDS
+    IH --> TILES
+    IH --> GRIDS
+    IL --> STATE
+    IT --> STATE
+    OMS --> OMD
+    GRIDS --> NOW --> TILES
+    OMD --> OM
+
+    TILES --> TS
+    GRIDS --> TS
+    STATE --> TS
+    OM --> TS
+    BM --> TS
+
+    TS --> GW
+    GW --> APP
+    NWS -.direct.-> APP
+    APP --> WATCH
+    APP --> CAR
+
+    classDef src fill:#1e3a5f,stroke:#4a90e2,color:#fff
+    classDef ing fill:#1a4d3a,stroke:#52c47a,color:#fff
+    classDef stor fill:#4a3a1e,stroke:#d4a52e,color:#fff
+    classDef srv fill:#3a1e4d,stroke:#a456d4,color:#fff
+    classDef edge fill:#4d1e1e,stroke:#e85a5a,color:#fff
+    classDef cli fill:#1e4d4a,stroke:#56d4ce,color:#fff
+
+    class MRMS,HRRR,GFS,NLDN,NHC,NWS src
+    class IM,IH,IL,IT,NOW,OMS ing
+    class TILES,GRIDS,STATE,OMD stor
+    class TS,BM,OM srv
+    class GW edge
+    class APP,WATCH,CAR cli
+```
+
+**One namespace, ten workloads, one promise:** every box runs on a Talos Linux cluster managed by ArgoCD, manifests in [`talos-argocd-proxmox/my-apps/development/radar-ng`](https://gitea.vanillax.me/vanillax/talos-argocd-proxmox).
 
 ---
 
-## Color Tables
+## Per-frame data pipeline
 
-All layers use NWS-standard color mappings defined in `services/shared/color_tables.json`:
+What happens when NOAA drops a new radar scan on S3:
 
-### Reflectivity (dBZ)
-```
-  5 dBZ  ████  Light green    (light rain)
- 20 dBZ  ████  Yellow         (moderate)
- 35 dBZ  ████  Orange         (heavy)
- 45 dBZ  ████  Red            (severe)
- 55 dBZ  ████  Dark red       (hail risk)
- 65 dBZ  ████  Magenta        (extreme)
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S3 as NOAA MRMS S3
+    participant ING as ingest-mrms
+    participant POOL as ThreadPool(3)
+    participant FS as tiles PVC
+    participant API as tile-server
+    participant APP as Mobile app
+
+    loop every 120 s
+        ING->>S3: ListObjects ?prefix=…
+        S3-->>ING: 12 keys (3 unprocessed)
+        Note over ING: newest-first<br/>BACKLOG_PER_CYCLE=3
+        ING->>S3: GET latest.grib2.gz (~8 MB)
+        S3-->>ING: GRIB2 payload
+        Note over ING: pygrib decode<br/>→ float32 lat×lon grid
+        ING->>FS: write raw grid (.bin)<br/>storm-cell JSON
+
+        par classic palette
+            POOL->>FS: 4 200 PNGs · z4–z9
+        and vivid palette
+            POOL->>FS: 4 200 PNGs · z4–z9
+        and muted palette
+            POOL->>FS: 4 200 PNGs · z4–z9
+        end
+
+        Note over ING: state.add(key)<br/>commit per frame
+    end
+
+    APP->>API: GET /api/manifest.json
+    API-->>APP: { layers, timestamps, palettes }
+    APP->>API: GET /tiles/radar/{palette}/{ts}/{z}/{x}/{y}.png
+    API-->>APP: 256×256 PNG (Caddy gzip)
+    Note over APP: MapLibre RasterSource<br/>rasterFadeDuration: 0
 ```
 
-### Temperature (F)
-```
- -40F    ████  Purple         (extreme cold)
-  15F    ████  Blue           (below freezing)
-  32F    ████  Cyan           (freezing)
-  55F    ████  Green          (cool)
-  75F    ████  Yellow         (warm)
-  90F    ████  Orange         (hot)
- 100F+   ████  Red            (extreme heat)
+**Hot path numbers** (after Phase 2 perf work):
+
+| stage | input | output | duration |
+|---|---|---|---|
+| S3 list | prefix scan | 12 keys | ~ 200 ms |
+| GRIB2 download | latest object | 8 MB | ~ 1 s |
+| pygrib decode | gzipped GRIB | float32 grid | ~ 800 ms |
+| **palette render** ×3 | float32 → RGBA → PNG pyramid | 12 600 PNGs | **~ 2 min parallel** (was ~ 22 min serial) |
+| storm-cell detect | grid → JSON | 1 file | ~ 300 ms |
+| total per frame | — | — | **≈ 2 min** |
+
+---
+
+## Frontend architecture
+
+```mermaid
+flowchart LR
+    subgraph Net["🌐 network layer"]
+        Manifest["useManifest()<br/><sub>refetch 60 s</sub>"]
+        Forecast["useForecast()"]
+        Alerts["useAlerts()"]
+        Wind["useWindField()"]
+        Storms["useStormCells()"]
+        Light["useLightning()"]
+        Trop["useTropical()"]
+    end
+
+    subgraph Store["🧠 state · zustand + mmkv"]
+        WS["useWeatherStore<br/><sub>frames · index · layer · palette<br/>opacity · serverUrl · timeline mode</sub>"]
+        MMKV[("MMKV<br/>persist")]
+    end
+
+    subgraph Map["🗺 map composition"]
+        WM["WeatherMap<br/><sub>MapLibre RN</sub>"]
+        RO["RadarOverlay"]
+        WLO["WeatherLayerOverlay"]
+        AP["AlertPolygon"]
+        SC["StormCellsOverlay"]
+        LO["LightningOverlay"]
+        TO["TropicalOverlay"]
+        WP["WindParticlesOverlay<br/><sub>Skia worklet</sub>"]
+    end
+
+    subgraph Chrome["📐 chrome"]
+        TL["TimelineBar"]
+        FAB["RadarFABs"]
+        LL["LayerLegendCard"]
+        EYE["Eyedropper"]
+        MSP["MapStylePicker"]
+    end
+
+    subgraph Targets["🎯 platform targets"]
+        IOS[iPhone]
+        AND[Android]
+        WATCH[watchOS]
+        CARP[CarPlay]
+    end
+
+    Manifest --> WS
+    Forecast --> WS
+    Alerts --> WS
+    Wind --> WP
+    Storms --> SC
+    Light --> LO
+    Trop --> TO
+
+    WS <--> MMKV
+
+    WS --> RO
+    WS --> WLO
+    WS --> TL
+    WS --> FAB
+    WS --> LL
+
+    WM --- RO & WLO & AP & SC & LO & TO
+
+    RO --> IOS & AND
+    WP --> IOS & AND
+    WS --> WATCH
+    WS --> CARP
+
+    classDef net fill:#1e3a5f,stroke:#4a90e2,color:#fff
+    classDef st fill:#4a3a1e,stroke:#d4a52e,color:#fff
+    classDef map fill:#1a4d3a,stroke:#52c47a,color:#fff
+    classDef ch fill:#3a1e4d,stroke:#a456d4,color:#fff
+    classDef tg fill:#1e4d4a,stroke:#56d4ce,color:#fff
+
+    class Manifest,Forecast,Alerts,Wind,Storms,Light,Trop net
+    class WS,MMKV st
+    class WM,RO,WLO,AP,SC,LO,TO,WP map
+    class TL,FAB,LL,EYE,MSP ch
+    class IOS,AND,WATCH,CARP tg
 ```
 
-### CAPE (J/kg)
-```
- 500     ████  Yellow         (marginal)
-1500     ████  Orange         (moderate)
-2500     ████  Orange-red     (high)
-3500     ████  Red            (extreme)
-4000+    ████  Magenta        (significant severe)
+**Stack rules:** all server data flows `react-query → zustand → component`. Zustand is the single source of truth for layer/palette/timeline state. MapLibre layers are stateless — they re-render off store snapshots. MMKV persists user-tunable bits (server URL, theme, opacity).
+
+---
+
+## Data sources
+
+```mermaid
+flowchart LR
+    subgraph free["Free tier · no server"]
+        IEM[IEM NEXRAD<br/><sub>5-min radar tiles</sub>]
+        OMP[Open-Meteo public<br/><sub>10 k req/day</sub>]
+        NWP[NWS public API<br/><sub>active alerts</sub>]
+    end
+
+    subgraph self["Self-hosted tier · this repo"]
+        SH[radar-ng-api<br/><sub>your tile server</sub>]
+    end
+
+    free --> APP["📱 phone"]
+    self --> APP
+
+    style free fill:#2a2a2a,stroke:#888
+    style self fill:#1a4d3a,stroke:#52c47a
 ```
 
-### Precipitation Type
+Switch in **Settings → Data Source**. Both can run side-by-side; the manifest fetch determines which layers are available.
+
+### Self-hosted layer matrix
+
+| layer | source | cadence | resolution | retention | tile path |
+|---|---|---|---|---|---|
+| **radar** | MRMS MergedBaseReflectivity | 2 min | ~1 km | 4 h | `/tiles/radar/{palette}/{ts}/` |
+| **radar-hrrr** | HRRR composite reflectivity | 1 h × 18 fcst hr | 3 km | 8 h | `/tiles/radar-hrrr/{palette}/{ts}/` |
+| **temperature** | HRRR 2 m temp | 1 h × 24 fcst hr | 3 km | 8 h | `/tiles/temperature/{ts}/` |
+| **wind** | HRRR 10 m U + V | 1 h × 24 fcst hr | 3 km | 8 h | `/tiles/wind/{ts}/` (+ vector grid) |
+| **cape** | HRRR convective energy | 1 h × 24 fcst hr | 3 km | 8 h | `/tiles/cape/{ts}/` |
+| **precip-type** | HRRR categorical | 1 h × 24 fcst hr | 3 km | 8 h | `/tiles/precip-type/{ts}/` |
+| **precip-accum** | HRRR APCP | 1 h × 24 fcst hr | 3 km | 8 h | `/tiles/precip-accum/{ts}/` |
+| **cloud** | HRRR total cloud cover | 1 h × 24 fcst hr | 3 km | 8 h | `/tiles/cloud/{ts}/` |
+| **nowcast** | pysteps S-PROG of MRMS | 2 min × +60 min | 1 km | 1 h | `/tiles/nowcast/{palette}/{ts}/` |
+| **lightning** | NLDN GeoJSON | 1 min | strikes | 1 h | `/api/lightning` |
+| **tropical** | NHC GIS feeds | 6 h | track | 7 d | `/api/tropical` |
+
+### Color palettes
+
+Three palettes per radar layer, applied server-side at render time. Picked in **app → palette FAB**.
+
+| palette | feel | use it for |
+|---|---|---|
+| **classic** | NWS reference | matching what TV meteorologists show |
+| **vivid** | saturated, eye-grabbing | quick severity glance, daytime sun glare |
+| **muted** | desaturated, low-contrast | nighttime / dark-mode overlay |
+
 ```
- Rain             ████  Green
- Snow             ████  Blue
- Freezing Rain    ████  Pink
- Ice Pellets      ████  Purple
- Hail             ████  Orange
+reflectivity (dBZ) → RGBA
+   5 ▓ light green     light rain
+  20 ▓ yellow          moderate
+  35 ▓ orange          heavy
+  45 ▓ red             severe
+  55 ▓ dark red        hail risk
+  65 ▓ magenta         extreme
 ```
 
 ---
 
-## Self-Hosting Guide
+## API surface
 
-### Requirements
+| endpoint | method | description | cache |
+|---|---|---|---|
+| `/api/health` | GET | `ok` / `degraded` (MRMS staleness) | none |
+| `/api/manifest.json` | GET | layers, timestamps, palettes | 15 s |
+| `/api/forecast/{lat}/{lon}` | GET | Open-Meteo proxy | 5 min |
+| `/api/inspect/{layer}/{ts}/{lat}/{lon}` | GET | bilinear point-sample of raw grid | 60 s |
+| `/api/wind-field/{ts}` | GET | int8-packed U/V vectors for Skia | 5 min |
+| `/api/storms/{ts}` | GET | detected cell centroids + tracks | 60 s |
+| `/api/lightning?since=…` | GET | NLDN strikes | 30 s |
+| `/api/tropical` | GET | active NHC systems | 5 min |
+| `/api/metrics` | GET | Prometheus counters + gauges | none |
+| `/tiles/{layer}/{palette}/{ts}/{z}/{x}/{y}.png` | GET | static tile (Caddy) | 120 s |
+| `/basemap/styles/*` | GET | Protomaps style JSON | 1 h |
+| `/basemap/tiles/{z}/{x}/{y}.mvt` | GET | vector basemap (go-pmtiles proxy) | 1 d |
 
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| CPU | 2 cores | 4+ cores |
-| RAM | 2 GB | 4+ GB |
-| Disk | 10 GB free | 20+ GB SSD |
-| Docker | 24.0+ | Latest |
-| Network | 10 Mbps down | 50+ Mbps |
+`GET /api/health` example:
 
-The pipeline downloads ~50-100 MB/hour from NOAA S3 (free, no auth). Tile generation is CPU-intensive during ingest bursts but idle between polls.
+```json
+{"status":"ok","mrms_age_s":118,"mrms_max_age_s":600,"checked_at":"2026-04-27T03:23:09Z"}
+```
 
-**Disk usage estimate:**
-- MRMS radar tiles: ~200 MB per hour (4h retention = ~800 MB)
-- HRRR layers (5 variables x 24 forecast hours): ~2 GB per run (8h retention = ~4 GB)
-- **Total steady-state: ~5 GB**
+If MRMS age exceeds `MRMS_MAX_AGE_S` (default 600 s) the status flips to `degraded` with a `reasons[]` array — useful for paging or for the app to show a "data delayed" banner.
 
-### Quick Start
+---
+
+## Self-hosting
+
+### Hardware sizing
+
+| profile | hosts the | minimum | recommended |
+|---|---|---|---|
+| **lab** | docker-compose, single node | 4 cores · 4 GB · 20 GB SSD | 8 cores · 8 GB · 50 GB SSD |
+| **prod** | full K8s, HRRR + nowcast | 16 cores · 16 GB · 100 GB SSD | 24 cores · 32 GB · 200 GB NVMe |
+
+NOAA pulls ≈ 50–100 MB/h. Steady-state disk ≈ 5 GB; spikes to ~10 GB during HRRR runs.
+
+### Quick start (docker-compose)
 
 ```bash
-# Clone
-git clone https://gitea.vanillax.me/vanillax/stormscope.git
-cd stormscope
-
-# Start the backend pipeline
-cd deploy
+git clone https://gitea.vanillax.me/vanillax/radar-ng.git
+cd radar-ng/deploy
 docker compose up -d
 
-# Verify it's running
+# wait ~2 min for first MRMS frame
 curl http://localhost:8080/api/health
-# {"status": "ok"}
-
-# Check what data is available
 curl http://localhost:8080/api/manifest.json | jq '.layers | keys'
-# ["cape", "precip-type", "radar", "radar-hrrr", "temperature", "wind"]
 ```
 
-MRMS tiles appear within ~2 minutes. HRRR tiles take ~5-10 minutes (large download).
+### Kubernetes (Talos + ArgoCD)
 
-### Docker Compose Architecture
+Manifests live in [`talos-argocd-proxmox/my-apps/development/radar-ng/`](https://gitea.vanillax.me/vanillax/talos-argocd-proxmox/src/branch/main/my-apps/development/radar-ng). Apply with:
 
-```yaml
-# deploy/docker-compose.yml
-services:
-  ingest-mrms:     # Polls NOAA MRMS S3 every 2 min
-  ingest-hrrr:     # Polls NOAA HRRR S3 every 60 min
-  tile-server:     # Caddy + FastAPI on :8080
-  tile-cleanup:    # Removes expired tiles every 30 min
-
-volumes:
-  tiles:           # Shared /data/tiles across all services
+```bash
+kubectl apply -k my-apps/development/radar-ng
 ```
 
-```
-+------------------+    +------------------+
-|   ingest-mrms    |    |   ingest-hrrr    |
-|   (every 2min)   |    |   (every 60min)  |
-+--------+---------+    +--------+---------+
-         |                       |
-         v                       v
-   +-----+-----------------------+------+
-   |        tiles volume                |
-   |        /data/tiles/                |
-   +-----+-----------------------+------+
-         |                       |
-         v                       v
-+--------+---------+    +--------+---------+
-|   tile-server    |    |   tile-cleanup   |
-|   :8080          |    |   (every 30min)  |
-+------------------+    +------------------+
-```
+Includes a `ServiceMonitor`, `HorizontalPodAutoscaler` (tile-server 2→6), `PodDisruptionBudget`, and a Grafana dashboard JSON in `monitoring/prometheus-stack/radar-ng-dashboard.yaml`.
 
-### API Endpoints
+### Resource shapes (current production)
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/health` | GET | Health check |
-| `/api/manifest.json` | GET | Available layers and timestamps |
-| `/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png` | GET | Static tile serving (Caddy) |
-| `/api/forecast/{lat}/{lon}` | GET | Open-Meteo proxy with 15min cache |
-
-**Manifest response:**
-```json
-{
-  "layers": {
-    "radar": {
-      "timestamps": ["2026-04-15T22:00:00+00:00", "2026-04-15T22:02:00+00:00", "..."]
-    },
-    "temperature": {
-      "timestamps": ["2026-04-15T13:00:00+00:00", "2026-04-15T14:00:00+00:00", "..."]
-    }
-  },
-  "tile_url_template": "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
-  "updated_at": "2026-04-15T22:05:00Z"
-}
-```
-
-### Connecting the App
-
-1. Start the backend: `docker compose up -d`
-2. Open StormScope on your phone
-3. Go to **Settings** > **Data Source** > **Self-Hosted**
-4. Enter your server URL (e.g., `http://192.168.1.100:8080`)
-5. The app will fetch the manifest and display your tiles
-
-For Android emulator, the server URL is `http://10.0.2.2:8080` (magic IP for host loopback).
+| service | requests | limits | rationale |
+|---|---|---|---|
+| ingest-mrms | 1 cpu · 1 Gi | **6 cpu · 6 Gi** | parallel palette render is CPU-bound |
+| ingest-hrrr | 0.5 cpu · 1 Gi | 4 cpu · 4 Gi | hourly burst, idle in between |
+| nowcast | 0.5 cpu · 1 Gi | 4 cpu · 4 Gi | pysteps loves RAM |
+| ingest-lightning | 50 m · 32 Mi | 200 m · 128 Mi | tiny |
+| ingest-tropical | 50 m · 32 Mi | 200 m · 128 Mi | tiny |
+| tile-server | 0.2 cpu · 256 Mi | 2 cpu · 1 Gi | scaled by HPA |
+| open-meteo | 0.2 cpu · 512 Mi | 2 cpu · 2 Gi | mostly cached |
 
 ---
 
-## Building the App
+## Building the app
 
 ### Prerequisites
 
-| Tool | Version | Notes |
-|------|---------|-------|
-| [Bun](https://bun.sh) | 1.1+ | Package manager + script runner — replaces npm/yarn |
-| Xcode | 26+ | For iOS builds (`Info.plist` deployment target is iOS 26.0) |
-| CocoaPods | 1.15+ | `gem install cocoapods` if missing — installed automatically by `expo prebuild` when needed |
-| Android Studio + SDK | API 35 | Android builds |
-| JDK | 17 | Required by Gradle for Android |
-| Watchman | latest | `brew install watchman` — Metro file watching on macOS |
+| tool | version | notes |
+|---|---|---|
+| [Bun](https://bun.sh) | 1.1+ | replaces npm/yarn |
+| Xcode | 26+ | iOS deployment target 26.0 |
+| CocoaPods | 1.15+ | `gem install cocoapods` |
+| Android Studio | API 35 | required for native modules |
+| JDK | 17 | Gradle requirement |
+| Watchman | latest | Metro file watching on macOS |
 
 ```bash
-# One-time setup
 bun install
 ```
 
-`bun install` runs the Expo CLI postinstall and pulls everything from `bun.lock`. There is no `package-lock.json` — don't commit one if your editor regenerates it.
-
-### Running
+### Run
 
 ```bash
-# Just start Metro (leave running in its own terminal)
-bun start
-
-# Build, install, and launch on iOS Simulator (macOS only)
-bun run ios
-
-# Same for Android emulator/device
-bun run android
+bun start            # Metro bundler
+bun run ios          # iOS simulator (macOS only)
+bun run android      # Android emulator/device
+bun web              # browser preview (limited — no MapLibre native)
 ```
 
-`bun run ios` / `bun run android` shell out to `expo run:<platform>`, which:
-1. Runs `expo prebuild` if `ios/` or `android/` is missing or stale (regenerates native projects from `app.json` + the config plugins under `plugins/`).
-2. Builds the native binary (`xcodebuild` / `gradle`).
-3. Installs on a booted simulator/emulator and launches it.
+`bun run ios` / `bun run android` shell out to `expo run:<platform>`, which auto-runs `expo prebuild` if `ios/` or `android/` is missing or stale.
 
-If you already have `ios/` or `android/` checked out and just changed JS, you usually don't need to re-run `bun run ios` — Metro will fast-refresh into the running app.
+### iOS gotchas
 
-### iOS Simulator gotchas
+- Boot a simulator first: `xcrun simctl list devices booted`
+- Grant location: `xcrun simctl privacy booted grant location com.vanillax.radar-ng`
+- Don't hand-edit `ios/` — it's git-ignored and regenerated by `expo prebuild`
+- The CarPlay config plugin (`plugins/withCarPlayScene.js`) declares both the iPhone window scene and the CarPlay scene — keep both
 
-These are specific to this app and cost time if you don't know them:
+### Android gotchas
 
-- **Boot a simulator first.** `xcrun simctl list devices booted` should show one. Otherwise Metro and `simctl` calls hang.
-- **Grant location permission** (the radar tab depends on it):
-  ```bash
-  xcrun simctl privacy booted grant location com.vanillax.radar-ng
-  xcrun simctl location booted set 42.9634,-85.6681   # Grand Rapids fallback
-  ```
-- **Deep links pop a system "Open in radar-ng?" dialog** the first time. Tap **Open**; subsequent `radarng:/...` URLs are silent.
-- **"Black screen on launch"** — usually `UIApplicationSceneManifest` declared without a `UIWindowSceneSessionRoleApplication` entry. The CarPlay config plugin (`plugins/withCarPlayScene.js`) declares both the iPhone window scene and the CarPlay scene; if you bypass the plugin or hand-edit `Info.plist`, keep both.
-- **Don't manually edit `ios/`** — it's git-ignored and regenerated by `expo prebuild`. Edit `app.json`, `plugins/`, or `targets/carplay/*.swift` (which the CarPlay plugin copies in).
-- **Building straight with Xcode** works — `xcodebuild -workspace ios/radarng.xcworkspace -scheme radarng -destination 'platform=iOS Simulator,id=<UDID>' build`. Useful when you don't want `expo prebuild` to re-run plugins (e.g. if it would double-add files to `project.pbxproj`).
+- Use Android Studio's emulator with API 35
+- Reach the host backend via `10.0.2.2` (the Android emulator loopback magic)
+- Predictive back gesture is disabled by config (bottom-sheet conflict)
 
-### Android emulator gotchas
+### Connecting to your backend
 
-- **Use Android Studio's emulator** with API 35. Genymotion/older emulators may miss native modules.
-- **Reach the host backend** via `10.0.2.2` (the Android emulator's loopback magic IP). Settings → Server URL → `http://10.0.2.2:8080`.
-- **Predictive back gesture is disabled** in `app.json` (`predictiveBackGestureEnabled: false`) because the bottom-sheet interactions conflict with it.
+In the app: **Settings → Data Source → Self-Hosted → `http://<lan-ip>:8080`**.
 
-### Backend (tile-server) for local development
+| platform | server URL |
+|---|---|
+| iOS simulator (macOS host) | `http://localhost:8080` |
+| Android emulator | `http://10.0.2.2:8080` |
+| Physical device on LAN | `http://<your-LAN-IP>:8080` |
+| Public | `https://radar-ng-api.vanillax.me` |
 
-The app defaults to `https://radar-ng-api.vanillax.me`. To point at a local backend:
+---
 
-```bash
-# Build + start the Docker pipeline (MRMS ingest, HRRR ingest, tile-server, cleanup)
-cd deploy
-docker compose up -d
+## Project layout
 
-# Wait ~2 min for the first MRMS tiles, ~10 min for HRRR
-curl http://localhost:8080/api/health
-curl http://localhost:8080/api/manifest.json | jq '.layers | keys'
 ```
-
-Then in the app: **Settings → Data Source → Self-Hosted → http://<your-LAN-IP>:8080** (use your machine's LAN IP, not `localhost`, so the simulator/device can reach it).
-
-Rebuilding only the tile-server (e.g. after editing `services/tile-server/api/server.py`):
-
-```bash
-cd deploy
-docker compose build tile-server && docker compose up -d tile-server
-```
-
-CI also auto-builds the tile-server on push (Gitea Actions, see `.gitea/workflows/`).
-
-### Tests + lint
-
-```bash
-bun test            # Jest, runs everything under __tests__/
-bun run lint        # expo lint (eslint + expo's rules)
-```
-
-### Release builds
-
-```bash
-# Android release APK (signed with debug key — fine for personal sideload)
-bunx expo run:android --variant release
-
-# iOS device archive — sign + ship via Xcode Organizer
-# Or use the resign helper for a CarPlay-entitled IPA:
-./scripts/carplay-resign.sh
+radar-ng/
+├─ src/                        Expo / React Native
+│  ├─ app/                       file-based routing (expo-router)
+│  ├─ components/                map, timeline, inspector, alerts
+│  ├─ hooks/                     react-query data hooks
+│  ├─ lib/                       api · storage · theme · constants
+│  ├─ stores/                    zustand store
+│  └─ types/                     TS interfaces
+├─ services/                   Python backend
+│  ├─ shared/                    tiler · palettes · state · logger
+│  ├─ ingest-mrms/               2-min radar
+│  ├─ ingest-hrrr/               hourly forecast (5 vars)
+│  ├─ ingest-lightning/          NLDN
+│  ├─ ingest-tropical/           NHC
+│  ├─ nowcast/                   pysteps extrapolation
+│  ├─ tile-server/               Caddy + FastAPI
+│  └─ tile-cleanup/              retention cron
+├─ targets/                    extra Apple targets
+│  ├─ watch/                     watchOS app
+│  └─ carplay/                   CarPlay scene
+├─ deploy/                     docker-compose for lab
+├─ plugins/                    Expo config plugins
+├─ pmtiles-data/               Protomaps basemap source
+└─ docs/                       screenshots + design handoff
 ```
 
 ---
 
-## Project Structure
+## Tech stack at a glance
 
-```
-stormscope/
-+-- src/
-|   +-- app/                          # Expo Router (file-based routing)
-|   |   +-- _layout.tsx               # Root: QueryClient + GestureHandler
-|   |   +-- (tabs)/
-|   |   |   +-- _layout.tsx           # Tab bar (Weather/Radar/Settings)
-|   |   |   +-- index.tsx             # Weather tab (forecast hero)
-|   |   |   +-- radar.tsx             # Radar tab (MapLibre map)
-|   |   |   +-- settings.tsx          # Settings tab
-|   |   +-- alert/[id].tsx            # Alert detail modal
-|   +-- components/
-|   |   +-- map/
-|   |   |   +-- WeatherMap.tsx        # MapLibre wrapper
-|   |   |   +-- RadarOverlay.tsx      # IEM/self-hosted tile source
-|   |   |   +-- WeatherLayerOverlay.tsx  # Generic layer overlay
-|   |   |   +-- AlertPolygon.tsx      # NWS alert geometry
-|   |   +-- timeline/
-|   |   |   +-- TimeSlider.tsx        # Frame timeline
-|   |   |   +-- PlayButton.tsx        # Play/pause animation
-|   |   +-- layers/
-|   |   |   +-- LayerPicker.tsx       # FAB stack for layer selection
-|   |   +-- alerts/
-|   |       +-- AlertBanner.tsx       # Top alert banner
-|   +-- hooks/
-|   |   +-- useManifest.ts            # Dual-source manifest fetcher
-|   |   +-- useForecast.ts            # Open-Meteo forecast hook
-|   |   +-- useAlerts.ts              # NWS alerts hook
-|   |   +-- useLocation.ts            # GPS location hook
-|   +-- lib/
-|   |   +-- api.ts                    # API functions
-|   |   +-- constants.ts              # URLs, defaults, layer config
-|   |   +-- storage.ts                # MMKV key-value persistence
-|   |   +-- tileUrl.ts                # Tile URL builders
-|   |   +-- weatherCodes.ts           # WMO code descriptions
-|   |   +-- weatherTheme.ts           # Weather-adaptive theme system
-|   +-- stores/
-|   |   +-- useWeatherStore.ts        # Zustand global state
-|   +-- types/
-|       +-- weather.ts                # TypeScript interfaces
-+-- services/
-|   +-- shared/
-|   |   +-- color_tables.json         # NWS color lookup tables
-|   |   +-- tiler.py                  # Tile rendering engine
-|   |   +-- test_tiler.py             # Tiler unit tests
-|   +-- ingest-mrms/
-|   |   +-- ingest.py                 # MRMS radar ingest loop
-|   |   +-- Dockerfile
-|   |   +-- requirements.txt
-|   +-- ingest-hrrr/
-|   |   +-- ingest.py                 # HRRR multi-variable ingest
-|   |   +-- Dockerfile
-|   |   +-- requirements.txt
-|   +-- tile-server/
-|   |   +-- Caddyfile                 # Static tiles + API proxy
-|   |   +-- Dockerfile
-|   |   +-- api/
-|   |       +-- server.py             # FastAPI manifest + forecast proxy
-|   |       +-- requirements.txt
-|   +-- tile-cleanup/
-|       +-- cleanup.sh                # Retention policy enforcement
-+-- deploy/
-|   +-- docker-compose.yml            # Full stack orchestration
-+-- __tests__/                        # Jest unit tests
-+-- android/                          # Native Android project
-+-- app.json                          # Expo config
-+-- package.json
-+-- tsconfig.json
+```mermaid
+flowchart LR
+    subgraph FE["📱 frontend"]
+        EX[Expo SDK 55]
+        RN[React Native 0.83]
+        R[React 19.2]
+        ML[MapLibre Native]
+        SK[Shopify Skia]
+        Z[Zustand 5]
+        TQ[TanStack Query 5]
+        TS1[TypeScript 5.9]
+    end
+
+    subgraph BE["⚙️ backend"]
+        PY[Python 3.12]
+        PG[pygrib]
+        NP[numpy]
+        PIL[Pillow]
+        FA[FastAPI]
+        CD[Caddy 2]
+    end
+
+    subgraph INF["☁️ infra"]
+        TLOS[Talos Linux]
+        K8S[Kubernetes 1.31]
+        AC[ArgoCD]
+        LH[Longhorn]
+        GW[Gateway API]
+        CF[Cloudflare]
+    end
+
+    style FE fill:#1e3a5f,stroke:#4a90e2,color:#fff
+    style BE fill:#1a4d3a,stroke:#52c47a,color:#fff
+    style INF fill:#3a1e4d,stroke:#a456d4,color:#fff
 ```
 
 ---
 
-## Tech Stack
+## Performance notes
 
-### Frontend
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| Expo SDK | 55 | React Native framework |
-| React Native | 0.83 | Mobile runtime |
-| React | 19.2 | UI library |
-| MapLibre Native | 10.4 | Map rendering |
-| Zustand | 5.0 | State management |
-| TanStack Query | 5.99 | Data fetching + caching |
-| react-native-mmkv | 4.3 | Persistent key-value storage |
-| expo-linear-gradient | 55.0 | Weather-adaptive backgrounds |
-| expo-location | 55.1 | GPS positioning |
-| TypeScript | 5.9 | Type safety |
+The pipeline used to fall behind during heavy convective activity. Phase 2 fixes:
 
-### Backend
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| Python | 3.12 | Ingest services |
-| pygrib | 2.1+ | GRIB2 meteorological data decoding |
-| numpy | 1.26+ | Array processing |
-| Pillow | 10.0+ | PNG tile rendering |
-| mercantile | (via tiler.py) | XYZ slippy map coordinate math |
-| FastAPI | 0.115+ | Manifest API + forecast proxy |
-| Caddy | 2.x | Static tile serving + reverse proxy |
-| Docker Compose | 2.x | Service orchestration |
+- **Palette render parallelized** with `ThreadPoolExecutor(3)` — PIL releases the GIL during PNG encode, three palettes finish in roughly the time of one
+- **`PNG optimize=False, compress_level=1`** — tiles are short-lived and Caddy gzips on the wire; the extra zlib pass halved throughput for ~5 % size win
+- **`Image.NEAREST` resize** — radar bins are discrete; bilinear smudged categorical boundaries and was 3× slower
+- **Backlog catch-up** — `BACKLOG_PER_CYCLE=3`, newest-first, state committed per frame so a crash never replays already-rendered work
+- **Resource bumps** — ingest-mrms now 6 cpu / 6 Gi limits; OOMKilled count went from 7/day to 0
+- **Per-frame state commits** instead of bulk-flush — eliminates the bug where a backlog of unprocessed keys was being marked done without rendering
 
-### Data Sources
-| Source | Data | Update Rate | Auth |
-|--------|------|-------------|------|
-| NOAA MRMS (S3) | Base reflectivity | 2 min | None (public) |
-| NOAA HRRR (S3) | Multi-variable forecast | 1 hr | None (public) |
-| IEM NEXRAD | Free radar tiles | 5 min | None |
-| Open-Meteo | Weather forecast | 15 min | None |
-| NWS API | Active alerts | 1 min | User-Agent header |
-
----
-
-## Resource Usage
-
-### Backend (Docker)
-
-| Service | CPU (idle) | CPU (ingest) | RAM | Disk I/O |
-|---------|-----------|-------------|-----|----------|
-| ingest-mrms | ~0% | 50-100% (burst) | ~200 MB | ~50 MB/cycle |
-| ingest-hrrr | ~0% | 50-100% (burst) | ~500 MB | ~2 GB/cycle |
-| tile-server | ~1% | ~5% (under load) | ~50 MB | Read-only |
-| tile-cleanup | ~0% | ~1% (burst) | ~10 MB | Delete ops |
-
-**Network bandwidth:** ~50-100 MB/hour download from NOAA S3
-
-### Mobile App
-
-| Metric | Value |
-|--------|-------|
-| APK size | ~147 MB (debug), ~50 MB (release) |
-| RAM usage | ~150-200 MB |
-| Battery | Minimal (map tiles cached, polling intervals >30s) |
-| Network | ~5 MB/min during active radar playback |
+End result: per-frame total ≈ 2 min (was ≈ 22 min). MRMS staleness budget (`MRMS_MAX_AGE_S=600`) holds.
 
 ---
 

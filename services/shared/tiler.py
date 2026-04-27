@@ -68,8 +68,16 @@ def render_tiles(
     output_dir: str,
     zoom_levels: list[int],
     tile_size: int = 256,
+    resample: int = Image.NEAREST,
 ) -> int:
-    """Render RGBA array into XYZ PNG tiles. Returns number of tiles written."""
+    """Render RGBA array into XYZ PNG tiles. Returns number of tiles written.
+
+    NEAREST resampling is the right call for radar/categorical layers — bins
+    are discrete, BILINEAR smudges the boundaries between dBZ classes and is
+    ~3× slower. PNG `optimize` is disabled because tiles are short-lived
+    (4–8h retention) and Caddy gzips on the wire — the extra zlib pass
+    typically halves throughput for ~5% size win.
+    """
     lat_min, lat_max = float(lats.min()), float(lats.max())
     lon_min, lon_max = float(lons.min()), float(lons.max())
     h, w = rgba.shape[:2]
@@ -104,11 +112,11 @@ def render_tiles(
                     continue
 
                 img = Image.fromarray(region, "RGBA")
-                img = img.resize((tile_size, tile_size), Image.BILINEAR)
+                img = img.resize((tile_size, tile_size), resample)
 
                 tile_path = Path(output_dir) / str(z) / str(tx) / f"{ty}.png"
                 tile_path.parent.mkdir(parents=True, exist_ok=True)
-                img.save(str(tile_path), "PNG", optimize=True)
+                img.save(str(tile_path), "PNG", optimize=False, compress_level=1)
                 count += 1
 
     return count
