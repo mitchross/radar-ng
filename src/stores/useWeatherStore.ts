@@ -55,7 +55,9 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   mapStyle: (getString("mapStyle", "light") as MapStyle),
   mapProjection: (getString("mapProjection", "flat") as MapProjection),
   activePalette: (getString("activePalette", "classic") as Palette),
-  timelineMode: (getString("timelineMode", "current") as TimelineMode),
+  // Default to "forecast" so the timeline shows past + nowcast + HRRR future
+  // as one merged stream out of the box. Less UI to flip, less to explain.
+  timelineMode: (getString("timelineMode", "forecast") as TimelineMode),
   serverUrl: getString("serverUrl", SELF_HOSTED.DEFAULT_URL),
 
   setFrames: (frames) => set({ frames }),

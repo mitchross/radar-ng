@@ -24,7 +24,6 @@ import { DEFAULTS } from "../../lib/constants";
 import { LayerLegendCard } from "../../components/map/LayerLegendCard";
 import { LayerLocationMarker } from "../../components/map/LayerLocationMarker";
 import { TimelineBar } from "../../components/timeline/TimelineBar";
-import { CurrentForecastToggle } from "../../components/timeline/CurrentForecastToggle";
 import { RadarFABs } from "../../components/map/RadarFABs";
 import { MapStylePicker } from "../../components/map/MapStylePicker";
 import { EyedropperPin, type PinnedPoint } from "../../components/inspector/Eyedropper";
@@ -112,10 +111,7 @@ export default function RadarScreen() {
       {/* Map style + projection picker */}
       <MapStylePicker visible={stylePickerOpen} onClose={() => setStylePickerOpen(false)} />
 
-      {/* Current / Forecast segmented toggle (above timeline) */}
-      <CurrentForecastToggle />
-
-      {/* Timeline */}
+      {/* Timeline — past observed + nowcast + HRRR forecast in one stream */}
       <TimelineBar />
     </View>
   );

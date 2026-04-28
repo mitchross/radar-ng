@@ -1,0 +1,53 @@
+name: retag from latest
+
+# One-button rescue when a per-service CI run fails (e.g. flaky pip mirror,
+# transient registry hiccup) but `:latest` for that service is still the
+# code we want. Pulls each service's `:latest`, computes the next semver
+# from the registry's existing v* tags, retags `:latest` as that next
+# version, and pushes — no Dockerfile build, no source changes.
+#
+# Use it when:
+#   • basemap CI 500'd and you need :v1.0.3 to exist for an Argo rollout
+#   • a child workflow failed but base/latest is fine
+#   • you bumped gitops to :v1.0.N and want the same image promoted across
+#     every service that didn't naturally bump
+#
+# Triggers via the Actions UI ("Run workflow" → optionally specify
+# services="basemap,nowcast" to scope it). Default = all 8.
+
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: 'Comma-separated services to retag (default: all)'
+        required: false
+        default: 'base,basemap,ingest-hrrr,ingest-lightning,ingest-mrms,ingest-tropical,nowcast,tile-server'
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull, retag, push
+        run: |
+          set -euo pipefail
+          REGISTRY="registry.vanillax.me"
+          IFS=',' read -ra SVCS <<< "${{ inputs.services }}"
+          for raw in "${SVCS[@]}"; do
+            svc="$(echo "$raw" | xargs)"
+            img="radar-ng-${svc}"
+            echo "── ${img} ─────────────────────────────"
+            LATEST=$(curl -sS "https://${REGISTRY}/v2/${img}/tags/list" \
+              | jq -r '.tags[]?' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V | tail -1 || true)
+            if [ -z "${LATEST:-}" ]; then NEXT="v1.0.0"; else
+              S=${LATEST#v}; MAJ=${S%%.*}; R=${S#*.}; MIN=${R%%.*}; PAT=${R#*.}
+              NEXT="v${MAJ}.${MIN}.$((PAT + 1))"
+            fi
+            echo "  current: ${LATEST:-none}  →  promoting :latest as :${NEXT}"
+            docker pull -q "${REGISTRY}/${img}:latest"
+            docker tag "${REGISTRY}/${img}:latest" "${REGISTRY}/${img}:${NEXT}"
+            docker push -q "${REGISTRY}/${img}:${NEXT}"
+          done
+          echo
+          echo "✅ Done. Bump gitops manifests to the new tags and push."
