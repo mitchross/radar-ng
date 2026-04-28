@@ -46,6 +46,15 @@ DAILY_FIELDS = (
 app = FastAPI(title="radar-ng Tile API")
 
 _forecast_cache: dict[str, tuple[float, dict]] = {}
+# Manifest in-memory cache. The HTTP `Cache-Control: max-age=15` header is
+# honored by Cloudflare/clients but multiple-replica tile-server pods each
+# recompute the body on a cold cache hit, and the recompute walks the
+# Longhorn PVC with thousands of iterdir() calls (8 layers × 3 palettes ×
+# ~80 timestamps each). On a fresh pod it takes 4–7 s, which times out
+# the mobile app's settings health check. 15-s in-process cache cuts
+# that to a few ms after the first build.
+_MANIFEST_TTL_S = 15.0
+_manifest_cache: dict[str, object] = {"expires_at": 0.0, "body": None}
 _metrics = {
     "forecast_requests_total": 0,
     "forecast_cache_hits_total": 0,
@@ -81,9 +90,9 @@ def _is_layer_dirname(name: str) -> bool:
     )
 
 
-@app.get("/api/manifest.json")
-async def get_manifest() -> JSONResponse:
-    _metrics["manifest_requests_total"] += 1
+def _build_manifest() -> dict:
+    """Walk the tiles PVC and build the manifest body. Slow on cold cache
+    (4–7 s on Longhorn for the full layout); cached by the caller."""
     tile_base = Path(TILE_DIR)
     layers: dict[str, dict] = {}
 
@@ -119,15 +128,25 @@ async def get_manifest() -> JSONResponse:
                     "palettes": sorted(palettes) if palettes else ["classic"],
                 }
 
-    return _cached(
-        {
-            "layers": layers,
-            "tile_url_template": "/tiles/{layer}/{palette}/{timestamp}/{z}/{x}/{y}.png",
-            "tile_url_template_legacy": "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        },
-        max_age=15,
-    )
+    return {
+        "layers": layers,
+        "tile_url_template": "/tiles/{layer}/{palette}/{timestamp}/{z}/{x}/{y}.png",
+        "tile_url_template_legacy": "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/manifest.json")
+async def get_manifest() -> JSONResponse:
+    _metrics["manifest_requests_total"] += 1
+    now = time.time()
+    cached_body = _manifest_cache.get("body")
+    if cached_body is not None and float(_manifest_cache.get("expires_at", 0)) > now:
+        return _cached(cached_body, max_age=15)
+    body = _build_manifest()
+    _manifest_cache["body"] = body
+    _manifest_cache["expires_at"] = now + _MANIFEST_TTL_S
+    return _cached(body, max_age=15)
 
 
 @app.get("/api/forecast/{lat}/{lon}")
