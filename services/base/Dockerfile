@@ -1,6 +1,7 @@
 # Shared base image for all radar-ng Python ingestors.
 # Pushed by .gitea/workflows/build-base.yml as
 #   registry.vanillax.me/radar-ng-base:latest
+# CI retrigger: 2026-04-27 — confirm new act_runner config (gpus removed).
 # Local dev build:
 #   docker build -t registry.vanillax.me/radar-ng-base:latest \
 #     -f base/Dockerfile services/

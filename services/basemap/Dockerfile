@@ -1,6 +1,7 @@
 # Basemap service — protomaps/go-pmtiles with the CONUS PMTiles archive baked
 # into the image so the pod needs no PVC. Rebuild when the pmtiles file is
 # refreshed; serve swaps bytes on rebuild.
+# CI retrigger: 2026-04-27 — confirm new act_runner config (gpus removed).
 FROM protomaps/go-pmtiles:latest
 
 # Upstream image is distroless (no /bin/sh, no chown), so we can't RUN
