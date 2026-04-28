@@ -8,26 +8,28 @@ import type { LayerType } from "../../types/weather";
 import { cumulus } from "../../lib/cumulusTheme";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 
-// Source-of-truth tag shown at the top of the legend so the user knows
-// whether they're staring at observed radar (live MRMS), nowcast (pysteps
-// extrapolation), or a model forecast (HRRR). Clearer than a separate badge
-// because the legend is what people look at to understand what they see.
-const LAYER_SOURCE: Record<LayerType, "OBSERVED" | "NOWCAST" | "FORECAST"> = {
-  radar: "OBSERVED",
-  "radar-composite": "OBSERVED",
-  "radar-hrrr": "FORECAST",
-  temperature: "FORECAST",
-  wind: "FORECAST",
-  "precip-type": "FORECAST",
-  cape: "FORECAST",
-  "precip-accum": "FORECAST",
-  cloud: "FORECAST",
+// Plain-English tag at the top of the legend telling the user whether
+// they're looking at "Now" (live radar), "Soon" (next hour, pysteps
+// extrapolation), or "Later" (multi-hour HRRR forecast). Replaces the
+// older OBSERVED/NOWCAST/FORECAST jargon nobody asked for.
+type SourceTag = "Now" | "Soon" | "Later";
+
+const LAYER_SOURCE: Record<LayerType, SourceTag> = {
+  radar: "Now",
+  "radar-composite": "Now",
+  "radar-hrrr": "Later",
+  temperature: "Later",
+  wind: "Later",
+  "precip-type": "Later",
+  cape: "Later",
+  "precip-accum": "Later",
+  cloud: "Later",
 };
 
-const SOURCE_COLOR: Record<"OBSERVED" | "NOWCAST" | "FORECAST", string> = {
-  OBSERVED: "#52c47a",
-  NOWCAST: "#7ec3ff",
-  FORECAST: "#d4a52e",
+const SOURCE_COLOR: Record<SourceTag, string> = {
+  Now:   "#52c47a",
+  Soon:  "#7ec3ff",
+  Later: "#d4a52e",
 };
 
 type LegendStop = { label: string; color: string };
@@ -52,15 +54,15 @@ const PRECIP_STOPS: LegendStop[] = [
 
 const LEGENDS: Record<LayerType, LegendSpec> = {
   radar: {
-    title: "Precipitation",
+    title: "Radar",
     stops: PRECIP_STOPS,
   },
   "radar-composite": {
-    title: "Composite Reflectivity",
+    title: "Radar",
     stops: PRECIP_STOPS,
   },
   "radar-hrrr": {
-    title: "Precipitation (Forecast)",
+    title: "Radar",
     stops: PRECIP_STOPS,
   },
   temperature: {
@@ -84,26 +86,22 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
     ],
   },
   "precip-type": {
-    title: "Precip Type",
+    title: "Rain or Snow",
     stops: [
-      { label: "Extreme", color: "#ffe57a" },
       { label: "Heavy", color: "#ffb04a" },
-      { label: "Moderate", color: "#b98cff" },
       { label: "Light", color: "#4fb8ff" },
     ],
   },
   cape: {
-    title: "CAPE (J/kg)",
+    title: "Storm Energy",
     stops: [
-      { label: "4000", color: "#b24bff" },
-      { label: "2500", color: "#ff4d6d" },
-      { label: "1500", color: "#ff9f2e" },
-      { label: "500", color: "#3bc77a" },
-      { label: "0", color: "#2c3854" },
+      { label: "Severe", color: "#ff4d6d" },
+      { label: "Watch", color: "#ff9f2e" },
+      { label: "Calm", color: "#3bc77a" },
     ],
   },
   "precip-accum": {
-    title: "Rainfall (in/hr)",
+    title: "Rain Total",
     stops: [
       { label: "8+", color: "#50146b" },
       { label: "4", color: "#b01f96" },
@@ -115,7 +113,7 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
     ],
   },
   cloud: {
-    title: "Cloud Cover",
+    title: "Clouds",
     stops: [
       { label: "100%", color: "#505064" },
       { label: "75%", color: "#787887" },
@@ -135,12 +133,12 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   // For the radar layer, the source tag shifts based on which frame the
   // user is sitting on: past = OBSERVED, near-future = NOWCAST, far-future
   // = FORECAST (HRRR). Other layers are statically tagged.
-  let source = LAYER_SOURCE[activeLayer] ?? "OBSERVED";
+  let source = LAYER_SOURCE[activeLayer] ?? "Now";
   if ((activeLayer === "radar" || activeLayer === "radar-hrrr") && timelineMode === "forecast") {
     const frame = frames[currentFrameIndex];
-    if (frame?.source === "nowcast") source = "NOWCAST";
-    else if (frame?.source === "radar-hrrr") source = "FORECAST";
-    else source = "OBSERVED";
+    if (frame?.source === "nowcast") source = "Soon";
+    else if (frame?.source === "radar-hrrr") source = "Later";
+    else source = "Now";
   }
 
   return (

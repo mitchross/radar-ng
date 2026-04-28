@@ -16,15 +16,15 @@ const HRRR_MIN = 360;
 const PLAYBACK_MS = 420;
 
 const LAYER_TITLE: Record<LayerType, string> = {
-  radar: "Precipitation",
-  "radar-composite": "Composite Refl.",
-  "radar-hrrr": "Precipitation",
+  radar: "Radar",
+  "radar-composite": "Radar",
+  "radar-hrrr": "Radar",
   temperature: "Temperature",
   wind: "Wind",
-  "precip-type": "Precipitation",
-  "precip-accum": "Rainfall (1h)",
-  cloud: "Cloud Cover",
-  cape: "CAPE",
+  "precip-type": "Radar",
+  "precip-accum": "Rain Total",
+  cloud: "Clouds",
+  cape: "Storm Energy",
 };
 
 type Zoom = "1h" | "12h";
@@ -82,7 +82,7 @@ export function TimelineBar() {
 
   const currentFrame = frames[currentFrameIndex];
   const offsetMin = currentFrame ? Math.round((currentFrame.time - nowSec) / 60) : 0;
-  const layerTitle = LAYER_TITLE[activeLayer] ?? "Precipitation";
+  const layerTitle = LAYER_TITLE[activeLayer] ?? "Radar";
   const frameDate = new Date((currentFrame?.time ?? nowSec) * 1000);
   const dateLabel = frameDate.toLocaleDateString([], {
     weekday: "long",

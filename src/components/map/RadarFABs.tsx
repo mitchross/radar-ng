@@ -11,6 +11,10 @@ import type { LayerType } from "../../types/weather";
 
 type IconKind = "umbrella" | "thermo" | "dust" | "wind" | "bolt" | "layers" | "drop" | "cloud";
 
+// Five layers, plain English, no acronyms. HRRR/Composite/CAPE/Precip-Type
+// are still ingested in the backend (and feed the merged radar timeline) —
+// they're just hidden from the picker because nobody asks "is the CAPE
+// high today?" in normal life.
 const LAYER_OPTIONS: {
   id: LayerType;
   name: string;
@@ -18,16 +22,11 @@ const LAYER_OPTIONS: {
   tint: string;
   selfHostedOnly?: boolean;
 }[] = [
-  { id: "radar", name: "Precipitation", icon: "umbrella", tint: "#E8EFFA" },
-  { id: "radar-hrrr", name: "HRRR Forecast", icon: "umbrella", tint: "#E8EFFA", selfHostedOnly: true },
-  // Renamed from "Precipitation" to avoid colliding with the radar layer's
-  // new label — this one is HRRR's categorical rain/snow/sleet/freezing-rain.
-  { id: "precip-type", name: "Precip Type", icon: "umbrella", tint: "#E8EFFA", selfHostedOnly: true },
-  { id: "precip-accum", name: "Rainfall (1h)", icon: "drop", tint: "#DEEAFA", selfHostedOnly: true },
-  { id: "cloud", name: "Cloud Cover", icon: "cloud", tint: "#ECECEF", selfHostedOnly: true },
+  { id: "radar", name: "Radar", icon: "umbrella", tint: "#E8EFFA" },
   { id: "temperature", name: "Temperature", icon: "thermo", tint: "#D6F1FB", selfHostedOnly: true },
   { id: "wind", name: "Wind", icon: "wind", tint: "#DDE8F5", selfHostedOnly: true },
-  { id: "cape", name: "CAPE", icon: "bolt", tint: "#F2E8FA", selfHostedOnly: true },
+  { id: "precip-accum", name: "Rain Total", icon: "drop", tint: "#DEEAFA", selfHostedOnly: true },
+  { id: "cloud", name: "Clouds", icon: "cloud", tint: "#ECECEF", selfHostedOnly: true },
 ];
 
 export function RadarFABs({

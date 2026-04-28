@@ -62,13 +62,12 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
     ? `${serverUrl}/tiles/${layerKey}/${activePalette}/${encodeURIComponent(latest)}/${MINI_ZOOM}/${tile.x}/${tile.y}.png`
     : null;
 
-  // OSM tile under the radar overlay so coastlines/state borders show through.
-  const basemapUrl = `https://tile.openstreetmap.org/${MINI_ZOOM}/${tile.x}/${tile.y}.png`;
-
   return (
     <Pressable style={styles.wrap} onPress={() => router.push("/radar")}>
-      {/* base map underlay — desaturated and dimmed */}
-      <Image source={{ uri: basemapUrl }} style={styles.basemap} resizeMode="cover" />
+      {/* Dark gradient background. We don't pull a basemap tile here
+          because OSM's tile-usage policy forbids embedded mobile-app
+          consumption (returns "Access blocked" image), and this is a
+          tap-target preview anyway — the full map opens on press. */}
       <View style={styles.basemapTint} pointerEvents="none" />
 
       {/* radar overlay */}
@@ -119,10 +118,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "#0d1428",
   },
-  basemap: { ...StyleSheet.absoluteFillObject, opacity: 0.55 },
   basemapTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(10,16,32,0.45)",
+    backgroundColor: "#0d1428",
   },
   radar: { ...StyleSheet.absoluteFillObject, opacity: 0.85 },
   pinWrap: {
