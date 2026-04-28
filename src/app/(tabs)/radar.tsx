@@ -38,6 +38,7 @@ export default function RadarScreen() {
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
+  const extrasVisible = useWeatherStore((s) => s.extrasVisible);
   const { data: alertData } = useAlerts();
 
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
@@ -67,8 +68,10 @@ export default function RadarScreen() {
         {activeLayer === "cloud" && <WeatherLayerOverlay layerId="cloud" opacity={0.65} />}
         <AlertPolygon />
         <TropicalOverlay />
-        <StormCellsOverlay />
-        <LightningOverlay />
+        {/* Storm-cell + lightning dots are noisy for casual users.
+            Gated behind extrasVisible (off by default). */}
+        {extrasVisible && <StormCellsOverlay />}
+        {extrasVisible && <LightningOverlay />}
         <LayerLocationMarker />
         {pinned && <EyedropperPin pinned={pinned} onClear={() => setPinned(null)} />}
       </WeatherMap>

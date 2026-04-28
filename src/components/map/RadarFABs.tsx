@@ -40,6 +40,8 @@ export function RadarFABs({
 }) {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const setActiveLayer = useWeatherStore((s) => s.setActiveLayer);
+  const extrasVisible = useWeatherStore((s) => s.extrasVisible);
+  const toggleExtras = useWeatherStore((s) => s.toggleExtras);
   const [layerOpen, setLayerOpen] = useState(false);
 
   const options = LAYER_OPTIONS;
@@ -51,6 +53,9 @@ export function RadarFABs({
       <View style={styles.rail}>
         <GlassBtn active={layerOpen} onPress={() => setLayerOpen((v) => !v)}>
           <LayersIcon />
+        </GlassBtn>
+        <GlassBtn active={extrasVisible} onPress={toggleExtras}>
+          <BoltIcon />
         </GlassBtn>
         <GlassBtn active={inspectorActive} onPress={onToggleInspector}>
           <CrosshairIcon />
@@ -133,6 +138,16 @@ function CrosshairIcon() {
       <View style={[icons.hLine, { top: 8.5 }]} />
       <View style={[icons.vLine, { left: 8.5 }]} />
       <View style={icons.pinDot} />
+    </View>
+  );
+}
+
+function BoltIcon() {
+  // Lightning bolt — toggles the storm-cell + lightning-strike overlays.
+  return (
+    <View style={styles.iconBox}>
+      <View style={icons.boltUpper} />
+      <View style={icons.boltLower} />
     </View>
   );
 }
@@ -385,6 +400,24 @@ const icons = StyleSheet.create({
     borderColor: "#1a2030",
     borderRadius: 2,
     backgroundColor: "rgba(255,255,255,0.9)",
+  },
+  boltUpper: {
+    position: "absolute",
+    left: 6,
+    top: 1,
+    width: 6,
+    height: 11,
+    backgroundColor: "#1a2030",
+    transform: [{ skewX: "-12deg" }],
+  },
+  boltLower: {
+    position: "absolute",
+    left: 9,
+    top: 9,
+    width: 6,
+    height: 10,
+    backgroundColor: "#1a2030",
+    transform: [{ skewX: "-12deg" }],
   },
 });
 

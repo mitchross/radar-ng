@@ -19,6 +19,9 @@ interface WeatherState {
   mapProjection: MapProjection;
   activePalette: Palette;
   timelineMode: TimelineMode;
+  // Power-user overlays — off by default. Lightning + storm-cell dots
+  // overwhelm the radar view for casual users; opt-in via this flag.
+  extrasVisible: boolean;
   serverUrl: string;
 
   setFrames: (frames: RadarFrame[]) => void;
@@ -34,6 +37,7 @@ interface WeatherState {
   setMapProjection: (projection: MapProjection) => void;
   setActivePalette: (palette: Palette) => void;
   setTimelineMode: (mode: TimelineMode) => void;
+  toggleExtras: () => void;
   setActiveLayer: (layer: LayerType) => void;
   toggleOverlay: (layer: LayerType) => void;
   setServerUrl: (url: string) => void;
@@ -58,6 +62,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   // Default to "forecast" so the timeline shows past + nowcast + HRRR future
   // as one merged stream out of the box. Less UI to flip, less to explain.
   timelineMode: (getString("timelineMode", "forecast") as TimelineMode),
+  extrasVisible: getString("extrasVisible", "0") === "1",
   serverUrl: getString("serverUrl", SELF_HOSTED.DEFAULT_URL),
 
   setFrames: (frames) => set({ frames }),
@@ -85,6 +90,11 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     setString("timelineMode", mode);
     set({ timelineMode: mode });
   },
+  toggleExtras: () => set((s) => {
+    const next = !s.extrasVisible;
+    setString("extrasVisible", next ? "1" : "0");
+    return { extrasVisible: next };
+  }),
   setActiveLayer: (layer) => set({ activeLayer: layer }),
   toggleOverlay: (layer) => set((s) => {
     const next = new Set(s.visibleOverlays);
