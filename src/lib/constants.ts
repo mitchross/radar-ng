@@ -52,10 +52,14 @@ export const SELF_HOSTED = {
   BASEMAP_TILE_PATTERN: "/basemap/tiles/{z}/{x}/{y}.mvt",
 } as const;
 
+// `radar-composite` / `radar-hrrr` are NOT in this list because the
+// tile-server manifest doesn't currently expose them as standalone layers.
+// Selecting them previously yielded silent blank overlays + 404s. They
+// can come back once the cluster manifest publishes them; until then the
+// `radar` layer's forecast mode already merges past + nowcast + HRRR into
+// a single timeline.
 export const LAYERS: LayerConfig[] = [
   { id: "radar", label: "Radar", icon: "R", isFillLayer: true, defaultVisible: true, minZoom: 1, maxZoom: 12 },
-  { id: "radar-composite", label: "Composite", icon: "X", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
-  { id: "radar-hrrr", label: "HRRR", icon: "H", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
   { id: "wind", label: "Wind", icon: "W", isFillLayer: false, defaultVisible: false, minZoom: 1, maxZoom: 9 },
   { id: "temperature", label: "Temp", icon: "T", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
   { id: "precip-type", label: "Precip", icon: "P", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },

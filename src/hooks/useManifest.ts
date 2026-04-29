@@ -77,13 +77,31 @@ export function useManifest() {
     setFrames(frames);
     if (currentFrameIndex === -1 || currentFrameIndex >= frames.length) {
       const nowSec = Math.floor(Date.now() / 1000);
-      let best = 0;
-      let bestDiff = Infinity;
-      for (let i = 0; i < frames.length; i++) {
-        const d = Math.abs(frames[i].time - nowSec);
-        if (d < bestDiff) {
-          bestDiff = d;
+      // Prefer the most recent OBSERVED frame (source !== nowcast/HRRR) as
+      // the default "Now" position. In forecast mode the closest-to-now
+      // frame is often a nowcast extrapolation, and nowcast tiles only
+      // render up to z=6 — opening the radar tab on a nowcast frame at a
+      // city zoom paints nothing visible. Falling back to the latest
+      // observed reflectivity tile gives the user real precip on first
+      // load; they can still scrub forward into nowcast/HRRR.
+      let best = -1;
+      for (let i = frames.length - 1; i >= 0; i--) {
+        const f = frames[i];
+        const isObserved = f.source !== "nowcast" && f.source !== "radar-hrrr";
+        if (isObserved && f.time <= nowSec) {
           best = i;
+          break;
+        }
+      }
+      if (best === -1) {
+        // No past observation in the timeline — fall back to closest-to-now.
+        let bestDiff = Infinity;
+        for (let i = 0; i < frames.length; i++) {
+          const d = Math.abs(frames[i].time - nowSec);
+          if (d < bestDiff) {
+            bestDiff = d;
+            best = i;
+          }
         }
       }
       setCurrentFrameIndex(best);

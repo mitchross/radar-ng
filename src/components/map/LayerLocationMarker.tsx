@@ -70,9 +70,13 @@ function renderBody(
 
   const t = forecast?.current?.temperature_2m;
   if (t == null) return <Text style={styles.value}>{"\u2014"}</Text>;
-  const display =
-    unit === "celsius" ? Math.round(t) : Math.round(t * 9 / 5 + 32);
-  return <Text style={styles.value}>{display}</Text>;
+  // Tile-server's /api/forecast already returns Fahrenheit (open-meteo
+  // upstream is configured with `temperature_unit=fahrenheit`). Home tab
+  // does the same passthrough \u2014 earlier `t * 9/5 + 32` here was a double
+  // conversion that displayed 131\u00b0 for what should read 55\u00b0. The `unit`
+  // store flag is currently cosmetic; honoring it requires a server-side
+  // unit param, out of scope here.
+  return <Text style={styles.value}>{Math.round(t)}</Text>;
 }
 
 const PILL_BG = "rgba(255,255,255,0.98)";
