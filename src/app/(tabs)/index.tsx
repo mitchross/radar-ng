@@ -4,10 +4,12 @@
  * banner, 24h hourly strip, 24h precip chart, 7-day forecast, radar mini
  * tease, stat grid (UV/wind/humidity/visibility/pressure/AQI), sun arc.
  */
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable } from "react-native";
+import { useCallback, useState } from "react";
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../../hooks/useForecast";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useLocation } from "../../hooks/useLocation";
@@ -29,6 +31,19 @@ export default function HomeScreen() {
   const router = useRouter();
   const { data: forecast, isLoading } = useForecast();
   const { data: alertData } = useAlerts();
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["forecast"] }),
+        queryClient.invalidateQueries({ queryKey: ["alerts"] }),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [queryClient]);
 
   if (isLoading || !forecast) {
     return (
@@ -108,7 +123,18 @@ export default function HomeScreen() {
   return (
     <LinearGradient colors={gradient} style={styles.container}>
       <SafeAreaView style={styles.flex} edges={["top"]}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scroll}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={cumulus.ink}
+              colors={[cumulus.accent]}
+            />
+          }
+        >
           {/* Top bar — location + gear (→ settings) */}
           <View style={styles.topBar}>
             <View>

@@ -4,7 +4,7 @@
  * Network, Preferences, About. The stack URL is the single source of truth
  * for every derived endpoint in the Data Sources list.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ScrollView,
   View,
@@ -14,6 +14,7 @@ import {
   Switch,
   TextInput,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -43,6 +44,8 @@ export default function SettingsScreen() {
   const [urlDraft, setUrlDraft] = useState(serverUrl);
   const [stackHealthy, setStackHealthy] = useState<boolean | null>(null);
   const [refreshLabel, setRefreshLabel] = useState("2 min");
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +54,16 @@ export default function SettingsScreen() {
       if (!cancelled) setStackHealthy(ok);
     });
     return () => { cancelled = true; };
+  }, [serverUrl, refreshTick]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setRefreshTick((t) => t + 1);
+    try {
+      await checkServerHealth(serverUrl);
+    } finally {
+      setRefreshing(false);
+    }
   }, [serverUrl]);
 
   const sources = useMemo(
@@ -67,6 +80,14 @@ export default function SettingsScreen() {
           style={styles.flex}
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={cumulus.ink}
+              colors={[cumulus.accent]}
+            />
+          }
         >
           {/* Header */}
           <View style={styles.headerRow}>

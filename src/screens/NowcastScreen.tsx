@@ -3,10 +3,12 @@
  * Uses Open-Meteo's minutely_15 precip (4 values × 15min = 60min) interpolated
  * to 60 one-minute bars so the chart matches the prototype's density.
  */
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { useCallback, useState } from "react";
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../hooks/useForecast";
 import { useLocation } from "../hooks/useLocation";
 import {
@@ -23,6 +25,16 @@ export default function NowcastScreen() {
   useLocation();
   const router = useRouter();
   const { data: forecast, isLoading } = useForecast();
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ["forecast"] });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [queryClient]);
 
   if (isLoading || !forecast) {
     return (
@@ -57,7 +69,18 @@ export default function NowcastScreen() {
   return (
     <LinearGradient colors={gradient} style={styles.container}>
       <SafeAreaView style={styles.flex} edges={["top"]}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scroll}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={cumulus.ink}
+              colors={[cumulus.accent]}
+            />
+          }
+        >
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>

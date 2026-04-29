@@ -2,7 +2,7 @@
  * Cumulus Alerts tab — NWS active alerts list, severity-colored cards.
  * Empty state when none active. Tap → /alert/[id] detail modal.
  */
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -38,7 +38,18 @@ export default function AlertsScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isFetching}
+              onRefresh={refetch}
+              tintColor={cumulus.ink}
+              colors={[cumulus.accent]}
+            />
+          }
+        >
           {isLoading && <Text style={styles.muted}>Loading…</Text>}
           {!isLoading && alerts.length === 0 && <EmptyState />}
           {alerts.map((alert) => (

@@ -5,6 +5,7 @@
  */
 import { useState } from "react";
 import { View, TouchableOpacity, StyleSheet, Text, Pressable } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
 import type { LayerType } from "../../types/weather";
@@ -42,7 +43,19 @@ export function RadarFABs({
   const setActiveLayer = useWeatherStore((s) => s.setActiveLayer);
   const extrasVisible = useWeatherStore((s) => s.extrasVisible);
   const toggleExtras = useWeatherStore((s) => s.toggleExtras);
+  const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
+  const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
+  const queryClient = useQueryClient();
   const [layerOpen, setLayerOpen] = useState(false);
+
+  // Snap timeline back to "Now" + pause + refetch the manifest. Setting the
+  // frame index to -1 makes useManifest's effect re-pick the latest observed
+  // frame once the new manifest data lands.
+  const onRefresh = () => {
+    setIsPlaying(false);
+    setCurrentFrameIndex(-1);
+    queryClient.invalidateQueries({ queryKey: ["manifest"] });
+  };
 
   const options = LAYER_OPTIONS;
   const activeOpt = options.find((o) => o.id === activeLayer) ?? options[0];
@@ -62,6 +75,9 @@ export function RadarFABs({
         </GlassBtn>
         <GlassBtn onPress={onOpenStylePicker}>
           <MapStyleIcon />
+        </GlassBtn>
+        <GlassBtn onPress={onRefresh}>
+          <RefreshIcon />
         </GlassBtn>
       </View>
 
@@ -157,6 +173,18 @@ function MapStyleIcon() {
     <View style={styles.iconBox}>
       <View style={icons.stackTop} />
       <View style={icons.stackBottom} />
+    </View>
+  );
+}
+
+function RefreshIcon() {
+  // Circular arrow — three-quarter ring + arrowhead at the top-right.
+  return (
+    <View style={styles.iconBox}>
+      <View style={icons.refreshRing} />
+      <View style={icons.refreshNotch} />
+      <View style={icons.refreshArrowA} />
+      <View style={icons.refreshArrowB} />
     </View>
   );
 }
@@ -418,6 +446,45 @@ const icons = StyleSheet.create({
     height: 10,
     backgroundColor: "#1a2030",
     transform: [{ skewX: "-12deg" }],
+  },
+  refreshRing: {
+    position: "absolute",
+    left: 1,
+    top: 1,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.8,
+    borderColor: "#1a2030",
+    backgroundColor: "transparent",
+  },
+  refreshNotch: {
+    position: "absolute",
+    right: 0,
+    top: -1,
+    width: 7,
+    height: 7,
+    backgroundColor: "rgba(255,255,255,0.9)",
+  },
+  refreshArrowA: {
+    position: "absolute",
+    right: 1,
+    top: 1,
+    width: 5,
+    height: 1.8,
+    backgroundColor: "#1a2030",
+    transform: [{ rotate: "45deg" }],
+    borderRadius: 1,
+  },
+  refreshArrowB: {
+    position: "absolute",
+    right: 1,
+    top: 1,
+    width: 1.8,
+    height: 5,
+    backgroundColor: "#1a2030",
+    transform: [{ rotate: "45deg" }],
+    borderRadius: 1,
   },
 });
 
