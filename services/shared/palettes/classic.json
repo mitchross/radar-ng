@@ -1,16 +1,19 @@
 {
-  "_comment": "NWS-standard palette (green/yellow/red/magenta). Matches existing color_tables.json.",
+  "_comment": "NWS-standard reflectivity palette. Bands match radar.weather.gov / RainViewer so light rain reads as green (not yellow) and only severe storms hit red. Earlier mapping was shifted ~10 dBZ low and painted moderate rain as heavy.",
   "reflectivity": {
     "unit": "dBZ",
     "ranges": [
-      { "min": 5,  "max": 10, "rgba": [0, 255, 0, 180] },
-      { "min": 10, "max": 20, "rgba": [0, 200, 0, 200] },
-      { "min": 20, "max": 30, "rgba": [255, 200, 0, 210] },
-      { "min": 30, "max": 40, "rgba": [255, 100, 0, 220] },
-      { "min": 40, "max": 50, "rgba": [255, 0, 0, 230] },
-      { "min": 50, "max": 60, "rgba": [200, 0, 0, 240] },
+      { "min": 15, "max": 20, "rgba": [160, 240, 160, 140] },
+      { "min": 20, "max": 25, "rgba": [80, 210, 80, 180] },
+      { "min": 25, "max": 30, "rgba": [0, 180, 0, 210] },
+      { "min": 30, "max": 35, "rgba": [0, 140, 0, 220] },
+      { "min": 35, "max": 40, "rgba": [255, 240, 0, 225] },
+      { "min": 40, "max": 45, "rgba": [255, 170, 0, 230] },
+      { "min": 45, "max": 50, "rgba": [255, 100, 0, 235] },
+      { "min": 50, "max": 55, "rgba": [240, 0, 0, 240] },
+      { "min": 55, "max": 60, "rgba": [180, 0, 0, 245] },
       { "min": 60, "max": 65, "rgba": [255, 0, 255, 245] },
-      { "min": 65, "max": 75, "rgba": [139, 0, 139, 250] }
+      { "min": 65, "max": 75, "rgba": [180, 0, 220, 250] }
     ],
     "no_data_below": 15
   },

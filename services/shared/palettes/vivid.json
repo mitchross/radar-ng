@@ -1,14 +1,17 @@
 {
-  "_comment": "CARROT-style vivid palette — blue → cyan → pink → purple. High-saturation, high-contrast.",
+  "_comment": "CARROT-style vivid palette — blue → cyan → pink → purple. Bands re-aligned to NWS-standard dBZ thresholds so light rain reads as cyan (not green), heavy as pink.",
   "reflectivity": {
     "unit": "dBZ",
     "ranges": [
-      { "min": 5,  "max": 10, "rgba": [80, 200, 255, 180] },
-      { "min": 10, "max": 20, "rgba": [0, 170, 255, 200] },
-      { "min": 20, "max": 30, "rgba": [0, 230, 220, 210] },
-      { "min": 30, "max": 40, "rgba": [120, 255, 180, 220] },
-      { "min": 40, "max": 50, "rgba": [255, 220, 80, 230] },
-      { "min": 50, "max": 60, "rgba": [255, 100, 170, 240] },
+      { "min": 15, "max": 20, "rgba": [180, 230, 255, 150] },
+      { "min": 20, "max": 25, "rgba": [80, 200, 255, 190] },
+      { "min": 25, "max": 30, "rgba": [0, 170, 255, 210] },
+      { "min": 30, "max": 35, "rgba": [0, 230, 220, 220] },
+      { "min": 35, "max": 40, "rgba": [120, 255, 180, 225] },
+      { "min": 40, "max": 45, "rgba": [255, 220, 80, 230] },
+      { "min": 45, "max": 50, "rgba": [255, 160, 90, 235] },
+      { "min": 50, "max": 55, "rgba": [255, 100, 170, 240] },
+      { "min": 55, "max": 60, "rgba": [240, 60, 200, 245] },
       { "min": 60, "max": 65, "rgba": [220, 60, 220, 245] },
       { "min": 65, "max": 75, "rgba": [140, 40, 255, 250] }
     ],

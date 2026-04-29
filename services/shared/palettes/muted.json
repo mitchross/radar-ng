@@ -1,16 +1,19 @@
 {
-  "_comment": "Viridis-based muted palette — colorblind-safe, low saturation. Uses perceptually-uniform purple → teal → yellow ramp.",
+  "_comment": "Viridis-based muted palette — colorblind-safe, perceptually-uniform purple → teal → yellow ramp. Bands re-aligned to NWS-standard dBZ thresholds so the ramp peaks (yellow) only at heavy reflectivity, not at moderate.",
   "reflectivity": {
     "unit": "dBZ",
     "ranges": [
-      { "min": 5,  "max": 10, "rgba": [68, 1, 84, 160] },
-      { "min": 10, "max": 20, "rgba": [59, 82, 139, 180] },
-      { "min": 20, "max": 30, "rgba": [33, 144, 141, 200] },
-      { "min": 30, "max": 40, "rgba": [94, 201, 97, 210] },
-      { "min": 40, "max": 50, "rgba": [194, 223, 34, 220] },
-      { "min": 50, "max": 60, "rgba": [253, 231, 37, 230] },
-      { "min": 60, "max": 65, "rgba": [240, 180, 40, 240] },
-      { "min": 65, "max": 75, "rgba": [210, 110, 30, 245] }
+      { "min": 15, "max": 20, "rgba": [68, 1, 84, 140] },
+      { "min": 20, "max": 25, "rgba": [72, 35, 116, 170] },
+      { "min": 25, "max": 30, "rgba": [59, 82, 139, 195] },
+      { "min": 30, "max": 35, "rgba": [49, 104, 142, 210] },
+      { "min": 35, "max": 40, "rgba": [33, 144, 141, 220] },
+      { "min": 40, "max": 45, "rgba": [53, 183, 121, 225] },
+      { "min": 45, "max": 50, "rgba": [94, 201, 97, 230] },
+      { "min": 50, "max": 55, "rgba": [194, 223, 34, 235] },
+      { "min": 55, "max": 60, "rgba": [253, 231, 37, 240] },
+      { "min": 60, "max": 65, "rgba": [240, 180, 40, 245] },
+      { "min": 65, "max": 75, "rgba": [210, 110, 30, 250] }
     ],
     "no_data_below": 15
   },
