@@ -27,7 +27,7 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
       ],
-      "package": "com.vanillax.radar-ng"
+      "package": "com.vanillax.radarng"
     },
     "web": {
       "output": "static",
