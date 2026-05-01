@@ -1,0 +1,79 @@
+# Local-only Temporal dev stack for radar-ng workflow iteration.
+#
+# Usage:
+#   cd deploy && docker compose -f temporal-dev.yml up --build
+#   open http://localhost:8080            # Temporal Web UI
+#   temporal --address localhost:7233 workflow list
+#
+# Persists nothing past the volumes below. Brings up:
+#   - postgres:        backing store for Temporal (cleared by `down -v`)
+#   - temporal:        Temporal server bootstrapped via auto-setup
+#   - temporal-ui:     Web UI at :8080
+#   - radar-ng-worker: our worker, built from temporal/Dockerfile
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: radar-ng-temporal-pg
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      retries: 20
+
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    container_name: radar-ng-temporal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgres
+      - DEFAULT_NAMESPACE=default
+      - DEFAULT_NAMESPACE_RETENTION=1d
+    ports:
+      - "7233:7233"
+
+  temporal-ui:
+    image: temporalio/ui:2.31.2
+    container_name: radar-ng-temporal-ui
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8080:8080"
+
+  worker:
+    build:
+      context: ..
+      dockerfile: temporal/Dockerfile
+    image: radar-ng-temporal-worker:dev
+    container_name: radar-ng-worker
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TILE_DIR=/data/tiles
+      - STATE_DIR=/data/state
+      - PALETTES=classic
+      - BACKLOG_PER_CYCLE=1
+    volumes:
+      - tile-data:/data
+    # Temporal needs ~30s to be reachable on first boot — restart loop covers it
+    restart: on-failure
+
+volumes:
+  pg-data:
+  tile-data:

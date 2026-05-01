@@ -27,6 +27,7 @@ from temporalio.client import (
     ScheduleOverlapPolicy,
     SchedulePolicy,
     ScheduleSpec,
+    ScheduleUpdate,
 )
 
 
@@ -70,7 +71,7 @@ async def seed(client: Client) -> None:
             print(f"[seed] created schedule {s.schedule_id}")
         except ScheduleAlreadyRunningError:
             handle = client.get_schedule_handle(s.schedule_id)
-            await handle.update(lambda _: spec)
+            await handle.update(lambda _: ScheduleUpdate(schedule=spec))
             print(f"[seed] updated schedule {s.schedule_id}")
 
 
