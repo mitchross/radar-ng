@@ -43,7 +43,6 @@ class ScheduleDef:
     workflow_name: str
     workflow_input: list[Any] = field(default_factory=list)
     interval: timedelta | None = None
-    cron_expressions: list[str] = field(default_factory=list)
 
 
 SCHEDULES: list[ScheduleDef] = [
@@ -71,7 +70,10 @@ SCHEDULES: list[ScheduleDef] = [
     ScheduleDef("tile-cleanup", "TileCleanupWorkflow", interval=timedelta(hours=1)),
     # NWS active alerts — every 5 min
     ScheduleDef("poll-alerts", "PollAlertsWorkflow", interval=timedelta(minutes=5)),
-    # Open-meteo GFS sync — fire at HH:30 every 6 hours (matches GFS run lag)
+    # Open-meteo GFS sync — every 6h. The legacy CronJob used "30 */6 * * *"
+    # to align with GFS run lag, but Temporal SKIP overlap + --past-days=2
+    # backfill make exact wall-clock alignment unnecessary; freshness is
+    # bounded by the 6h interval regardless.
     ScheduleDef(
         "open-meteo-sync-gfs", "OpenMeteoSyncWorkflow",
         workflow_input=[{
@@ -79,9 +81,9 @@ SCHEDULES: list[ScheduleDef] = [
             "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure,uv_index",
             "past_days": 2,
         }],
-        cron_expressions=["30 */6 * * *"],
+        interval=timedelta(hours=6),
     ),
-    # Open-meteo HRRR sync — fire at HH:45 every hour
+    # Open-meteo HRRR sync — every 1h.
     ScheduleDef(
         "open-meteo-sync-hrrr", "OpenMeteoSyncWorkflow",
         workflow_input=[{
@@ -89,18 +91,15 @@ SCHEDULES: list[ScheduleDef] = [
             "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure",
             "past_days": 1,
         }],
-        cron_expressions=["45 * * * *"],
+        interval=timedelta(hours=1),
     ),
 ]
 
 
 def _spec_for(s: ScheduleDef) -> Schedule:
-    if s.interval is not None:
-        spec = ScheduleSpec(intervals=[ScheduleIntervalSpec(every=s.interval)])
-    elif s.cron_expressions:
-        spec = ScheduleSpec(cron_expressions=s.cron_expressions)
-    else:
-        raise ValueError(f"schedule {s.schedule_id} has neither interval nor cron")
+    if s.interval is None:
+        raise ValueError(f"schedule {s.schedule_id} has no interval")
+    spec = ScheduleSpec(intervals=[ScheduleIntervalSpec(every=s.interval)])
     return Schedule(
         action=ScheduleActionStartWorkflow(
             s.workflow_name,

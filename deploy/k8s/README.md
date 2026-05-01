@@ -146,8 +146,8 @@ Re-running is idempotent. Creates ten schedules:
 | `nowcast`                | every 2m    | `deployment-nowcast.yaml` |
 | `tile-cleanup`           | every 1h    | `cronjob-tile-cleanup.yaml` |
 | `poll-alerts`            | every 5m    | _new — server-side NWS alert poll_ |
-| `open-meteo-sync-gfs`    | `30 */6 * * *` cron | `cronjob-open-meteo-sync.yaml` (gfs) |
-| `open-meteo-sync-hrrr`   | `45 * * * *` cron   | `cronjob-open-meteo-sync.yaml` (hrrr) |
+| `open-meteo-sync-gfs`    | every 6h    | `cronjob-open-meteo-sync.yaml` (gfs) |
+| `open-meteo-sync-hrrr`   | every 1h    | `cronjob-open-meteo-sync.yaml` (hrrr) |
 
 ### 6. Verify
 
