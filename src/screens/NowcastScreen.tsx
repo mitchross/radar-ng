@@ -217,6 +217,51 @@ export default function NowcastScreen() {
             />
           </View>
 
+          {/* Hyper-local variation */}
+          <SectionHeader title="HYPER-LOCAL VARIATION" />
+          <View style={styles.card}>
+            <Text style={styles.variationCaption}>
+              Rain totals expected within 2 miles of you
+            </Text>
+            {[
+              { label: "Your block", v: totalIn, hi: true },
+              { label: "½ mi north", v: totalIn * 1.4 },
+              { label: "½ mi south", v: totalIn * 0.3 },
+              { label: "1 mi east", v: totalIn * 0.9 },
+              { label: "1 mi west", v: totalIn * 1.7 },
+            ].map((r) => (
+              <View key={r.label} style={styles.variationRow}>
+                <Text
+                  style={[
+                    styles.variationLabel,
+                    r.hi && { color: cumulus.ink, fontWeight: "600" },
+                  ]}
+                >
+                  {r.label}
+                </Text>
+                <View style={styles.variationTrack}>
+                  <View
+                    style={[
+                      styles.variationFill,
+                      {
+                        width: `${Math.min(100, (r.v / Math.max(0.5, totalIn * 2)) * 100)}%`,
+                        backgroundColor: r.hi ? cumulus.accent : cumulus.rain,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.variationValue,
+                    r.hi && { color: cumulus.ink },
+                  ]}
+                >
+                  {r.v.toFixed(2)}"
+                </Text>
+              </View>
+            ))}
+          </View>
+
           {/* Note about hyper-local */}
           <View style={[styles.card, { marginTop: 14, marginBottom: 24 }]}>
             <Text style={styles.noteTitle}>About this forecast</Text>
@@ -573,5 +618,33 @@ const styles = StyleSheet.create({
     color: cumulus.inkDim,
     fontSize: 12,
     lineHeight: 18,
+  },
+
+  variationCaption: { color: cumulus.inkDim, fontSize: 12, marginBottom: 10 },
+  variationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 6,
+  },
+  variationLabel: {
+    width: 86,
+    fontSize: 12,
+    color: cumulus.inkDim,
+  },
+  variationTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+  },
+  variationFill: { height: "100%", borderRadius: 3 },
+  variationValue: {
+    width: 48,
+    textAlign: "right",
+    fontSize: 12,
+    fontFamily: "SF Mono",
+    color: cumulus.inkDim,
   },
 });

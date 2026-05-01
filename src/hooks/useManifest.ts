@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSelfHostedManifest } from "../lib/api";
 import { useWeatherStore } from "../stores/useWeatherStore";
@@ -56,6 +56,32 @@ function dedupe(frames: RadarFrame[]): RadarFrame[] {
   return out;
 }
 
+/**
+ * Picks the "Now" frame: the most recent OBSERVED frame (source !== nowcast/HRRR)
+ * with `time <= now`. Falls back to the closest-to-now frame if no observation
+ * exists (e.g. on a forecast-only layer like temperature). Returns -1 when the
+ * frame list is empty.
+ */
+export function pickNowFrameIndex(frames: RadarFrame[]): number {
+  if (frames.length === 0) return -1;
+  const nowSec = Math.floor(Date.now() / 1000);
+  for (let i = frames.length - 1; i >= 0; i--) {
+    const f = frames[i];
+    const isObserved = f.source !== "nowcast" && f.source !== "radar-hrrr";
+    if (isObserved && f.time <= nowSec) return i;
+  }
+  let best = 0;
+  let bestDiff = Math.abs(frames[0].time - nowSec);
+  for (let i = 1; i < frames.length; i++) {
+    const d = Math.abs(frames[i].time - nowSec);
+    if (d < bestDiff) {
+      bestDiff = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
 export function useManifest() {
   const setFrames = useWeatherStore((s) => s.setFrames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
@@ -70,43 +96,26 @@ export function useManifest() {
     refetchInterval: DEFAULTS.MANIFEST_REFETCH_MS,
   });
 
+  const frames = useMemo(
+    () => (query.data ? buildSelfHostedFrames(query.data, activeLayer, timelineMode) : []),
+    [query.data, activeLayer, timelineMode],
+  );
+
   useEffect(() => {
-    if (!query.data) return;
-    const frames = buildSelfHostedFrames(query.data, activeLayer, timelineMode);
+    if (frames.length > 0) setFrames(frames);
+  }, [frames, setFrames]);
+
+  // Snap to "Now" when the index is uninitialised or out of bounds. Split from
+  // the frames effect so scrubbing the timeline doesn't rebuild the frame list.
+  // React Query's structural sharing means a refetch with identical data won't
+  // change `query.data`, so the refresh button can't rely on this effect alone
+  // to re-snap — it computes the index synchronously via pickNowFrameIndex.
+  useEffect(() => {
     if (frames.length === 0) return;
-    setFrames(frames);
     if (currentFrameIndex === -1 || currentFrameIndex >= frames.length) {
-      const nowSec = Math.floor(Date.now() / 1000);
-      // Prefer the most recent OBSERVED frame (source !== nowcast/HRRR) as
-      // the default "Now" position. In forecast mode the closest-to-now
-      // frame is often a nowcast extrapolation, and nowcast tiles only
-      // render up to z=6 — opening the radar tab on a nowcast frame at a
-      // city zoom paints nothing visible. Falling back to the latest
-      // observed reflectivity tile gives the user real precip on first
-      // load; they can still scrub forward into nowcast/HRRR.
-      let best = -1;
-      for (let i = frames.length - 1; i >= 0; i--) {
-        const f = frames[i];
-        const isObserved = f.source !== "nowcast" && f.source !== "radar-hrrr";
-        if (isObserved && f.time <= nowSec) {
-          best = i;
-          break;
-        }
-      }
-      if (best === -1) {
-        // No past observation in the timeline — fall back to closest-to-now.
-        let bestDiff = Infinity;
-        for (let i = 0; i < frames.length; i++) {
-          const d = Math.abs(frames[i].time - nowSec);
-          if (d < bestDiff) {
-            bestDiff = d;
-            best = i;
-          }
-        }
-      }
-      setCurrentFrameIndex(best);
+      setCurrentFrameIndex(pickNowFrameIndex(frames));
     }
-  }, [query.data, activeLayer, timelineMode]);
+  }, [frames, currentFrameIndex, setCurrentFrameIndex]);
 
   return query;
 }

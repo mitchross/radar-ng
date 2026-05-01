@@ -7,6 +7,7 @@ import { useState } from "react";
 import { View, TouchableOpacity, StyleSheet, Text, Pressable } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { pickNowFrameIndex } from "../../hooks/useManifest";
 import { cumulus } from "../../lib/cumulusTheme";
 import type { LayerType } from "../../types/weather";
 
@@ -48,12 +49,15 @@ export function RadarFABs({
   const queryClient = useQueryClient();
   const [layerOpen, setLayerOpen] = useState(false);
 
-  // Snap timeline back to "Now" + pause + refetch the manifest. Setting the
-  // frame index to -1 makes useManifest's effect re-pick the latest observed
-  // frame once the new manifest data lands.
+  // Pause + immediately snap to "Now" using the current frame list, then
+  // refetch the manifest in the background. Doing the snap synchronously
+  // (rather than just setting the index to -1 and waiting for useManifest's
+  // effect to re-fire) avoids a stale displayed frame when React Query's
+  // structural sharing returns the cached manifest reference unchanged.
   const onRefresh = () => {
     setIsPlaying(false);
-    setCurrentFrameIndex(-1);
+    const frames = useWeatherStore.getState().frames;
+    setCurrentFrameIndex(pickNowFrameIndex(frames));
     queryClient.invalidateQueries({ queryKey: ["manifest"] });
   };
 

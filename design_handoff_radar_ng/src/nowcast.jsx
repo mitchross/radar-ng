@@ -1,4 +1,4 @@
-// Cumulus — Nowcast screen
+// Radar-NG — Nowcast screen
 // 60-minute minute-by-minute precipitation with intensity bars + confidence band.
 
 function NowcastScreen({ onBack, data }) {
@@ -13,7 +13,8 @@ function NowcastScreen({ onBack, data }) {
   const rainEndMin = rainEnd >= 0 ? 59 - rainEnd : -1;
 
   return (
-    <div style={{ width: '100%', height: '100%', overflow: 'auto', fontFamily: f.ui, color: t.ink, paddingBottom: 100, paddingTop: 56 }}>
+    <PullToRefresh accent="#8B7CFF" onRefresh={() => new Promise(r => setTimeout(r, 600))}>
+    <div style={{ width: '100%', minHeight: '100%', fontFamily: f.ui, color: t.ink, paddingBottom: 100, paddingTop: 56 }}>
       {/* header */}
       <div style={{ display: 'flex', alignItems: 'center', padding: '8px 16px 4px' }}>
         <div onClick={onBack} style={{ width: 36, height: 36, borderRadius: 12, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
@@ -100,6 +101,7 @@ function NowcastScreen({ onBack, data }) {
         ))}
       </div>
     </div>
+    </PullToRefresh>
   );
 }
 

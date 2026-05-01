@@ -13,10 +13,18 @@ import type { NWSAlert } from "../../types/weather";
 
 const SEVERITY_COLOR: Record<NWSAlert["properties"]["severity"], string> = {
   Extreme: "#FF3B4A",
-  Severe: "#FF6E3A",
-  Moderate: "#FFC14D",
+  Severe: "#FF8A3A",
+  Moderate: "#F5D042",
   Minor: "#4FB8FF",
   Unknown: "rgba(255,255,255,0.4)",
+};
+
+const SEVERITY_GLOW: Record<NWSAlert["properties"]["severity"], string> = {
+  Extreme: "rgba(255,59,74,0.35)",
+  Severe: "rgba(255,138,58,0.30)",
+  Moderate: "rgba(245,208,66,0.25)",
+  Minor: "rgba(79,184,255,0.22)",
+  Unknown: "rgba(255,255,255,0.10)",
 };
 
 export default function AlertsScreen() {
@@ -68,16 +76,41 @@ export default function AlertsScreen() {
 
 function AlertCard({ alert, onPress }: { alert: NWSAlert; onPress: () => void }) {
   const color = SEVERITY_COLOR[alert.properties.severity];
+  const glow = SEVERITY_GLOW[alert.properties.severity];
   const expires = new Date(alert.properties.expires);
   const expiresLabel = expires.toLocaleString([], {
     month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
   });
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.card}>
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      style={[
+        styles.card,
+        {
+          shadowColor: glow,
+          shadowOpacity: 1,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 6 },
+        },
+      ]}
+    >
       <View style={[styles.stripe, { backgroundColor: color }]} />
       <View style={styles.cardBody}>
         <View style={styles.cardHeaderRow}>
-          <View style={[styles.severityPill, { borderColor: color, backgroundColor: `${color}22` }]}>
+          <View style={[styles.severityPill, { borderColor: `${color}55`, backgroundColor: `${color}22` }]}>
+            <View
+              style={[
+                styles.severityDot,
+                {
+                  backgroundColor: color,
+                  shadowColor: color,
+                  shadowOpacity: 0.85,
+                  shadowRadius: 4,
+                  shadowOffset: { width: 0, height: 0 },
+                },
+              ]}
+            />
             <Text style={[styles.severityText, { color }]}>{alert.properties.severity.toUpperCase()}</Text>
           </View>
           <Text style={styles.urgency}>{alert.properties.urgency.toUpperCase()}</Text>
@@ -156,11 +189,15 @@ const styles = StyleSheet.create({
   cardBody: { flex: 1, padding: 14 },
   cardHeaderRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 },
   severityPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
   },
+  severityDot: { width: 6, height: 6, borderRadius: 3 },
   severityText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8, fontFamily: "SF Mono" },
   urgency: { fontSize: 10, color: cumulus.inkMuted, fontFamily: "SF Mono", letterSpacing: 0.8 },
   event: { color: cumulus.ink, fontSize: 17, fontWeight: "700", letterSpacing: -0.2 },

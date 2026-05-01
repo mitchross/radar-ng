@@ -1,4 +1,4 @@
-// Cumulus — Settings screen (Data Sources focus for self-hosted stack)
+// Radar-NG — Settings screen (Data Sources focus for self-hosted stack)
 
 function SettingsScreen({ onBack, settings, onChange }) {
   const t = window.CUMULUS.tokens;
@@ -9,7 +9,8 @@ function SettingsScreen({ onBack, settings, onChange }) {
   const updSource = (sourceKey, patch) => onChange({ ...s, sources: { ...s.sources, [sourceKey]: { ...s.sources[sourceKey], ...patch } } });
 
   return (
-    <div style={{ width: '100%', height: '100%', overflow: 'auto', background: '#0a0e1a', color: '#fff', fontFamily: f.ui, paddingTop: 56, paddingBottom: 100 }}>
+    <PullToRefresh accent="#8B7CFF" onRefresh={() => new Promise(r => setTimeout(r, 600))}>
+    <div style={{ width: '100%', minHeight: '100%', background: '#0a0e1a', color: '#fff', fontFamily: f.ui, paddingTop: 56, paddingBottom: 100 }}>
 
       {/* Header */}
       <div style={{ padding: '10px 16px 6px', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -89,17 +90,17 @@ function SettingsScreen({ onBack, settings, onChange }) {
           <Pill color="#4ADE80">Running</Pill>
         </Row>
         <Sep />
-        <ContainerRow name="cumulus-mrms" image="ghcr.io/cumulus/mrms:1.4.2" status="healthy" ports="8081→80" />
+        <ContainerRow name="radar-ng-mrms" image="ghcr.io/radar-ng/mrms:1.4.2" status="healthy" ports="8081→80" />
         <Sep />
-        <ContainerRow name="cumulus-goes" image="ghcr.io/cumulus/goes:0.9.1" status="healthy" ports="8082→80" />
+        <ContainerRow name="radar-ng-goes" image="ghcr.io/radar-ng/goes:0.9.1" status="healthy" ports="8082→80" />
         <Sep />
-        <ContainerRow name="cumulus-hrrr" image="ghcr.io/cumulus/hrrr:2.1.0" status="updating" ports="8083→80" />
+        <ContainerRow name="radar-ng-hrrr" image="ghcr.io/radar-ng/hrrr:2.1.0" status="updating" ports="8083→80" />
         <Sep />
-        <ContainerRow name="cumulus-tiles" image="ghcr.io/maptiler/osm:latest" status="healthy" ports="8084→80" />
+        <ContainerRow name="radar-ng-tiles" image="ghcr.io/maptiler/osm:latest" status="healthy" ports="8084→80" />
         <Sep />
-        <ContainerRow name="cumulus-proxy" image="caddy:2.7" status="healthy" ports="443→443" />
+        <ContainerRow name="radar-ng-proxy" image="caddy:2.7" status="healthy" ports="443→443" />
         <Sep />
-        <ContainerRow name="cumulus-cache" image="varnish:7.4" status="healthy" ports="6081→6081" />
+        <ContainerRow name="radar-ng-cache" image="varnish:7.4" status="healthy" ports="6081→6081" />
       </Card>
 
       <div style={{ padding: '10px 16px 0', display: 'flex', gap: 10 }}>
@@ -153,9 +154,10 @@ function SettingsScreen({ onBack, settings, onChange }) {
       </Card>
 
       <div style={{ padding: '16px 16px 40px', textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: f.mono }}>
-        Cumulus is open source. Self-hosted, offline-capable.
+        Radar-NG is open source. Self-hosted, offline-capable.
       </div>
     </div>
+    </PullToRefresh>
   );
 }
 

@@ -73,10 +73,14 @@ export interface NWSAlert {
     event: string;
     headline: string | null;
     description: string;
+    instruction: string | null;
     severity: "Extreme" | "Severe" | "Moderate" | "Minor" | "Unknown";
     urgency: "Immediate" | "Expected" | "Future" | "Past" | "Unknown";
+    onset: string | null;
+    effective: string;
     expires: string;
     areaDesc: string;
+    senderName: string | null;
   };
 }
 

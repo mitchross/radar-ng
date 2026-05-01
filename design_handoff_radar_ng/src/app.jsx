@@ -1,7 +1,7 @@
-// Cumulus — App shell: tab nav + tweaks + data
+// Radar-NG — App shell: tab nav + tweaks + data
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "condition": "rain",
+  "condition": "storm",
   "timeOfDay": "day",
   "proMode": true,
   "accent": "violet",
@@ -27,6 +27,7 @@ function App() {
   const [editMode, setEditMode] = React.useState(false);
   const [screen, setScreen] = React.useState(tweaks.screen || 'home');
   const [settings, setSettings] = React.useState(SETTINGS_DEFAULTS);
+  const [activeAlert, setActiveAlert] = React.useState(null);
 
   React.useEffect(() => {
     const onMsg = (e) => {
@@ -85,6 +86,8 @@ function App() {
         {screen === 'nowcast' && <NowcastScreen data={data.nowcastFull} onBack={() => setScreen('home')} />}
         {screen === 'radar' && <RadarScreen data={{ location: data.location }} onBack={() => setScreen('home')} />}
         {screen === 'settings' && <SettingsScreen onBack={() => setScreen('home')} settings={settings} onChange={setSettings} />}
+        {screen === 'alerts' && !activeAlert && <AlertsScreen data={data} onOpenAlert={(a) => setActiveAlert(a)} />}
+        {screen === 'alerts' && activeAlert && <AlertDetailScreen alert={activeAlert} onBack={() => setActiveAlert(null)} />}
 
         {/* Bottom tab bar (hidden on radar) */}
         {screen !== 'radar' && (
@@ -105,7 +108,7 @@ function App() {
             <TabBtn active={screen === 'radar'} label="Radar" onClick={() => setScreen('radar')}>
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7" stroke="#fff" strokeWidth="1.3"/><circle cx="9" cy="9" r="4" stroke="#fff" strokeWidth="1.1" opacity="0.6"/><line x1="9" y1="9" x2="15" y2="4" stroke="#fff" strokeWidth="1.6" strokeLinecap="round"/></svg>
             </TabBtn>
-            <TabBtn label="Alerts" count={data.alertCount}>
+            <TabBtn active={screen === 'alerts'} label="Alerts" count={data.alertCount} onClick={() => { setActiveAlert(null); setScreen('alerts'); }}>
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2 L2 14 L16 14 Z" stroke="#fff" strokeWidth="1.4" strokeLinejoin="round"/><line x1="9" y1="7" x2="9" y2="10" stroke="#fff" strokeWidth="1.6" strokeLinecap="round"/><circle cx="9" cy="12" r="0.9" fill="#fff"/></svg>
             </TabBtn>
             <TabBtn active={screen === 'settings'} label="Settings" onClick={() => setScreen('settings')}>
@@ -165,7 +168,7 @@ function TweaksPanel({ tweaks, onChange }) {
       {opts('CONDITION', 'condition', ['clear', 'cloudy', 'rain', 'storm', 'snow', 'fog'])}
       {opts('TIME', 'timeOfDay', ['day', 'night'])}
       {opts('ACCENT', 'accent', ['violet', 'teal', 'amber', 'pink'])}
-      {opts('SCREEN', 'screen', ['home', 'nowcast', 'radar', 'settings'])}
+      {opts('SCREEN', 'screen', ['home', 'nowcast', 'radar', 'alerts', 'settings'])}
     </div>
   );
 }
@@ -301,6 +304,18 @@ function buildData(tweaks) {
     temp, feels, hi: Math.max(...daily[0].hi ? [daily[0].hi] : [temp + 4]), lo: daily[0].lo,
     nowcast, hourly, daily, weekHi, weekLo, precipTotal,
     alertCount: condition === 'storm' ? 2 : isRain ? 1 : 0,
+    alerts: condition === 'storm' ? [
+      { severity: 'Extreme', urgency: 'Immediate · Take action now', event: 'Tornado Warning', headline: 'A confirmed tornado is on the ground near Caledonia, MI moving NE at 35 mph.', area: 'Kent and Barry counties, MI', sender: 'NWS Grand Rapids, MI', onset: 'Apr 30, 11:08 PM', effective: 'Apr 30, 11:08 PM', expires: 'Apr 30, 11:45 PM',
+        description: 'At 11:07 PM, a confirmed tornado was located 6 miles south of Caledonia, moving northeast at 35 mph.\n\nHAZARD: Damaging tornado and quarter size hail.\n\nSOURCE: Radar confirmed and weather spotters.\n\nIMPACT: Flying debris will be dangerous to those caught without shelter. Mobile homes will be damaged or destroyed. Damage to roofs, windows, and vehicles will occur. Tree damage is likely.',
+        instruction: 'TAKE COVER NOW! Move to a basement or an interior room on the lowest floor of a sturdy building. Avoid windows. If you are in a mobile home, a vehicle, or outdoors, move to the closest substantial shelter and protect yourself from flying debris.' },
+      { severity: 'Severe', urgency: 'Expected within 60 minutes', event: 'Severe Thunderstorm Warning', headline: 'A line of severe thunderstorms with 70 mph winds and quarter size hail.', area: 'Kent, Ottawa, and Muskegon counties, MI', sender: 'NWS Grand Rapids, MI', onset: 'Apr 30, 11:00 PM', effective: 'Apr 30, 11:00 PM', expires: 'Apr 30, 11:30 PM',
+        description: 'A line of severe thunderstorms was located along a line extending from 5 miles north of Whitehall to 10 miles southwest of Holland, moving east at 50 mph.\n\nHAZARD: 70 mph wind gusts and quarter size hail.\n\nSOURCE: Radar indicated.',
+        instruction: 'For your protection move to an interior room on the lowest floor of a building. Large hail and damaging winds and continuous cloud to ground lightning is occurring with this storm. Move indoors immediately.' },
+    ] : isRain ? [
+      { severity: 'Moderate', urgency: 'Expected · 2 hours', event: 'Flood Advisory', headline: 'Minor urban and small-stream flooding expected through the evening.', area: 'Kent county, MI', sender: 'NWS Grand Rapids, MI', onset: 'Apr 30, 9:00 PM', effective: 'Apr 30, 9:00 PM', expires: 'May 1, 1:00 AM',
+        description: 'Heavy rainfall of 1 to 2 inches has fallen over the past 3 hours. Additional rainfall amounts of 0.5 to 1 inch are possible through midnight.',
+        instruction: 'Turn around, don\'t drown when encountering flooded roads. Most flood deaths occur in vehicles.' },
+    ] : [],
     uv: { value: isClear && tweaks.timeOfDay === 'day' ? 7 : 1, label: isClear ? 'High · burn 30m' : 'Low' },
     wind: { speed: isRain ? 18 : 7, dir: 'WSW', deg: 225 },
     humidity: isRain ? 92 : isClear ? 42 : 68, dew: isRain ? 52 : isClear ? 48 : 55,

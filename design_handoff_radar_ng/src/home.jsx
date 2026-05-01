@@ -1,4 +1,4 @@
-// Cumulus — Home screen
+// Radar-NG — Home screen
 // Carrot-faithful: hero temp + condition, hourly strip (24h), 7-day, nowcast banner,
 // plus dense data cards (UV, wind, sun, precip, humidity, visibility).
 
@@ -7,11 +7,11 @@ function HomeScreen({ data, onOpenRadar, onOpenNowcast }) {
   const f = window.CUMULUS.fonts;
 
   return (
+    <PullToRefresh accent="#8B7CFF" onRefresh={() => new Promise(r => setTimeout(r, 600))}>
     <div style={{
-      width: '100%', height: '100%', overflow: 'auto',
+      width: '100%', minHeight: '100%',
       fontFamily: f.ui, color: t.ink,
       paddingBottom: 100, paddingTop: 56,
-      WebkitOverflowScrolling: 'touch',
     }}>
       {/* Top bar — location */}
       <div style={{ padding: '8px 20px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -137,6 +137,7 @@ function HomeScreen({ data, onOpenRadar, onOpenNowcast }) {
         <SunArc sunrise={data.sun.rise} sunset={data.sun.set} progress={data.sun.progress} />
       </div>
     </div>
+    </PullToRefresh>
   );
 }
 
@@ -260,30 +261,100 @@ function PrecipChart({ hourly }) {
 
 // Mini radar preview (static-ish SVG)
 function RadarMiniPreview() {
+  // Realistic squall-line signature, scaled-down version of full radar field
+  const W = 360, H = 140;
+  const GX = 60, GY = 22;
+  const dx = W / GX, dy = H / GY;
+
+  function hash2(x, y, s){ const h=Math.sin(x*12.9898+y*78.233+s*43.758)*43758.5453; return h-Math.floor(h); }
+  function smooth(t){ return t*t*(3-2*t); }
+  function vnoise(x, y, s){ const xi=Math.floor(x), yi=Math.floor(y); const xf=x-xi, yf=y-yi; const a=hash2(xi,yi,s), b=hash2(xi+1,yi,s), c=hash2(xi,yi+1,s), d=hash2(xi+1,yi+1,s); const u=smooth(xf), v=smooth(yf); return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v; }
+  function fbm(x, y, s){ let v=0, amp=0.5, fr=1; for(let i=0;i<3;i++){ v+=amp*vnoise(x*fr,y*fr,s+i); fr*=2; amp*=0.5; } return v; }
+
+  const field = React.useMemo(() => {
+    const f = new Float32Array(GX * GY);
+    // Squall line + bow echo, sized for mini view
+    const systems = [
+      { type: 'line', x1: 60, y1: 110, x2: 200, y2: 50, thick: 10, peak: 0.95 },
+      { type: 'line', x1: 200, y1: 50, x2: 320, y2: 20, thick: 8, peak: 0.85 },
+      { type: 'cell', x: 200, y: 70, rx: 22, ry: 14, peak: 0.95 },
+      { type: 'cell', x: 240, y: 55, rx: 16, ry: 12, peak: 0.88 },
+      { type: 'strat', x: 80, y: 105, rx: 70, ry: 30, peak: 0.4 },
+      { type: 'strat', x: 280, y: 110, rx: 50, ry: 25, peak: 0.35 },
+    ];
+    for (let j = 0; j < GY; j++) {
+      for (let i = 0; i < GX; i++) {
+        const px = i * dx, py = j * dy;
+        let v = 0;
+        for (const s of systems) {
+          if (s.type === 'line') {
+            const vx = s.x2-s.x1, vy = s.y2-s.y1;
+            const len2 = vx*vx+vy*vy;
+            const tt = Math.max(0, Math.min(1, ((px-s.x1)*vx+(py-s.y1)*vy)/len2));
+            const ex = s.x1+tt*vx, ey = s.y1+tt*vy;
+            const d = Math.hypot(px-ex, py-ey);
+            const fall = Math.max(0, 1 - d/s.thick);
+            v = Math.max(v, s.peak * Math.pow(fall, 1.2));
+          } else if (s.type === 'cell') {
+            const d2 = ((px-s.x)/s.rx)**2 + ((py-s.y)/s.ry)**2;
+            v = Math.max(v, s.peak * Math.max(0, 1-d2)**0.8);
+          } else {
+            const d2 = ((px-s.x)/s.rx)**2 + ((py-s.y)/s.ry)**2;
+            v = Math.max(v, s.peak * Math.max(0, 1-d2));
+          }
+        }
+        const n = fbm(px/22, py/22, 7);
+        v *= 0.75 + 0.55 * n;
+        const n2 = fbm(px/8, py/8, 13);
+        v += (n2 - 0.5) * 0.2 * (v > 0.04 ? 1 : 0);
+        f[j*GX+i] = Math.max(0, Math.min(1, v));
+      }
+    }
+    return f;
+  }, []);
+
+  const bands = [
+    [0.10, '#5a9bff'], [0.25, '#3b6dff'], [0.42, '#7a3bff'],
+    [0.60, '#c73cd6'], [0.78, '#ffd74a'], [0.90, '#ff4040'],
+  ];
+  const cellEls = [];
+  for (let j = 0; j < GY; j++) {
+    for (let i = 0; i < GX; i++) {
+      const v = field[j*GX+i];
+      if (v < bands[0][0]) continue;
+      let color = bands[0][1];
+      for (let b = bands.length-1; b >= 0; b--) { if (v >= bands[b][0]) { color = bands[b][1]; break; } }
+      cellEls.push(<rect key={`${i}-${j}`} x={i*dx} y={j*dy} width={dx+0.6} height={dy+0.6} fill={color} opacity={0.7 + v*0.3} />);
+    }
+  }
+
   return (
     <svg width="100%" height="100%" viewBox="0 0 360 140" preserveAspectRatio="xMidYMid slice"
          style={{ position: 'absolute', inset: 0 }}>
-      {/* map bg */}
-      <rect width="360" height="140" fill="#1a2540" />
-      <g stroke="#2a3660" strokeWidth="0.5">
-        {[60, 120, 180, 240, 300].map(x => <line key={x} x1={x} y1="0" x2={x} y2="140" />)}
-        {[40, 80, 120].map(y => <line key={y} x1="0" y1={y} x2="360" y2={y} />)}
+      <defs>
+        <filter id="miniBlur" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2.4"/></filter>
+      </defs>
+      {/* light map base, Apple-Weather style */}
+      <rect width="360" height="140" fill="#e6efe8" />
+      {/* lake */}
+      <path d="M 240 -20 Q 220 30 250 70 Q 290 90 330 60 Q 350 20 320 -20 Z" fill="#c6dbe8" />
+      {/* state lines */}
+      <g stroke="rgba(11,18,32,0.18)" strokeWidth="0.5" fill="none">
+        <path d="M 0 70 L 360 70"/>
+        <path d="M 140 0 L 140 70"/>
+        <path d="M 220 70 L 220 140"/>
       </g>
-      {/* roads */}
-      <path d="M 0 90 Q 100 60 180 80 T 360 50" stroke="#3a4870" strokeWidth="1.2" fill="none" />
-      <path d="M 120 0 Q 140 50 160 140" stroke="#3a4870" strokeWidth="1.2" fill="none" />
-      {/* radar blob */}
-      <g opacity="0.9">
-        <ellipse cx="200" cy="70" rx="60" ry="28" fill="#3bc77a" opacity="0.45" />
-        <ellipse cx="190" cy="68" rx="42" ry="20" fill="#f5d042" opacity="0.55" />
-        <ellipse cx="196" cy="70" rx="24" ry="12" fill="#ff9f2e" opacity="0.7" />
-        <ellipse cx="200" cy="72" rx="12" ry="6" fill="#ff4040" opacity="0.8" />
+      {/* highways */}
+      <g stroke="rgba(11,18,32,0.18)" strokeWidth="0.8" fill="none" strokeLinecap="round">
+        <path d="M 0 95 Q 100 80 180 90 T 360 70"/>
+        <path d="M 140 0 Q 160 60 180 140"/>
       </g>
-      {/* location pin */}
-      <g transform="translate(120, 90)">
-        <circle r="12" fill="#8B7CFF" opacity="0.2" />
-        <circle r="6" fill="#8B7CFF" opacity="0.45" />
-        <circle r="3" fill="#fff" />
+      {/* radar field */}
+      <g filter="url(#miniBlur)" style={{ mixBlendMode: 'multiply' }}>{cellEls}</g>
+      {/* user location */}
+      <g transform="translate(120, 80)">
+        <circle r="14" fill="#8B7CFF" opacity="0.18"/>
+        <circle r="6" fill="#fff" stroke="#8B7CFF" strokeWidth="2"/>
       </g>
     </svg>
   );

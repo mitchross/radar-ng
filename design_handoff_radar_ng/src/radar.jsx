@@ -1,4 +1,4 @@
-// Cumulus — Radar screen (Apple Weather-style polish)
+// Radar-NG — Radar screen (Apple Weather-style polish)
 // Full-bleed map · glass layer panel · left legend · bottom forecast pill · 1h/12h zoom toggle
 
 const LAYERS = {
@@ -363,35 +363,130 @@ function LayerOverlay({ layer, minuteOffset }) {
   return null;
 }
 
+// Seeded pseudo-noise — Perlin-ish value noise (deterministic, no deps)
+function hash2(x, y, seed) {
+  let h = Math.sin(x * 12.9898 + y * 78.233 + seed * 43.758) * 43758.5453;
+  return h - Math.floor(h);
+}
+function smooth(t) { return t * t * (3 - 2 * t); }
+function vnoise(x, y, seed) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const a = hash2(xi, yi, seed);
+  const b = hash2(xi + 1, yi, seed);
+  const c = hash2(xi, yi + 1, seed);
+  const d = hash2(xi + 1, yi + 1, seed);
+  const u = smooth(xf), v = smooth(yf);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+function fbm(x, y, seed) {
+  let v = 0, amp = 0.5, freq = 1;
+  for (let i = 0; i < 4; i++) { v += amp * vnoise(x * freq, y * freq, seed + i); freq *= 2; amp *= 0.5; }
+  return v;
+}
+
+// Build a radar field as a dBZ grid, then emit iso-lines as irregular polygons
 function PrecipOverlay({ minuteOffset }) {
-  const cells = [
-    { cx: 40,  cy: 180, r: 44, i: 0.9, vx: 0.6, vy: 0.2 },
-    { cx: 120, cy: 220, r: 30, i: 0.7, vx: 0.5, vy: 0.4 },
-    { cx: 200, cy: 280, r: 22, i: 0.5, vx: 0.4, vy: 0.3 },
-    { cx: 300, cy: 160, r: 35, i: 0.6, vx: 0.5, vy: 0.3 },
-    { cx: 250, cy: 340, r: 26, i: 0.55, vx: 0.6, vy: 0.2 },
-    { cx: 80,  cy: 560, r: 18, i: 0.4, vx: 0.7, vy: 0.1 },
-    { cx: 340, cy: 500, r: 14, i: 0.35, vx: 0.3, vy: 0.3 },
+  const W = 390, H = 770;
+  const GX = 88, GY = 170; // grid resolution (finer = more detail + filaments)
+  const dx = W / GX, dy = H / GY;
+  const hrs = Math.abs(minuteOffset) / 60;
+  const fade = Math.max(0.3, 1 - hrs / 18);
+
+  // Build field
+  const field = React.useMemo(() => {
+    const f = new Float32Array(GX * GY);
+    // Storm systems: a real squall line bowing NE–SW, trailing stratiform, isolated cells ahead
+    const systems = [
+      // Main squall line — long and arced
+      { type: 'line', x1: -30, y1: 520, x2: 160, y2: 360, thickness: 16, peak: 0.98, vx: 0.6, vy: 0.2 },
+      { type: 'line', x1: 160, y1: 360, x2: 320, y2: 240, thickness: 18, peak: 0.95, vx: 0.6, vy: 0.2 },
+      { type: 'line', x1: 320, y1: 240, x2: 430, y2: 80,  thickness: 14, peak: 0.9, vx: 0.6, vy: 0.2 },
+      // Bow-echo bulge (strongest core)
+      { type: 'cell', x: 180, y: 330, rx: 28, ry: 18, rot: -0.6, peak: 1.0, vx: 0.65, vy: 0.2 },
+      { type: 'cell', x: 210, y: 300, rx: 22, ry: 16, rot: -0.5, peak: 0.95, vx: 0.65, vy: 0.2 },
+      // Isolated supercells ahead of the line
+      { type: 'cell', x: 260, y: 420, rx: 18, ry: 26, rot: -0.3, peak: 0.92, vx: 0.55, vy: 0.25 },
+      { type: 'cell', x: 340, y: 500, rx: 16, ry: 20, rot: 0.2, peak: 0.85, vx: 0.55, vy: 0.25 },
+      // Trailing stratiform rain (behind the line, broader + lighter)
+      { type: 'stratiform', x: 60,  y: 620, rx: 110, ry: 70, peak: 0.42, vx: 0.5, vy: 0.2 },
+      { type: 'stratiform', x: 220, y: 660, rx: 140, ry: 80, peak: 0.38, vx: 0.5, vy: 0.2 },
+      { type: 'stratiform', x: -20, y: 560, rx: 90, ry: 60, peak: 0.35, vx: 0.5, vy: 0.2 },
+      // Scattered light showers in the warm sector (NE quadrant)
+      { type: 'stratiform', x: 320, y: 140, rx: 50, ry: 40, peak: 0.3, vx: 0.6, vy: 0.2 },
+    ];
+    // Advect systems by minuteOffset
+    const t = minuteOffset;
+    for (let j = 0; j < GY; j++) {
+      for (let i = 0; i < GX; i++) {
+        const px = i * dx, py = j * dy;
+        let val = 0;
+        for (const s of systems) {
+          const shiftX = (t / 60) * s.vx * 45;
+          const shiftY = (t / 60) * s.vy * 45;
+          if (s.type === 'line') {
+            // distance from line segment (advected)
+            const ax = s.x1 + shiftX, ay = s.y1 + shiftY;
+            const bx = s.x2 + shiftX, by = s.y2 + shiftY;
+            const vx = bx - ax, vy = by - ay;
+            const len2 = vx * vx + vy * vy;
+            const tt = Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / len2));
+            const ex = ax + tt * vx, ey = ay + tt * vy;
+            const d = Math.hypot(px - ex, py - ey);
+            const falloff = Math.max(0, 1 - d / s.thickness);
+            val = Math.max(val, s.peak * Math.pow(falloff, 1.2));
+          } else if (s.type === 'cell') {
+            const cos = Math.cos(s.rot), sin = Math.sin(s.rot);
+            const rx = (px - s.x - shiftX) * cos + (py - s.y - shiftY) * sin;
+            const ry = -(px - s.x - shiftX) * sin + (py - s.y - shiftY) * cos;
+            const d2 = (rx / s.rx) ** 2 + (ry / s.ry) ** 2;
+            val = Math.max(val, s.peak * Math.max(0, 1 - d2) ** 0.8);
+          } else {
+            const d2 = ((px - s.x - shiftX) / s.rx) ** 2 + ((py - s.y - shiftY) / s.ry) ** 2;
+            val = Math.max(val, s.peak * Math.max(0, 1 - d2));
+          }
+        }
+        // Turbulence — fracture the smooth blobs into realistic irregular signatures
+        const nx = px / 28, ny = py / 28;
+        const n = fbm(nx + t * 0.002, ny - t * 0.001, 7);
+        val *= 0.75 + 0.55 * n;
+        // High-freq filaments — adds speckle and ragged edges
+        const n2 = fbm(nx * 3.2, ny * 3.2, 13);
+        val += (n2 - 0.5) * 0.22 * (val > 0.04 ? 1 : 0);
+        // Directional streaking along storm motion (smears cells into streaks)
+        const streak = fbm((px - py * 0.4) / 14, py / 60, 23);
+        val *= 0.85 + 0.3 * streak;
+        f[j * GX + i] = Math.max(0, Math.min(1, val));
+      }
+    }
+    return f;
+  }, [Math.round(minuteOffset / 5) * 5]); // recompute every 5 min
+
+  // Render cells as stacked heatmap rectangles — grid is coarse enough + blur = natural shapes
+  const cellEls = [];
+  // dBZ bands: [threshold, color]
+  const bands = [
+    [0.08, '#9ec9ff'],   // very light
+    [0.22, '#5a9bff'],   // light rain
+    [0.38, '#3b6dff'],   // moderate
+    [0.55, '#8a4bff'],   // heavy
+    [0.72, '#c73cd6'],   // very heavy
+    [0.85, '#ffd74a'],   // extreme
+    [0.94, '#ff4040'],   // hail core
   ];
-  return (
-    <g>
-      {cells.map((c, i) => {
-        const dx = (minuteOffset / 60) * c.vx * 40;
-        const dy = (minuteOffset / 60) * c.vy * 40;
-        const hrs = Math.abs(minuteOffset) / 60;
-        const fade = Math.max(0.35, 1 - hrs / 18);
-        const bands = [
-          { r: c.r * 2.2, color: '#7ec4ff', op: 0.22 * c.i * fade },
-          { r: c.r * 1.7, color: '#3b6dff', op: 0.35 * c.i * fade },
-          { r: c.r * 1.2, color: '#7a3bff', op: 0.55 * c.i * fade },
-          { r: c.r * 0.7, color: '#ffd74a', op: 0.7 * c.i * fade },
-        ];
-        return bands.map((b, j) => (
-          <ellipse key={`${i}-${j}`} cx={c.cx + dx} cy={c.cy + dy} rx={b.r} ry={b.r * 0.75} fill={b.color} opacity={b.op} filter="url(#softBlur)" />
-        ));
-      })}
-    </g>
-  );
+  for (let j = 0; j < GY; j++) {
+    for (let i = 0; i < GX; i++) {
+      const v = field[j * GX + i];
+      if (v < bands[0][0]) continue;
+      // pick highest band it exceeds
+      let color = bands[0][1];
+      for (let b = bands.length - 1; b >= 0; b--) { if (v >= bands[b][0]) { color = bands[b][1]; break; } }
+      cellEls.push(
+        <rect key={`${i}-${j}`} x={i * dx} y={j * dy} width={dx + 0.6} height={dy + 0.6} fill={color} opacity={fade * Math.min(1, 0.7 + v * 0.5)} />
+      );
+    }
+  }
+  return <g filter="url(#softBlur)" style={{ mixBlendMode: 'multiply', opacity: 0.92 }}>{cellEls}</g>;
 }
 
 function WindOverlay({ minuteOffset }) {

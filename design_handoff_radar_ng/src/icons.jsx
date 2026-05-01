@@ -1,4 +1,4 @@
-// Cumulus — illustrated weather icons
+// Radar-NG — illustrated weather icons
 // "Pixel-y but polished" — rounded-square character vibe like Carrot,
 // but drawn with SVG primitives so they scale cleanly.
 //
