@@ -11,7 +11,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
-# System deps for scientific Python (cfgrib/eccodes, gdal, pyproj)
+# System deps for scientific Python (cfgrib/eccodes, gdal, pyproj) +
+# build chain for pysteps which has no cp312 wheel on PyPI.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libeccodes-dev libgdal-dev libproj-dev \
       build-essential gcc g++ \
@@ -23,18 +24,22 @@ WORKDIR /app
 COPY temporal/requirements.txt /app/temporal/requirements.txt
 RUN pip install -r /app/temporal/requirements.txt
 
-# Activity modules live in backend/ and import their own deps. Each backend
-# service ships its own requirements.txt; install them all into this image
-# so the worker can call any activity.
-COPY backend/shared /app/backend/shared
-COPY backend/api/api/requirements.txt /app/backend/api/requirements.txt
+# Each backend service ships its own requirements.txt; install them all into
+# this image so the worker can call any activity. base/ is a superset of
+# the per-service deps, so install it first then the slimmer overrides.
+COPY backend/base/requirements.txt /app/backend/base/requirements.txt
 COPY backend/ingest_mrms/requirements.txt /app/backend/ingest_mrms/requirements.txt
 COPY backend/ingest_hrrr/requirements.txt /app/backend/ingest_hrrr/requirements.txt
-COPY backend/base/requirements.txt /app/backend/base/requirements.txt
+COPY backend/ingest_lightning/requirements.txt /app/backend/ingest_lightning/requirements.txt
+COPY backend/ingest_tropical/requirements.txt /app/backend/ingest_tropical/requirements.txt
+COPY backend/nowcast/requirements.txt /app/backend/nowcast/requirements.txt
 RUN pip install \
       -r /app/backend/base/requirements.txt \
       -r /app/backend/ingest_mrms/requirements.txt \
-      -r /app/backend/ingest_hrrr/requirements.txt
+      -r /app/backend/ingest_hrrr/requirements.txt \
+      -r /app/backend/ingest_lightning/requirements.txt \
+      -r /app/backend/ingest_tropical/requirements.txt \
+      -r /app/backend/nowcast/requirements.txt
 
 # Copy source last so code changes don't bust dep cache
 COPY backend /app/backend

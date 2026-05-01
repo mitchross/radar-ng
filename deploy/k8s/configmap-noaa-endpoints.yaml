@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: radar-ng-noaa-endpoints
+  namespace: radar-ng
+data:
+  MRMS_PREFIX: "CONUS/MergedBaseReflectivityQC_00.50"
+  TROPICAL_FEED_URL: "https://www.nhc.noaa.gov/CurrentStorms.json"
+  NWS_ALERTS_URL: "https://api.weather.gov/alerts/active?status=actual"
+  NWS_USER_AGENT: "(radar-ng, mitch@vanillax.me)"

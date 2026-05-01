@@ -13,14 +13,14 @@ services:
   base:
     image: registry.vanillax.me/radar-ng-base:latest
     build:
-      context: ../services
+      context: ../backend
       dockerfile: base/Dockerfile
     command: ["true"]
     profiles: ["build-only"]
 
   ingest-mrms:
     build:
-      context: ../services
+      context: ../backend
       dockerfile: ingest-mrms/Dockerfile
     image: registry.vanillax.me/radar-ng-ingest-mrms:latest
     volumes:
@@ -39,7 +39,7 @@ services:
 
   ingest-hrrr:
     build:
-      context: ../services
+      context: ../backend
       dockerfile: ingest-hrrr/Dockerfile
     image: registry.vanillax.me/radar-ng-ingest-hrrr:latest
     volumes:
@@ -62,7 +62,7 @@ services:
   # rolling GeoJSON buffer served by tile-server at /api/lightning.
   ingest-lightning:
     build:
-      context: ../services
+      context: ../backend
       dockerfile: ingest-lightning/Dockerfile
     image: registry.vanillax.me/radar-ng-ingest-lightning:latest
     volumes:
@@ -76,7 +76,7 @@ services:
   # Tropical — pulls NHC active storm data (position, track, cone) every 5 min.
   ingest-tropical:
     build:
-      context: ../services
+      context: ../backend
       dockerfile: ingest-tropical/Dockerfile
     image: registry.vanillax.me/radar-ng-ingest-tropical:latest
     volumes:
@@ -92,7 +92,7 @@ services:
   # /data/tiles/nowcast/{palette}/{timestamp}/{z}/{x}/{y}.png.
   nowcast:
     build:
-      context: ../services
+      context: ../backend
       dockerfile: nowcast/Dockerfile
     image: registry.vanillax.me/radar-ng-nowcast:latest
     volumes:
@@ -164,7 +164,7 @@ services:
 
   tile-server:
     build:
-      context: ../services
+      context: ../backend
       dockerfile: tile-server/Dockerfile
     image: registry.vanillax.me/radar-ng-tile-server:latest
     ports:

@@ -1,0 +1,55 @@
+# radar-ng Temporal worker — TemporalWorkerDeployment CR.
+#
+# Supplied by the Temporal Worker Controller (https://github.com/temporalio/
+# temporal-k8s-controller). Should already be installed in the cluster from
+# the news-reader rollout; if not, apply its CRDs first.
+apiVersion: temporal.io/v1beta1
+kind: TemporalWorkerDeployment
+metadata:
+  name: radar-ng-worker
+  namespace: radar-ng
+spec:
+  replicas: 2
+  image: registry.vanillax.me/radar-ng-temporal-worker:latest
+  taskQueue: radar-ng
+  temporalConnection:
+    name: temporal-cluster   # cluster-wide Connection CR in the temporal namespace
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+  env:
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: http://opentelemetry-collector.observability:4317
+    - name: TILE_DIR
+      value: /data/tiles
+    - name: STATE_DIR
+      value: /data/state
+    - name: GRID_DIR
+      value: /data/grids
+  envFrom:
+    - configMapRef: { name: radar-ng-storage }
+    - configMapRef: { name: radar-ng-tile-config }
+    - configMapRef: { name: radar-ng-noaa-endpoints }
+    - secretRef:    { name: radar-ng-worker-secrets }
+  volumeMounts:
+    - name: data
+      mountPath: /data
+    - name: apns-key
+      mountPath: /secrets
+      readOnly: true
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: radar-ng-data
+    - name: apns-key
+      secret:
+        secretName: radar-ng-worker-secrets
+        items:
+          - key: APNS_KEY
+            path: apns.p8
+          - key: FCM_CREDENTIALS_JSON
+            path: fcm.json

@@ -9,21 +9,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY tile-server/api/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-COPY tile-server/api/ /app/api/
-COPY tile-server/Caddyfile /etc/caddy/Caddyfile
+# Build context is `backend/`. PYTHONPATH=/app makes `from backend...` resolve.
+ENV PYTHONPATH=/app
+
+COPY api/api/requirements.txt /app/backend/api/api/requirements.txt
+RUN pip install --no-cache-dir -r /app/backend/api/api/requirements.txt
+
+COPY shared /app/backend/shared
+COPY api/api /app/backend/api/api
+# Add empty __init__.py if not already present in source — required for package imports
+RUN touch /app/backend/__init__.py /app/backend/shared/__init__.py /app/backend/api/__init__.py /app/backend/api/api/__init__.py
+
+COPY api/Caddyfile /etc/caddy/Caddyfile
 COPY basemap/styles/ /srv/basemap/styles/
 
-RUN printf '#!/bin/sh\ncd /app/api && python -m uvicorn server:app --host 0.0.0.0 --port 8000 &\ncaddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n' > /start.sh \
+RUN printf '#!/bin/sh\nset -e\npython -m uvicorn backend.api.api.server:app --host 0.0.0.0 --port 8000 &\ncaddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n' > /start.sh \
     && chmod +x /start.sh
 
-# Run as a fixed non-root user so the namespace's PodSecurity restricted
-# profile is satisfied (runAsNonRoot=true, runAsUser=1000). Caddy + uvicorn
-# both bind ports >1024 (8080/8000) so no NET_BIND_SERVICE cap needed. We
-# pre-create the dirs Caddy expects so it doesn't have to mkdir them at
-# runtime against a potentially read-only path.
 RUN useradd -u 1000 -m -s /bin/sh app \
     && mkdir -p /home/app/.local/share/caddy /home/app/.config/caddy \
     && chown -R app:app /app /home/app /etc/caddy
@@ -31,6 +34,8 @@ USER app
 ENV HOME=/home/app
 
 ENV TILE_DIR=/data/tiles \
-    OPEN_METEO_BASE=https://api.open-meteo.com/v1/forecast
+    OPEN_METEO_BASE=https://api.open-meteo.com/v1/forecast \
+    TEMPORAL_ADDRESS=temporal-frontend.temporal:7233 \
+    TEMPORAL_NAMESPACE=default
 
 CMD ["/bin/sh", "/start.sh"]

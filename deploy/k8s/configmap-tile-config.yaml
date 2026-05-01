@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: radar-ng-tile-config
+  namespace: radar-ng
+data:
+  PALETTES: "classic,muted,colorblind"
+  BACKLOG_PER_CYCLE: "3"
+  FORECAST_HOURS: "18"
+  EXTENDED_FORECAST_HOURS: "48"
+  NOWCAST_HORIZON_MIN: "60"
+  NOWCAST_STEP_MIN: "5"
+  NOWCAST_INPUT_FRAMES: "4"
+  WATCH_RADIUS_KM: "20"
+  INTENSIFY_DBZ_DELTA: "10"
+  DISSIPATE_DBZ_DELTA: "10"
+  HAIL_DBZ_THRESHOLD: "60"
+  LIGHTNING_RETENTION_MIN: "15"
+  LIGHTNING_FLUSH_S: "2.0"

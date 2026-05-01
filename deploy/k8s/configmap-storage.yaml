@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: radar-ng-storage
+  namespace: radar-ng
+data:
+  # Currently writes go to a Longhorn PVC (radar-ng-data). When/if we move
+  # to S3-backed object storage, populate these and have the activities
+  # use them via env. Today they're informational.
+  S3_ENDPOINT: ""
+  S3_BUCKET: ""

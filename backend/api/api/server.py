@@ -45,6 +45,14 @@ DAILY_FIELDS = (
 
 app = FastAPI(title="radar-ng Tile API")
 
+# Storm-watch + push-token endpoints are workflow-driven — see
+# routes_workflows.py. Register lazily so a deploy that doesn't have
+# Temporal in front of it (e.g. a static-tile-only fork) can still boot
+# by setting DISABLE_WORKFLOW_ROUTES=1.
+if os.environ.get("DISABLE_WORKFLOW_ROUTES") != "1":
+    from backend.api.api.routes_workflows import router as workflows_router
+    app.include_router(workflows_router)
+
 _forecast_cache: dict[str, tuple[float, dict]] = {}
 # Manifest in-memory cache. The HTTP `Cache-Control: max-age=15` header is
 # honored by Cloudflare/clients but multiple-replica tile-server pods each
