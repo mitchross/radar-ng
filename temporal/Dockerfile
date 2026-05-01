@@ -33,15 +33,15 @@ COPY backend/ingest_hrrr/requirements.txt /app/backend/ingest_hrrr/requirements.
 COPY backend/ingest_lightning/requirements.txt /app/backend/ingest_lightning/requirements.txt
 COPY backend/ingest_tropical/requirements.txt /app/backend/ingest_tropical/requirements.txt
 COPY backend/nowcast/requirements.txt /app/backend/nowcast/requirements.txt
-COPY backend/open_meteo_sync/requirements.txt /app/backend/open_meteo_sync/requirements.txt
+# open_meteo_sync isn't installed here — it's owned by the separate
+# radar-ng-open-meteo-worker image (temporal/open_meteo_worker.Dockerfile).
 RUN pip install \
       -r /app/backend/base/requirements.txt \
       -r /app/backend/ingest_mrms/requirements.txt \
       -r /app/backend/ingest_hrrr/requirements.txt \
       -r /app/backend/ingest_lightning/requirements.txt \
       -r /app/backend/ingest_tropical/requirements.txt \
-      -r /app/backend/nowcast/requirements.txt \
-      -r /app/backend/open_meteo_sync/requirements.txt
+      -r /app/backend/nowcast/requirements.txt
 
 # Copy source last so code changes don't bust dep cache
 COPY backend /app/backend

@@ -14,10 +14,15 @@ Source lives in this monorepo under `backend/`, `temporal/`, `frontend/`.
 | File | Purpose |
 |---|---|
 | `temporal-connection.yaml`             | `TemporalConnection` CR pointing at `temporal-frontend.temporal:7233` |
-| `temporal-worker-deployment.yaml`      | `TemporalWorkerDeployment` CR — the worker pod (2 replicas) |
+| `temporal-worker-deployment.yaml`      | Main worker pool (2 replicas, all radar-ng-owned activities) |
+| `open-meteo-worker-deployment.yaml`    | Secondary worker pool (1 replica, FROM ghcr.io/open-meteo/open-meteo) |
 | `configmap-temporal-config.yaml`       | All non-secret tunables (palettes, retentions, NWS URLs, etc.) |
-| `rbac-temporal-worker.yaml`            | ServiceAccount + Role + RoleBinding (worker creates k8s Jobs for open-meteo sync) |
 | `secret-temporal-worker.yaml.template` | APNS p8 + FCM JSON placeholders (apply out-of-band) |
+
+The two workers poll the same task queue. The main worker registers every
+activity except `open_meteo_sync`; the open-meteo worker registers only
+that one. Temporal dispatches activity tasks based on registration —
+nothing else is needed to wire them.
 
 ## Step-by-step talos repo deploy
 
@@ -29,8 +34,8 @@ Copy these four from `radar-ng/deploy/k8s/` into
 ```
 temporal-connection.yaml
 temporal-worker-deployment.yaml
+open-meteo-worker-deployment.yaml
 configmap-temporal-config.yaml
-rbac-temporal-worker.yaml
 ```
 
 ### 2. Update kustomization.yaml
@@ -61,9 +66,9 @@ in-Python activity):
 -  - cronjob-open-meteo-sync.yaml
    - servicemonitor.yaml
 +  - configmap-temporal-config.yaml
-+  - rbac-temporal-worker.yaml
 +  - temporal-connection.yaml
 +  - temporal-worker-deployment.yaml
++  - open-meteo-worker-deployment.yaml
 
  namespace: radar-ng
 
@@ -178,9 +183,13 @@ kubectl -n radar-ng get jobs --watch
 4. **No mobile-side Temporal access.** All reachability is `mobile →
    HTTPS → tile-server → Temporal`. Existing `httproute.yaml` (catch-all
    `/`) is sufficient — no new HTTPRoute needed.
-5. **k8s RBAC required** — the worker creates Jobs (open-meteo sync).
-   The Role grants `jobs` + `pods` + `pods/log` in the `radar-ng`
-   namespace **only**. ServiceAccount is `radar-ng-worker`.
+5. **No k8s RBAC needed.** Earlier drafts had the worker create k8s
+   Jobs to run the open-meteo Swift binary; that violated "no
+   CronJobs/Jobs at all" so the work moved into a dedicated worker
+   pool. The open-meteo worker's image is `FROM
+   ghcr.io/open-meteo/open-meteo`, the activity subprocess-execs
+   `/app/openmeteo-api`, and zero Job/CronJob resources are ever
+   created in the cluster.
 
 ## Rollback
 

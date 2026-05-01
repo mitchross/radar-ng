@@ -1,1 +1,2 @@
-kubernetes>=29.0
+# subprocess is stdlib; the activity uses no third-party deps.
+# temporalio is installed by temporal/open_meteo_worker.Dockerfile.

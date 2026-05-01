@@ -1,175 +1,106 @@
-"""Temporal activity for the open-meteo sync.
+"""Open-meteo sync activity — runs the upstream Swift binary as a subprocess.
 
-Open-meteo is a third-party Swift binary (`ghcr.io/open-meteo/open-meteo`),
-not our code. The "Temporal-native" pattern for orchestrating an external
-binary you can't import is: have an activity create a Kubernetes Job that
-runs the binary, then poll the Job until it terminates.
+The activity is registered ONLY by the secondary `radar-ng-open-meteo-worker`
+deployment (deploy/k8s/open-meteo-worker-deployment.yaml). That worker's
+image is `FROM ghcr.io/open-meteo/open-meteo:latest` with a thin Python +
+temporalio layer on top. The main `radar-ng-temporal-worker` does NOT
+register this activity — Temporal dispatches it to the open-meteo worker
+based on registration.
 
-  - Activity is idempotent in the Temporal-retry sense: each invocation
-    creates a freshly-named Job (suffix = workflow run id + attempt) so a
-    retry doesn't collide with a still-running Job from the previous attempt.
-  - Heartbeats every 30s while the Job is in progress.
-  - Returns the final Job status; non-zero exit code → ApplicationError so
-    the workflow surfaces failure.
-  - Runs in-cluster: uses the worker pod's ServiceAccount + RBAC.
-    See deploy/k8s/rbac-temporal-worker.yaml for the required Role.
+This is the same "one Temporal worker per concern" pattern news-reader
+uses. No Kubernetes Jobs are involved; the binary runs in-process inside
+the worker's own pod.
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 import time
-from dataclasses import dataclass, field
-from typing import Any
+from collections import deque
+from dataclasses import dataclass
+from pathlib import Path
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from backend.shared.logger import get_logger
 
-
-log = get_logger("open-meteo-sync-activities")
-
-
-NAMESPACE = os.environ.get("OPEN_METEO_SYNC_NAMESPACE", "radar-ng")
-PVC_NAME = os.environ.get("OPEN_METEO_PVC", "openmeteo-data")
-IMAGE = os.environ.get("OPEN_METEO_IMAGE", "ghcr.io/open-meteo/open-meteo:latest")
-JOB_TIMEOUT_S = int(os.environ.get("OPEN_METEO_JOB_TIMEOUT_S", "1800"))
+# Path to the open-meteo binary inside the open-meteo worker image. Verified
+# at /app/openmeteo-api in ghcr.io/open-meteo/open-meteo:latest (Feb 2026).
+OPENMETEO_BIN = os.environ.get("OPENMETEO_BIN", "/app/openmeteo-api")
+OPENMETEO_DATA_DIR = os.environ.get("OPENMETEO_DATA_DIR", "/app/data")
 
 
 @dataclass
 class OpenMeteoSyncArgs:
     model: str            # "ncep_gfs025" | "ncep_hrrr_conus"
     variables: str        # comma-separated list passed as the third arg
-    past_days: int = 1    # --past-days
+    past_days: int = 1
 
 
 @dataclass
 class OpenMeteoSyncResult:
-    job_name: str
+    model: str
     succeeded: bool
     duration_s: float
-    log_tail: str = ""
-    failure_reason: str = ""
+    return_code: int = 0
+    stderr_tail: str = ""
 
 
-def _build_job_manifest(name: str, args: OpenMeteoSyncArgs) -> dict[str, Any]:
-    """Same shape as the legacy CronJob's jobTemplate."""
-    return {
-        "apiVersion": "batch/v1",
-        "kind": "Job",
-        "metadata": {"name": name, "namespace": NAMESPACE, "labels": {"app": "open-meteo-sync", "model": args.model}},
-        "spec": {
-            "ttlSecondsAfterFinished": 300,
-            "backoffLimit": 0,  # Temporal retries; k8s shouldn't double-retry
-            "template": {
-                "spec": {
-                    "restartPolicy": "Never",
-                    "securityContext": {
-                        "runAsNonRoot": True,
-                        "runAsUser": 999,
-                        "runAsGroup": 999,
-                        "fsGroup": 999,
-                        "fsGroupChangePolicy": "OnRootMismatch",
-                        "seccompProfile": {"type": "RuntimeDefault"},
-                    },
-                    "containers": [{
-                        "name": "sync",
-                        "image": IMAGE,
-                        "securityContext": {
-                            "allowPrivilegeEscalation": False,
-                            "capabilities": {"drop": ["ALL"]},
-                        },
-                        "args": ["sync", args.model, args.variables, "--past-days", str(args.past_days)],
-                        "volumeMounts": [{"name": "openmeteo-data", "mountPath": "/app/data"}],
-                        "resources": {
-                            "requests": {"cpu": "200m", "memory": "512Mi"},
-                            "limits":   {"cpu": "2",    "memory": "4Gi"},
-                        },
-                    }],
-                    "volumes": [{
-                        "name": "openmeteo-data",
-                        "persistentVolumeClaim": {"claimName": PVC_NAME},
-                    }],
-                }
-            },
-        },
-    }
-
-
-@activity.defn(name="open_meteo_sync_via_k8s_job")
-async def open_meteo_sync_via_k8s_job(args: OpenMeteoSyncArgs) -> OpenMeteoSyncResult:
-    """Create a k8s Job, watch it to completion, return outcome."""
-    from kubernetes import client, config, watch  # type: ignore
-
-    info = activity.info()
-    # Job name must be DNS-1123 (≤63 chars). Truncate run-id to 8 chars.
-    job_name = f"om-{args.model.replace('_', '-')}-{info.workflow_run_id[:8]}-{info.attempt}"
+@activity.defn(name="open_meteo_sync")
+async def open_meteo_sync(args: OpenMeteoSyncArgs) -> OpenMeteoSyncResult:
+    """Run `openmeteo-api sync <model> <variables> --past-days <n>` and
+    stream output. Heartbeats every 30s while the process is running.
+    """
     started = time.time()
+    cmd = [OPENMETEO_BIN, "sync", args.model, args.variables, "--past-days", str(args.past_days)]
+    activity.logger.info("starting open-meteo sync: %s", " ".join(cmd))
 
-    def _setup() -> tuple[Any, Any]:
-        try:
-            config.load_incluster_config()
-        except Exception:
-            config.load_kube_config()  # local dev fallback
-        return client.BatchV1Api(), client.CoreV1Api()
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        cwd=str(Path(OPENMETEO_DATA_DIR).parent),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
 
-    batch, core = await asyncio.to_thread(_setup)
+    stderr_tail: deque[str] = deque(maxlen=50)
 
-    manifest = _build_job_manifest(job_name, args)
+    async def _drain(stream: asyncio.StreamReader, sink: deque[str] | None) -> None:
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+            decoded = line.decode("utf-8", errors="replace").rstrip()
+            if sink is not None:
+                sink.append(decoded)
+            activity.logger.debug(decoded)
 
-    def _create() -> None:
-        try:
-            batch.create_namespaced_job(namespace=NAMESPACE, body=manifest)
-        except client.rest.ApiException as e:  # type: ignore[attr-defined]
-            if e.status == 409:
-                log.info("job_exists_reusing", extra={"job": job_name})
-            else:
-                raise
+    drain_out = asyncio.create_task(_drain(proc.stdout, None))
+    drain_err = asyncio.create_task(_drain(proc.stderr, stderr_tail))
 
-    await asyncio.to_thread(_create)
-    log.info("job_created", extra={"job": job_name, "model": args.model})
-
-    deadline = time.monotonic() + JOB_TIMEOUT_S
     last_heartbeat = 0.0
-    while time.monotonic() < deadline:
-        def _read() -> Any:
-            return batch.read_namespaced_job_status(name=job_name, namespace=NAMESPACE)
-
-        job = await asyncio.to_thread(_read)
-        status = job.status
-        if status.succeeded:
-            duration = time.time() - started
-            tail = await asyncio.to_thread(_tail_logs, core, job_name)
-            return OpenMeteoSyncResult(job_name=job_name, succeeded=True, duration_s=round(duration, 1), log_tail=tail)
-        if status.failed:
-            duration = time.time() - started
-            tail = await asyncio.to_thread(_tail_logs, core, job_name)
-            raise ApplicationError(
-                f"open-meteo job {job_name} failed: {tail[-500:]}",
-                non_retryable=False,
-            )
-
+    while proc.returncode is None:
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=15)
+        except asyncio.TimeoutError:
+            pass
         now = time.monotonic()
         if now - last_heartbeat >= 30:
-            activity.heartbeat({"job": job_name, "active": status.active or 0, "elapsed_s": int(time.time() - started)})
+            activity.heartbeat({"model": args.model, "elapsed_s": int(time.time() - started)})
             last_heartbeat = now
 
-        await asyncio.sleep(10)
+    await drain_out
+    await drain_err
+    duration = round(time.time() - started, 1)
 
-    raise ApplicationError(f"open-meteo job {job_name} exceeded {JOB_TIMEOUT_S}s timeout", non_retryable=False)
+    rc = proc.returncode or 0
+    if rc != 0:
+        tail = "\n".join(stderr_tail)
+        raise ApplicationError(
+            f"open-meteo {args.model} sync exited rc={rc}: {tail[-500:]}",
+            non_retryable=False,
+        )
 
-
-def _tail_logs(core: Any, job_name: str) -> str:
-    from kubernetes import client  # type: ignore
-    try:
-        pods = core.list_namespaced_pod(namespace=NAMESPACE, label_selector=f"job-name={job_name}")
-        if not pods.items:
-            return ""
-        pod = pods.items[0]
-        return core.read_namespaced_pod_log(name=pod.metadata.name, namespace=NAMESPACE, tail_lines=50) or ""
-    except client.rest.ApiException:  # type: ignore[attr-defined]
-        return ""
-    except Exception:  # noqa: BLE001
-        return ""
+    activity.logger.info("open-meteo %s sync ok in %.1fs", args.model, duration)
+    return OpenMeteoSyncResult(model=args.model, succeeded=True, duration_s=duration, return_code=rc)

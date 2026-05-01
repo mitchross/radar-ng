@@ -1,0 +1,68 @@
+name: build open-meteo-worker
+
+# Auto-semver build & push for the secondary Temporal worker pool that
+# wraps the open-meteo Swift binary.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'temporal/open_meteo_worker.py'
+      - 'temporal/open_meteo_worker.Dockerfile'
+      - 'temporal/requirements.txt'
+      - 'backend/open_meteo_sync/**'
+      - 'backend/shared/logger.py'
+      - '.gitea/workflows/build-open-meteo-worker.yml'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute next semver from registry
+        id: ver
+        run: |
+          set -euo pipefail
+          REGISTRY="registry.vanillax.me"
+          IMAGE="radar-ng-open-meteo-worker"
+          LATEST=$(curl -sS "https://${REGISTRY}/v2/${IMAGE}/tags/list" \
+            | jq -r '.tags[]?' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V \
+            | tail -1 \
+            || true)
+          if [ -z "${LATEST:-}" ]; then
+            NEXT="v1.0.0"
+          else
+            STRIPPED=${LATEST#v}
+            MAJOR=${STRIPPED%%.*}
+            REST=${STRIPPED#*.}
+            MINOR=${REST%%.*}
+            PATCH=${REST#*.}
+            NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: temporal/open_meteo_worker.Dockerfile
+          push: true
+          tags: |
+            registry.vanillax.me/radar-ng-open-meteo-worker:${{ steps.ver.outputs.version }}
+            registry.vanillax.me/radar-ng-open-meteo-worker:latest
+          labels: |
+            org.opencontainers.image.source=https://gitea.vanillax.me/vanillax/radar-ng
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.ver.outputs.version }}
+          cache-from: type=registry,ref=registry.vanillax.me/radar-ng-open-meteo-worker:buildcache
+          cache-to:   type=registry,ref=registry.vanillax.me/radar-ng-open-meteo-worker:buildcache,mode=max
+
+      - name: Summary
+        run: |
+          echo "✅ Pushed registry.vanillax.me/radar-ng-open-meteo-worker:${{ steps.ver.outputs.version }}"

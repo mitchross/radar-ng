@@ -38,8 +38,12 @@ from backend.ingest_mrms.activities import (
 )
 from backend.ingest_tropical.activities import tropical_fetch_and_publish
 from backend.nowcast.activities import nowcast_run
-from backend.open_meteo_sync.activities import open_meteo_sync_via_k8s_job
 from backend.tile_cleanup.activities import tile_cleanup_sweep
+# NOTE: open_meteo_sync activity is registered by the SEPARATE
+# radar-ng-open-meteo-worker pod (temporal/open_meteo_worker.py) — its
+# base image carries the Swift binary. Temporal dispatches the activity
+# to whichever worker has it registered, so this worker intentionally
+# does not import or register it.
 from temporal.shared.otel import init_tracer
 from temporal.shared.push import send_push_notification
 from temporal.workflows import ALL_WORKFLOWS
@@ -68,8 +72,6 @@ ALL_ACTIVITIES = [
     nowcast_run,
     # tile-cleanup
     tile_cleanup_sweep,
-    # open-meteo sync (creates k8s Jobs)
-    open_meteo_sync_via_k8s_job,
     # storm-watch + alerts + push
     persist_push_token,
     compare_radar_frames,
