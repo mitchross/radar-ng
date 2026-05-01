@@ -4,9 +4,9 @@ on:
   push:
     branches: [master]
     paths:
-      - 'services/ingest-tropical/**'
-      - 'services/base/**'
-      - 'services/shared/**'
+      - 'backend/ingest-tropical/**'
+      - 'backend/base/**'
+      - 'backend/shared/**'
       - '.gitea/workflows/build-ingest-tropical.yml'
   workflow_dispatch: {}
 
@@ -38,8 +38,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: services
-          file: services/ingest-tropical/Dockerfile
+          context: backend
+          file: backend/ingest-tropical/Dockerfile
           push: true
           tags: |
             registry.vanillax.me/radar-ng-ingest-tropical:${{ steps.ver.outputs.version }}

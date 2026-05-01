@@ -1,7 +1,7 @@
 """Palette loader — returns the color-table dict for a named palette.
 
-Palettes live as JSON files in services/shared/palettes/. Each file has the
-same shape as the legacy services/shared/color_tables.json. This helper also
+Palettes live as JSON files in backend/shared/palettes/. Each file has the
+same shape as the legacy backend/shared/color_tables.json. This helper also
 supports the env var PALETTES (comma-separated list) which ingestors iterate
 over to render the same frame into multiple palette subtrees:
 

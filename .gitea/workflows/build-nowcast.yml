@@ -4,9 +4,9 @@ on:
   push:
     branches: [master]
     paths:
-      - 'services/nowcast/**'
-      - 'services/base/**'
-      - 'services/shared/**'
+      - 'backend/nowcast/**'
+      - 'backend/base/**'
+      - 'backend/shared/**'
       - '.gitea/workflows/build-nowcast.yml'
   workflow_dispatch: {}
 
@@ -38,8 +38,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: services
-          file: services/nowcast/Dockerfile
+          context: backend
+          file: backend/nowcast/Dockerfile
           push: true
           tags: |
             registry.vanillax.me/radar-ng-nowcast:${{ steps.ver.outputs.version }}

@@ -11,12 +11,12 @@ the path referenced by the compose volume.
 
 ```sh
 # Example — regional North America
-mkdir -p ./pmtiles-data
-curl -L -o ./pmtiles-data/basemap.pmtiles \
+mkdir -p ./backend/pmtiles-data
+curl -L -o ./backend/pmtiles-data/basemap.pmtiles \
   "https://build.protomaps.com/<BUILD_DATE>.pmtiles"
 ```
 
-The `basemap` compose service mounts `./pmtiles-data` at `/data` and serves the
+The `basemap` compose service mounts `./backend/pmtiles-data` at `/data` and serves the
 file. Replace the file in-place to update; `go-pmtiles` picks up the new bytes
 without a restart.
 

@@ -153,11 +153,11 @@ services:
     restart: "no"
 
   # Self-hosted Protomaps basemap. A planet (or regional) PMTiles file must
-  # be present in ./pmtiles-data/basemap.pmtiles. See services/basemap/README.md.
+  # be present in../backend/pmtiles-data/basemap.pmtiles. See backend/basemap/README.md.
   basemap:
     image: protomaps/go-pmtiles:latest
     volumes:
-      - ../pmtiles-data:/data:ro
+      - ../backend/pmtiles-data:/data:ro
     command: ["serve", "/data", "--port", "8081", "--cors", "*"]
     logging: *default-logging
     restart: unless-stopped
@@ -186,7 +186,7 @@ services:
     image: alpine:3.19
     volumes:
       - tiles:/data/tiles
-      - ../services/tile-cleanup/cleanup.sh:/cleanup.sh:ro
+      - ../backend/tile-cleanup/cleanup.sh:/cleanup.sh:ro
     entrypoint: /bin/sh
     command: ["-c", "while true; do /bin/sh /cleanup.sh; sleep 1800; done"]
     environment:

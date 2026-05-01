@@ -26,19 +26,19 @@ build_base() {
   local tag="${REGISTRY}/radar-ng-base:latest"
   echo "[base] building $tag (local)"
   docker build -t "$tag" \
-    -f "$REPO_ROOT/services/base/Dockerfile" \
-    "$REPO_ROOT/services"
+    -f "$REPO_ROOT/backend/base/Dockerfile" \
+    "$REPO_ROOT/backend"
 }
 
 # Map: service => "<dockerfile-rel-path>;<context-rel-path>"
 declare -A SERVICES=(
-  [tile-server]="services/tile-server/Dockerfile;services"
-  [ingest-mrms]="services/ingest-mrms/Dockerfile;services"
-  [ingest-hrrr]="services/ingest-hrrr/Dockerfile;services"
-  [ingest-lightning]="services/ingest-lightning/Dockerfile;services"
-  [ingest-tropical]="services/ingest-tropical/Dockerfile;services"
-  [nowcast]="services/nowcast/Dockerfile;services"
-  [basemap]="services/basemap/Dockerfile;."
+  [tile-server]="backend/api/Dockerfile;services"
+  [ingest-mrms]="backend/ingest-mrms/Dockerfile;services"
+  [ingest-hrrr]="backend/ingest-hrrr/Dockerfile;services"
+  [ingest-lightning]="backend/ingest-lightning/Dockerfile;services"
+  [ingest-tropical]="backend/ingest-tropical/Dockerfile;services"
+  [nowcast]="backend/nowcast/Dockerfile;services"
+  [basemap]="backend/basemap/Dockerfile;."
 )
 
 # Ingestors + nowcast FROM registry.vanillax.me/radar-ng-base:latest.

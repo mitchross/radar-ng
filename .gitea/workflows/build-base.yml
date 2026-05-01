@@ -5,14 +5,14 @@ name: build base
 # so this workflow has to push :latest to the registry before any child
 # image build will succeed on a fresh runner.
 #
-# Trigger: any change under services/base/** (or the base requirements).
+# Trigger: any change under backend/base/** (or the base requirements).
 # After a push here, re-run a child workflow and it will pull the new base.
 
 on:
   push:
     branches: [master]
     paths:
-      - 'services/base/**'
+      - 'backend/base/**'
       - '.gitea/workflows/build-base.yml'
   workflow_dispatch: {}
 
@@ -44,8 +44,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: services
-          file: services/base/Dockerfile
+          context: backend
+          file: backend/base/Dockerfile
           push: true
           tags: |
             registry.vanillax.me/radar-ng-base:${{ steps.ver.outputs.version }}

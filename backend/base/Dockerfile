@@ -4,7 +4,7 @@
 # CI retrigger: 2026-04-27 — confirm new act_runner config (gpus removed).
 # Local dev build:
 #   docker build -t registry.vanillax.me/radar-ng-base:latest \
-#     -f base/Dockerfile services/
+#     -f base/Dockerfile backend/
 #
 # All ingestors FROM this image, then COPY their own ingest.py + shared/ in.
 

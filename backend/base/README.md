@@ -10,14 +10,14 @@ Bundles:
 ## Build
 
 CI builds and pushes this image automatically via `.gitea/workflows/build-base.yml`
-on any change under `services/base/**`. The pushed tag is
+on any change under `backend/base/**`. The pushed tag is
 `registry.vanillax.me/radar-ng-base:latest`.
 
 For local dev, from the repo root:
 
 ```sh
 docker build -t registry.vanillax.me/radar-ng-base:latest \
-  -f services/base/Dockerfile services/
+  -f backend/base/Dockerfile backend/
 ```
 
 Or via compose (one-shot, does not run):

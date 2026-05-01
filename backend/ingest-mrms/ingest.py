@@ -2,7 +2,7 @@
 """MRMS radar ingest: poll S3 → decode GRIB2 → render PNG tiles.
 
 Hardened for Phase 1.4:
-- Structured JSON logs (see services/shared/logger.py)
+- Structured JSON logs (see backend/shared/logger.py)
 - Exponential backoff on S3 listing + downloads
 - Processed-files state persisted to /data/state/ingest-mrms.json so restarts
   do not re-render tiles we already have.

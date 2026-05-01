@@ -8,7 +8,7 @@ FROM protomaps/go-pmtiles:latest
 # anything. Use COPY --chown to set ownership at copy time and USER 1000
 # to drop privs for runtime — that's enough to satisfy PodSecurity
 # restricted (the binary only needs read on the baked-in archive).
-COPY --chown=1000:1000 pmtiles-data/basemap.pmtiles /data/basemap.pmtiles
+COPY --chown=1000:1000 backend/pmtiles-data/basemap.pmtiles /data/basemap.pmtiles
 USER 1000
 
 EXPOSE 8081

@@ -1,17 +1,17 @@
 name: build basemap
 
 # basemap is a special case:
-#   - context is the repo root (.) not services/, because the Dockerfile
-#     COPYs pmtiles-data/basemap.pmtiles into the image
-#   - watches pmtiles-data/** so a fresh PMTiles archive triggers a rebuild
-#   - does NOT watch services/base/ since basemap doesn't FROM radar-ng-base
+#   - context is the repo root (.) not backend/, because the Dockerfile
+#     COPYs backend/pmtiles-data/basemap.pmtiles into the image
+#   - watches backend/pmtiles-data/** so a fresh PMTiles archive triggers a rebuild
+#   - does NOT watch backend/base/ since basemap doesn't FROM radar-ng-base
 
 on:
   push:
     branches: [master]
     paths:
-      - 'services/basemap/**'
-      - 'pmtiles-data/**'
+      - 'backend/basemap/**'
+      - 'backend/pmtiles-data/**'
       - '.gitea/workflows/build-basemap.yml'
   workflow_dispatch: {}
 
@@ -44,7 +44,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: services/basemap/Dockerfile
+          file: backend/basemap/Dockerfile
           push: true
           tags: |
             registry.vanillax.me/radar-ng-basemap:${{ steps.ver.outputs.version }}
