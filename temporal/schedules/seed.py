@@ -1,22 +1,25 @@
 """Idempotent Temporal Schedule seeding.
 
-Runs as an initContainer on the worker pod. For each scheduled workflow,
-attempts `client.create_schedule(...)` and falls through to `update(...)`
-if the schedule already exists.
+Runs as a manual one-off (`python -m temporal.schedules.seed`) or as an
+initContainer on the worker pod. For each scheduled workflow, attempts
+`client.create_schedule(...)` and falls through to `update(...)` if the
+schedule already exists.
 
 All schedules use `OverlapPolicy.SKIP` (slow run does not queue) and a
 `CatchupWindow=1h` (no thundering-herd backfill on worker recovery).
 
-Phase 0 stub. Real seeding implementation lands in Phase 1 alongside
-the first workflow port.
+Defines TWO ingest-mrms schedules (base + composite) driving the same
+workflow with different inputs, replacing both the legacy
+`ingest-mrms` CronJob AND the `ingest-radar-composite` Deployment.
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
+from typing import Any
 
 from temporalio.client import (
     Client,
@@ -38,34 +41,84 @@ TASK_QUEUE = "radar-ng"
 class ScheduleDef:
     schedule_id: str
     workflow_name: str
-    interval: timedelta
+    workflow_input: list[Any] = field(default_factory=list)
+    interval: timedelta | None = None
+    cron_expressions: list[str] = field(default_factory=list)
 
 
 SCHEDULES: list[ScheduleDef] = [
-    ScheduleDef("ingest-mrms", "IngestMrmsWorkflow", timedelta(minutes=2)),
-    ScheduleDef("ingest-hrrr", "IngestHrrrWorkflow", timedelta(minutes=15)),
-    ScheduleDef("ingest-lightning", "IngestLightningWorkflow", timedelta(minutes=5)),
-    ScheduleDef("ingest-tropical", "IngestTropicalWorkflow", timedelta(hours=1)),
-    ScheduleDef("nowcast", "NowcastWorkflow", timedelta(minutes=2)),
-    ScheduleDef("tile-cleanup", "TileCleanupWorkflow", timedelta(hours=1)),
-    ScheduleDef("poll-alerts", "PollAlertsWorkflow", timedelta(minutes=5)),
+    # MRMS base reflectivity (QC) — every 2 min
+    ScheduleDef(
+        "ingest-mrms-base", "IngestMrmsWorkflow",
+        workflow_input=[{"mrms_prefix": "CONUS/MergedBaseReflectivityQC_00.50", "layer_name": "radar"}],
+        interval=timedelta(minutes=2),
+    ),
+    # MRMS composite reflectivity (full atmosphere) — every 2 min
+    ScheduleDef(
+        "ingest-mrms-composite", "IngestMrmsWorkflow",
+        workflow_input=[{"mrms_prefix": "CONUS/MergedReflectivityComposite_00.50", "layer_name": "radar-composite"}],
+        interval=timedelta(minutes=2),
+    ),
+    # HRRR forecast — every 15 min
+    ScheduleDef("ingest-hrrr", "IngestHrrrWorkflow", interval=timedelta(minutes=15)),
+    # Lightning WS consumer — every 60 min (workflow runs activity for ~50 min)
+    ScheduleDef("ingest-lightning", "IngestLightningWorkflow", interval=timedelta(minutes=60)),
+    # NHC tropical cyclones — every 1 hour
+    ScheduleDef("ingest-tropical", "IngestTropicalWorkflow", interval=timedelta(hours=1)),
+    # pysteps nowcast — every 2 min
+    ScheduleDef("nowcast", "NowcastWorkflow", interval=timedelta(minutes=2)),
+    # Tile + grid cleanup — every 1 hour
+    ScheduleDef("tile-cleanup", "TileCleanupWorkflow", interval=timedelta(hours=1)),
+    # NWS active alerts — every 5 min
+    ScheduleDef("poll-alerts", "PollAlertsWorkflow", interval=timedelta(minutes=5)),
+    # Open-meteo GFS sync — fire at HH:30 every 6 hours (matches GFS run lag)
+    ScheduleDef(
+        "open-meteo-sync-gfs", "OpenMeteoSyncWorkflow",
+        workflow_input=[{
+            "model": "ncep_gfs025",
+            "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure,uv_index",
+            "past_days": 2,
+        }],
+        cron_expressions=["30 */6 * * *"],
+    ),
+    # Open-meteo HRRR sync — fire at HH:45 every hour
+    ScheduleDef(
+        "open-meteo-sync-hrrr", "OpenMeteoSyncWorkflow",
+        workflow_input=[{
+            "model": "ncep_hrrr_conus",
+            "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure",
+            "past_days": 1,
+        }],
+        cron_expressions=["45 * * * *"],
+    ),
 ]
+
+
+def _spec_for(s: ScheduleDef) -> Schedule:
+    if s.interval is not None:
+        spec = ScheduleSpec(intervals=[ScheduleIntervalSpec(every=s.interval)])
+    elif s.cron_expressions:
+        spec = ScheduleSpec(cron_expressions=s.cron_expressions)
+    else:
+        raise ValueError(f"schedule {s.schedule_id} has neither interval nor cron")
+    return Schedule(
+        action=ScheduleActionStartWorkflow(
+            s.workflow_name,
+            *s.workflow_input,
+            id=f"sched-{s.schedule_id}",
+            task_queue=TASK_QUEUE,
+        ),
+        spec=spec,
+        policy=SchedulePolicy(
+            overlap=ScheduleOverlapPolicy.SKIP,
+            catchup_window=timedelta(hours=1),
+        ),
+    )
 
 
 async def seed(client: Client) -> None:
     for s in SCHEDULES:
-        spec = Schedule(
-            action=ScheduleActionStartWorkflow(
-                s.workflow_name,
-                id=f"sched-{s.schedule_id}",
-                task_queue=TASK_QUEUE,
-            ),
-            spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=s.interval)]),
-            policy=SchedulePolicy(
-                overlap=ScheduleOverlapPolicy.SKIP,
-                catchup_window=timedelta(hours=1),
-            ),
-        )
+        spec = _spec_for(s)
         try:
             await client.create_schedule(s.schedule_id, spec)
             print(f"[seed] created schedule {s.schedule_id}")

@@ -81,7 +81,9 @@ def _persistence_fallback(frames: list[np.ndarray], n_leadtimes: int) -> np.ndar
 def _run_nowcast(frames: list[np.ndarray], n_leadtimes: int) -> np.ndarray | None:
     try:
         from pysteps import motion, nowcasts  # type: ignore
-    except ImportError as exc:
+    except (ImportError, AttributeError, ModuleNotFoundError) as exc:
+        # Catches both "module not found" AND "distutils missing" / "_ARRAY_API"
+        # numpy-vs-cv2 incompatibilities on Python 3.12.
         log.warning("pysteps_unavailable", extra={"err": str(exc)})
         return _persistence_fallback(frames, n_leadtimes)
 

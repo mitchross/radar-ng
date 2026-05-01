@@ -35,17 +35,31 @@ from backend.shared.tiler import apply_color_table, render_tiles
 
 
 MRMS_BASE = "https://noaa-mrms-pds.s3.amazonaws.com"
-MRMS_PREFIX = os.environ.get("MRMS_PREFIX", "CONUS/MergedBaseReflectivityQC_00.50")
-LAYER_NAME = os.environ.get("LAYER_NAME", "radar")
 TILE_DIR = os.environ.get("TILE_DIR", "/data/tiles")
 STATE_DIR = os.environ.get("STATE_DIR", "/data/state")
 ZOOM_LEVELS = [4, 5, 6, 7, 8, 9]
 BACKLOG_PER_CYCLE = int(os.environ.get("BACKLOG_PER_CYCLE", "3"))
 
+
+# Defaults — used when the workflow doesn't pass overrides.
+DEFAULT_MRMS_PREFIX = os.environ.get("MRMS_PREFIX", "CONUS/MergedBaseReflectivityQC_00.50")
+DEFAULT_LAYER_NAME = os.environ.get("LAYER_NAME", "radar")
+
 log = get_logger("ingest-mrms-activities")
 
 
 # ---------- serialisable activity I/O ----------
+
+
+@dataclass
+class IngestMrmsArgs:
+    """Per-product config the workflow passes to every activity. Defaults
+    match the QC-applied base reflectivity used by the original
+    ingest-mrms CronJob; the radar-composite schedule overrides both
+    fields to point at the full-atmosphere composite product.
+    """
+    mrms_prefix: str = DEFAULT_MRMS_PREFIX
+    layer_name: str = DEFAULT_LAYER_NAME
 
 
 @dataclass
@@ -57,8 +71,8 @@ class ListKeysResult:
 @dataclass
 class ProcessFrameResult:
     key: str
-    timestamp: str | None
-    rendered: bool
+    timestamp: str = ""
+    rendered: bool = False
     palettes: list[str] = field(default_factory=list)
     duration_s: float = 0.0
 
@@ -95,12 +109,12 @@ def _list_keys_sync(client: httpx.Client, prefix: str) -> list[str]:
     return keys
 
 
-def _list_recent_files_sync(client: httpx.Client) -> list[str]:
+def _list_recent_files_sync(client: httpx.Client, mrms_prefix: str) -> list[str]:
     today = datetime.now(timezone.utc).strftime("%Y%m%d")
-    keys = _list_keys_sync(client, f"{MRMS_PREFIX}/{today}")
+    keys = _list_keys_sync(client, f"{mrms_prefix}/{today}")
     if not keys:
         yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y%m%d")
-        keys = _list_keys_sync(client, f"{MRMS_PREFIX}/{yesterday}")
+        keys = _list_keys_sync(client, f"{mrms_prefix}/{yesterday}")
     return sorted(keys)
 
 
@@ -163,71 +177,86 @@ def _render_palette(
     flip: bool,
     timestamp: str,
     tile_base: Path,
+    layer_name: str,
 ) -> int:
     rgba = apply_color_table(data, ctable)
     if flip:
         rgba = np.flipud(rgba)
-    out_dir = str(tile_base / LAYER_NAME / pname / timestamp)
+    out_dir = str(tile_base / layer_name / pname / timestamp)
     return render_tiles(rgba=rgba, lats=lats_arr, lons=lons_arr, output_dir=out_dir, zoom_levels=ZOOM_LEVELS)
 
 
-def _state_path() -> Path:
-    return Path(STATE_DIR) / "ingest-mrms.json"
+def _state_path(layer_name: str) -> Path:
+    """Per-layer state file so multiple schedules (radar + radar-composite)
+    don't race on a shared ProcessedSet.
+    """
+    return Path(STATE_DIR) / f"ingest-mrms-{layer_name}.json"
 
 
 # ---------- activities ----------
 
 
+@dataclass
+class MarkProcessedInput:
+    key: str
+    layer_name: str
+
+
+@dataclass
+class CleanupInput:
+    layer_name: str
+    retention_hours: int
+
+
 @activity.defn(name="mrms_list_unprocessed_keys")
-async def mrms_list_unprocessed_keys() -> ListKeysResult:
-    """List S3 keys, filter out ones already in ProcessedSet, return newest-first
-    capped at BACKLOG_PER_CYCLE.
-    """
+async def mrms_list_unprocessed_keys(args: IngestMrmsArgs) -> ListKeysResult:
     def _go() -> ListKeysResult:
         with httpx.Client() as client:
-            keys = _list_recent_files_sync(client)
-        state = ProcessedSet(_state_path(), max_entries=2000)
+            keys = _list_recent_files_sync(client, args.mrms_prefix)
+        state = ProcessedSet(_state_path(args.layer_name), max_entries=2000)
         new_keys = [k for k in keys if k not in state]
-        # newest first so the user sees fresh frames ASAP
         ordered = list(reversed(new_keys))[:BACKLOG_PER_CYCLE]
         return ListKeysResult(keys=ordered, backlog_total=len(new_keys))
 
     return await asyncio.to_thread(_go)
 
 
+@dataclass
+class ProcessFrameInput:
+    key: str
+    layer_name: str
+
+
 @activity.defn(name="mrms_process_frame")
-async def mrms_process_frame(key: str) -> ProcessFrameResult:
-    """Download + decode + render every palette + write grid + detect storms
-    for one MRMS key. Heartbeats every 30s while rendering.
-    """
+async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
     started = time.time()
     palette_tables = _load_palette_tables()
     tile_base = Path(TILE_DIR)
     tmp_dir = Path("/tmp/mrms_work")
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    activity.heartbeat({"phase": "download", "key": key})
+    activity.heartbeat({"phase": "download", "key": inp.key})
 
     def _download() -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
         with httpx.Client() as client:
-            return _download_and_decode_sync(client, key, tmp_dir)
+            return _download_and_decode_sync(client, inp.key, tmp_dir)
 
     decoded = await asyncio.to_thread(_download)
     if decoded is None:
-        return ProcessFrameResult(key=key, timestamp=None, rendered=False)
+        return ProcessFrameResult(key=inp.key, rendered=False)
 
     data, lats_arr, lons_arr = decoded
     flip = lats_arr[0] > lats_arr[-1]
     if flip:
         lats_arr = lats_arr[::-1]
-    timestamp = _extract_timestamp(key)
+    timestamp = _extract_timestamp(inp.key)
     grid_data = np.flipud(data) if flip else data
 
     activity.heartbeat({"phase": "grid", "timestamp": timestamp})
 
     def _grids() -> None:
         try:
-            write_grid(LAYER_NAME, timestamp, grid_data, lats_arr, lons_arr, unit="dBZ")
+            write_grid(inp.layer_name, timestamp, grid_data, lats_arr, lons_arr, unit="dBZ")
         except Exception as exc:  # noqa: BLE001
             log.warning("grid_dump_failed", extra={"err": str(exc)})
         try:
@@ -243,7 +272,7 @@ async def mrms_process_frame(key: str) -> ProcessFrameResult:
         rendered: list[str] = []
         with ThreadPoolExecutor(max_workers=max(1, len(palette_tables))) as pool:
             futures = {
-                pool.submit(_render_palette, pname, ctable, data, lats_arr, lons_arr, flip, timestamp, tile_base): pname
+                pool.submit(_render_palette, pname, ctable, data, lats_arr, lons_arr, flip, timestamp, tile_base, inp.layer_name): pname
                 for pname, ctable in palette_tables.items()
             }
             for fut in futures:
@@ -257,10 +286,10 @@ async def mrms_process_frame(key: str) -> ProcessFrameResult:
 
     rendered_palettes = await asyncio.to_thread(_render_all)
     duration = time.time() - started
-    log.info("frame_done", extra={"timestamp": timestamp, "duration_s": round(duration, 1)})
+    log.info("frame_done", extra={"layer": inp.layer_name, "timestamp": timestamp, "duration_s": round(duration, 1)})
 
     return ProcessFrameResult(
-        key=key,
+        key=inp.key,
         timestamp=timestamp,
         rendered=True,
         palettes=rendered_palettes,
@@ -269,20 +298,20 @@ async def mrms_process_frame(key: str) -> ProcessFrameResult:
 
 
 @activity.defn(name="mrms_mark_processed")
-async def mrms_mark_processed(key: str) -> None:
+async def mrms_mark_processed(inp: MarkProcessedInput) -> None:
     def _go() -> None:
-        state = ProcessedSet(_state_path(), max_entries=2000)
-        state.add(key)
+        state = ProcessedSet(_state_path(inp.layer_name), max_entries=2000)
+        state.add(inp.key)
 
     await asyncio.to_thread(_go)
 
 
 @activity.defn(name="mrms_cleanup")
-async def mrms_cleanup(retention_hours: int) -> CleanupResult:
+async def mrms_cleanup(inp: CleanupInput) -> CleanupResult:
     def _go() -> CleanupResult:
         tile_base = Path(TILE_DIR)
-        layer_dir = tile_base / LAYER_NAME
-        cutoff = time.time() - (retention_hours * 3600)
+        layer_dir = tile_base / inp.layer_name
+        cutoff = time.time() - (inp.retention_hours * 3600)
         removed = 0
         if layer_dir.exists():
             candidates: list[Path] = []
