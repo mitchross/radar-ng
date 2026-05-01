@@ -83,18 +83,29 @@ export default function AlertDetailScreen() {
             <Text style={styles.area}>{alert.properties.areaDesc}</Text>
           </LinearGradient>
 
-          {/* Polygon mini-map */}
-          <View style={[styles.polyWrap, { shadowColor: sev.color }]}>
-            <PolygonMap alert={alert} color={sev.color} userLat={userLat} userLon={userLon} />
-            <Text style={styles.polyKicker}>WARNING POLYGON</Text>
-            <TouchableOpacity
-              style={styles.openInRadar}
-              onPress={() => router.push("/(tabs)/radar" as never)}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.openInRadarText}>Open in Radar →</Text>
-            </TouchableOpacity>
-          </View>
+          {/* Polygon mini-map (only when we have real geometry; otherwise the
+              county list below is more useful than a fake placeholder shape). */}
+          {(alert.geometry?.coordinates?.[0]?.length ?? 0) >= 3 ? (
+            <View style={[styles.polyWrap, { shadowColor: sev.color }]}>
+              <PolygonMap alert={alert} color={sev.color} userLat={userLat} userLon={userLon} />
+              <Text style={styles.polyKicker}>WARNING POLYGON</Text>
+              <TouchableOpacity
+                style={styles.openInRadar}
+                onPress={() => router.push("/(tabs)/radar" as never)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.openInRadarText}>Open in Radar →</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.areaCard}>
+              <Text style={styles.areaKicker}>AFFECTED AREAS</Text>
+              <Text style={styles.areaList}>{alert.properties.areaDesc}</Text>
+              <Text style={styles.areaNote}>
+                County-level advisory · no polygon issued
+              </Text>
+            </View>
+          )}
 
           {/* Time block */}
           <View style={styles.timeCard}>
@@ -256,6 +267,11 @@ function PolygonMap({
     gridPath.lineTo(W, i * 30);
   }
 
+  // Skia's reconciler does not handle React Fragments — list each element
+  // directly. Always render the user pin (off-canvas if no point known).
+  const userX = userPt?.x ?? -100;
+  const userY = userPt?.y ?? -100;
+
   return (
     <Canvas style={{ width: "100%", height: H, backgroundColor: "#0e1726" }}>
       <SkRect x={0} y={0} width={W} height={H} color="#0e1726" />
@@ -267,20 +283,16 @@ function PolygonMap({
       />
       <SkPath path={polyPath} color={`${color}52`} />
       <SkPath path={polyPath} style="stroke" strokeWidth={1.5} color={color} />
-      {userPt ? (
-        <>
-          <SkCircle cx={userPt.x} cy={userPt.y} r={14} color={`${color}33`} />
-          <SkCircle cx={userPt.x} cy={userPt.y} r={5} color="#ffffff" />
-          <SkCircle
-            cx={userPt.x}
-            cy={userPt.y}
-            r={5}
-            color="#0e1726"
-            style="stroke"
-            strokeWidth={2}
-          />
-        </>
-      ) : null}
+      <SkCircle cx={userX} cy={userY} r={14} color={`${color}33`} />
+      <SkCircle cx={userX} cy={userY} r={5} color="#ffffff" />
+      <SkCircle
+        cx={userX}
+        cy={userY}
+        r={5}
+        color="#0e1726"
+        style="stroke"
+        strokeWidth={2}
+      />
     </Canvas>
   );
 }
@@ -401,6 +413,35 @@ const styles = StyleSheet.create({
     color: "#0a0e1a",
     fontSize: 11,
     fontWeight: "700",
+  },
+
+  areaCard: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: cumulus.cardLine,
+  },
+  areaKicker: {
+    fontSize: 10,
+    fontFamily: "SF Mono",
+    color: cumulus.inkMuted,
+    letterSpacing: 1.4,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  areaList: {
+    color: cumulus.ink,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  areaNote: {
+    color: cumulus.inkMuted,
+    fontSize: 11,
+    fontFamily: "SF Mono",
+    marginTop: 8,
   },
 
   timeCard: {

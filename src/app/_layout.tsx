@@ -49,11 +49,7 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen
               name="alert/[id]"
-              options={{
-                presentation: "modal",
-                headerShown: true,
-                headerTitle: "Alert Details",
-              }}
+              options={{ presentation: "modal", headerShown: false }}
             />
           </Stack>
         </QueryClientProvider>
