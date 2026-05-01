@@ -1,7 +1,7 @@
 FROM registry.vanillax.me/radar-ng-base:latest
 
 COPY shared/ /app/shared/
-COPY ingest-tropical/ingest.py /app/ingest.py
+COPY ingest_tropical/ingest.py /app/ingest.py
 
 ENV STATE_DIR=/data/state \
     POLL_INTERVAL=300

@@ -4,7 +4,7 @@ on:
   push:
     branches: [master]
     paths:
-      - 'backend/ingest-lightning/**'
+      - 'backend/ingest_lightning/**'
       - 'backend/base/**'
       - 'backend/shared/**'
       - '.gitea/workflows/build-ingest-lightning.yml'
@@ -39,7 +39,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: backend
-          file: backend/ingest-lightning/Dockerfile
+          file: backend/ingest_lightning/Dockerfile
           push: true
           tags: |
             registry.vanillax.me/radar-ng-ingest-lightning:${{ steps.ver.outputs.version }}

@@ -14,6 +14,12 @@ from loguru import logger
 from temporalio.client import Client
 from temporalio.worker import Worker
 
+from backend.ingest_mrms.activities import (
+    mrms_cleanup,
+    mrms_list_unprocessed_keys,
+    mrms_mark_processed,
+    mrms_process_frame,
+)
 from temporal.shared.otel import init_tracer
 from temporal.shared.push import send_push_notification
 from temporal.workflows import ALL_WORKFLOWS
@@ -22,10 +28,15 @@ from temporal.workflows import ALL_WORKFLOWS
 TASK_QUEUE = "radar-ng"
 
 
-# Phase 0: only push activity is wired. Per-service activity modules
-# (`backend/<svc>/activities.py`) get imported + registered here as each
-# Phase 1+ workflow ports its activities.
+# Activities are registered here as each workflow is ported. Phase 1 lights
+# up the full ingest-mrms pipeline; remaining services follow in Phase 2.
 ALL_ACTIVITIES = [
+    # ingest-mrms
+    mrms_list_unprocessed_keys,
+    mrms_process_frame,
+    mrms_mark_processed,
+    mrms_cleanup,
+    # storm-watch (Phase 3 stub)
     send_push_notification,
 ]
 

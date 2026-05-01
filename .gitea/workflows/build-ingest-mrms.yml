@@ -4,7 +4,7 @@ on:
   push:
     branches: [master]
     paths:
-      - 'backend/ingest-mrms/**'
+      - 'backend/ingest_mrms/**'
       - 'backend/base/**'
       - 'backend/shared/**'
       - '.gitea/workflows/build-ingest-mrms.yml'
@@ -39,7 +39,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: backend
-          file: backend/ingest-mrms/Dockerfile
+          file: backend/ingest_mrms/Dockerfile
           push: true
           tags: |
             registry.vanillax.me/radar-ng-ingest-mrms:${{ steps.ver.outputs.version }}

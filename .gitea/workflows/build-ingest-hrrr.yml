@@ -4,7 +4,7 @@ on:
   push:
     branches: [master]
     paths:
-      - 'backend/ingest-hrrr/**'
+      - 'backend/ingest_hrrr/**'
       - 'backend/base/**'
       - 'backend/shared/**'
       - '.gitea/workflows/build-ingest-hrrr.yml'
@@ -39,7 +39,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: backend
-          file: backend/ingest-hrrr/Dockerfile
+          file: backend/ingest_hrrr/Dockerfile
           push: true
           tags: |
             registry.vanillax.me/radar-ng-ingest-hrrr:${{ steps.ver.outputs.version }}

@@ -3,7 +3,7 @@ FROM registry.vanillax.me/radar-ng-base:latest
 RUN pip install --no-cache-dir websockets==12.0
 
 COPY shared/ /app/shared/
-COPY ingest-lightning/ingest.py /app/ingest.py
+COPY ingest_lightning/ingest.py /app/ingest.py
 
 ENV STATE_DIR=/data/state \
     LIGHTNING_RETENTION_MIN=15 \

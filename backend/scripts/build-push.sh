@@ -33,10 +33,10 @@ build_base() {
 # Map: service => "<dockerfile-rel-path>;<context-rel-path>"
 declare -A SERVICES=(
   [tile-server]="backend/api/Dockerfile;services"
-  [ingest-mrms]="backend/ingest-mrms/Dockerfile;services"
-  [ingest-hrrr]="backend/ingest-hrrr/Dockerfile;services"
-  [ingest-lightning]="backend/ingest-lightning/Dockerfile;services"
-  [ingest-tropical]="backend/ingest-tropical/Dockerfile;services"
+  [ingest-mrms]="backend/ingest_mrms/Dockerfile;services"
+  [ingest-hrrr]="backend/ingest_hrrr/Dockerfile;services"
+  [ingest-lightning]="backend/ingest_lightning/Dockerfile;services"
+  [ingest-tropical]="backend/ingest_tropical/Dockerfile;services"
   [nowcast]="backend/nowcast/Dockerfile;services"
   [basemap]="backend/basemap/Dockerfile;."
 )

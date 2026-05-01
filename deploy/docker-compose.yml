@@ -186,7 +186,7 @@ services:
     image: alpine:3.19
     volumes:
       - tiles:/data/tiles
-      - ../backend/tile-cleanup/cleanup.sh:/cleanup.sh:ro
+      - ../backend/tile_cleanup/cleanup.sh:/cleanup.sh:ro
     entrypoint: /bin/sh
     command: ["-c", "while true; do /bin/sh /cleanup.sh; sleep 1800; done"]
     environment:
