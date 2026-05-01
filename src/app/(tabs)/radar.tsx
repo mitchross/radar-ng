@@ -9,7 +9,7 @@
  *   • TimelineBar      ("Reflectivity / Sunday, April 19 2026" header)
  */
 import { useState } from "react";
-import { View, StyleSheet, Text, Pressable } from "react-native";
+import { View, StyleSheet, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { WeatherMap } from "../../components/map/WeatherMap";
@@ -29,8 +29,6 @@ import { MapStylePicker } from "../../components/map/MapStylePicker";
 import { EyedropperPin, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { useAlerts } from "../../hooks/useAlerts";
-import { cumulus } from "../../lib/cumulusTheme";
 
 export default function RadarScreen() {
   useManifest();
@@ -39,15 +37,12 @@ export default function RadarScreen() {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
   const extrasVisible = useWeatherStore((s) => s.extrasVisible);
-  const { data: alertData } = useAlerts();
 
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
 
   const camera = useSharedCamera(DEFAULTS.LONGITUDE, DEFAULTS.LATITUDE, DEFAULTS.ZOOM);
   const windParticlesOn = activeLayer === "wind";
-
-  const topAlert = alertData?.features?.[0];
 
   return (
     <View style={styles.container}>
@@ -76,7 +71,7 @@ export default function RadarScreen() {
         {pinned && <EyedropperPin pinned={pinned} onClear={() => setPinned(null)} />}
       </WeatherMap>
 
-      {/* Top safe area — close button + alert banner. */}
+      {/* Top safe area — close button only. Alerts live on the Alerts tab. */}
       <SafeAreaView style={styles.safeTop} edges={["top"]} pointerEvents="box-none">
         <Pressable
           style={styles.closeBtn}
@@ -88,14 +83,6 @@ export default function RadarScreen() {
           <View style={[styles.closeLine, styles.closeLineA]} />
           <View style={[styles.closeLine, styles.closeLineB]} />
         </Pressable>
-        {topAlert && (
-          <View style={styles.alertBanner}>
-            <View style={styles.alertDot} />
-            <Text style={styles.alertText} numberOfLines={1}>
-              {topAlert.properties.event}
-            </Text>
-          </View>
-        )}
       </SafeAreaView>
 
       {/* Wind particles — Skia canvas overlay, active on the wind layer */}
@@ -129,21 +116,6 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 15,
   },
-  alertBanner: {
-    marginHorizontal: 12,
-    marginTop: 48,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,59,74,0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(255,59,74,0.45)",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  alertDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: cumulus.alert },
-  alertText: { color: "#FF8A80", fontSize: 12, fontWeight: "600", flex: 1 },
   closeBtn: {
     alignSelf: "flex-start",
     marginLeft: 12,
