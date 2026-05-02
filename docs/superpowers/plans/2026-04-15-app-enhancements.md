@@ -1,5 +1,7 @@
 # StormScope App Enhancements — Implementation Plan
 
+> ⚠️ **Historical — executed before the 2026-05-02 Temporal refactor.** `src/...` paths below are now under `frontend/src/...`. Kept verbatim as a record of how this plan shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Enhance the React Native app to support the self-hosted tile server (with RainViewer fallback), multi-layer display with a layer picker, extended timeline (-3h to +24h), daily forecast, alert polygons on the map, and UI polish.

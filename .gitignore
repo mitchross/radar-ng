@@ -6,6 +6,7 @@
 
 # local env files
 .env*.local
+.env
 
 # data
 backend/pmtiles-data/*.pmtiles
@@ -30,3 +31,48 @@ venv/
 
 # Editor
 .vscode/.history/
+.idea/
+*.swp
+
+# Node / JS
+node_modules/
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.tsbuildinfo
+
+# Expo / React Native
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+
+# Generated native projects (managed Expo prebuild)
+/ios
+/android
+.kotlin/
+
+# iOS build artifacts (if native dirs are ever committed)
+**/Pods/
+**/build/
+**/DerivedData/
+**/xcuserdata/
+*.xcuserstate
+xcodebuild*.log
+
+# Native signing material
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# EAS / Expo local
+.eas/
+eas.local.json
+
+# Logs
+*.log
+logs/

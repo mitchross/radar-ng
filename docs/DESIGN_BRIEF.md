@@ -1,6 +1,6 @@
 # radar-ng — App & Page Design Brief
 
-Hand-off doc for design work (Claude Design / Figma / etc). Focuses on what each screen does for the user, not implementation. Code lives in `src/app/(tabs)/` and `src/screens/`.
+Hand-off doc for design work (Claude Design / Figma / etc). Focuses on what each screen does for the user, not implementation. Code lives in `frontend/src/app/(tabs)/` and `frontend/src/screens/`.
 
 ## What it is
 A self-hosted personal weather app. The user runs their own stack (MRMS radar, HRRR forecast, Open-Meteo, NWS alerts, Protomaps basemap) on a home server, and this Expo/React Native app is the front end. It's *their* weather, no ads, no telemetry, no third-party service degrading silently.
@@ -118,7 +118,7 @@ Currently minimal — needs design love. Should show:
 - **Footer** — "radar-ng — Cumulus UI / Self-hosted: MRMS · HRRR · Open-Meteo · Protomaps · NWS alerts".
 
 ## Cross-cutting design system
-- **Color tokens** (in `src/lib/cumulusTheme.ts`): `cumulus.ink` (white), `inkDim`, `inkMuted`, `inkFaint`, `inkLine`, `card`, `cardLine`, `cardStrong`, `accent` (purple `#8B7CFF`), `accentSoft`, `accentBorder`, `alert` (red `#FF3B4A`), `ok` (green), `sun` (yellow), `hot`, `cold`, `rain` (blue `#4FB8FF`), `rainHeavy`.
+- **Color tokens** (in `frontend/src/lib/cumulusTheme.ts`): `cumulus.ink` (white), `inkDim`, `inkMuted`, `inkFaint`, `inkLine`, `card`, `cardLine`, `cardStrong`, `accent` (purple `#8B7CFF`), `accentSoft`, `accentBorder`, `alert` (red `#FF3B4A`), `ok` (green), `sun` (yellow), `hot`, `cold`, `rain` (blue `#4FB8FF`), `rainHeavy`.
 - **Condition gradients** — full-screen backgrounds keyed to weather: clearDay / clearNight / cloudy / rain / storm / snow / fog.
 - **Section headers** — uppercase 11pt, letter-spaced 1.6, mono-feel, optional right-side caption.
 - **Cards** — translucent `rgba` over the gradient, 16–18 radius, 1px hairline border in `cardLine`. Never opaque solid panels.

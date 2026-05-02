@@ -1,5 +1,7 @@
 # StormScope v3.0 — Implementation Plan
 
+> **⚠️ Historical document.** This plan was written before the 2026-05-02 Temporal refactor and refers to paths that no longer exist (`services/...` is now `backend/...`, `src/...` is now `frontend/src/...`, all CronJobs are now Temporal Schedules). Most of Phases 1–7 below have shipped. Treat this as a record of how the app got built, not as a current task list. For the current repo layout, see the README "Project layout" section. For the Temporal architecture, see `docs/superpowers/specs/2026-04-30-temporal-radar-ng-design.md`.
+
 ## Context
 
 StormScope is a self-hosted weather radar app (React Native/Expo) with a containerized backend pipeline. The current app has 3 tabs (Weather forecast, Radar map, Settings) with IEM NEXRAD free-tier radar and a Docker backend (ingest-mrms, ingest-hrrr, tile-server, tile-cleanup) that's built but not battle-tested. The Weather tab was recently redesigned to CARROT Premium style (gradient backgrounds, city skyline illustrations, glassmorphism cards). The Radar tab was redesigned with light map base and CARROT-style FABs.

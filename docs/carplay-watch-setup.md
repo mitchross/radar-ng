@@ -1,6 +1,6 @@
 # CarPlay + Apple Watch — Build & Sideload Guide
 
-This doc covers building the CarPlay scene and watchOS target in `targets/` for **personal-device use only**. These features are NOT meant for App Store submission and use workarounds Apple does not officially bless.
+This doc covers building the CarPlay scene and watchOS target in `frontend/targets/` for **personal-device use only**. These features are NOT meant for App Store submission and use workarounds Apple does not officially bless.
 
 ## Prereqs (Mac only)
 
@@ -26,16 +26,16 @@ bunx expo prebuild --clean --platform ios
 
 This will:
 
-1. Generate `ios/` from `app.json`
-2. Copy `targets/carplay/*.swift` into `ios/stormscope/CarPlay/` via `plugins/withCarPlayScene.js`
+1. Generate `frontend/ios/` from `frontend/app.json`
+2. Copy `frontend/targets/carplay/*.swift` into `frontend/ios/radarng/CarPlay/` via `frontend/plugins/withCarPlayScene.js`
 3. Add the `com.apple.developer.carplay-maps` entitlement to the main app's `.entitlements`
 4. Register the `CPTemplateApplicationSceneSessionRoleApplication` scene in the main `Info.plist`
-5. Generate a sibling watchOS target from `targets/watch/` via `@bacons/apple-targets`
+5. Generate a sibling watchOS target from `frontend/targets/watch/` via `@bacons/apple-targets`
 
 Open the workspace:
 
 ```bash
-open ios/stormscope.xcworkspace
+open frontend/ios/radarng.xcworkspace
 ```
 
 ## CarPlay — signing hack for personal use
@@ -140,14 +140,17 @@ If it fails to install on device, switch the scheme's destination to a Watch Sim
 
 ## Files
 
+All paths are relative to `frontend/`.
+
 ```
-targets/
+frontend/targets/
 ├── carplay/
 │   ├── RadarCarPlaySceneDelegate.swift  — CPTemplateApplicationSceneDelegate
 │   ├── RadarMapController.swift         — CPMapTemplate + MKMapView host
 │   ├── RadarTileOverlay.swift           — MKTileOverlay (IEM NEXRAD, TMS)
 │   ├── RadarLocationManager.swift       — CoreLocation wrapper
-│   └── RadarAPI.swift                   — backend URLs
+│   ├── RadarAPI.swift                   — backend URLs
+│   └── MainSceneDelegate.swift          — UIWindowSceneDelegate for the iPhone window (required once UIApplicationSceneManifest is declared)
 └── watch/
     ├── expo-target.config.js            — @bacons/apple-targets config
     ├── RadarWatchApp.swift              — @main SwiftUI app
@@ -156,5 +159,6 @@ targets/
     ├── ContentView.swift                — all watch views
     └── Info.plist
 
-plugins/withCarPlayScene.js              — copies carplay/ into main app, adds entitlement, adds scene to Info.plist
+frontend/plugins/withCarPlayScene.js     — copies carplay/ into main app, adds entitlement, registers Main + CarPlay scenes in Info.plist
+frontend/plugins/withScriptSandboxOff.js — disables Xcode 15+ script sandboxing for build phases that need it
 ```

@@ -1,5 +1,7 @@
 # StormScope Phase 1 — Implementation Plan
 
+> ⚠️ **Historical — executed before the 2026-05-02 Temporal refactor.** `src/...` paths below are now under `frontend/src/...`; `services/...` is now `backend/...`. Kept verbatim as a record of how Phase 1 shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a client-only React Native (Expo SDK 55) weather radar app that displays live NEXRAD radar on a map with a time slider, point forecasts, and severe weather alerts — all from free public APIs with zero backend.

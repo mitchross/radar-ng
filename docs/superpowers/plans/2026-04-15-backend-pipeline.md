@@ -1,5 +1,7 @@
 # StormScope Backend Pipeline — Implementation Plan
 
+> ⚠️ **Historical — executed before the 2026-05-02 Temporal refactor.** `services/...` paths below are now `backend/...`; CronJobs were replaced with Temporal Schedules in `temporal/schedules/seed.py`. Kept verbatim as a record of how the original pipeline shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a containerized weather tile pipeline that ingests MRMS radar and HRRR forecast data from NOAA, renders PNG map tiles, and serves them via Caddy — replacing the RainViewer free tier with 1km resolution, 3hr history, and multi-layer support (wind, temp, CAPE, precip type).
