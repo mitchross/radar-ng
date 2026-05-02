@@ -1,13 +1,13 @@
 """OpenMeteoSyncWorkflow — replaces the two open-meteo-sync CronJobs.
 
 Two schedules drive this workflow:
-  - `open-meteo-sync-gfs`  every 6h at :30  (matches GFS run cadence)
-  - `open-meteo-sync-hrrr` every 1h at :45  (matches HRRR run cadence)
+  - `open-meteo-sync-gfs`  every 6h   (matches GFS run cadence)
+  - `open-meteo-sync-hrrr` every 1h   (matches HRRR run cadence)
 
-The workflow itself is a single activity that creates a Kubernetes Job
-running the upstream `ghcr.io/open-meteo/open-meteo:latest` image, then
-polls until the Job terminates. Worker pod needs RBAC to create + watch
-jobs in the radar-ng namespace.
+The workflow body is a single activity (`open_meteo_sync`) that
+subprocess-execs the open-meteo Swift binary inside the dedicated
+`radar-ng-open-meteo-worker` pod. No k8s Jobs are created — the
+separate worker pool replaces the earlier short-lived-Job pattern.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ with workflow.unsafe.imports_passed_through():
     from backend.open_meteo_sync.activities import (
         OpenMeteoSyncArgs,
         OpenMeteoSyncResult,
-        open_meteo_sync_via_k8s_job,
+        open_meteo_sync,
     )
 
 
@@ -38,7 +38,7 @@ class OpenMeteoSyncWorkflow:
     @workflow.run
     async def run(self, args: OpenMeteoSyncArgs) -> OpenMeteoSyncResult:
         return await workflow.execute_activity(
-            open_meteo_sync_via_k8s_job, args,
+            open_meteo_sync, args,
             start_to_close_timeout=timedelta(minutes=35),
             heartbeat_timeout=timedelta(seconds=90),
             retry_policy=_RETRY,
