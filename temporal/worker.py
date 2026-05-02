@@ -44,6 +44,7 @@ from backend.tile_cleanup.activities import tile_cleanup_sweep
 # base image carries the Swift binary. Temporal dispatches the activity
 # to whichever worker has it registered, so this worker intentionally
 # does not import or register it.
+from temporal.schedules.seed import seed as seed_schedules
 from temporal.shared.otel import init_tracer
 from temporal.shared.push import send_push_notification
 from temporal.workflows import ALL_WORKFLOWS
@@ -90,6 +91,15 @@ async def _main() -> None:
 
     interceptor = init_tracer()
     client = await Client.connect(target, namespace=namespace, interceptors=[interceptor])
+
+    # Self-seed Schedules on every pod start. seed() is idempotent
+    # (create-or-update per schedule_id) so HA replicas racing is fine —
+    # both converge on the same desired state. Failure here aborts startup
+    # rather than silently leaving a worker without its schedules.
+    if os.environ.get("SKIP_SCHEDULE_SEED") != "1":
+        logger.info("seeding schedules…")
+        await seed_schedules(client)
+        logger.info("schedule seed complete")
 
     worker = Worker(
         client,

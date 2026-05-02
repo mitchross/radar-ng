@@ -40,5 +40,12 @@ and the orchestration code centralized here.
 
 ## Status
 
-Phase 0 — scaffold only. Workflow bodies are placeholders. First real
-workflow port (`IngestMrmsWorkflow`) lands in Phase 1.
+Phases 0–4 done. All seven legacy CronJobs replaced by Temporal Schedules
+seeded automatically on worker startup. Storm-watch + push-token routes
+ship in `backend/api/api/routes_workflows.py` (tile-server v1.0.6+).
+Push notifications are gated behind `PUSH_DISABLED` (default `1`) so the
+worker boots without APNS/FCM secrets — re-enable per
+`deploy/k8s/README.md` §4.
+
+Phase 5 (Rust hot paths for `decode_grib2` / `build_mbtiles`) deferred —
+gated on OTEL data showing them as bottlenecks.

@@ -1,9 +1,10 @@
 """Idempotent Temporal Schedule seeding.
 
-Runs as a manual one-off (`python -m temporal.schedules.seed`) or as an
-initContainer on the worker pod. For each scheduled workflow, attempts
-`client.create_schedule(...)` and falls through to `update(...)` if the
-schedule already exists.
+Called from `temporal/worker.py` on every worker startup (also runnable
+as a one-off via `python -m temporal.schedules.seed` for local debugging).
+For each scheduled workflow, attempts `client.create_schedule(...)` and
+falls through to `update(...)` if the schedule already exists. HA
+replicas racing is harmless: both converge on the same desired state.
 
 All schedules use `OverlapPolicy.SKIP` (slow run does not queue) and a
 `CatchupWindow=1h` (no thundering-herd backfill on worker recovery).

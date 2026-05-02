@@ -96,50 +96,42 @@ tile-cleanup.sh
 (I'd remove from the resources list first, wait one ArgoCD sync to
 confirm the worker is happy, then `git rm` the actual files.)
 
-### 3. Bump tile-server image (only when you're ready to expose `/v1/*`)
+### 3. Tile-server `/v1/*` routes
 
-Mobile-facing API gains `/v1/push-tokens`, `/v1/watches`, `/v1/workflows`.
-Your existing `httproute.yaml` already routes `/` to `tile-server`, so
-no HTTPRoute changes needed. But the tile-server image must be the new
-one with the workflow routes compiled in. Edit `deployment-tile-server.yaml`:
+Mobile-facing API gains `/v1/push-tokens`, `/v1/watches`, `/v1/workflows`
+in `radar-ng-tile-server:v1.0.6+`. The talos `deployment-tile-server.yaml`
+already pins v1.0.6 and sets `TEMPORAL_ADDRESS` +
+`TEMPORAL_NAMESPACE=default`, so nothing to do here on the cluster side.
+Renovate opens image-bump PRs as new `build-api.yml` tags ship.
 
-```diff
-       containers:
-         - name: tile-server
--          image: registry.vanillax.me/radar-ng-tile-server:v1.0.5
-+          image: registry.vanillax.me/radar-ng-tile-server:v1.1.0   # whichever new tag
-           env:
-             - name: TILE_DIR
-               value: /data/tiles
-+            - name: TEMPORAL_ADDRESS
-+              value: temporal-frontend.temporal.svc.cluster.local:7233
-+            - name: TEMPORAL_NAMESPACE
-+              value: default
-```
+### 4. Push notifications — disabled by default
 
-Renovate opens the image-bump PR automatically once `build-api.yml` ships
-a new tag — just merge it.
+The worker pod sets `PUSH_DISABLED=1` in `temporal-worker-deployment.yaml`.
+The `send_push_notification` activity logs+returns successfully without
+touching APNS/FCM, so `WatchStormWorkflow` still runs end-to-end (poll
+frames, detect change) but no notification is sent.
 
-### 4. Apply the secret out-of-band (only if you want push notifications)
+To re-enable later:
+1. Apply `radar-ng-temporal-secrets` (template at
+   `secret-temporal-worker.yaml.template` in this dir) with `APNS_KEY`
+   and/or `FCM_CREDENTIALS_JSON`.
+2. In `temporal-worker-deployment.yaml`: set `PUSH_DISABLED=0`, restore
+   the `secretRef` envFrom block, the `push-keys` volume mount, and the
+   `push-keys` volume entry. (Check git history of that file for the
+   exact blocks that were removed.)
 
-```bash
-kubectl apply -f /path/to/your-edited-secret-temporal-worker.yaml
-```
+### 5. Schedule seeding — automatic
 
-The TemporalWorkerDeployment references the secret as `optional: true`,
-so the worker boots fine without it. Without it, ingest workflows still
-run; only `send_push_notification` raises non-retryable.
+The worker calls `temporal/schedules/seed.py` on startup before
+`worker.run()`. `seed()` is idempotent (create-or-update per
+`schedule_id`) so the two HA replicas racing on first boot is fine —
+both converge on the same desired state.
 
-### 5. Seed the Schedules (one-time)
+Set `SKIP_SCHEDULE_SEED=1` on the worker if you ever need to inhibit
+seeding (e.g. while fixing a bad schedule definition by hand in the
+Temporal UI). No `kubectl exec` ever required.
 
-After the worker pod is Ready:
-
-```bash
-kubectl exec -n radar-ng deploy/radar-ng-worker -- \
-  python -m temporal.schedules.seed
-```
-
-Re-running is idempotent. Creates ten schedules:
+The seeded schedules:
 
 | Schedule ID | Cadence | Replaces |
 |---|---|---|
@@ -164,11 +156,11 @@ kubectl -n radar-ng get pods -l app=radar-ng-worker -w
 temporal --address temporal-frontend.temporal.svc.cluster.local:7233 \
   schedule list
 
-# logs
+# worker logs — look for "schedule seed complete" then "worker starting"
 kubectl -n radar-ng logs deploy/radar-ng-worker --tail=50 -f
 
-# spot-check open-meteo k8s Job creation
-kubectl -n radar-ng get jobs --watch
+# open-meteo runs as a separate worker pool now (no k8s Jobs)
+kubectl -n radar-ng logs deploy/radar-ng-open-meteo-worker --tail=50 -f
 ```
 
 ## Things to confirm before pasting

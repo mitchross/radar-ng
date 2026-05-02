@@ -40,6 +40,12 @@ APNS_KEY_PATH = os.environ.get("APNS_KEY_PATH", "/secrets/apns.p8")
 FCM_PROJECT_ID = os.environ.get("FCM_PROJECT_ID", "")
 FCM_CREDENTIALS_PATH = os.environ.get("FCM_CREDENTIALS_PATH", "/secrets/fcm.json")
 
+# Kill switch: when set, the activity logs+returns successfully without
+# touching APNS/FCM. Lets us run the worker without push secrets and
+# without the watch-storm code path failing every push attempt. Re-enable
+# by unsetting in the worker manifest (and applying push secrets).
+PUSH_DISABLED = os.environ.get("PUSH_DISABLED", "1") == "1"
+
 log = get_logger("push-activity")
 
 
@@ -202,6 +208,12 @@ async def _send_fcm(token: str, payload: PushPayload) -> None:
 
 @activity.defn(name="send_push_notification")
 async def send_push_notification(token: PushToken, payload: PushPayload) -> None:
+    if PUSH_DISABLED:
+        log.info(
+            "push_skipped (PUSH_DISABLED=1)",
+            extra={"platform": token.platform, "user_id": token.user_id, "title": payload.title},
+        )
+        return
     if token.platform == "ios":
         await _send_apns(token.token, payload)
     elif token.platform == "android":
