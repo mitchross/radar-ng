@@ -46,4 +46,12 @@ ENV PYTHONUNBUFFERED=1
 # Switch back to the open-meteo image's non-root user (uid 999).
 USER openmeteo
 
+# Clear the upstream image's ENTRYPOINT (`./openmeteo-api`) — without
+# this, our CMD becomes args TO that entrypoint and the container fails
+# at startup with `exec: ./openmeteo-api: stat ./openmeteo-api: no such
+# file or directory` (because our WORKDIR is /workspace, not /app where
+# the binary lives). The activity invokes the binary by absolute path
+# (OPENMETEO_BIN env, default /app/openmeteo-api) so we don't need the
+# entrypoint at all.
+ENTRYPOINT []
 CMD ["python3", "-m", "temporal.open_meteo_worker"]
