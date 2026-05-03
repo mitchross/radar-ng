@@ -12,7 +12,8 @@ import os
 
 from loguru import logger
 from temporalio.client import Client
-from temporalio.worker import Worker
+from temporalio.common import VersioningBehavior
+from temporalio.worker import Worker, WorkerDeploymentConfig, WorkerDeploymentVersion
 
 from backend.api.api.storm_watch_activities import (
     compare_radar_frames,
@@ -84,6 +85,21 @@ ALL_ACTIVITIES = [
 ]
 
 
+def _deployment_config_from_env() -> WorkerDeploymentConfig | None:
+    # The TemporalWorkerDeployment controller injects both env vars on every
+    # in-cluster pod. When they're missing (dev-compose, local runs) we
+    # register without versioning so the same code works in both modes.
+    name = os.environ.get("TEMPORAL_DEPLOYMENT_NAME")
+    build_id = os.environ.get("TEMPORAL_WORKER_BUILD_ID")
+    if not name or not build_id:
+        return None
+    return WorkerDeploymentConfig(
+        version=WorkerDeploymentVersion(deployment_name=name, build_id=build_id),
+        use_worker_versioning=True,
+        default_versioning_behavior=VersioningBehavior.PINNED,
+    )
+
+
 async def _main() -> None:
     target = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
     namespace = os.environ.get("TEMPORAL_NAMESPACE", "default")
@@ -101,17 +117,21 @@ async def _main() -> None:
         await seed_schedules(client)
         logger.info("schedule seed complete")
 
+    deployment_config = _deployment_config_from_env()
+
     worker = Worker(
         client,
         task_queue=TASK_QUEUE,
         workflows=ALL_WORKFLOWS,
         activities=ALL_ACTIVITIES,
+        deployment_config=deployment_config,
     )
     logger.info(
-        "worker starting on task_queue={} with {} workflows + {} activities",
+        "worker starting on task_queue={} with {} workflows + {} activities (versioning={})",
         TASK_QUEUE,
         len(ALL_WORKFLOWS),
         len(ALL_ACTIVITIES),
+        deployment_config.version if deployment_config else "off",
     )
     await worker.run()
 
