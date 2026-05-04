@@ -1,9 +1,15 @@
 name: build basemap
 
 # basemap is a special case:
+#   - The CONUS PMTiles archive (backend/pmtiles-data/basemap.pmtiles, ~1.8GB)
+#     is .gitignore'd because it's too large for git, so a fresh `actions/checkout`
+#     never has it. Before docker-build we extract /data/basemap.pmtiles from
+#     the existing radar-ng-basemap:latest image — the registry is the source
+#     of truth for the archive.
+#   - First-ever build (no :latest in registry) must be primed by a local
+#     `docker push registry.vanillax.me/radar-ng-basemap:latest`.
 #   - context is the repo root (.) not backend/, because the Dockerfile
 #     COPYs backend/pmtiles-data/basemap.pmtiles into the image
-#   - watches backend/pmtiles-data/** so a fresh PMTiles archive triggers a rebuild
 #   - does NOT watch backend/base/ since basemap doesn't FROM radar-ng-base
 
 on:
@@ -41,6 +47,17 @@ jobs:
       - uses: docker/setup-buildx-action@v3
         with:
           driver: docker
+
+      - name: Hydrate PMTiles archive from current basemap:latest
+        run: |
+          set -euo pipefail
+          REF="registry.vanillax.me/radar-ng-basemap:latest"
+          mkdir -p backend/pmtiles-data
+          docker pull "$REF"
+          cid=$(docker create "$REF")
+          trap 'docker rm "$cid" >/dev/null' EXIT
+          docker cp "$cid:/data/basemap.pmtiles" backend/pmtiles-data/basemap.pmtiles
+          ls -lh backend/pmtiles-data/basemap.pmtiles
 
       - name: Build and push
         uses: docker/build-push-action@v6
