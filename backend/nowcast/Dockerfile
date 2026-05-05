@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ \
         setuptools \
         opencv-python-headless==4.9.0.80 \
         scipy==1.12.0 \
-        pysteps==1.14.0 \
+        pysteps>=1.21.0 \
     && apt-get purge -y gcc g++ \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*

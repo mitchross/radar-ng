@@ -170,7 +170,18 @@ async def nowcast_run() -> NowcastResult:
     w = meta_used["width"]
     lats_arr = np.linspace(meta_used["lat_max"], meta_used["lat_min"], h, dtype=np.float64)
     lons_arr = np.linspace(meta_used["lon_min"], meta_used["lon_max"], w, dtype=np.float64)
-    palette_tables = await asyncio.to_thread(lambda: {n: load_palette(n) for n in get_palette_names()})
+    def _load_palette_tables() -> dict[str, dict]:
+        tables: dict[str, dict] = {}
+        for name in get_palette_names():
+            try:
+                tables[name] = load_palette(name)
+            except (FileNotFoundError, KeyError):
+                log.warning("palette_missing", extra={"palette": name})
+        if not tables:
+            tables["classic"] = load_palette("classic")
+        return tables
+
+    palette_tables = await asyncio.to_thread(_load_palette_tables)
     rendered_palettes: set[str] = set()
 
     for i in range(n_lead):
