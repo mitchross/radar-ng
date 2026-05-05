@@ -2,17 +2,18 @@ name: build temporal-worker
 
 # Auto-semver build & push for the radar-ng Temporal worker.
 #
-# Triggers on changes to temporal/** or backend/shared/** since both ship
-# inside this image. Renovate watches the registry and PRs the talos
-# manifest bump on each new :vX.Y.Z.
+# The temporal Dockerfile COPYs all of backend/ into the image (every
+# activity is registered on the radar-ng task queue), so any backend code
+# change must rebuild this image — not just temporal/ + backend/shared/.
+# Renovate watches the registry and PRs the talos manifest bump on each
+# new :vX.Y.Z.
 
 on:
   push:
     branches: [master]
     paths:
       - 'temporal/**'
-      - 'backend/shared/**'
-      - 'backend/base/**'
+      - 'backend/**'
       - '.gitea/workflows/build-temporal-worker.yml'
   workflow_dispatch: {}
 
