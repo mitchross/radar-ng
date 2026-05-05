@@ -10,7 +10,11 @@ metadata:
     app: radar-ng-worker
 data:
   # ingest tunables
-  PALETTES: "classic,muted,colorblind"
+  # Only the palettes that have a matching backend/shared/palettes/<name>.json
+  # are valid. The previous "colorblind" entry crashed nowcast_run with
+  # FileNotFoundError because no colorblind.json ships — `muted` is itself
+  # described as colorblind-safe (Viridis ramp).
+  PALETTES: "classic,muted,vivid"
   BACKLOG_PER_CYCLE: "3"
   MRMS_PREFIX: "CONUS/MergedBaseReflectivityQC_00.50"
   FORECAST_HOURS: "18"

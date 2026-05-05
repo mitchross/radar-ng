@@ -14,6 +14,14 @@ const SOURCE_MAX_ZOOM: Record<string, number> = {
   nowcast: 6,
 };
 
+// Lowest zoom the tile pyramids actually render. Below this, MapLibre
+// would fire 404-bound requests (e.g. /tiles/.../1/0/0.png) over the
+// public Cloudflare hop, racking up ~250 ms RTT each and starving real
+// tile fetches → "Failed to load tile 1/0/0=>1 ... timeout" in logs.
+// MRMS coverage is CONUS-only, so very-low-zoom world tiles wouldn't be
+// meaningful anyway; clamping here keeps the wire quiet.
+const SOURCE_MIN_ZOOM = 4;
+
 // One source per render. The earlier 7-frame preload pattern triggered an
 // iOS NSRangeException inside `[MLRNMapView insertReactSubview:atIndex:]`
 // — Fragment-wrapped multi-source children confuse maplibre-react-native
@@ -44,7 +52,7 @@ export function RadarOverlay() {
       key={`${activePalette}-${layerForUrl}-${frame.path}`}
       tileUrlTemplates={[tileUrl]}
       tileSize={256}
-      minZoomLevel={1}
+      minZoomLevel={SOURCE_MIN_ZOOM}
       maxZoomLevel={maxZoom}
     >
       <MapLibreGL.RasterLayer

@@ -58,12 +58,17 @@ export const SELF_HOSTED = {
 // can come back once the cluster manifest publishes them; until then the
 // `radar` layer's forecast mode already merges past + nowcast + HRRR into
 // a single timeline.
+// minZoom: 4 across the board because the cluster's tile pyramids start
+// at z=4 (CONUS-only data — there's no meaningful sub-z=4 world tile).
+// Setting this to 1 made MapLibre fire 404-bound /1/0/0.png and
+// /2/.../.png requests through the public Cloudflare hop, each costing
+// ~250 ms RTT and frequently triggering MapLibre's per-source timeout.
 export const LAYERS: LayerConfig[] = [
-  { id: "radar", label: "Radar", icon: "R", isFillLayer: true, defaultVisible: true, minZoom: 1, maxZoom: 12 },
-  { id: "wind", label: "Wind", icon: "W", isFillLayer: false, defaultVisible: false, minZoom: 1, maxZoom: 9 },
-  { id: "temperature", label: "Temp", icon: "T", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
-  { id: "precip-type", label: "Precip", icon: "P", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
-  { id: "precip-accum", label: "Rain 1h", icon: "A", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
-  { id: "cloud", label: "Clouds", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 1, maxZoom: 9 },
-  { id: "cape", label: "CAPE", icon: "S", isFillLayer: false, defaultVisible: false, minZoom: 1, maxZoom: 9 },
+  { id: "radar", label: "Radar", icon: "R", isFillLayer: true, defaultVisible: true, minZoom: 4, maxZoom: 12 },
+  { id: "wind", label: "Wind", icon: "W", isFillLayer: false, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  { id: "temperature", label: "Temp", icon: "T", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  { id: "precip-type", label: "Precip", icon: "P", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  { id: "precip-accum", label: "Rain 1h", icon: "A", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  { id: "cloud", label: "Clouds", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  { id: "cape", label: "CAPE", icon: "S", isFillLayer: false, defaultVisible: false, minZoom: 4, maxZoom: 9 },
 ];
