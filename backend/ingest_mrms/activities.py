@@ -37,6 +37,7 @@ from backend.shared.tiler import apply_color_table, render_tiles
 MRMS_BASE = "https://noaa-mrms-pds.s3.amazonaws.com"
 TILE_DIR = os.environ.get("TILE_DIR", "/data/tiles")
 STATE_DIR = os.environ.get("STATE_DIR", "/data/state")
+TMP_ROOT = Path(os.environ.get("MRMS_TMP_ROOT", "/tmp/mrms_work"))
 ZOOM_LEVELS = [4, 5, 6, 7, 8, 9]
 BACKLOG_PER_CYCLE = int(os.environ.get("BACKLOG_PER_CYCLE", "3"))
 
@@ -193,6 +194,27 @@ def _state_path(layer_name: str) -> Path:
     return Path(STATE_DIR) / f"ingest-mrms-{layer_name}.json"
 
 
+def _safe_path_part(value: object) -> str:
+    raw = str(value)
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in raw)
+    return safe.strip("_") or "unknown"
+
+
+def _current_activity_tmp_dir(prefix: str, *parts: object) -> Path:
+    info = activity.info()
+    name_parts = [
+        _safe_path_part(prefix),
+        _safe_path_part(info.workflow_id),
+        _safe_path_part(info.workflow_run_id),
+        _safe_path_part(info.activity_id),
+        f"attempt{info.attempt}",
+        *(_safe_path_part(p) for p in parts),
+    ]
+    tmp_dir = TMP_ROOT / "-".join(name_parts)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    return tmp_dir
+
+
 # ---------- activities ----------
 
 
@@ -232,8 +254,8 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
     started = time.time()
     palette_tables = _load_palette_tables()
     tile_base = Path(TILE_DIR)
-    tmp_dir = Path("/tmp/mrms_work")
-    tmp_dir.mkdir(parents=True, exist_ok=True)
+    timestamp_hint = inp.key.rsplit("/", 1)[-1].replace(".grib2.gz", "")
+    tmp_dir = _current_activity_tmp_dir("mrms", inp.layer_name, timestamp_hint)
 
     activity.heartbeat({"phase": "download", "key": inp.key})
 
@@ -243,6 +265,7 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
 
     decoded = await asyncio.to_thread(_download)
     if decoded is None:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
         return ProcessFrameResult(key=inp.key, rendered=False)
 
     data, lats_arr, lons_arr = decoded
@@ -284,7 +307,13 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
                     log.error("palette_render_failed", extra={"palette": pname, "err": str(exc)})
         return rendered
 
-    rendered_palettes = await asyncio.to_thread(_render_all)
+    try:
+        rendered_palettes = await asyncio.to_thread(_render_all)
+    except Exception:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
+    else:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
     duration = time.time() - started
     log.info("frame_done", extra={"layer": inp.layer_name, "timestamp": timestamp, "duration_s": round(duration, 1)})
 

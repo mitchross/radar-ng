@@ -88,8 +88,8 @@ class IngestMrmsWorkflow:
         for key in listing.keys:
             r: ProcessFrameResult = await workflow.execute_activity(
                 mrms_process_frame, ProcessFrameInput(key=key, layer_name=args.layer_name),
-                start_to_close_timeout=timedelta(minutes=10),
-                heartbeat_timeout=timedelta(seconds=90),
+                start_to_close_timeout=timedelta(minutes=20),
+                heartbeat_timeout=timedelta(seconds=180),
                 retry_policy=_FRAME_RETRY,
             )
             if r.rendered:

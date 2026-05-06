@@ -34,7 +34,7 @@ class NowcastWorkflow:
     async def run(self) -> NowcastResult:
         return await workflow.execute_activity(
             nowcast_run,
-            start_to_close_timeout=timedelta(minutes=5),
-            heartbeat_timeout=timedelta(seconds=60),
+            start_to_close_timeout=timedelta(minutes=15),
+            heartbeat_timeout=timedelta(seconds=120),
             retry_policy=_RETRY,
         )

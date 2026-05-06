@@ -92,8 +92,8 @@ class IngestHrrrWorkflow:
         for fhr in range(1, horizon + 1):
             r: ForecastHourResult = await workflow.execute_activity(
                 hrrr_process_forecast_hour, args=[find.run_id, fhr],
-                start_to_close_timeout=timedelta(minutes=10),
-                heartbeat_timeout=timedelta(seconds=120),
+                start_to_close_timeout=timedelta(minutes=20),
+                heartbeat_timeout=timedelta(seconds=180),
                 retry_policy=_FORECAST_RETRY,
             )
             layers_per_hour.append(r.rendered_layers)

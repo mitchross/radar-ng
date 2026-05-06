@@ -1,15 +1,10 @@
-import json
-import os
 import tempfile
 import numpy as np
 from pathlib import Path
 
-# Will import from tiler once created
-import pytest
-
 
 def test_apply_color_table():
-    from tiler import apply_color_table
+    from backend.shared.tiler import apply_color_table
 
     color_table = {
         "ranges": [
@@ -32,7 +27,7 @@ def test_apply_color_table():
 
 
 def test_render_tiles_creates_files():
-    from tiler import apply_color_table, render_tiles
+    from backend.shared.tiler import apply_color_table, render_tiles
 
     color_table = {
         "ranges": [{"min": 0, "max": 100, "rgba": [255, 0, 0, 200]}],

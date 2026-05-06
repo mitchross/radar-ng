@@ -43,6 +43,10 @@ RUN pip install \
       -r /app/backend/ingest_tropical/requirements.txt \
       -r /app/backend/nowcast/requirements.txt
 
+# Fail the image build if pysteps cannot see OpenCV. This catches the exact
+# runtime degradation where nowcast silently falls back to persistence.
+RUN python -c "import cv2; from pysteps import motion, nowcasts; motion.get_method('LK'); nowcasts.get_method('sprog')"
+
 # Copy source last so code changes don't bust dep cache
 COPY backend /app/backend
 COPY temporal /app/temporal

@@ -6,12 +6,15 @@ FROM registry.vanillax.me/radar-ng-base:latest
 RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ \
     && pip install --no-cache-dir \
         setuptools \
-        opencv-python-headless==4.9.0.80 \
+        'numpy>=1.26,<2' \
+        'opencv-python-headless>=4.10,<5' \
         scipy==1.12.0 \
-        pysteps>=1.21.0 \
+        'pysteps>=1.21.0' \
     && apt-get purge -y gcc g++ \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
+
+RUN python -c "import cv2; from pysteps import motion, nowcasts; motion.get_method('LK'); nowcasts.get_method('sprog')"
 
 COPY shared/ /app/shared/
 COPY nowcast/nowcast.py /app/nowcast.py

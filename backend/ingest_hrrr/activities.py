@@ -32,6 +32,7 @@ from backend.shared.tiler import apply_categorical_color_table, apply_color_tabl
 HRRR_BASE = "https://noaa-hrrr-bdp-pds.s3.amazonaws.com"
 TILE_DIR = os.environ.get("TILE_DIR", "/data/tiles")
 STATE_DIR = os.environ.get("STATE_DIR", "/data/state")
+TMP_ROOT = Path(os.environ.get("HRRR_TMP_ROOT", "/tmp/hrrr_work"))
 FORECAST_HOURS = int(os.environ.get("FORECAST_HOURS", "18"))
 EXTENDED_FORECAST_HOURS = int(os.environ.get("EXTENDED_FORECAST_HOURS", "48"))
 EXTENDED_RUNS = {0, 6, 12, 18}
@@ -105,6 +106,46 @@ class HrrrCleanupResult:
 
 def _state_path() -> Path:
     return Path(STATE_DIR) / "ingest-hrrr.json"
+
+
+def _safe_path_part(value: object) -> str:
+    raw = str(value)
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in raw)
+    return safe.strip("_") or "unknown"
+
+
+def _activity_tmp_dir(
+    prefix: str,
+    *,
+    workflow_id: str,
+    run_id: str,
+    activity_id: str,
+    attempt: int,
+    parts: tuple[object, ...] = (),
+) -> Path:
+    name_parts = [
+        _safe_path_part(prefix),
+        _safe_path_part(workflow_id),
+        _safe_path_part(run_id),
+        _safe_path_part(activity_id),
+        f"attempt{attempt}",
+        *(_safe_path_part(p) for p in parts),
+    ]
+    return TMP_ROOT / "-".join(name_parts)
+
+
+def _current_activity_tmp_dir(prefix: str, *parts: object) -> Path:
+    info = activity.info()
+    tmp_dir = _activity_tmp_dir(
+        prefix,
+        workflow_id=info.workflow_id,
+        run_id=info.workflow_run_id,
+        activity_id=info.activity_id,
+        attempt=info.attempt,
+        parts=parts,
+    )
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    return tmp_dir
 
 
 def _head_status(client: httpx.Client, url: str) -> int:
@@ -405,9 +446,8 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
     started = time.time()
     palette_tables = _load_palette_tables()
     tile_base = Path(TILE_DIR)
-    tmp_dir = Path("/tmp/hrrr_work")
-    tmp_dir.mkdir(parents=True, exist_ok=True)
     date_str, run_hour = run_id.split("_")
+    tmp_dir = _current_activity_tmp_dir("hrrr", run_id, f"f{fhr:02d}")
     needed = list(IDX_MATCHERS.keys())
 
     activity.heartbeat({"phase": "download", "fhr": fhr})
@@ -418,6 +458,7 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
 
     grib_path = await asyncio.to_thread(_download)
     if grib_path is None or not grib_path.exists():
+        shutil.rmtree(tmp_dir, ignore_errors=True)
         return ForecastHourResult(fhr=fhr, rendered_layers=[], duration_s=round(time.time() - started, 2))
 
     activity.heartbeat({"phase": "render", "fhr": fhr})
@@ -425,8 +466,12 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
         rendered = await asyncio.to_thread(
             _process_forecast_hour_sync, grib_path, run_id, fhr, palette_tables, tile_base
         )
-    finally:
+    except Exception:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
+    else:
         grib_path.unlink(missing_ok=True)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
     duration = time.time() - started
     log.info("hour_done", extra={"run_id": run_id, "fhr": fhr, "rendered": rendered, "duration_s": round(duration, 1)})
