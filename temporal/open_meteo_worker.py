@@ -22,7 +22,7 @@ from temporalio.worker import Worker, WorkerDeploymentConfig, WorkerDeploymentVe
 from backend.open_meteo_sync.activities import open_meteo_sync
 
 
-TASK_QUEUE = os.environ.get("TEMPORAL_TASK_QUEUE", "radar-ng")
+TASK_QUEUE = os.environ.get("TEMPORAL_TASK_QUEUE", "radar-ng-open-meteo")
 
 
 def _deployment_config_from_env() -> WorkerDeploymentConfig | None:

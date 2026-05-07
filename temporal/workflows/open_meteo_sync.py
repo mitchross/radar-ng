@@ -32,6 +32,8 @@ _RETRY = RetryPolicy(
     maximum_attempts=3,
 )
 
+OPEN_METEO_TASK_QUEUE = "radar-ng-open-meteo"
+
 
 @workflow.defn(name="OpenMeteoSyncWorkflow")
 class OpenMeteoSyncWorkflow:
@@ -39,6 +41,7 @@ class OpenMeteoSyncWorkflow:
     async def run(self, args: OpenMeteoSyncArgs) -> OpenMeteoSyncResult:
         return await workflow.execute_activity(
             open_meteo_sync, args,
+            task_queue=OPEN_METEO_TASK_QUEUE,
             start_to_close_timeout=timedelta(minutes=35),
             heartbeat_timeout=timedelta(seconds=90),
             retry_policy=_RETRY,

@@ -28,6 +28,7 @@ log = get_logger("tile-cleanup-activities")
 # Per-layer retention (minutes). Matches the legacy cleanup.sh policy.
 LAYER_RETENTION_MIN: dict[str, int] = {
     "radar": 240,           # MRMS keeps 4 hours
+    "radar-composite": 240, # MRMS composite keeps 4 hours
     "nowcast": 60,          # pysteps forecasts keep 1 hour
     # HRRR-derived layers keep 12 hours
     "radar-hrrr": 720,
