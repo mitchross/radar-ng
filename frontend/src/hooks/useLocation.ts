@@ -5,12 +5,19 @@ import { DEFAULTS } from "../lib/constants";
 
 export function useLocation() {
   const setLocation = useWeatherStore((s) => s.setLocation);
+  const locationMode = useWeatherStore((s) => s.locationMode);
+  const selectedPlace = useWeatherStore((s) => s.selectedPlace);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function requestLocation() {
+      if (locationMode === "city") {
+        if (selectedPlace) setLocation(selectedPlace.latitude, selectedPlace.longitude);
+        return;
+      }
+
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         setError("Location permission denied");
@@ -34,7 +41,7 @@ export function useLocation() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [locationMode, selectedPlace, setLocation]);
 
   return { error };
 }

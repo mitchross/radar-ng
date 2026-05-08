@@ -1,5 +1,5 @@
 import MapLibreGL, { type MapViewRef } from "@maplibre/maplibre-react-native";
-import { Children, isValidElement, useEffect, useRef, useState } from "react";
+import { Children, isValidElement, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS, resolveMapStyleUrl } from "../../lib/constants";
@@ -68,29 +68,38 @@ function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark" | "sat
 export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMapProps) {
   const mapRef = useRef<MapViewRef>(null);
   const cameraRef = useRef<MapLibreGL.CameraRef>(null);
-  // Mirror current camera zoom so the +/- buttons can clamp without round-tripping.
-  const zoomRef = useRef<number>(latitudeToInitialZoom());
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const latitude = useWeatherStore((s) => s.latitude);
   const longitude = useWeatherStore((s) => s.longitude);
+  const initialZoom = latitude != null ? 7 : DEFAULTS.ZOOM;
+  // Mirror current camera zoom so the +/- buttons can clamp without round-tripping.
+  const zoomRef = useRef<number>(initialZoom);
 
   const patchedStyle = usePatchedMapStyle(serverUrl, mapStyle);
 
-  const centerCoord: [number, number] = [
-    longitude ?? DEFAULTS.LONGITUDE,
-    latitude ?? DEFAULTS.LATITUDE,
-  ];
-
-  function latitudeToInitialZoom() {
-    return latitude ? 7 : DEFAULTS.ZOOM;
-  }
+  const centerCoord = useMemo<[number, number]>(
+    () => [
+      longitude ?? DEFAULTS.LONGITUDE,
+      latitude ?? DEFAULTS.LATITUDE,
+    ],
+    [latitude, longitude],
+  );
 
   function zoomBy(delta: number) {
     const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomRef.current + delta));
     zoomRef.current = next;
     cameraRef.current?.setCamera({ zoomLevel: next, animationDuration: 220 });
   }
+
+  useEffect(() => {
+    cameraRef.current?.setCamera({
+      centerCoordinate: centerCoord,
+      zoomLevel: initialZoom,
+      animationDuration: 0,
+    });
+    zoomRef.current = initialZoom;
+  }, [centerCoord, initialZoom]);
 
   if (!patchedStyle) return null;
 
@@ -132,10 +141,9 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
           ref={cameraRef}
           defaultSettings={{
             centerCoordinate: centerCoord,
-            zoomLevel: latitudeToInitialZoom(),
+            zoomLevel: initialZoom,
           }}
         />
-        <MapLibreGL.UserLocation visible={true} />
         {Children.toArray(children).filter(isValidElement)}
       </MapLibreGL.MapView>
 

@@ -21,9 +21,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import Slider from "@react-native-community/slider";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { checkServerHealth } from "../../lib/api";
+import { activeLocationLabel, formatPlaceLabel } from "../../lib/locationLabel";
 import { SELF_HOSTED } from "../../lib/constants";
 import { cumulus, CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
 import { PaletteSelector } from "../../components/palette/PaletteSelector";
+import { useCitySearch } from "../../hooks/useCitySearch";
+import type { SelectedPlace } from "../../types/location";
 
 type SourceKey = "radar" | "satellite" | "forecast" | "basemap" | "alerts";
 type SourceStatus = "healthy" | "stale" | "error" | "disabled";
@@ -39,9 +42,15 @@ export default function SettingsScreen() {
   const setPlaybackSpeed = useWeatherStore((s) => s.setPlaybackSpeed);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const setServerUrl = useWeatherStore((s) => s.setServerUrl);
+  const locationMode = useWeatherStore((s) => s.locationMode);
+  const selectedPlace = useWeatherStore((s) => s.selectedPlace);
+  const setSelectedPlace = useWeatherStore((s) => s.setSelectedPlace);
+  const useDeviceLocation = useWeatherStore((s) => s.useDeviceLocation);
 
   const [editing, setEditing] = useState<SourceKey | null>(null);
   const [urlDraft, setUrlDraft] = useState(serverUrl);
+  const [cityQuery, setCityQuery] = useState("");
+  const [debouncedCityQuery, setDebouncedCityQuery] = useState("");
   const [stackHealthy, setStackHealthy] = useState<boolean | null>(null);
   const [refreshLabel, setRefreshLabel] = useState("2 min");
   const [refreshTick, setRefreshTick] = useState(0);
@@ -55,6 +64,17 @@ export default function SettingsScreen() {
     });
     return () => { cancelled = true; };
   }, [serverUrl, refreshTick]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedCityQuery(cityQuery), 250);
+    return () => clearTimeout(timer);
+  }, [cityQuery]);
+
+  const {
+    data: cityResults = [],
+    isFetching: citySearching,
+    error: citySearchError,
+  } = useCitySearch(debouncedCityQuery);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -72,6 +92,7 @@ export default function SettingsScreen() {
   );
 
   const stackHost = useMemo(() => hostOf(serverUrl), [serverUrl]);
+  const locationLabel = activeLocationLabel(locationMode, selectedPlace);
 
   return (
     <LinearGradient colors={CONDITION_GRADIENTS.clearNight} style={styles.container}>
@@ -106,6 +127,49 @@ export default function SettingsScreen() {
               <Stat label="UPTIME" value="—" />
               <Stat label="TILES/DAY" value="—" />
               <Stat label="CACHE" value="—" />
+            </View>
+          </View>
+
+          <SectionHeader>Location</SectionHeader>
+          <View style={styles.card}>
+            <Row>
+              <RowLeft title="Radar location" sub={locationLabel} />
+              <TouchableOpacity
+                style={[styles.saveBtn, locationMode === "device" && styles.saveBtnDisabled]}
+                disabled={locationMode === "device"}
+                onPress={useDeviceLocation}
+              >
+                <Text style={styles.saveBtnText}>Use GPS</Text>
+              </TouchableOpacity>
+            </Row>
+            <Sep />
+            <View style={styles.locationSearch}>
+              <View style={styles.searchRow}>
+                <TextInput
+                  style={styles.searchInput}
+                  value={cityQuery}
+                  onChangeText={setCityQuery}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  placeholder="Search city"
+                  placeholderTextColor={cumulus.inkFaint}
+                />
+                {citySearching && <ActivityIndicator size="small" color={cumulus.inkMuted} />}
+              </View>
+              {citySearchError && (
+                <Text style={styles.searchError}>City search unavailable</Text>
+              )}
+              {cityResults.map((place) => (
+                <CityResultRow
+                  key={place.id}
+                  place={place}
+                  selected={selectedPlace?.id === place.id && locationMode === "city"}
+                  onPress={() => {
+                    setSelectedPlace(place);
+                    setCityQuery(formatPlaceLabel(place));
+                  }}
+                />
+              ))}
             </View>
           </View>
 
@@ -438,6 +502,32 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CityResultRow({
+  place,
+  selected,
+  onPress,
+}: {
+  place: SelectedPlace;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.cityRow, selected && styles.cityRowSelected]}
+      activeOpacity={0.75}
+      onPress={onPress}
+    >
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.cityName}>{place.name}</Text>
+        <Text style={styles.cityMeta} numberOfLines={1}>
+          {[place.admin1, place.country].filter(Boolean).join(" · ")}
+        </Text>
+      </View>
+      {selected && <Pill color={cumulus.ok}>SET</Pill>}
+    </TouchableOpacity>
+  );
+}
+
 function ContainerRow({
   name, image, status, ports,
 }: { name: string; image: string; status: "healthy" | "updating" | "error"; ports: string }) {
@@ -630,6 +720,42 @@ const styles = StyleSheet.create({
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(255,255,255,0.07)", marginLeft: 14 },
 
   urlRow: { flexDirection: "row", alignItems: "center", padding: 10, gap: 8 },
+  locationSearch: { paddingHorizontal: 10, paddingVertical: 10 },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  searchInput: {
+    flex: 1,
+    color: cumulus.ink,
+    fontSize: 14,
+    backgroundColor: "rgba(0,0,0,0.25)",
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  searchError: {
+    color: "#FF6E7A",
+    fontSize: 12,
+    marginTop: 8,
+  },
+  cityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  cityRowSelected: {
+    backgroundColor: "rgba(77,214,172,0.14)",
+    borderColor: "rgba(77,214,172,0.3)",
+  },
+  cityName: { fontSize: 14, color: cumulus.ink, fontWeight: "600" },
+  cityMeta: { fontSize: 11, color: cumulus.inkMuted, marginTop: 2 },
   urlInput: {
     flex: 1,
     color: cumulus.ink,

@@ -22,6 +22,7 @@ import numpy as np
 import pygrib
 from temporalio import activity
 
+from backend.shared.activity_heartbeat import run_sync_with_heartbeat
 from backend.shared.grid_dump import cleanup_old_grids, write_grid
 from backend.shared.logger import get_logger
 from backend.shared.palettes import get_palette_names, load_palette
@@ -463,8 +464,15 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
 
     activity.heartbeat({"phase": "render", "fhr": fhr})
     try:
-        rendered = await asyncio.to_thread(
-            _process_forecast_hour_sync, grib_path, run_id, fhr, palette_tables, tile_base
+        rendered = await run_sync_with_heartbeat(
+            _process_forecast_hour_sync,
+            grib_path,
+            run_id,
+            fhr,
+            palette_tables,
+            tile_base,
+            heartbeat_every=30,
+            heartbeat_details=lambda: {"phase": "render", "run_id": run_id, "fhr": fhr},
         )
     except Exception:
         shutil.rmtree(tmp_dir, ignore_errors=True)

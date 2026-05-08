@@ -11,6 +11,8 @@ import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../hooks/useForecast";
 import { useLocation } from "../hooks/useLocation";
+import { activeLocationLabel } from "../lib/locationLabel";
+import { useWeatherStore } from "../stores/useWeatherStore";
 import {
   cumulus,
   CONDITION_GRADIENTS,
@@ -24,6 +26,8 @@ type Minute = { i: number; intensity: number; confLo: number; confHi: number };
 export default function NowcastScreen() {
   useLocation();
   const router = useRouter();
+  const locationMode = useWeatherStore((s) => s.locationMode);
+  const selectedPlace = useWeatherStore((s) => s.selectedPlace);
   const { data: forecast, isLoading } = useForecast();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -64,7 +68,7 @@ export default function NowcastScreen() {
   const totalIn = totalMm / 25.4;
 
   const confidence = estimateConfidence(forecast);
-  const location = "Grand Rapids, MI"; // Same placeholder as Home; wire to geocoder later.
+  const location = activeLocationLabel(locationMode, selectedPlace);
 
   return (
     <LinearGradient colors={gradient} style={styles.container}>

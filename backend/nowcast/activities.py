@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 from temporalio import activity
 
+from backend.shared.activity_heartbeat import run_sync_with_heartbeat
 from backend.shared.logger import get_logger
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
@@ -157,7 +158,13 @@ async def nowcast_run() -> NowcastResult:
 
     n_lead = HORIZON_MIN // STEP_MIN
     activity.heartbeat({"phase": "pysteps", "input_frames": len(grids), "leadtimes": n_lead})
-    forecast = await asyncio.to_thread(_run_nowcast, grids, n_lead)
+    forecast = await run_sync_with_heartbeat(
+        _run_nowcast,
+        grids,
+        n_lead,
+        heartbeat_every=30,
+        heartbeat_details=lambda: {"phase": "pysteps", "input_frames": len(grids), "leadtimes": n_lead},
+    )
     if forecast is None:
         return NowcastResult(ran=False, anchor_ts=latest_iso)
 
@@ -189,7 +196,17 @@ async def nowcast_run() -> NowcastResult:
         ts = valid.isoformat()
         frame = forecast[i]
         frame = np.where(frame < 5, -9999.0, frame)
-        for p in await asyncio.to_thread(_render_frame, TILE_DIR, palette_tables, ts, frame, lats_arr, lons_arr):
+        for p in await run_sync_with_heartbeat(
+            _render_frame,
+            TILE_DIR,
+            palette_tables,
+            ts,
+            frame,
+            lats_arr,
+            lons_arr,
+            heartbeat_every=30,
+            heartbeat_details=lambda i=i: {"phase": "render", "leadtime": i},
+        ):
             rendered_palettes.add(p)
         if i % 4 == 0:
             activity.heartbeat({"phase": "render", "leadtime": i})

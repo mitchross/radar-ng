@@ -1,9 +1,9 @@
 """Secondary Temporal worker — registers ONLY the open-meteo sync activity.
 
 Runs in its own pod (`radar-ng-open-meteo-worker`) with the open-meteo Swift
-binary baked into the image. Polls the same `radar-ng` task queue as the
-main worker; Temporal dispatches `open_meteo_sync` activity tasks here
-because no other worker has it registered.
+binary baked into the image. Polls the dedicated `radar-ng-open-meteo` task
+queue. The main workflow schedules `open_meteo_sync` on that queue so the
+activity cannot be picked up by the generic radar-ng worker.
 
 Workflow definitions are NOT registered here — workflow tasks for
 OpenMeteoSyncWorkflow always go to the main radar-ng-temporal-worker pod.

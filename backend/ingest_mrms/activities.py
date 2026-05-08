@@ -26,6 +26,7 @@ import numpy as np
 import pygrib
 from temporalio import activity
 
+from backend.shared.activity_heartbeat import run_sync_with_heartbeat
 from backend.shared.grid_dump import cleanup_old_grids, write_grid
 from backend.shared.logger import get_logger
 from backend.shared.palettes import get_palette_names, load_palette
@@ -308,7 +309,15 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
         return rendered
 
     try:
-        rendered_palettes = await asyncio.to_thread(_render_all)
+        rendered_palettes = await run_sync_with_heartbeat(
+            _render_all,
+            heartbeat_every=30,
+            heartbeat_details=lambda: {
+                "phase": "render",
+                "timestamp": timestamp,
+                "palettes": list(palette_tables.keys()),
+            },
+        )
     except Exception:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise

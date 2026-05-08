@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, MapProjection, Palette, TimelineMode } from "../types/weather";
+import type { LocationMode, SelectedPlace } from "../types/location";
 import { DEFAULTS, RADAR, SELF_HOSTED } from "../lib/constants";
 import { getString, setString } from "../lib/storage";
 
@@ -10,6 +11,8 @@ interface WeatherState {
   playbackSpeed: number;
   latitude: number | null;
   longitude: number | null;
+  locationMode: LocationMode;
+  selectedPlace: SelectedPlace | null;
   radarOpacity: number;
   radarVisible: boolean;
   activeLayer: LayerType;
@@ -30,6 +33,8 @@ interface WeatherState {
   togglePlaying: () => void;
   setPlaybackSpeed: (speed: number) => void;
   setLocation: (lat: number, lon: number) => void;
+  setSelectedPlace: (place: SelectedPlace) => void;
+  useDeviceLocation: () => void;
   setRadarOpacity: (opacity: number) => void;
   setRadarVisible: (visible: boolean) => void;
   setTemperatureUnit: (unit: TemperatureUnit) => void;
@@ -44,13 +49,40 @@ interface WeatherState {
   nextFrame: () => void;
 }
 
+function parseLocationMode(value: string): LocationMode {
+  return value === "city" ? "city" : "device";
+}
+
+function parseSelectedPlace(value: string): SelectedPlace | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as SelectedPlace;
+    if (
+      typeof parsed.id === "number" &&
+      typeof parsed.name === "string" &&
+      typeof parsed.latitude === "number" &&
+      typeof parsed.longitude === "number"
+    ) {
+      return parsed;
+    }
+  } catch {}
+  return null;
+}
+
+const initialLocationMode = parseLocationMode(getString("locationMode", "device"));
+const initialSelectedPlace = parseSelectedPlace(getString("selectedPlace", ""));
+const initialResolvedLocationMode: LocationMode =
+  initialLocationMode === "city" && initialSelectedPlace ? "city" : "device";
+
 export const useWeatherStore = create<WeatherState>()((set, get) => ({
   frames: [],
   currentFrameIndex: -1,
   isPlaying: false,
   playbackSpeed: DEFAULTS.PLAYBACK_FPS,
-  latitude: null,
-  longitude: null,
+  latitude: initialResolvedLocationMode === "city" && initialSelectedPlace ? initialSelectedPlace.latitude : null,
+  longitude: initialResolvedLocationMode === "city" && initialSelectedPlace ? initialSelectedPlace.longitude : null,
+  locationMode: initialResolvedLocationMode,
+  selectedPlace: initialSelectedPlace,
   radarOpacity: RADAR.DEFAULT_OPACITY,
   radarVisible: true,
   activeLayer: "radar" as LayerType,
@@ -71,6 +103,20 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   togglePlaying: () => set((s) => ({ isPlaying: !s.isPlaying })),
   setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
   setLocation: (lat, lon) => set({ latitude: lat, longitude: lon }),
+  setSelectedPlace: (place) => {
+    setString("locationMode", "city");
+    setString("selectedPlace", JSON.stringify(place));
+    set({
+      locationMode: "city",
+      selectedPlace: place,
+      latitude: place.latitude,
+      longitude: place.longitude,
+    });
+  },
+  useDeviceLocation: () => {
+    setString("locationMode", "device");
+    set({ locationMode: "device" });
+  },
   setRadarOpacity: (opacity) => set({ radarOpacity: opacity }),
   setRadarVisible: (visible) => set({ radarVisible: visible }),
   setTemperatureUnit: (unit) => set({ temperatureUnit: unit }),

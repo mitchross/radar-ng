@@ -11,6 +11,7 @@ import { View, Text, StyleSheet } from "react-native";
 import MapLibreGL from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { useForecast } from "../../hooks/useForecast";
+import { activeLocationLabel } from "../../lib/locationLabel";
 import { cumulus, getWindDirection } from "../../lib/cumulusTheme";
 import type { LayerType } from "../../types/weather";
 
@@ -19,11 +20,14 @@ export function LayerLocationMarker() {
   const longitude = useWeatherStore((s) => s.longitude);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
+  const locationMode = useWeatherStore((s) => s.locationMode);
+  const selectedPlace = useWeatherStore((s) => s.selectedPlace);
   const { data: forecast } = useForecast();
 
   if (latitude == null || longitude == null) return null;
 
   const body = renderBody(activeLayer, forecast, temperatureUnit);
+  const label = activeLocationLabel(locationMode, selectedPlace);
 
   return (
     <MapLibreGL.MarkerView
@@ -35,7 +39,7 @@ export function LayerLocationMarker() {
         <View style={styles.pill}>{body}</View>
         <View style={styles.tail} />
         <View style={styles.dot} />
-        <Text style={styles.label}>My Location</Text>
+        <Text style={styles.label}>{label}</Text>
       </View>
     </MapLibreGL.MarkerView>
   );

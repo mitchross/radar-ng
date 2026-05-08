@@ -6,8 +6,8 @@
 # on top so this worker can register a single activity that subprocess-execs
 # the Swift binary.
 #
-# Both workers poll task_queue=radar-ng. Temporal dispatches the
-# `open_meteo_sync` activity to whichever pod has it registered (this one).
+# This worker polls task_queue=radar-ng-open-meteo. The workflow schedules
+# `open_meteo_sync` on that dedicated queue so the generic worker cannot take it.
 
 FROM ghcr.io/open-meteo/open-meteo:latest
 

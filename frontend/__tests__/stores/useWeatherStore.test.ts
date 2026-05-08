@@ -1,4 +1,6 @@
 import { useWeatherStore } from "../../src/stores/useWeatherStore";
+import type { SelectedPlace } from "../../src/types/location";
+import { setString } from "../../src/lib/storage";
 
 jest.mock("../../src/lib/storage", () => ({
   getString: jest.fn((_k: string, d: string) => d),
@@ -8,6 +10,7 @@ jest.mock("../../src/lib/storage", () => ({
 }));
 
 beforeEach(() => {
+  jest.clearAllMocks();
   useWeatherStore.setState(useWeatherStore.getInitialState());
 });
 
@@ -53,6 +56,45 @@ describe("useWeatherStore", () => {
     const { latitude, longitude } = useWeatherStore.getState();
     expect(latitude).toBe(38.9);
     expect(longitude).toBe(-77.0);
+  });
+
+  it("setSelectedPlace switches to city mode and persists the city", () => {
+    const place: SelectedPlace = {
+      id: 4994358,
+      name: "Grand Rapids",
+      latitude: 42.9634,
+      longitude: -85.6681,
+      admin1: "Michigan",
+      country: "United States",
+      countryCode: "US",
+    };
+
+    useWeatherStore.getState().setSelectedPlace(place);
+
+    const state = useWeatherStore.getState();
+    expect(state.locationMode).toBe("city");
+    expect(state.selectedPlace).toEqual(place);
+    expect(state.latitude).toBe(place.latitude);
+    expect(state.longitude).toBe(place.longitude);
+    expect(setString).toHaveBeenCalledWith("locationMode", "city");
+    expect(setString).toHaveBeenCalledWith("selectedPlace", JSON.stringify(place));
+  });
+
+  it("useDeviceLocation switches back to device mode without clearing the saved city", () => {
+    const place: SelectedPlace = {
+      id: 4994358,
+      name: "Grand Rapids",
+      latitude: 42.9634,
+      longitude: -85.6681,
+    };
+
+    useWeatherStore.getState().setSelectedPlace(place);
+    useWeatherStore.getState().useDeviceLocation();
+
+    const state = useWeatherStore.getState();
+    expect(state.locationMode).toBe("device");
+    expect(state.selectedPlace).toEqual(place);
+    expect(setString).toHaveBeenCalledWith("locationMode", "device");
   });
 
   it("setActiveLayer changes active layer", () => {

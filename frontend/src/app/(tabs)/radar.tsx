@@ -28,10 +28,12 @@ import { RadarFABs } from "../../components/map/RadarFABs";
 import { MapStylePicker } from "../../components/map/MapStylePicker";
 import { EyedropperPin, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
+import { useLocation } from "../../hooks/useLocation";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 
 export default function RadarScreen() {
   useManifest();
+  useLocation();
   const router = useRouter();
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);

@@ -13,6 +13,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../../hooks/useForecast";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useLocation } from "../../hooks/useLocation";
+import { activeLocationLabel } from "../../lib/locationLabel";
+import { useWeatherStore } from "../../stores/useWeatherStore";
 import {
   cumulus,
   CONDITION_GRADIENTS,
@@ -29,6 +31,8 @@ import { RadarMiniMap } from "../../components/home/RadarMiniMap";
 export default function HomeScreen() {
   useLocation();
   const router = useRouter();
+  const locationMode = useWeatherStore((s) => s.locationMode);
+  const selectedPlace = useWeatherStore((s) => s.selectedPlace);
   const { data: forecast, isLoading } = useForecast();
   const { data: alertData } = useAlerts();
   const queryClient = useQueryClient();
@@ -71,6 +75,7 @@ export default function HomeScreen() {
   const lo = Math.round(forecast.daily.temperature_2m_min[0] ?? temp);
 
   const conditionLabel = CONDITION_LABELS[condition];
+  const locationLabel = activeLocationLabel(locationMode, selectedPlace);
 
   // Nowcast banner logic — use minutely_15 to detect precip start
   const nowcastHeadline = buildNowcastHeadline(forecast.minutely_15);
@@ -142,7 +147,7 @@ export default function HomeScreen() {
                 <View style={styles.locationDotOuter}>
                   <View style={styles.locationDotInner} />
                 </View>
-                <Text style={styles.locationText}>Grand Rapids, MI</Text>
+                <Text style={styles.locationText}>{locationLabel}</Text>
               </View>
               <Text style={styles.updated}>
                 {"UPDATED " + now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toUpperCase()}
