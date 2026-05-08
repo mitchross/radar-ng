@@ -256,7 +256,7 @@ export default function NowcastScreen() {
                     r.hi && { color: cumulus.ink },
                   ]}
                 >
-                  {r.v.toFixed(2)}"
+                  {r.v.toFixed(2)}&quot;
                 </Text>
               </View>
             ))}
@@ -266,7 +266,7 @@ export default function NowcastScreen() {
           <View style={[styles.card, { marginTop: 14, marginBottom: 24 }]}>
             <Text style={styles.noteTitle}>About this forecast</Text>
             <Text style={styles.noteBody}>
-              Minute-by-minute precip is interpolated from Open-Meteo's 15-min HRRR
+              Minute-by-minute precip is interpolated from Open-Meteo&apos;s 15-min HRRR
               output. Connect a self-hosted tile-server in Settings to feed MRMS
               observations for true minute-level accuracy.
             </Text>

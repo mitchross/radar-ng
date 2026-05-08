@@ -59,7 +59,10 @@
       ],
       "./plugins/withCarPlayScene",
       "./plugins/withScriptSandboxOff",
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      "expo-font",
+      "expo-image",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

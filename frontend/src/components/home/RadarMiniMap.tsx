@@ -119,10 +119,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#0d1428",
   },
   basemapTint: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#0d1428",
   },
-  radar: { ...StyleSheet.absoluteFillObject, opacity: 0.85 },
+  radar: { ...StyleSheet.absoluteFill, opacity: 0.85 },
   pinWrap: {
     position: "absolute",
     left: "50%",

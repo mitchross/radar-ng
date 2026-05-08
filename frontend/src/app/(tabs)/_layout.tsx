@@ -3,10 +3,12 @@
  * Matches design_handoff_radar_app: persistent dark translucent pill, hidden on Radar.
  */
 import { View, StyleSheet, Text, Pressable } from "react-native";
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import type { ComponentProps } from "react";
 import { Tabs } from "expo-router";
 import { cumulus } from "../../lib/cumulusTheme";
 import { useAlerts } from "../../hooks/useAlerts";
+
+type ExpoTabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>["tabBar"]>>[0];
 
 export default function TabLayout() {
   return (
@@ -23,12 +25,13 @@ export default function TabLayout() {
   );
 }
 
-function CumulusTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+function CumulusTabBar({ state, descriptors, navigation }: ExpoTabBarProps) {
   const activeRoute = state.routes[state.index]?.name;
-  // Hide on Radar for full-bleed map
-  if (activeRoute === "radar") return null;
   const alertsQuery = useAlerts();
   const alertCount = alertsQuery.data?.features?.length ?? 0;
+
+  // Hide on Radar for full-bleed map
+  if (activeRoute === "radar") return null;
 
   return (
     <View pointerEvents="box-none" style={bar.wrap}>
