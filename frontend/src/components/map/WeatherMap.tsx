@@ -33,28 +33,56 @@ function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark" | "sat
       return;
     }
     let cancelled = false;
+
+    async function attempt(): Promise<string> {
+      const r = await fetch(styleUrl);
+      const json = (await r.json()) as {
+        sources?: Record<string, { tiles?: string[]; url?: string }>;
+      };
+      const sources = json.sources ?? {};
+      for (const src of Object.values(sources)) {
+        if (Array.isArray(src.tiles)) {
+          src.tiles = src.tiles.map((t) => (t.startsWith("http") ? t : `${serverUrl}${t}`));
+        }
+        if (typeof src.url === "string" && !src.url.startsWith("http")) {
+          src.url = `${serverUrl}${src.url}`;
+        }
+      }
+      return JSON.stringify(json);
+    }
+
     trace(
       "map.fetchStyle",
       async (span) => {
-        const r = await fetch(styleUrl);
-        span.setAttribute("http.status_code", r.status);
-        const json = (await r.json()) as {
-          sources?: Record<string, { tiles?: string[]; url?: string }>;
-        };
-        const sources = json.sources ?? {};
-        for (const src of Object.values(sources)) {
-          if (Array.isArray(src.tiles)) {
-            src.tiles = src.tiles.map((t) => (t.startsWith("http") ? t : `${serverUrl}${t}`));
-          }
-          if (typeof src.url === "string" && !src.url.startsWith("http")) {
-            src.url = `${serverUrl}${src.url}`;
+        // Cold-start race: on Android, the JS fetch can fire before the
+        // emulator's network stack is fully up, throwing a DNS error
+        // immediately. Retry with backoff so the basemap doesn't fall
+        // back to MapLibre's native loader (which does NOT rewrite the
+        // relative `/basemap/tiles/{z}/{x}/{y}.mvt` paths in the
+        // Protomaps style → solid black map).
+        const delays = [400, 800, 1600];
+        let lastErr: unknown;
+        for (let i = 0; i < delays.length + 1; i++) {
+          if (cancelled) return;
+          try {
+            const result = await attempt();
+            span.setAttribute("map.fetchStyle.attempts", i + 1);
+            if (!cancelled) setPatched(result);
+            return;
+          } catch (err) {
+            lastErr = err;
+            if (i < delays.length) {
+              await new Promise((res) => setTimeout(res, delays[i]));
+            }
           }
         }
-        if (!cancelled) setPatched(JSON.stringify(json));
+        throw lastErr;
       },
       { "map.style": mapStyle },
     ).catch(() => {
-      // Fall back to the URL; MapLibre will at least try to fetch it.
+      // All retries failed → hand MapLibre the raw URL. It still won't
+      // rewrite relative tile paths, but at least the user sees the
+      // attribution + zoom controls instead of nothing.
       if (!cancelled) setPatched(styleUrl);
     });
     return () => {
