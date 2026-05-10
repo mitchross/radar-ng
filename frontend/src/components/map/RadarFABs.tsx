@@ -3,8 +3,8 @@
  * map-style picker. Glass-dark buttons; Apple-Weather-style popover with
  * icons + checkmark + layer-tinted background.
  */
-import { useState } from "react";
-import { View, TouchableOpacity, StyleSheet, Text, Pressable } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Animated, Easing, View, TouchableOpacity, StyleSheet, Text, Pressable } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { pickNowFrameIndex } from "../../hooks/useManifest";
@@ -49,16 +49,24 @@ export function RadarFABs({
   const queryClient = useQueryClient();
   const [layerOpen, setLayerOpen] = useState(false);
 
+  const [refreshing, setRefreshing] = useState(false);
+
   // Pause + immediately snap to "Now" using the current frame list, then
-  // refetch the manifest in the background. Doing the snap synchronously
-  // (rather than just setting the index to -1 and waiting for useManifest's
-  // effect to re-fire) avoids a stale displayed frame when React Query's
-  // structural sharing returns the cached manifest reference unchanged.
-  const onRefresh = () => {
+  // refetch the manifest. Use refetchQueries (not invalidateQueries) so the
+  // request actually fires even when React Query still considers the data
+  // fresh under refetchInterval — invalidate was a near-no-op for fast
+  // taps. Also surface a spin state so the user gets visual confirmation.
+  const onRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
     setIsPlaying(false);
     const frames = useWeatherStore.getState().frames;
     setCurrentFrameIndex(pickNowFrameIndex(frames));
-    queryClient.invalidateQueries({ queryKey: ["manifest"] });
+    try {
+      await queryClient.refetchQueries({ queryKey: ["manifest"] });
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const options = LAYER_OPTIONS;
@@ -81,7 +89,7 @@ export function RadarFABs({
           <MapStyleIcon />
         </GlassBtn>
         <GlassBtn onPress={onRefresh}>
-          <RefreshIcon />
+          <RefreshIcon spinning={refreshing} />
         </GlassBtn>
       </View>
 
@@ -181,15 +189,44 @@ function MapStyleIcon() {
   );
 }
 
-function RefreshIcon() {
+function RefreshIcon({ spinning = false }: { spinning?: boolean }) {
   // Circular arrow — three-quarter ring + arrowhead at the top-right.
+  // Spins while a refresh is in flight so the tap reads as "actually doing
+  // something" — without this the FAB looked dead because the manifest
+  // request usually completes before any visible state change.
+  const rotation = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!spinning) {
+      rotation.stopAnimation();
+      rotation.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.timing(rotation, {
+        toValue: 1,
+        duration: 800,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [spinning, rotation]);
+  const transform = [
+    {
+      rotate: rotation.interpolate({
+        inputRange: [0, 1],
+        outputRange: ["0deg", "360deg"],
+      }),
+    },
+  ];
   return (
-    <View style={styles.iconBox}>
+    <Animated.View style={[styles.iconBox, { transform }]}>
       <View style={icons.refreshRing} />
       <View style={icons.refreshNotch} />
       <View style={icons.refreshArrowA} />
       <View style={icons.refreshArrowB} />
-    </View>
+    </Animated.View>
   );
 }
 
