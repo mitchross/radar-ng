@@ -6,11 +6,16 @@ import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
 // real max zoom lets it upsample from the highest available tile instead
 // of fetching higher zooms, getting 404s, and painting nothing. Discovered
 // the hard way: nowcast frames at z=7+ returned 404 and the overlay went
-// blank during "Now" / next-hour playback. (Radar past frames render at
-// z=9, nowcast pyramid only reaches z=6.)
+// blank during "Now" / next-hour playback.
+//
+// 2026-05-10: dropped radar+radar-hrrr from 9 to 8. Z9 alone was ~75% of
+// the per-frame render wall-clock and the schedule cadence couldn't keep
+// up (frames were ~15 min stale). Pinching past z=8 now upsamples the z=8
+// tile, which softens detail but keeps the overlay aligned. Restore to 9
+// when render perf catches up at the source.
 const SOURCE_MAX_ZOOM: Record<string, number> = {
-  radar: 9,
-  "radar-hrrr": 9,
+  radar: 8,
+  "radar-hrrr": 8,
   nowcast: 6,
 };
 
