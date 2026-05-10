@@ -16,7 +16,7 @@ import os
 import shutil
 import time
 import xml.etree.ElementTree as ET
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -39,7 +39,15 @@ MRMS_BASE = "https://noaa-mrms-pds.s3.amazonaws.com"
 TILE_DIR = os.environ.get("TILE_DIR", "/data/tiles")
 STATE_DIR = os.environ.get("STATE_DIR", "/data/state")
 TMP_ROOT = Path(os.environ.get("MRMS_TMP_ROOT", "/tmp/mrms_work"))
-ZOOM_LEVELS = [4, 5, 6, 7, 8, 9]
+# Z9 was a ~75% slice of total render wall-clock (a single z9 render alone
+# took ~7-8 min of the historic 11 min). Cutting it makes individual frame
+# renders fit inside the 2-min schedule cadence, which is the only way to
+# keep the manifest fresh given current hardware. The mobile client clamps
+# RasterSource.maxZoomLevel to match (see RadarOverlay.tsx); MapLibre will
+# upsample z8 tiles when the user pinches past z=8, which looks soft but
+# still reads correctly. Restore z=9 only if rendering moves to a faster
+# stack (per-zoom multiprocessing was already added in the same change).
+ZOOM_LEVELS = [4, 5, 6, 7, 8]
 BACKLOG_PER_CYCLE = int(os.environ.get("BACKLOG_PER_CYCLE", "3"))
 
 
@@ -293,8 +301,20 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
     activity.heartbeat({"phase": "render", "timestamp": timestamp, "palettes": list(palette_tables.keys())})
 
     def _render_all() -> list[str]:
+        # Switched from ThreadPoolExecutor to ProcessPoolExecutor: the
+        # render hot path (apply_color_table → numpy boolean masks → PIL
+        # resize → PNG encode) is CPU-bound Python with intermittent GIL
+        # release. Threads gave a small win at best; processes give true
+        # per-palette parallelism so a 4-core pod can actually run the
+        # 3 palette renders concurrently.
+        #
+        # Args are pickled when submitted (~60MB per palette for the dBZ
+        # array on CONUS); cost is ~1s per palette, dwarfed by the render
+        # itself. fork() on Linux would let us copy-on-write share the
+        # array, but ProcessPoolExecutor uses spawn-or-fork per platform
+        # and we don't need to fight that — pickling is fine here.
         rendered: list[str] = []
-        with ThreadPoolExecutor(max_workers=max(1, len(palette_tables))) as pool:
+        with ProcessPoolExecutor(max_workers=max(1, len(palette_tables))) as pool:
             futures = {
                 pool.submit(_render_palette, pname, ctable, data, lats_arr, lons_arr, flip, timestamp, tile_base, inp.layer_name): pname
                 for pname, ctable in palette_tables.items()
