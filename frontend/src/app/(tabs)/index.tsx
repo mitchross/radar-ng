@@ -40,9 +40,15 @@ export default function HomeScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      // refetchQueries (vs invalidateQueries) bypasses React Query's
+      // staleTime — without this the pull gesture is a no-op while data
+      // is still "fresh" (we set staleTime=15min, same as the server's
+      // forecast cache TTL, so an active query never naturally goes stale
+      // between mounts). The user's mental model of pull-to-refresh is
+      // "give me a new request right now," so honor that.
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["forecast"] }),
-        queryClient.invalidateQueries({ queryKey: ["alerts"] }),
+        queryClient.refetchQueries({ queryKey: ["forecast"] }),
+        queryClient.refetchQueries({ queryKey: ["alerts"] }),
       ]);
     } finally {
       setRefreshing(false);
@@ -96,15 +102,31 @@ export default function HomeScreen() {
   });
   const precipTotalIn = forecast.daily.precipitation_sum[0]?.toFixed(2) ?? "0.00";
 
-  // 7-day
-  const daily = forecast.daily.time.map((t, i) => ({
-    day: i === 0 ? "Today" : new Date(t).toLocaleDateString([], { weekday: "short" }),
-    icon: getIconKind(forecast.daily.weather_code[i], false),
-    hi: Math.round(forecast.daily.temperature_2m_max[i]),
-    lo: Math.round(forecast.daily.temperature_2m_min[i]),
-    precip: Math.round(forecast.daily.precipitation_probability_max?.[i] ?? 0),
-    now: i === 0 ? temp : undefined,
-  }));
+  // 7-day. Match "Today" against the device's local calendar date
+  // rather than `i === 0` — if the upstream forecast cache is stale
+  // across midnight (Open-Meteo + our 15-min server cache + Cloudflare),
+  // forecast.daily.time[0] can still hold yesterday's date. Labeling
+  // that row "Today" while the row that IS today shows up as "Sun" with
+  // no current-temp dot is the bug. Build today's local YYYY-MM-DD the
+  // same way Open-Meteo formats daily.time[i].
+  const todayLocal = (() => {
+    const d = now;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  })();
+  const daily = forecast.daily.time.map((t, i) => {
+    const isToday = t === todayLocal;
+    return {
+      day: isToday ? "Today" : new Date(t).toLocaleDateString([], { weekday: "short" }),
+      icon: getIconKind(forecast.daily.weather_code[i], false),
+      hi: Math.round(forecast.daily.temperature_2m_max[i]),
+      lo: Math.round(forecast.daily.temperature_2m_min[i]),
+      precip: Math.round(forecast.daily.precipitation_probability_max?.[i] ?? 0),
+      now: isToday ? temp : undefined,
+    };
+  });
   const weekHi = Math.max(...daily.map((d) => d.hi));
   const weekLo = Math.min(...daily.map((d) => d.lo));
 
@@ -298,7 +320,7 @@ export default function HomeScreen() {
                     i > 0 && styles.dailyRowBorder,
                   ]}
                 >
-                  <Text style={[styles.dailyDay, i === 0 && styles.dailyDayToday]}>
+                  <Text style={[styles.dailyDay, d.day === "Today" && styles.dailyDayToday]}>
                     {d.day}
                   </Text>
                   <View style={{ width: 30 }}>
@@ -320,7 +342,7 @@ export default function HomeScreen() {
                         borderRadius: 3,
                       }}
                     />
-                    {i === 0 && d.now != null && (
+                    {d.now != null && (
                       <View
                         style={[
                           styles.dailyNowDot,
