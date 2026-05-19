@@ -51,6 +51,19 @@ ZOOM_LEVELS = [4, 5, 6, 7, 8]
 BACKLOG_PER_CYCLE = int(os.environ.get("BACKLOG_PER_CYCLE", "3"))
 
 
+def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return max(minimum, int(raw))
+    except ValueError:
+        return default
+
+
+MRMS_RENDER_WORKERS = _int_env("MRMS_RENDER_WORKERS", 2)
+
+
 # Defaults — used when the workflow doesn't pass overrides.
 DEFAULT_MRMS_PREFIX = os.environ.get("MRMS_PREFIX", "CONUS/MergedBaseReflectivityQC_00.50")
 DEFAULT_LAYER_NAME = os.environ.get("LAYER_NAME", "radar")
@@ -305,8 +318,9 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
         # render hot path (apply_color_table → numpy boolean masks → PIL
         # resize → PNG encode) is CPU-bound Python with intermittent GIL
         # release. Threads gave a small win at best; processes give true
-        # per-palette parallelism so a 4-core pod can actually run the
-        # 3 palette renders concurrently.
+        # per-palette parallelism. Keep the worker count explicit so a
+        # self-hosted 2-CPU pod does not oversubscribe itself during live
+        # radar ingest.
         #
         # Args are pickled when submitted (~60MB per palette for the dBZ
         # array on CONUS); cost is ~1s per palette, dwarfed by the render
@@ -314,7 +328,8 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
         # array, but ProcessPoolExecutor uses spawn-or-fork per platform
         # and we don't need to fight that — pickling is fine here.
         rendered: list[str] = []
-        with ProcessPoolExecutor(max_workers=max(1, len(palette_tables))) as pool:
+        max_workers = max(1, min(len(palette_tables), MRMS_RENDER_WORKERS))
+        with ProcessPoolExecutor(max_workers=max_workers) as pool:
             futures = {
                 pool.submit(_render_palette, pname, ctable, data, lats_arr, lons_arr, flip, timestamp, tile_base, inp.layer_name): pname
                 for pname, ctable in palette_tables.items()

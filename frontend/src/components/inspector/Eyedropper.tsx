@@ -5,8 +5,8 @@
  * temperature/wind, shows "—" otherwise.
  */
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { useCallback, useEffect, useState } from "react";
-import MapLibreGL from "@maplibre/maplibre-react-native";
+import { useEffect, useState } from "react";
+import { Marker } from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
 import { formatReading, inspectPoint, type InspectReading } from "../../lib/inspector";
@@ -68,7 +68,7 @@ export function EyedropperPin({ pinned, onClear }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [pinned?.lat, pinned?.lon, activeLayer, frame?.path, serverUrl]);
+  }, [pinned, activeLayer, frame, serverUrl]);
 
   if (!pinned) return null;
 
@@ -77,11 +77,7 @@ export function EyedropperPin({ pinned, onClear }: Props) {
 
   return (
     <>
-      <MapLibreGL.MarkerView
-        coordinate={[pinned.lon, pinned.lat]}
-        anchor={{ x: 0.5, y: 1 }}
-        allowOverlap
-      >
+      <Marker lngLat={[pinned.lon, pinned.lat]} anchor="bottom">
         <View style={styles.markerWrap} pointerEvents="none">
           <View style={styles.marker}>
             <Text style={styles.markerText}>{readout}</Text>
@@ -89,7 +85,7 @@ export function EyedropperPin({ pinned, onClear }: Props) {
           <View style={styles.tail} />
           <View style={styles.crosshairDot} />
         </View>
-      </MapLibreGL.MarkerView>
+      </Marker>
 
       <View style={styles.panel} pointerEvents="box-none">
         <View style={styles.panelHeader}>

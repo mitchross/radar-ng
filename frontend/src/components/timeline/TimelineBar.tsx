@@ -98,7 +98,6 @@ export function TimelineBar() {
   const nowPct = clampPct(frameToPct(nowIdx));
   const nowcastPct = clampPct(frameToPct(nowcastEndIdx));
   const hrrrPct = clampPct(frameToPct(hrrrEndIdx));
-  const thumbPct = clampPct(frameToPct(currentFrameIndex));
 
   const mode = offsetMin === 0 ? "Now" : offsetMin > 0 ? "Forecast" : "Past";
 

@@ -8,7 +8,7 @@ describe("WeatherMap", () => {
       "utf8",
     );
 
-    expect(source).not.toContain("MapLibreGL.UserLocation");
+    expect(source).not.toContain("UserLocation");
   });
 
   it("recenters the MapLibre camera when the store location changes", () => {
@@ -17,8 +17,8 @@ describe("WeatherMap", () => {
       "utf8",
     );
 
-    expect(source).toContain("cameraRef.current?.setCamera({");
-    expect(source).toContain("centerCoordinate: centerCoord");
+    expect(source).toContain("cameraRef.current?.setStop({");
+    expect(source).toContain("center: centerCoord");
     expect(source).toContain("[latitude, longitude]");
   });
 });

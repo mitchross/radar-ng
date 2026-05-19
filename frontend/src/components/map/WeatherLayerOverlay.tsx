@@ -1,4 +1,4 @@
-import MapLibreGL from "@maplibre/maplibre-react-native";
+import { Layer, RasterSource } from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
 import type { LayerType } from "../../types/weather";
@@ -25,18 +25,19 @@ export function WeatherLayerOverlay({ layerId, opacity = 0.7 }: Props) {
   const tileUrl = buildSelfHostedTileUrl(serverUrl, layerId, frame.path, activePalette);
 
   return (
-    <MapLibreGL.RasterSource
+    <RasterSource
       id={`${layerId}-source`}
       key={`${layerId}-${activePalette}-${frame.path}`}
-      tileUrlTemplates={[tileUrl]}
+      tiles={[tileUrl]}
       tileSize={256}
-      minZoomLevel={layerConfig.minZoom}
-      maxZoomLevel={layerConfig.maxZoom}
+      minzoom={layerConfig.minZoom}
+      maxzoom={layerConfig.maxZoom}
     >
-      <MapLibreGL.RasterLayer
+      <Layer
+        type="raster"
         id={`${layerId}-layer`}
         style={{ rasterOpacity: opacity, rasterFadeDuration: 0 }}
       />
-    </MapLibreGL.RasterSource>
+    </RasterSource>
   );
 }

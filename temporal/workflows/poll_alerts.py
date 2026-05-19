@@ -5,9 +5,9 @@ severe alerts to phones that are backgrounded or asleep. Schedule fires
 every 5 minutes, OverlapPolicy.SKIP.
 
 Pipeline:
-  1. fetch_nws_active_alerts — diff vs last seen, return new alert ids
+  1. fetch_nws_active_alerts — diff vs last seen, return new alert geometry
   2. for each new alert: signal_matching_storm_watches → fans out
-     `alertMatchSignal` to every running WatchStormWorkflow
+     `alertMatchSignal` to matching running WatchStormWorkflow instances
 """
 
 from __future__ import annotations
@@ -54,10 +54,17 @@ class PollAlertsWorkflow:
             retry_policy=_RETRY,
         )
 
+        alerts = fetched.new_alerts
+        if not alerts:
+            alerts = [{"alert_id": alert_id, "geometry": {}} for alert_id in fetched.new_alert_ids]
+
         signaled = 0
-        for alert_id in fetched.new_alert_ids:
+        for alert in alerts:
+            alert_id = alert.alert_id if hasattr(alert, "alert_id") else alert["alert_id"]
+            geometry = alert.geometry if hasattr(alert, "geometry") else alert.get("geometry", {})
             res: SignalWatchesResult = await workflow.execute_activity(
-                signal_matching_storm_watches, SignalWatchesInput(alert_id=alert_id),
+                signal_matching_storm_watches,
+                SignalWatchesInput(alert_id=alert_id, geometry=geometry),
                 start_to_close_timeout=timedelta(seconds=60),
                 retry_policy=_RETRY,
             )

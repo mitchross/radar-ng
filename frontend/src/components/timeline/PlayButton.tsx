@@ -19,7 +19,7 @@ export function PlayButton() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isPlaying, playbackSpeed, frames.length]);
+  }, [isPlaying, nextFrame, playbackSpeed, frames.length]);
 
   if (frames.length === 0) return null;
 

@@ -52,6 +52,8 @@ from temporal.workflows import ALL_WORKFLOWS
 
 
 TASK_QUEUE = "radar-ng"
+DEFAULT_MAX_CONCURRENT_ACTIVITIES = 4
+DEFAULT_MAX_CONCURRENT_ACTIVITY_TASK_POLLS = 2
 
 
 ALL_ACTIVITIES = [
@@ -100,6 +102,17 @@ def _deployment_config_from_env() -> WorkerDeploymentConfig | None:
     )
 
 
+def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return max(minimum, int(raw))
+    except ValueError:
+        logger.warning("invalid integer env {}; using default {}", name, default)
+        return default
+
+
 async def _main() -> None:
     target = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
     namespace = os.environ.get("TEMPORAL_NAMESPACE", "default")
@@ -118,6 +131,14 @@ async def _main() -> None:
         logger.info("schedule seed complete")
 
     deployment_config = _deployment_config_from_env()
+    max_concurrent_activities = _int_env(
+        "TEMPORAL_MAX_CONCURRENT_ACTIVITIES",
+        DEFAULT_MAX_CONCURRENT_ACTIVITIES,
+    )
+    max_concurrent_activity_task_polls = _int_env(
+        "TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS",
+        DEFAULT_MAX_CONCURRENT_ACTIVITY_TASK_POLLS,
+    )
 
     worker = Worker(
         client,
@@ -125,13 +146,20 @@ async def _main() -> None:
         workflows=ALL_WORKFLOWS,
         activities=ALL_ACTIVITIES,
         deployment_config=deployment_config,
+        max_concurrent_activities=max_concurrent_activities,
+        max_concurrent_activity_task_polls=max_concurrent_activity_task_polls,
     )
     logger.info(
-        "worker starting on task_queue={} with {} workflows + {} activities (versioning={})",
+        (
+            "worker starting on task_queue={} with {} workflows + {} activities "
+            "(versioning={}, max_activities={}, activity_polls={})"
+        ),
         TASK_QUEUE,
         len(ALL_WORKFLOWS),
         len(ALL_ACTIVITIES),
         deployment_config.version if deployment_config else "off",
+        max_concurrent_activities,
+        max_concurrent_activity_task_polls,
     )
     await worker.run()
 

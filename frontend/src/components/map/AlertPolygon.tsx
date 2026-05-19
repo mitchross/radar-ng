@@ -8,7 +8,7 @@
  *
  * Severity still drives color (Extreme/Severe/Moderate/Minor).
  */
-import MapLibreGL from "@maplibre/maplibre-react-native";
+import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useAlerts } from "../../hooks/useAlerts";
 
 const SEVERITY_FILL: Record<string, string> = {
@@ -66,9 +66,10 @@ export function AlertPolygon() {
   ] as never;
 
   return (
-    <MapLibreGL.ShapeSource id="alert-polygons" shape={geojson}>
+    <GeoJSONSource id="alert-polygons" data={geojson}>
       {/* Fill — opacity scales by alert kind so watches/advisories recede. */}
-      <MapLibreGL.FillLayer
+      <Layer
+        type="fill"
         id="alert-fill"
         style={{
           fillColor: [
@@ -84,7 +85,8 @@ export function AlertPolygon() {
         }}
       />
       {/* Solid outline for warnings (active hazards). */}
-      <MapLibreGL.LineLayer
+      <Layer
+        type="line"
         id="alert-outline-warning"
         filter={["==", ["get", "kind"], "warning"] as never}
         style={{
@@ -101,7 +103,8 @@ export function AlertPolygon() {
         }}
       />
       {/* Dashed outline for watches. */}
-      <MapLibreGL.LineLayer
+      <Layer
+        type="line"
         id="alert-outline-watch"
         filter={["==", ["get", "kind"], "watch"] as never}
         style={{
@@ -119,7 +122,8 @@ export function AlertPolygon() {
         }}
       />
       {/* Dotted outline for advisories + statements. */}
-      <MapLibreGL.LineLayer
+      <Layer
+        type="line"
         id="alert-outline-advisory"
         filter={["in", ["get", "kind"], ["literal", ["advisory", "statement"]]] as never}
         style={{
@@ -136,6 +140,6 @@ export function AlertPolygon() {
           lineDasharray: [1, 2] as never,
         }}
       />
-    </MapLibreGL.ShapeSource>
+    </GeoJSONSource>
   );
 }

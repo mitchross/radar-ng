@@ -8,7 +8,7 @@
  *   Radar/etc:   falls back to current temperature
  */
 import { View, Text, StyleSheet } from "react-native";
-import MapLibreGL from "@maplibre/maplibre-react-native";
+import { Marker } from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { useForecast } from "../../hooks/useForecast";
 import { activeLocationLabel } from "../../lib/locationLabel";
@@ -30,18 +30,14 @@ export function LayerLocationMarker() {
   const label = activeLocationLabel(locationMode, selectedPlace);
 
   return (
-    <MapLibreGL.MarkerView
-      coordinate={[longitude, latitude]}
-      anchor={{ x: 0.5, y: 1 }}
-      allowOverlap
-    >
+    <Marker lngLat={[longitude, latitude]} anchor="bottom">
       <View style={styles.wrap} pointerEvents="none">
         <View style={styles.pill}>{body}</View>
         <View style={styles.tail} />
         <View style={styles.dot} />
         <Text style={styles.label}>{label}</Text>
       </View>
-    </MapLibreGL.MarkerView>
+    </Marker>
   );
 }
 

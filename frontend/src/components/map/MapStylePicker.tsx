@@ -3,8 +3,8 @@
  * satellite) with a flat-vs-globe projection toggle above. Reads/writes
  * mapStyle + mapProjection in the Zustand store.
  *
- * Note: MapLibre React Native (v10) does not yet expose the native globe
- * projection prop. The preference persists for forward compatibility.
+ * Note: MapLibre React Native does not expose the native globe projection
+ * prop here yet. The preference persists for forward compatibility.
  */
 import { View, Text, StyleSheet, Pressable, TouchableOpacity } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";

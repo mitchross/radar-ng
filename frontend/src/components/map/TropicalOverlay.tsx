@@ -4,7 +4,7 @@
  *   track    → dashed red linestring (forecast positions)
  *   position → red pulsing symbol + storm name label
  */
-import MapLibreGL from "@maplibre/maplibre-react-native";
+import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useTropical } from "../../hooks/useTropical";
 
 export function TropicalOverlay() {
@@ -12,9 +12,10 @@ export function TropicalOverlay() {
   if (!data || data.features.length === 0) return null;
 
   return (
-    <MapLibreGL.ShapeSource id="tropical-src" shape={data as GeoJSON.FeatureCollection}>
+    <GeoJSONSource id="tropical-src" data={data as GeoJSON.FeatureCollection}>
       {/* Cone (under everything else) */}
-      <MapLibreGL.FillLayer
+      <Layer
+        type="fill"
         id="tropical-cone"
         filter={["==", ["get", "kind"], "cone"] as never}
         style={{
@@ -24,7 +25,8 @@ export function TropicalOverlay() {
         }}
       />
       {/* Forecast track line */}
-      <MapLibreGL.LineLayer
+      <Layer
+        type="line"
         id="tropical-track"
         filter={["==", ["get", "kind"], "track"] as never}
         style={{
@@ -35,7 +37,8 @@ export function TropicalOverlay() {
         }}
       />
       {/* Current storm position — circle + stroke */}
-      <MapLibreGL.CircleLayer
+      <Layer
+        type="circle"
         id="tropical-position"
         filter={["==", ["get", "kind"], "position"] as never}
         style={{
@@ -46,6 +49,6 @@ export function TropicalOverlay() {
           circleOpacity: 0.95,
         }}
       />
-    </MapLibreGL.ShapeSource>
+    </GeoJSONSource>
   );
 }

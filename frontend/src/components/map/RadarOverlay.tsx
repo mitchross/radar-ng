@@ -1,4 +1,4 @@
-import MapLibreGL from "@maplibre/maplibre-react-native";
+import { Layer, RasterSource } from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
 
@@ -29,9 +29,9 @@ const SOURCE_MIN_ZOOM = 4;
 
 // One source per render. The earlier 7-frame preload pattern triggered an
 // iOS NSRangeException inside `[MLRNMapView insertReactSubview:atIndex:]`
-// — Fragment-wrapped multi-source children confuse maplibre-react-native
-// v10's native subview indexing on iOS, and the radar tab crashed on
-// mount. Smooth scrubbing is nice-to-have; not crashing is mandatory.
+// — Fragment-wrapped multi-source children confused native subview indexing
+// on iOS, and the radar tab crashed on mount. Smooth scrubbing is nice-to-have;
+// not crashing is mandatory.
 export function RadarOverlay() {
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
@@ -52,21 +52,22 @@ export function RadarOverlay() {
   const maxZoom = SOURCE_MAX_ZOOM[layerForUrl] ?? 9;
 
   return (
-    <MapLibreGL.RasterSource
+    <RasterSource
       id="radar-source"
       key={`${activePalette}-${layerForUrl}-${frame.path}`}
-      tileUrlTemplates={[tileUrl]}
+      tiles={[tileUrl]}
       tileSize={256}
-      minZoomLevel={SOURCE_MIN_ZOOM}
-      maxZoomLevel={maxZoom}
+      minzoom={SOURCE_MIN_ZOOM}
+      maxzoom={maxZoom}
     >
-      <MapLibreGL.RasterLayer
+      <Layer
+        type="raster"
         id="radar-layer"
         style={{
           rasterOpacity: radarVisible ? radarOpacity : 0,
           rasterFadeDuration: 0,
         }}
       />
-    </MapLibreGL.RasterSource>
+    </RasterSource>
   );
 }

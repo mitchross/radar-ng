@@ -3,7 +3,7 @@
  * self-hosted backend as yellow/white dots on the map. Fresh strikes (<60s)
  * pulse, older strikes fade toward transparent.
  */
-import MapLibreGL from "@maplibre/maplibre-react-native";
+import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useLightning } from "../../hooks/useLightning";
 
 export function LightningOverlay() {
@@ -11,9 +11,10 @@ export function LightningOverlay() {
   if (!data || data.features.length === 0) return null;
 
   return (
-    <MapLibreGL.ShapeSource id="lightning-src" shape={data as GeoJSON.FeatureCollection}>
+    <GeoJSONSource id="lightning-src" data={data as GeoJSON.FeatureCollection}>
       {/* Halo (soft pulse) for fresh strikes */}
-      <MapLibreGL.CircleLayer
+      <Layer
+        type="circle"
         id="lightning-halo"
         filter={["<", ["get", "age_s"], 60] as never}
         style={{
@@ -36,7 +37,8 @@ export function LightningOverlay() {
         }}
       />
       {/* Core strike dot — age-fade across the full 15-min buffer */}
-      <MapLibreGL.CircleLayer
+      <Layer
+        type="circle"
         id="lightning-dot"
         style={{
           circleRadius: [
@@ -66,6 +68,6 @@ export function LightningOverlay() {
           ] as never,
         }}
       />
-    </MapLibreGL.ShapeSource>
+    </GeoJSONSource>
   );
 }

@@ -69,6 +69,9 @@ services:
       - STATE_DIR=/data/state
       - PALETTES=classic
       - BACKLOG_PER_CYCLE=1
+      - TEMPORAL_MAX_CONCURRENT_ACTIVITIES=2
+      - TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS=1
+      - MRMS_RENDER_WORKERS=1
     volumes:
       - tile-data:/data
     # Temporal needs ~30s to be reachable on first boot — restart loop covers it

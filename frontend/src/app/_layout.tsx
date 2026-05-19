@@ -3,7 +3,6 @@
 import "../lib/animatedFix";
 // Telemetry must be imported next so OTEL providers are registered before
 // any component code runs fetch() or starts a span.
-import "../lib/telemetry";
 import { logEvent } from "../lib/telemetry";
 
 import { Stack } from "expo-router";

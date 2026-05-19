@@ -49,6 +49,10 @@ class WatchStormInput:
 
 @dataclass
 class WatchStormState:
+    user_id: str = ""
+    storm_cell_id: str = ""
+    lat: float = 0.0
+    lng: float = 0.0
     last_frame_ts: str | None = None
     last_max_dbz: float | None = None
     last_change_kind: str | None = None
@@ -93,6 +97,10 @@ class WatchStormWorkflow:
     @workflow.run
     async def run(self, inp: WatchStormInput) -> WatchStormState:
         deadline = workflow.now() + MAX_RUN_DURATION
+        self._state.user_id = inp.user_id
+        self._state.storm_cell_id = inp.storm_cell_id
+        self._state.lat = inp.lat
+        self._state.lng = inp.lng
         workflow.logger.info(
             "watch start: user=%s storm=%s @ (%.4f,%.4f)",
             inp.user_id, inp.storm_cell_id, inp.lat, inp.lng,
@@ -182,7 +190,7 @@ class WatchStormWorkflow:
             FanOutPushInput(
                 user_id=inp.user_id,
                 title="Severe weather alert near your storm",
-                body=f"NWS issued an alert in your watched area",
+                body="NWS issued an alert in your watched area",
                 collapse_id=collapse,
                 extra={"storm_cell_id": inp.storm_cell_id, "alert_id": alert_id, "kind": "alert"},
             ),

@@ -8,6 +8,7 @@ directly (auth, port exposure, RN gRPC pain — see design spec §4).
 from __future__ import annotations
 
 import os
+from typing import Any, NoReturn
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -15,7 +16,7 @@ from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
-from backend.api.api.temporal_client import get_client
+from backend.api.api.temporal_client import get_client, reset_client
 from backend.shared.push_tokens import delete_by_token
 
 
@@ -52,6 +53,17 @@ class WatchState(BaseModel):
     push_count: int
 
 
+async def _temporal_unreachable(exc: RPCError) -> NoReturn:
+    await reset_client()
+    raise HTTPException(503, f"temporal unreachable: {exc}")
+
+
+def _state_value(state: Any, key: str, default: Any = None) -> Any:
+    if isinstance(state, dict):
+        return state.get(key, default)
+    return getattr(state, key, default)
+
+
 # ---------- push tokens ----------
 
 
@@ -69,7 +81,7 @@ async def register_push_token(body: RegisterPushTokenBody) -> WorkflowStartedRes
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
         )
     except RPCError as e:
-        raise HTTPException(503, f"temporal unreachable: {e}")
+        await _temporal_unreachable(e)
     return WorkflowStartedResponse(workflow_id=handle.id, run_id=handle.first_execution_run_id or "")
 
 
@@ -105,7 +117,7 @@ async def start_watch(body: StartWatchBody) -> WorkflowStartedResponse:
     except WorkflowAlreadyStartedError:
         raise HTTPException(409, "already watching this storm")
     except RPCError as e:
-        raise HTTPException(503, f"temporal unreachable: {e}")
+        await _temporal_unreachable(e)
     return WorkflowStartedResponse(workflow_id=handle.id, run_id=handle.first_execution_run_id or "")
 
 
@@ -118,7 +130,7 @@ async def stop_watch(user_id: str, storm_cell_id: str) -> None:
     except RPCError as e:
         if "not found" in str(e).lower():
             return  # already gone
-        raise HTTPException(503, f"temporal unreachable: {e}")
+        await _temporal_unreachable(e)
 
 
 @router.get("/watches/{user_id}/{storm_cell_id}", response_model=WatchState)
@@ -130,11 +142,11 @@ async def get_watch(user_id: str, storm_cell_id: str) -> WatchState:
     except RPCError as e:
         if "not found" in str(e).lower():
             raise HTTPException(410, "watch no longer exists")
-        raise HTTPException(503, f"temporal unreachable: {e}")
+        await _temporal_unreachable(e)
     return WatchState(
-        last_frame_ts=state.get("last_frame_ts"),
-        last_change_kind=state.get("last_change_kind"),
-        last_notified_at=state.get("last_notified_at"),
-        poll_count=int(state.get("poll_count", 0)),
-        push_count=int(state.get("push_count", 0)),
+        last_frame_ts=_state_value(state, "last_frame_ts"),
+        last_change_kind=_state_value(state, "last_change_kind"),
+        last_notified_at=_state_value(state, "last_notified_at"),
+        poll_count=int(_state_value(state, "poll_count", 0)),
+        push_count=int(_state_value(state, "push_count", 0)),
     )

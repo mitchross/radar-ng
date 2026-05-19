@@ -12,9 +12,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import httpx
 from temporalio import activity
@@ -186,9 +186,16 @@ _ALERT_STATE_PATH = STATE_DIR / "alerts_seen.json"
 
 
 @dataclass
+class AlertForSignal:
+    alert_id: str
+    geometry: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class FetchAlertsResult:
     alert_count: int
     new_alert_ids: list[str] = field(default_factory=list)
+    new_alerts: list[AlertForSignal] = field(default_factory=list)
 
 
 def _load_seen() -> set[str]:
@@ -205,6 +212,17 @@ def _save_seen(ids: set[str]) -> None:
     _ALERT_STATE_PATH.write_text(json.dumps(capped))
 
 
+def _alert_from_feature(feature: dict[str, Any]) -> AlertForSignal | None:
+    props = feature.get("properties") or {}
+    alert_id = props.get("id") or feature.get("id")
+    if not alert_id:
+        return None
+    geometry = feature.get("geometry") or {}
+    if not isinstance(geometry, dict):
+        geometry = {}
+    return AlertForSignal(alert_id=str(alert_id), geometry=geometry)
+
+
 @activity.defn(name="fetch_nws_active_alerts")
 async def fetch_nws_active_alerts() -> FetchAlertsResult:
     def _go() -> FetchAlertsResult:
@@ -215,16 +233,19 @@ async def fetch_nws_active_alerts() -> FetchAlertsResult:
         features = payload.get("features", []) or []
         seen = _load_seen()
         new_ids: list[str] = []
+        new_alerts: list[AlertForSignal] = []
         seen_after: set[str] = set()
         for f in features:
-            aid = (f.get("properties") or {}).get("id") or f.get("id")
-            if not aid:
+            alert = _alert_from_feature(f)
+            if alert is None:
                 continue
+            aid = alert.alert_id
             seen_after.add(aid)
             if aid not in seen:
                 new_ids.append(aid)
+                new_alerts.append(alert)
         _save_seen(seen | seen_after)
-        return FetchAlertsResult(alert_count=len(features), new_alert_ids=new_ids)
+        return FetchAlertsResult(alert_count=len(features), new_alert_ids=new_ids, new_alerts=new_alerts)
 
     return await asyncio.to_thread(_go)
 
@@ -232,6 +253,7 @@ async def fetch_nws_active_alerts() -> FetchAlertsResult:
 @dataclass
 class SignalWatchesInput:
     alert_id: str
+    geometry: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -239,17 +261,76 @@ class SignalWatchesResult:
     matched: int
 
 
+def _coord(point: Any) -> tuple[float, float] | None:
+    if not isinstance(point, (list, tuple)) or len(point) < 2:
+        return None
+    try:
+        return float(point[0]), float(point[1])
+    except (TypeError, ValueError):
+        return None
+
+
+def _point_in_ring(lng: float, lat: float, ring: Any) -> bool:
+    if not isinstance(ring, list) or len(ring) < 4:
+        return False
+
+    inside = False
+    prev = _coord(ring[-1])
+    if prev is None:
+        return False
+
+    for point in ring:
+        curr = _coord(point)
+        if curr is None:
+            return False
+
+        curr_lng, curr_lat = curr
+        prev_lng, prev_lat = prev
+        crosses = (curr_lat > lat) != (prev_lat > lat)
+        if crosses:
+            intersect_lng = (prev_lng - curr_lng) * (lat - curr_lat) / (prev_lat - curr_lat) + curr_lng
+            if lng < intersect_lng:
+                inside = not inside
+        prev = curr
+
+    return inside
+
+
+def _point_in_polygon(lng: float, lat: float, polygon: Any) -> bool:
+    if not isinstance(polygon, list) or not polygon:
+        return False
+    if not _point_in_ring(lng, lat, polygon[0]):
+        return False
+    return not any(_point_in_ring(lng, lat, hole) for hole in polygon[1:])
+
+
+def _point_in_geojson(lng: float, lat: float, geometry: dict[str, Any]) -> bool:
+    if not geometry:
+        return False
+    geo_type = geometry.get("type")
+    coordinates = geometry.get("coordinates")
+    if geo_type == "Polygon":
+        return _point_in_polygon(lng, lat, coordinates)
+    if geo_type == "MultiPolygon" and isinstance(coordinates, list):
+        return any(_point_in_polygon(lng, lat, polygon) for polygon in coordinates)
+    return False
+
+
+def _state_value(state: Any, key: str, default: Any = None) -> Any:
+    if isinstance(state, dict):
+        return state.get(key, default)
+    return getattr(state, key, default)
+
+
 @activity.defn(name="signal_matching_storm_watches")
 async def signal_matching_storm_watches(inp: SignalWatchesInput) -> SignalWatchesResult:
-    """Look up every running WatchStormWorkflow whose center sits inside the
-    new alert's polygon, signal each with `alertMatchSignal(alert_id)`.
-
-    For simplicity in v1 we signal *every* running watch — the watch
-    workflow does the geo check itself when it receives the signal. This
-    avoids us re-implementing polygon-in-polygon here. Refined fan-out
-    by spatial index lands when the watch count exceeds ~10k.
+    """Signal running WatchStormWorkflow instances whose center is inside the
+    new alert polygon.
     """
     from temporalio.client import Client
+
+    if not inp.geometry:
+        return SignalWatchesResult(matched=0)
 
     target = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
     namespace = os.environ.get("TEMPORAL_NAMESPACE", "default")
@@ -259,6 +340,13 @@ async def signal_matching_storm_watches(inp: SignalWatchesInput) -> SignalWatche
     async for w in client.list_workflows("WorkflowType='WatchStormWorkflow' AND ExecutionStatus='Running'"):
         try:
             handle = client.get_workflow_handle(w.id)
+            state = await handle.query("getCurrentState")
+            lat = _state_value(state, "lat")
+            lng = _state_value(state, "lng")
+            if lat is None or lng is None:
+                continue
+            if not _point_in_geojson(float(lng), float(lat), inp.geometry):
+                continue
             await handle.signal("alertMatchSignal", inp.alert_id)
             matched += 1
         except Exception as exc:  # noqa: BLE001

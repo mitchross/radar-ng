@@ -16,6 +16,9 @@ data:
   # described as colorblind-safe (Viridis ramp).
   PALETTES: "classic,muted,vivid"
   BACKLOG_PER_CYCLE: "3"
+  TEMPORAL_MAX_CONCURRENT_ACTIVITIES: "4"
+  TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS: "2"
+  MRMS_RENDER_WORKERS: "2"
   MRMS_PREFIX: "CONUS/MergedBaseReflectivityQC_00.50"
   FORECAST_HOURS: "18"
   EXTENDED_FORECAST_HOURS: "48"

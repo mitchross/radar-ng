@@ -20,7 +20,6 @@ import { DEFAULTS } from "../../lib/constants";
 import { cumulus } from "../../lib/cumulusTheme";
 
 const MINI_ZOOM = 6;
-const TILE_SIZE = 256;
 
 function lonLatToTile(lon: number, lat: number, z: number): { x: number; y: number } {
   const n = 2 ** z;

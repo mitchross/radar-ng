@@ -4,7 +4,7 @@
  * (sun, moon, stars, clouds, rain, snow, lightning) using only RN Views.
  */
 import { View, StyleSheet, Dimensions } from "react-native";
-import type { SceneType, WeatherTheme } from "../../lib/weatherTheme";
+import type { WeatherTheme } from "../../lib/weatherTheme";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCENE_HEIGHT = 140;

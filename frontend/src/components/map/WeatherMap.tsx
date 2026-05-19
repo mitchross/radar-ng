@@ -1,14 +1,19 @@
-import MapLibreGL, { type MapViewRef } from "@maplibre/maplibre-react-native";
+import {
+  Camera,
+  Map,
+  type CameraRef,
+  type MapRef,
+  type PressEvent,
+  type ViewStateChangeEvent,
+} from "@maplibre/maplibre-react-native";
 import { Children, isValidElement, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View, type NativeSyntheticEvent } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS, resolveMapStyleUrl } from "../../lib/constants";
 import { trace } from "../../lib/telemetry";
 
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 15;
-
-MapLibreGL.setAccessToken(null);
 
 interface WeatherMapProps {
   children?: React.ReactNode;
@@ -94,8 +99,8 @@ function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark" | "sat
 }
 
 export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMapProps) {
-  const mapRef = useRef<MapViewRef>(null);
-  const cameraRef = useRef<MapLibreGL.CameraRef>(null);
+  const mapRef = useRef<MapRef>(null);
+  const cameraRef = useRef<CameraRef>(null);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const latitude = useWeatherStore((s) => s.latitude);
@@ -117,63 +122,59 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
   function zoomBy(delta: number) {
     const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomRef.current + delta));
     zoomRef.current = next;
-    cameraRef.current?.setCamera({ zoomLevel: next, animationDuration: 220 });
+    cameraRef.current?.setStop({ zoom: next, duration: 220 });
   }
 
   useEffect(() => {
-    cameraRef.current?.setCamera({
-      centerCoordinate: centerCoord,
-      zoomLevel: initialZoom,
-      animationDuration: 0,
+    cameraRef.current?.setStop({
+      center: centerCoord,
+      zoom: initialZoom,
+      duration: 0,
     });
     zoomRef.current = initialZoom;
   }, [centerCoord, initialZoom]);
 
   if (!patchedStyle) return null;
 
+  const handleLongPress = (event: NativeSyntheticEvent<PressEvent>) => {
+    const [lon, lat] = event.nativeEvent.lngLat;
+    onLongPress?.(lat, lon);
+  };
+
+  const handleRegionChange = (
+    event: NativeSyntheticEvent<ViewStateChangeEvent>,
+  ) => {
+    const { center, zoom } = event.nativeEvent;
+    zoomRef.current = zoom;
+    onCameraChanged?.({
+      lon: center[0],
+      lat: center[1],
+      zoom,
+    });
+  };
+
   return (
     <View style={styles.map}>
-      <MapLibreGL.MapView
+      <Map
         ref={mapRef}
         style={styles.map}
         mapStyle={patchedStyle}
-        logoEnabled={false}
-        attributionEnabled={true}
+        logo={false}
+        attribution={true}
         attributionPosition={{ bottom: 8, left: 8 }}
-        onLongPress={(feature) => {
-          const coords = (feature?.geometry as { coordinates?: [number, number] } | undefined)?.coordinates;
-          if (coords && onLongPress) onLongPress(coords[1], coords[0]);
-        }}
-        onRegionIsChanging={(feature) => {
-          const coords = feature.geometry.coordinates as [number, number];
-          zoomRef.current = feature.properties.zoomLevel;
-          if (!onCameraChanged) return;
-          onCameraChanged({
-            lon: coords[0],
-            lat: coords[1],
-            zoom: feature.properties.zoomLevel,
-          });
-        }}
-        onRegionDidChange={(feature) => {
-          const coords = feature.geometry.coordinates as [number, number];
-          zoomRef.current = feature.properties.zoomLevel;
-          if (!onCameraChanged) return;
-          onCameraChanged({
-            lon: coords[0],
-            lat: coords[1],
-            zoom: feature.properties.zoomLevel,
-          });
-        }}
+        onLongPress={handleLongPress}
+        onRegionIsChanging={handleRegionChange}
+        onRegionDidChange={handleRegionChange}
       >
-        <MapLibreGL.Camera
+        <Camera
           ref={cameraRef}
-          defaultSettings={{
-            centerCoordinate: centerCoord,
-            zoomLevel: initialZoom,
+          initialViewState={{
+            center: centerCoord,
+            zoom: initialZoom,
           }}
         />
         {Children.toArray(children).filter(isValidElement)}
-      </MapLibreGL.MapView>
+      </Map>
 
       {/* Manual zoom controls — pinch still works, this is for one-handed use. */}
       <View style={styles.zoomWrap} pointerEvents="box-none">

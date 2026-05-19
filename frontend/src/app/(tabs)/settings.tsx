@@ -343,7 +343,7 @@ export default function SettingsScreen() {
 function buildSources(
   serverUrl: string,
   ok: boolean | null
-): Array<{ key: SourceKey; name: string; icon: string; endpoint: string; status: SourceStatus }> {
+): { key: SourceKey; name: string; icon: string; endpoint: string; status: SourceStatus }[] {
   const status: SourceStatus =
     ok === null ? "stale" : ok ? "healthy" : "error";
   return [
@@ -628,12 +628,12 @@ function BigBtn({ children, primary }: { children: string; primary?: boolean }) 
   );
 }
 
-const DOCKER_CONTAINERS: Array<{
+const DOCKER_CONTAINERS: {
   name: string;
   image: string;
   status: "healthy" | "updating" | "error";
   ports: string;
-}> = [
+}[] = [
   { name: "tile-server", image: "ghcr.io/radar-ng/tile-server:latest", status: "healthy", ports: "8080→80" },
   { name: "ingest-mrms", image: "ghcr.io/radar-ng/ingest-mrms:latest", status: "healthy", ports: "—" },
   { name: "ingest-hrrr", image: "ghcr.io/radar-ng/ingest-hrrr:latest", status: "healthy", ports: "—" },

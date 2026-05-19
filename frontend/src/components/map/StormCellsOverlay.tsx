@@ -3,7 +3,7 @@
  * connected-component region ≥40dBZ in the live MRMS field. Size scales by
  * area, color by peak intensity.
  */
-import MapLibreGL from "@maplibre/maplibre-react-native";
+import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useStormCells } from "../../hooks/useStormCells";
 
 export function StormCellsOverlay() {
@@ -11,9 +11,10 @@ export function StormCellsOverlay() {
   if (!data || data.features.length === 0) return null;
 
   return (
-    <MapLibreGL.ShapeSource id="storms-src" shape={data as GeoJSON.FeatureCollection}>
+    <GeoJSONSource id="storms-src" data={data as GeoJSON.FeatureCollection}>
       {/* Halo — soft glow sized by area_km2 */}
-      <MapLibreGL.CircleLayer
+      <Layer
+        type="circle"
         id="storms-halo"
         style={{
           circleRadius: [
@@ -38,7 +39,8 @@ export function StormCellsOverlay() {
         }}
       />
       {/* Core dot */}
-      <MapLibreGL.CircleLayer
+      <Layer
+        type="circle"
         id="storms-core"
         style={{
           circleRadius: [
@@ -63,6 +65,6 @@ export function StormCellsOverlay() {
           circleOpacity: 0.95,
         }}
       />
-    </MapLibreGL.ShapeSource>
+    </GeoJSONSource>
   );
 }
