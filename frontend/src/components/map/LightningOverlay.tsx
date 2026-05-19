@@ -17,38 +17,38 @@ export function LightningOverlay() {
         type="circle"
         id="lightning-halo"
         filter={["<", ["get", "age_s"], 60] as never}
-        style={{
-          circleRadius: [
+        paint={{
+          "circle-radius": [
             "interpolate",
             ["linear"],
             ["get", "age_s"],
             0, 14,
             60, 6,
           ] as never,
-          circleColor: "#FFE066",
-          circleOpacity: [
+          "circle-color": "#FFE066",
+          "circle-opacity": [
             "interpolate",
             ["linear"],
             ["get", "age_s"],
             0, 0.55,
             60, 0.12,
           ] as never,
-          circleBlur: 0.6,
+          "circle-blur": 0.6,
         }}
       />
       {/* Core strike dot — age-fade across the full 15-min buffer */}
       <Layer
         type="circle"
         id="lightning-dot"
-        style={{
-          circleRadius: [
+        paint={{
+          "circle-radius": [
             "interpolate",
             ["linear"],
             ["get", "age_s"],
             0, 5,
             900, 2,
           ] as never,
-          circleColor: [
+          "circle-color": [
             "interpolate",
             ["linear"],
             ["get", "age_s"],
@@ -57,9 +57,9 @@ export function LightningOverlay() {
             300, "#FFA94D",
             900, "#8B7CFF",
           ] as never,
-          circleStrokeColor: "#FFFFFF",
-          circleStrokeWidth: 0.7,
-          circleOpacity: [
+          "circle-stroke-color": "#FFFFFF",
+          "circle-stroke-width": 0.7,
+          "circle-opacity": [
             "interpolate",
             ["linear"],
             ["get", "age_s"],

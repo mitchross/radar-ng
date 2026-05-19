@@ -18,10 +18,10 @@ export function TropicalOverlay() {
         type="fill"
         id="tropical-cone"
         filter={["==", ["get", "kind"], "cone"] as never}
-        style={{
-          fillColor: "#FF3B4A",
-          fillOpacity: 0.15,
-          fillOutlineColor: "#FF3B4A",
+        paint={{
+          "fill-color": "#FF3B4A",
+          "fill-opacity": 0.15,
+          "fill-outline-color": "#FF3B4A",
         }}
       />
       {/* Forecast track line */}
@@ -29,11 +29,11 @@ export function TropicalOverlay() {
         type="line"
         id="tropical-track"
         filter={["==", ["get", "kind"], "track"] as never}
-        style={{
-          lineColor: "#FF3B4A",
-          lineWidth: 2,
-          lineDasharray: [2, 2] as never,
-          lineOpacity: 0.9,
+        paint={{
+          "line-color": "#FF3B4A",
+          "line-width": 2,
+          "line-dasharray": [2, 2] as never,
+          "line-opacity": 0.9,
         }}
       />
       {/* Current storm position — circle + stroke */}
@@ -41,12 +41,12 @@ export function TropicalOverlay() {
         type="circle"
         id="tropical-position"
         filter={["==", ["get", "kind"], "position"] as never}
-        style={{
-          circleRadius: 9,
-          circleColor: "#FF3B4A",
-          circleStrokeColor: "#FFFFFF",
-          circleStrokeWidth: 2.5,
-          circleOpacity: 0.95,
+        paint={{
+          "circle-radius": 9,
+          "circle-color": "#FF3B4A",
+          "circle-stroke-color": "#FFFFFF",
+          "circle-stroke-width": 2.5,
+          "circle-opacity": 0.95,
         }}
       />
     </GeoJSONSource>

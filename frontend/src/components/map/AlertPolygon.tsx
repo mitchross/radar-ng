@@ -71,8 +71,8 @@ export function AlertPolygon() {
       <Layer
         type="fill"
         id="alert-fill"
-        style={{
-          fillColor: [
+        paint={{
+          "fill-color": [
             "match",
             ["get", "severity"],
             "Extreme", SEVERITY_FILL.Extreme,
@@ -81,7 +81,7 @@ export function AlertPolygon() {
             "Minor", SEVERITY_FILL.Minor,
             SEVERITY_FILL.Unknown,
           ],
-          fillOpacity: fillOpacityByKind,
+          "fill-opacity": fillOpacityByKind,
         }}
       />
       {/* Solid outline for warnings (active hazards). */}
@@ -89,8 +89,8 @@ export function AlertPolygon() {
         type="line"
         id="alert-outline-warning"
         filter={["==", ["get", "kind"], "warning"] as never}
-        style={{
-          lineColor: [
+        paint={{
+          "line-color": [
             "match",
             ["get", "severity"],
             "Extreme", SEVERITY_STROKE.Extreme,
@@ -99,7 +99,7 @@ export function AlertPolygon() {
             "Minor", SEVERITY_STROKE.Minor,
             SEVERITY_STROKE.Unknown,
           ],
-          lineWidth: 2.5,
+          "line-width": 2.5,
         }}
       />
       {/* Dashed outline for watches. */}
@@ -107,8 +107,8 @@ export function AlertPolygon() {
         type="line"
         id="alert-outline-watch"
         filter={["==", ["get", "kind"], "watch"] as never}
-        style={{
-          lineColor: [
+        paint={{
+          "line-color": [
             "match",
             ["get", "severity"],
             "Extreme", SEVERITY_STROKE.Extreme,
@@ -117,8 +117,8 @@ export function AlertPolygon() {
             "Minor", SEVERITY_STROKE.Minor,
             SEVERITY_STROKE.Unknown,
           ],
-          lineWidth: 2,
-          lineDasharray: [3, 3] as never,
+          "line-width": 2,
+          "line-dasharray": [3, 3] as never,
         }}
       />
       {/* Dotted outline for advisories + statements. */}
@@ -126,8 +126,8 @@ export function AlertPolygon() {
         type="line"
         id="alert-outline-advisory"
         filter={["in", ["get", "kind"], ["literal", ["advisory", "statement"]]] as never}
-        style={{
-          lineColor: [
+        paint={{
+          "line-color": [
             "match",
             ["get", "severity"],
             "Extreme", SEVERITY_STROKE.Extreme,
@@ -136,8 +136,8 @@ export function AlertPolygon() {
             "Minor", SEVERITY_STROKE.Minor,
             SEVERITY_STROKE.Unknown,
           ],
-          lineWidth: 1.5,
-          lineDasharray: [1, 2] as never,
+          "line-width": 1.5,
+          "line-dasharray": [1, 2] as never,
         }}
       />
     </GeoJSONSource>

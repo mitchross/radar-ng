@@ -36,7 +36,7 @@ export function WeatherLayerOverlay({ layerId, opacity = 0.7 }: Props) {
       <Layer
         type="raster"
         id={`${layerId}-layer`}
-        style={{ rasterOpacity: opacity, rasterFadeDuration: 0 }}
+        paint={{ "raster-opacity": opacity, "raster-fade-duration": 0 }}
       />
     </RasterSource>
   );

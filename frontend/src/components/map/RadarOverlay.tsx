@@ -63,9 +63,9 @@ export function RadarOverlay() {
       <Layer
         type="raster"
         id="radar-layer"
-        style={{
-          rasterOpacity: radarVisible ? radarOpacity : 0,
-          rasterFadeDuration: 0,
+        paint={{
+          "raster-opacity": radarVisible ? radarOpacity : 0,
+          "raster-fade-duration": 0,
         }}
       />
     </RasterSource>

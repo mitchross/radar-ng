@@ -16,8 +16,8 @@ export function StormCellsOverlay() {
       <Layer
         type="circle"
         id="storms-halo"
-        style={{
-          circleRadius: [
+        paint={{
+          "circle-radius": [
             "interpolate",
             ["linear"],
             ["get", "area_km2"],
@@ -25,7 +25,7 @@ export function StormCellsOverlay() {
             500, 18,
             5000, 36,
           ] as never,
-          circleColor: [
+          "circle-color": [
             "interpolate",
             ["linear"],
             ["get", "peak_dbz"],
@@ -34,16 +34,16 @@ export function StormCellsOverlay() {
             60, "#d02058",
             70, "#b24bff",
           ] as never,
-          circleOpacity: 0.18,
-          circleBlur: 0.6,
+          "circle-opacity": 0.18,
+          "circle-blur": 0.6,
         }}
       />
       {/* Core dot */}
       <Layer
         type="circle"
         id="storms-core"
-        style={{
-          circleRadius: [
+        paint={{
+          "circle-radius": [
             "interpolate",
             ["linear"],
             ["get", "peak_dbz"],
@@ -51,7 +51,7 @@ export function StormCellsOverlay() {
             60, 7,
             70, 9,
           ] as never,
-          circleColor: [
+          "circle-color": [
             "interpolate",
             ["linear"],
             ["get", "peak_dbz"],
@@ -60,9 +60,9 @@ export function StormCellsOverlay() {
             60, "#d02058",
             70, "#b24bff",
           ] as never,
-          circleStrokeColor: "#ffffff",
-          circleStrokeWidth: 1.4,
-          circleOpacity: 0.95,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 1.4,
+          "circle-opacity": 0.95,
         }}
       />
     </GeoJSONSource>
