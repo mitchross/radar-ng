@@ -25,6 +25,7 @@ from temporalio import activity
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
 from backend.shared.grid_dump import cleanup_old_grids, write_grid
 from backend.shared.logger import get_logger
+from backend.shared.manifest import update_manifest_file
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
 from backend.shared.tiler import apply_categorical_color_table, apply_color_table, render_tiles
@@ -100,6 +101,16 @@ class ForecastHourResult:
 class HrrrCleanupResult:
     tile_dirs_removed: int
     grid_files_removed: int
+
+
+@dataclass
+class ExtractedGrid:
+    data: np.ndarray
+    lats: np.ndarray
+    lons: np.ndarray
+    source_crs: str | None = None
+    source_x: np.ndarray | None = None
+    source_y: np.ndarray | None = None
 
 
 # ---------- helpers ----------
@@ -201,6 +212,50 @@ def _pick_ranges(records: list[dict], matchers: Iterable[tuple[str, ...]]) -> li
     return ranges
 
 
+def _normalize_lons(lons: np.ndarray) -> np.ndarray:
+    lons_arr = np.asarray(lons, dtype=np.float64)
+    return np.where(lons_arr > 180.0, lons_arr - 360.0, lons_arr)
+
+
+def _extract_native_projection(
+    grb: object,
+    lats: np.ndarray,
+    lons: np.ndarray,
+) -> tuple[str, np.ndarray, np.ndarray] | None:
+    """Return native projected CRS + x/y axes for curvilinear GRIB grids."""
+    projparams = getattr(grb, "projparams", None)
+    if not projparams:
+        return None
+
+    try:
+        from pyproj import CRS, Proj, Transformer
+
+        try:
+            crs = CRS.from_user_input(projparams)
+        except Exception:
+            crs = Proj(projparams).crs
+
+        transformer = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
+        xs, ys = transformer.transform(_normalize_lons(lons), lats.astype(np.float64, copy=False))
+
+        h, w = lats.shape
+        x0 = float(np.nanmedian(xs[:, 0]))
+        x1 = float(np.nanmedian(xs[:, -1]))
+        y0 = float(np.nanmedian(ys[0, :]))
+        y1 = float(np.nanmedian(ys[-1, :]))
+        if not all(np.isfinite(v) for v in (x0, x1, y0, y1)):
+            return None
+        if abs(x1 - x0) < 1e-6 or abs(y1 - y0) < 1e-6:
+            return None
+
+        source_x = np.linspace(x0, x1, w, dtype=np.float64)
+        source_y = np.linspace(y0, y1, h, dtype=np.float64)
+        return crs.to_wkt(), source_x, source_y
+    except Exception as exc:  # noqa: BLE001
+        log.warning("projection_extract_failed", extra={"err": str(exc)})
+        return None
+
+
 def _download_subset_sync(
     client: httpx.Client,
     date_str: str,
@@ -238,7 +293,7 @@ def _download_subset_sync(
     return out_path
 
 
-def _extract_variable(grib_path: Path, match: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+def _extract_variable(grib_path: Path, match: dict) -> ExtractedGrid | None:
     try:
         grbs = pygrib.open(str(grib_path))
         for grb in grbs:
@@ -254,13 +309,25 @@ def _extract_variable(grib_path: Path, match: dict) -> tuple[np.ndarray, np.ndar
             if ok:
                 data = grb.values
                 lats, lons = grb.latlons()
+                lons = _normalize_lons(lons)
                 if hasattr(data, "filled"):
                     data = data.filled(np.nan)
+                native = _extract_native_projection(grb, lats, lons)
                 grbs.close()
-                return (
-                    data.astype(np.float32),
-                    lats[:, 0].astype(np.float64),
-                    lons[0, :].astype(np.float64),
+                if native is not None:
+                    source_crs, source_x, source_y = native
+                    return ExtractedGrid(
+                        data=data.astype(np.float32),
+                        lats=lats.astype(np.float64),
+                        lons=lons.astype(np.float64),
+                        source_crs=source_crs,
+                        source_x=source_x,
+                        source_y=source_y,
+                    )
+                return ExtractedGrid(
+                    data=data.astype(np.float32),
+                    lats=lats[:, 0].astype(np.float64),
+                    lons=lons[0, :].astype(np.float64),
                 )
         grbs.close()
     except Exception as exc:  # noqa: BLE001
@@ -276,27 +343,53 @@ def _ms_to_mph(ms: np.ndarray) -> np.ndarray:
     return ms * 2.237
 
 
-def _safe_grid_dump(layer: str, ts: str, data: np.ndarray, lats: np.ndarray, lons: np.ndarray, unit: str) -> None:
+def _grid_dump_axes(grid: ExtractedGrid) -> tuple[np.ndarray, np.ndarray]:
+    if grid.lats.ndim == 1 and grid.lons.ndim == 1:
+        return grid.lats, grid.lons
+    row = grid.lats.shape[0] // 2
+    col = grid.lons.shape[1] // 2
+    return grid.lats[:, col].astype(np.float64), grid.lons[row, :].astype(np.float64)
+
+
+def _safe_grid_dump(layer: str, ts: str, data: np.ndarray, grid: ExtractedGrid, unit: str) -> None:
     try:
+        lats, lons = _grid_dump_axes(grid)
         write_grid(layer, ts, data, lats, lons, unit=unit)
     except Exception as exc:  # noqa: BLE001
         log.warning("grid_dump_failed", extra={"layer": layer, "err": str(exc)})
 
 
-def _write_palette_tiles(tile_base: Path, layer: str, palette: str, ts: str, rgba: np.ndarray, lats: np.ndarray, lons: np.ndarray) -> None:
-    if lats[0] > lats[-1]:
+def _write_palette_tiles(tile_base: Path, layer: str, palette: str, ts: str, rgba: np.ndarray, grid: ExtractedGrid) -> None:
+    lats = grid.lats
+    lons = grid.lons
+    source_y = grid.source_y
+    if grid.source_crs is None and lats.ndim == 1 and lats[0] > lats[-1]:
         rgba = np.flipud(rgba)
         lats = lats[::-1]
+    elif grid.source_crs is not None and source_y is not None and source_y[0] > source_y[-1]:
+        rgba = np.flipud(rgba)
+        lats = np.flipud(lats)
+        lons = np.flipud(lons)
+        source_y = source_y[::-1]
     out_dir = str(tile_base / layer / palette / ts)
-    render_tiles(rgba=rgba, lats=lats, lons=lons, output_dir=out_dir, zoom_levels=ZOOM_LEVELS)
+    render_tiles(
+        rgba=rgba,
+        lats=lats,
+        lons=lons,
+        output_dir=out_dir,
+        zoom_levels=ZOOM_LEVELS,
+        source_crs=grid.source_crs,
+        source_x=grid.source_x,
+        source_y=source_y,
+    )
 
 
 def _render_per_palette(
-    tile_base: Path, layer: str, ts: str, data: np.ndarray, lats: np.ndarray, lons: np.ndarray,
+    tile_base: Path, layer: str, ts: str, data: np.ndarray, grid: ExtractedGrid,
     palette_tables: dict[str, dict], color_key: str, *,
     categorical: bool = False, categories_map: dict[int, str] | None = None,
-) -> bool:
-    rendered_any = False
+) -> list[str]:
+    rendered: list[str] = []
     for pname, tables in palette_tables.items():
         entry = tables.get(color_key)
         if not entry:
@@ -307,9 +400,9 @@ def _render_per_palette(
             rgba = apply_categorical_color_table(data, entry["categories"], categories_map)
         else:
             rgba = apply_color_table(data, entry)
-        _write_palette_tiles(tile_base, layer, pname, ts, rgba, lats, lons)
-        rendered_any = True
-    return rendered_any
+        _write_palette_tiles(tile_base, layer, pname, ts, rgba, grid)
+        rendered.append(pname)
+    return rendered
 
 
 def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_tables: dict[str, dict], tile_base: Path) -> list[str]:
@@ -320,78 +413,94 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
 
     r = _extract_variable(grib_path, VAR_SELECTORS["refc"])
     if r:
-        d, lats, lons = r
-        if _render_per_palette(tile_base, "radar-hrrr", ts, d, lats, lons, palette_tables, "reflectivity"):
+        d = r.data
+        palettes = _render_per_palette(tile_base, "radar-hrrr", ts, d, r, palette_tables, "reflectivity")
+        if palettes:
             rendered.append("radar-hrrr")
-            _safe_grid_dump("radar-hrrr", ts, d, lats, lons, "dBZ")
+            update_manifest_file("radar-hrrr", ts, palettes=palettes, action="add")
+            _safe_grid_dump("radar-hrrr", ts, d, r, "dBZ")
 
     r = _extract_variable(grib_path, VAR_SELECTORS["t2m"])
     if r:
-        d, lats, lons = r
+        d = r.data
         d = _kelvin_to_f(d)
-        if _render_per_palette(tile_base, "temperature", ts, d, lats, lons, palette_tables, "temperature"):
+        palettes = _render_per_palette(tile_base, "temperature", ts, d, r, palette_tables, "temperature")
+        if palettes:
             rendered.append("temperature")
-            _safe_grid_dump("temperature", ts, d, lats, lons, "°F")
+            update_manifest_file("temperature", ts, palettes=palettes, action="add")
+            _safe_grid_dump("temperature", ts, d, r, "°F")
 
     if any("dewpoint" in t for t in palette_tables.values()):
         r = _extract_variable(grib_path, VAR_SELECTORS["dpt2m"])
         if r:
-            d, lats, lons = r
+            d = r.data
             d = _kelvin_to_f(d)
-            if _render_per_palette(tile_base, "dewpoint", ts, d, lats, lons, palette_tables, "dewpoint"):
+            palettes = _render_per_palette(tile_base, "dewpoint", ts, d, r, palette_tables, "dewpoint")
+            if palettes:
                 rendered.append("dewpoint")
+                update_manifest_file("dewpoint", ts, palettes=palettes, action="add")
 
     if any("humidity" in t for t in palette_tables.values()):
         r = _extract_variable(grib_path, VAR_SELECTORS["rh2m"])
         if r:
-            d, lats, lons = r
-            if _render_per_palette(tile_base, "humidity", ts, d, lats, lons, palette_tables, "humidity"):
+            d = r.data
+            palettes = _render_per_palette(tile_base, "humidity", ts, d, r, palette_tables, "humidity")
+            if palettes:
                 rendered.append("humidity")
+                update_manifest_file("humidity", ts, palettes=palettes, action="add")
 
     r = _extract_variable(grib_path, VAR_SELECTORS["cape"])
     if r:
-        d, lats, lons = r
-        if _render_per_palette(tile_base, "cape", ts, d, lats, lons, palette_tables, "cape"):
+        d = r.data
+        palettes = _render_per_palette(tile_base, "cape", ts, d, r, palette_tables, "cape")
+        if palettes:
             rendered.append("cape")
-            _safe_grid_dump("cape", ts, d, lats, lons, "J/kg")
+            update_manifest_file("cape", ts, palettes=palettes, action="add")
+            _safe_grid_dump("cape", ts, d, r, "J/kg")
 
     u = _extract_variable(grib_path, VAR_SELECTORS["u10"])
     v = _extract_variable(grib_path, VAR_SELECTORS["v10"])
     if u and v:
-        u_data, lats, lons = u
-        v_data = v[0]
+        u_data = u.data
+        v_data = v.data
         u_mph = _ms_to_mph(u_data)
         v_mph = _ms_to_mph(v_data)
         speed = np.sqrt(u_mph ** 2 + v_mph ** 2)
-        if _render_per_palette(tile_base, "wind", ts, speed, lats, lons, palette_tables, "wind_speed"):
+        palettes = _render_per_palette(tile_base, "wind", ts, speed, u, palette_tables, "wind_speed")
+        if palettes:
             rendered.append("wind")
-            _safe_grid_dump("wind", ts, speed, lats, lons, "mph")
-            _safe_grid_dump("wind_u", ts, u_mph, lats, lons, "mph")
-            _safe_grid_dump("wind_v", ts, v_mph, lats, lons, "mph")
+            update_manifest_file("wind", ts, palettes=palettes, action="add")
+            _safe_grid_dump("wind", ts, speed, u, "mph")
+            _safe_grid_dump("wind_u", ts, u_mph, u, "mph")
+            _safe_grid_dump("wind_v", ts, v_mph, u, "mph")
 
     r = _extract_variable(grib_path, VAR_SELECTORS["apcp"])
     if r:
-        d, lats, lons = r
+        d = r.data
         d_in = d / 25.4
-        if _render_per_palette(tile_base, "precip-accum", ts, d_in, lats, lons, palette_tables, "precip_accum"):
+        palettes = _render_per_palette(tile_base, "precip-accum", ts, d_in, r, palette_tables, "precip_accum")
+        if palettes:
             rendered.append("precip-accum")
-            _safe_grid_dump("precip-accum", ts, d_in, lats, lons, "in")
+            update_manifest_file("precip-accum", ts, palettes=palettes, action="add")
+            _safe_grid_dump("precip-accum", ts, d_in, r, "in")
 
     r = _extract_variable(grib_path, VAR_SELECTORS["tcdc"])
     if r:
-        d, lats, lons = r
-        if _render_per_palette(tile_base, "cloud", ts, d, lats, lons, palette_tables, "cloud_cover"):
+        d = r.data
+        palettes = _render_per_palette(tile_base, "cloud", ts, d, r, palette_tables, "cloud_cover")
+        if palettes:
             rendered.append("cloud")
-            _safe_grid_dump("cloud", ts, d, lats, lons, "%")
+            update_manifest_file("cloud", ts, palettes=palettes, action="add")
+            _safe_grid_dump("cloud", ts, d, r, "%")
 
     precip: dict[str, np.ndarray] = {}
-    plats = plons = None
+    pgrid: ExtractedGrid | None = None
     for k in ("crain", "csnow", "cfrzr", "cicep"):
         r = _extract_variable(grib_path, VAR_SELECTORS[k])
         if r:
-            precip[k] = r[0]
-            plats, plons = r[1], r[2]
-    if precip and plats is not None and plons is not None:
+            precip[k] = r.data
+            pgrid = r
+    if precip and pgrid is not None:
         h, w = next(iter(precip.values())).shape
         cat = np.zeros((h, w), dtype=np.int32)
         if "crain" in precip: cat[precip["crain"] > 0] = 1
@@ -399,9 +508,11 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
         if "cfrzr" in precip: cat[precip["cfrzr"] > 0] = 3
         if "cicep" in precip: cat[precip["cicep"] > 0] = 4
         ptype_map = {1: "rain", 2: "snow", 3: "freezing_rain", 4: "ice_pellets"}
-        if _render_per_palette(tile_base, "precip-type", ts, cat, plats, plons, palette_tables, "precip_type",
-                               categorical=True, categories_map=ptype_map):
+        palettes = _render_per_palette(tile_base, "precip-type", ts, cat, pgrid, palette_tables, "precip_type",
+                                       categorical=True, categories_map=ptype_map)
+        if palettes:
             rendered.append("precip-type")
+            update_manifest_file("precip-type", ts, palettes=palettes, action="add")
 
     return rendered
 
@@ -520,6 +631,7 @@ async def hrrr_cleanup(retention_hours: int) -> HrrrCleanupResult:
                     continue
                 if dt.timestamp() < cutoff:
                     shutil.rmtree(ts_dir, ignore_errors=True)
+                    update_manifest_file(layer, ts_dir.name, action="remove")
                     removed += 1
         grids_removed = cleanup_old_grids()
         return HrrrCleanupResult(tile_dirs_removed=removed, grid_files_removed=grids_removed)

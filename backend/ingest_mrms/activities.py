@@ -29,6 +29,7 @@ from temporalio import activity
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
 from backend.shared.grid_dump import cleanup_old_grids, write_grid
 from backend.shared.logger import get_logger
+from backend.shared.manifest import update_manifest_file
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
 from backend.shared.storms import write_storms_json
@@ -359,6 +360,7 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
     else:
         shutil.rmtree(tmp_dir, ignore_errors=True)
     duration = time.time() - started
+    update_manifest_file(inp.layer_name, timestamp, palettes=rendered_palettes, action="add")
     log.info("frame_done", extra={"layer": inp.layer_name, "timestamp": timestamp, "duration_s": round(duration, 1)})
 
     return ProcessFrameResult(
@@ -402,6 +404,7 @@ async def mrms_cleanup(inp: CleanupInput) -> CleanupResult:
                     continue
                 if dt.timestamp() < cutoff:
                     shutil.rmtree(ts_dir, ignore_errors=True)
+                    update_manifest_file(inp.layer_name, ts_dir.name, action="remove")
                     removed += 1
         grids_removed = cleanup_old_grids()
         return CleanupResult(tile_dirs_removed=removed, grid_files_removed=grids_removed)

@@ -14,6 +14,7 @@ Pipeline:
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import timedelta
 
@@ -34,6 +35,7 @@ with workflow.unsafe.imports_passed_through():
 
 
 RETENTION_HOURS = 12
+FORECAST_CONCURRENCY = 8
 
 _DEFAULT_RETRY = RetryPolicy(
     initial_interval=timedelta(seconds=1),
@@ -88,15 +90,20 @@ class IngestHrrrWorkflow:
         )
         workflow.logger.info("HRRR run %s horizon=%dh", find.run_id, horizon)
 
-        layers_per_hour: list[list[str]] = []
-        for fhr in range(1, horizon + 1):
-            r: ForecastHourResult = await workflow.execute_activity(
-                hrrr_process_forecast_hour, args=[find.run_id, fhr],
-                start_to_close_timeout=timedelta(minutes=20),
-                heartbeat_timeout=timedelta(seconds=180),
-                retry_policy=_FORECAST_RETRY,
-            )
-            layers_per_hour.append(r.rendered_layers)
+        sem = asyncio.Semaphore(FORECAST_CONCURRENCY)
+
+        async def process_hour(fhr: int) -> ForecastHourResult:
+            async with sem:
+                return await workflow.execute_activity(
+                    hrrr_process_forecast_hour, args=[find.run_id, fhr],
+                    start_to_close_timeout=timedelta(minutes=20),
+                    heartbeat_timeout=timedelta(seconds=180),
+                    retry_policy=_FORECAST_RETRY,
+                )
+
+        results = await asyncio.gather(*(process_hour(fhr) for fhr in range(1, horizon + 1)))
+        results = sorted(results, key=lambda r: r.fhr)
+        layers_per_hour = [r.rendered_layers for r in results]
 
         await workflow.execute_activity(
             hrrr_mark_processed, find.run_id,

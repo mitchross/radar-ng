@@ -19,6 +19,7 @@ from temporalio import activity
 
 from backend.shared.grid_dump import cleanup_old_grids
 from backend.shared.logger import get_logger
+from backend.shared.manifest import update_manifest_file
 
 
 TILE_DIR = Path(os.environ.get("TILE_DIR", "/data/tiles"))
@@ -72,6 +73,7 @@ def _sweep_layer(layer: str, retention_min: int) -> int:
             continue
         if dt.timestamp() < cutoff:
             shutil.rmtree(ts_dir, ignore_errors=True)
+            update_manifest_file(layer, ts_dir.name, action="remove")
             removed += 1
     return removed
 

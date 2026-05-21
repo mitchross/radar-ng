@@ -10,9 +10,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import tempfile
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -20,6 +21,7 @@ from temporalio import activity
 
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
 from backend.shared.logger import get_logger
+from backend.shared.manifest import update_manifest_file
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
 from backend.shared.tiler import apply_color_table, render_tiles
@@ -79,6 +81,27 @@ def _persistence_fallback(frames: list[np.ndarray], n_leadtimes: int) -> np.ndar
     return out
 
 
+def _write_nowcast_status(status: str, *, reason: str | None = None, detail: str | None = None) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    body = {
+        "status": status,
+        "reason": reason,
+        "detail": detail,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    fd, tmp_name = tempfile.mkstemp(prefix=".nowcast-status.", suffix=".tmp", dir=str(STATE_DIR))
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(body, fh, separators=(",", ":"), sort_keys=True)
+            fh.write("\n")
+        os.replace(tmp_name, STATE_DIR / "nowcast-status.json")
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+
 def _run_nowcast(frames: list[np.ndarray], n_leadtimes: int) -> np.ndarray | None:
     try:
         from pysteps import motion, nowcasts  # type: ignore
@@ -86,6 +109,7 @@ def _run_nowcast(frames: list[np.ndarray], n_leadtimes: int) -> np.ndarray | Non
         # Catches both "module not found" AND "distutils missing" / "_ARRAY_API"
         # numpy-vs-cv2 incompatibilities on Python 3.12.
         log.warning("pysteps_unavailable", extra={"err": str(exc)})
+        _write_nowcast_status("degraded", reason="pysteps_unavailable", detail=str(exc))
         return _persistence_fallback(frames, n_leadtimes)
 
     stack = np.stack(frames, axis=0).astype(np.float32)
@@ -100,8 +124,10 @@ def _run_nowcast(frames: list[np.ndarray], n_leadtimes: int) -> np.ndarray | Non
             forecast = nowcaster(stack[-3:, :, :], uv, n_leadtimes, n_cascade_levels=6, R_thr=5.0)
     except Exception as exc:  # noqa: BLE001
         log.warning("pysteps_failed", extra={"err": str(exc)})
+        _write_nowcast_status("degraded", reason="pysteps_failed", detail=str(exc))
         return _persistence_fallback(frames, n_leadtimes)
     forecast = np.where(np.isnan(forecast), -9999.0, forecast)
+    _write_nowcast_status("ok")
     return forecast
 
 
@@ -115,6 +141,8 @@ def _render_frame(tile_base: Path, palette_tables: dict[str, dict], ts: str, dat
         out_dir = str(tile_base / "nowcast" / pname / ts)
         render_tiles(rgba=rgba, lats=lats, lons=lons, output_dir=out_dir, zoom_levels=ZOOM_LEVELS)
         rendered.append(pname)
+    if rendered:
+        update_manifest_file("nowcast", ts, palettes=rendered, action="add")
     return rendered
 
 

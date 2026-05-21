@@ -16,6 +16,7 @@ import json
 import os
 import struct
 import sys
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -28,6 +29,7 @@ from logger import get_logger  # type: ignore  # noqa: E402
 from state import ProcessedSet  # type: ignore  # noqa: E402
 from tiler import apply_color_table, render_tiles  # type: ignore  # noqa: E402
 from palettes import get_palette_names, load_palette  # type: ignore  # noqa: E402
+from manifest import update_manifest_file  # type: ignore  # noqa: E402
 
 GRID_DIR = Path(os.environ.get("GRID_DIR", "/data/grids"))
 TILE_DIR = Path(os.environ.get("TILE_DIR", "/data/tiles"))
@@ -79,8 +81,9 @@ def run_nowcast(frames: list[np.ndarray], n_leadtimes: int) -> np.ndarray | None
     try:
         import pysteps  # noqa: F401
         from pysteps import motion, nowcasts  # type: ignore
-    except ImportError as exc:
+    except (ImportError, AttributeError, ModuleNotFoundError) as exc:
         log.warning("pysteps_unavailable", extra={"err": str(exc)})
+        _write_nowcast_status("degraded", reason="pysteps_unavailable", detail=str(exc))
         return _persistence_fallback(frames, n_leadtimes)
 
     stack = np.stack(frames, axis=0).astype(np.float32)
@@ -110,10 +113,33 @@ def run_nowcast(frames: list[np.ndarray], n_leadtimes: int) -> np.ndarray | None
             )
     except Exception as exc:  # noqa: BLE001
         log.warning("pysteps_failed", extra={"err": str(exc)})
+        _write_nowcast_status("degraded", reason="pysteps_failed", detail=str(exc))
         return _persistence_fallback(frames, n_leadtimes)
 
     forecast = np.where(np.isnan(forecast), -9999.0, forecast)
+    _write_nowcast_status("ok")
     return forecast
+
+
+def _write_nowcast_status(status: str, *, reason: str | None = None, detail: str | None = None) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    body = {
+        "status": status,
+        "reason": reason,
+        "detail": detail,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    fd, tmp_name = tempfile.mkstemp(prefix=".nowcast-status.", suffix=".tmp", dir=str(STATE_DIR))
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(body, fh, separators=(",", ":"), sort_keys=True)
+            fh.write("\n")
+        os.replace(tmp_name, STATE_DIR / "nowcast-status.json")
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
 
 
 def _persistence_fallback(frames: list[np.ndarray], n_leadtimes: int) -> np.ndarray:
@@ -134,6 +160,7 @@ def render_nowcast_frame(
     lats: np.ndarray,
     lons: np.ndarray,
 ) -> None:
+    rendered: list[str] = []
     for pname, tables in palette_tables.items():
         entry = tables.get("reflectivity")
         if not entry:
@@ -147,6 +174,9 @@ def render_nowcast_frame(
             "rendered",
             extra={"layer": "nowcast", "palette": pname, "timestamp": timestamp, "tiles": count},
         )
+        rendered.append(pname)
+    if rendered:
+        update_manifest_file("nowcast", timestamp, palettes=rendered, action="add")
 
 
 def process() -> bool:

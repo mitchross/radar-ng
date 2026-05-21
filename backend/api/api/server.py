@@ -21,6 +21,8 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from backend.shared.manifest import read_manifest_file
+
 TILE_DIR = os.environ.get("TILE_DIR", "/data/tiles")
 GRID_DIR = os.environ.get("GRID_DIR", "/data/grids")
 STATE_DIR = os.environ.get("STATE_DIR", "/data/state")
@@ -54,13 +56,9 @@ if os.environ.get("DISABLE_WORKFLOW_ROUTES") != "1":
     app.include_router(workflows_router)
 
 _forecast_cache: dict[str, tuple[float, dict]] = {}
-# Manifest in-memory cache. The HTTP `Cache-Control: max-age=15` header is
-# honored by Cloudflare/clients but multiple-replica tile-server pods each
-# recompute the body on a cold cache hit, and the recompute walks the
-# Longhorn PVC with thousands of iterdir() calls (8 layers × 3 palettes ×
-# ~80 timestamps each). On a fresh pod it takes 4–7 s, which times out
-# the mobile app's settings health check. 15-s in-process cache cuts
-# that to a few ms after the first build.
+# Manifest in-memory cache. The source of truth is STATE_DIR/manifest.json,
+# maintained by ingest/cleanup activities, so a cold API hit only reads one
+# small JSON file instead of crawling the tile PVC.
 _MANIFEST_TTL_S = 15.0
 _manifest_cache: dict[str, object] = {"expires_at": 0.0, "body": None}
 _metrics = {
@@ -89,6 +87,15 @@ def _newest_mtime(path: Path) -> float | None:
         return None
 
 
+def _read_nowcast_status() -> dict | None:
+    path = Path(STATE_DIR) / "nowcast-status.json"
+    try:
+        body = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return body if isinstance(body, dict) else None
+
+
 def _is_layer_dirname(name: str) -> bool:
     # Layer names in this app match [a-z][a-z0-9_-]*. Excludes filesystem
     # artifacts like ext4's `lost+found` (root:0 mode 700, unreadable by the
@@ -99,49 +106,8 @@ def _is_layer_dirname(name: str) -> bool:
 
 
 def _build_manifest() -> dict:
-    """Walk the tiles PVC and build the manifest body. Slow on cold cache
-    (4–7 s on Longhorn for the full layout); cached by the caller."""
-    tile_base = Path(TILE_DIR)
-    layers: dict[str, dict] = {}
-
-    if tile_base.exists():
-        for layer_dir in sorted(tile_base.iterdir()):
-            if not layer_dir.is_dir():
-                continue
-            if not _is_layer_dirname(layer_dir.name):
-                continue
-            # Two possible layouts — fold both into a flat timestamp set:
-            #   /{layer}/{timestamp}/           (legacy, single palette)
-            #   /{layer}/{palette}/{timestamp}/ (multi-palette)
-            timestamp_set: set[str] = set()
-            palettes: set[str] = set()
-            for entry in layer_dir.iterdir():
-                if not entry.is_dir():
-                    continue
-                if entry.name[:1].isdigit():
-                    # legacy timestamp dir
-                    if any(entry.iterdir()):
-                        timestamp_set.add(entry.name)
-                else:
-                    # palette dir
-                    palettes.add(entry.name)
-                    for ts_dir in entry.iterdir():
-                        if ts_dir.is_dir() and any(ts_dir.iterdir()):
-                            timestamp_set.add(ts_dir.name)
-            timestamps = sorted(timestamp_set)
-            if timestamps:
-                layers[layer_dir.name] = {
-                    "timestamps": timestamps,
-                    "latest": timestamps[-1],
-                    "palettes": sorted(palettes) if palettes else ["classic"],
-                }
-
-    return {
-        "layers": layers,
-        "tile_url_template": "/tiles/{layer}/{palette}/{timestamp}/{z}/{x}/{y}.png",
-        "tile_url_template_legacy": "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    """Read the pre-rendered manifest body from STATE_DIR/manifest.json."""
+    return read_manifest_file(STATE_DIR)
 
 
 @app.get("/api/manifest.json")
@@ -465,10 +431,17 @@ async def health() -> JSONResponse:
             status = "degraded"
             reasons.append(f"mrms_stale_{mrms_age}s")
 
+    nowcast_status = _read_nowcast_status()
+    if nowcast_status and nowcast_status.get("status") == "degraded":
+        status = "degraded"
+        reason = nowcast_status.get("reason") or "nowcast_degraded"
+        reasons.append(str(reason))
+
     body = {
         "status": status,
         "mrms_age_s": mrms_age,
         "mrms_max_age_s": MRMS_MAX_AGE_S,
+        "nowcast": nowcast_status or {"status": "unknown", "reason": "no_status"},
         "reasons": reasons,
         "upstream_forecast": OPEN_METEO_BASE,
         "checked_at": datetime.now(timezone.utc).isoformat(),

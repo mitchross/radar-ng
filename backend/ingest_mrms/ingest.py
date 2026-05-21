@@ -32,6 +32,7 @@ from tiler import apply_color_table, render_tiles  # type: ignore  # noqa: E402
 from palettes import get_palette_names, load_palette  # type: ignore  # noqa: E402
 from grid_dump import cleanup_old_grids, write_grid  # type: ignore  # noqa: E402
 from storms import write_storms_json  # type: ignore  # noqa: E402
+from manifest import update_manifest_file  # type: ignore  # noqa: E402
 
 MRMS_BASE = "https://noaa-mrms-pds.s3.amazonaws.com"
 # Default to the QC-applied base reflectivity — NOAA filters ground clutter,
@@ -185,6 +186,7 @@ def cleanup_old_tiles(base_dir: Path, retention_hours: int) -> None:
             continue
         if dt.timestamp() < cutoff:
             shutil.rmtree(ts_dir, ignore_errors=True)
+            update_manifest_file(LAYER_NAME, ts_dir.name, action="remove")
             log.info("retention_expired", extra={"layer": LAYER_NAME, "timestamp": ts_dir.name, "path": str(ts_dir)})
 
 
@@ -251,16 +253,20 @@ def _process_key(
         ): pname
         for pname, ctable in palette_tables.items()
     }
+    rendered_palettes: list[str] = []
     for fut in futures:
         pname = futures[fut]
         try:
             count = fut.result()
+            rendered_palettes.append(pname)
             log.info(
                 "rendered",
                 extra={"layer": LAYER_NAME, "palette": pname, "timestamp": timestamp, "tiles": count},
             )
         except Exception as exc:  # noqa: BLE001
             log.error("palette_render_failed", extra={"palette": pname, "err": str(exc)})
+    if rendered_palettes:
+        update_manifest_file(LAYER_NAME, timestamp, palettes=rendered_palettes, action="add")
     log.info(
         "frame_done",
         extra={"timestamp": timestamp, "duration_s": round(time.time() - started, 1)},

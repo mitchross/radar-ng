@@ -17,6 +17,7 @@ Pipeline per run:
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -40,6 +41,7 @@ with workflow.unsafe.imports_passed_through():
 
 
 RETENTION_HOURS = 4
+FRAME_CONCURRENCY = 2
 
 _DEFAULT_RETRY = RetryPolicy(
     initial_interval=timedelta(seconds=1),
@@ -84,23 +86,29 @@ class IngestMrmsWorkflow:
                 rendered_count=0, cleanup=cleanup,
             )
 
+        sem = asyncio.Semaphore(FRAME_CONCURRENCY)
+
+        async def process_key(key: str) -> ProcessFrameResult:
+            async with sem:
+                return await workflow.execute_activity(
+                    mrms_process_frame, ProcessFrameInput(key=key, layer_name=args.layer_name),
+                    start_to_close_timeout=timedelta(minutes=20),
+                    heartbeat_timeout=timedelta(seconds=180),
+                    retry_policy=_FRAME_RETRY,
+                )
+
         rendered = 0
-        for key in listing.keys:
-            r: ProcessFrameResult = await workflow.execute_activity(
-                mrms_process_frame, ProcessFrameInput(key=key, layer_name=args.layer_name),
-                start_to_close_timeout=timedelta(minutes=20),
-                heartbeat_timeout=timedelta(seconds=180),
-                retry_policy=_FRAME_RETRY,
-            )
+        results = await asyncio.gather(*(process_key(key) for key in listing.keys))
+        for r in results:
             if r.rendered:
                 await workflow.execute_activity(
-                    mrms_mark_processed, MarkProcessedInput(key=key, layer_name=args.layer_name),
+                    mrms_mark_processed, MarkProcessedInput(key=r.key, layer_name=args.layer_name),
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=_DEFAULT_RETRY,
                 )
                 rendered += 1
             else:
-                workflow.logger.warning("frame skipped: %s", key)
+                workflow.logger.warning("frame skipped: %s", r.key)
 
         cleanup = await self._cleanup(args.layer_name)
         return IngestMrmsResult(

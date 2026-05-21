@@ -56,3 +56,39 @@ def test_render_tiles_creates_files():
         first = tiles[0]
         parts = first.relative_to(tmpdir).parts
         assert len(parts) == 3  # z/x/y.png
+
+
+def test_render_tiles_accepts_projected_source_grid():
+    from pyproj import Transformer
+
+    from backend.shared.tiler import apply_color_table, render_tiles
+
+    color_table = {
+        "ranges": [{"min": 0, "max": 100, "rgba": [0, 128, 255, 200]}],
+        "no_data_below": -1,
+    }
+    to_merc = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+    to_geo = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+    x0, y0 = to_merc.transform(-125.0, 25.0)
+    x1, y1 = to_merc.transform(-65.0, 50.0)
+    source_x = np.linspace(x0, x1, 160)
+    source_y = np.linspace(y1, y0, 100)
+    xs, ys = np.meshgrid(source_x, source_y, indexing="xy")
+    lons, lats = to_geo.transform(xs, ys)
+    data = np.full((100, 160), 20.0, dtype=np.float32)
+    rgba = apply_color_table(data, color_table)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        count = render_tiles(
+            rgba=rgba,
+            lats=lats,
+            lons=lons,
+            output_dir=tmpdir,
+            zoom_levels=[4],
+            tile_size=64,
+            source_crs="EPSG:3857",
+            source_x=source_x,
+            source_y=source_y,
+        )
+
+        assert count > 0
