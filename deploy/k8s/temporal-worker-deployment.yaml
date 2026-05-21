@@ -2,7 +2,7 @@
 #
 # Lives in the radar-ng namespace (NOT a separate worker namespace, the way
 # news-reader-temporal-worker does it) because the worker needs to mount the
-# same Longhorn PVCs the API + legacy ingestors already use. PVCs are
+# same Longhorn PVCs the API uses (tiles, grids, state). PVCs are
 # namespace-scoped; sharing a namespace is the simplest answer.
 #
 # The Temporal Worker Controller injects TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE,

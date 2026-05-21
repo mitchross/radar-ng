@@ -38,7 +38,11 @@ TMP_ROOT = Path(os.environ.get("HRRR_TMP_ROOT", "/tmp/hrrr_work"))
 FORECAST_HOURS = int(os.environ.get("FORECAST_HOURS", "18"))
 EXTENDED_FORECAST_HOURS = int(os.environ.get("EXTENDED_FORECAST_HOURS", "48"))
 EXTENDED_RUNS = {0, 6, 12, 18}
-ZOOM_LEVELS = [4, 5, 6, 7, 8, 9]
+# z9 dropped: client (RadarOverlay.tsx) caps radar-hrrr at z8, so z9 tiles
+# were rendered + stored + never fetched. Matches the MRMS decision from
+# 2026-05-10 (see ingest_mrms/activities.py). Restore here AND in the
+# client SOURCE_MAX_ZOOM map if render perf catches up.
+ZOOM_LEVELS = [4, 5, 6, 7, 8]
 
 log = get_logger("ingest-hrrr-activities")
 

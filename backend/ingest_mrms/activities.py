@@ -1,7 +1,6 @@
 """Temporal activities for the MRMS radar ingest pipeline.
 
-These wrap the same logic as ingest.py but expose it as Temporal activities
-so it can be orchestrated by IngestMrmsWorkflow.
+Orchestrated by IngestMrmsWorkflow.
 
 State-on-disk strategy: the ProcessedSet (state/ingest-mrms.json) is
 loaded + saved by individual activities. Schedule overlap policy is SKIP,

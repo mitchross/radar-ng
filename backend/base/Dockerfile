@@ -6,7 +6,8 @@
 #   docker build -t registry.vanillax.me/radar-ng-base:latest \
 #     -f base/Dockerfile backend/
 #
-# All ingestors FROM this image, then COPY their own ingest.py + shared/ in.
+# The temporal-worker image FROM this base; ingest logic now lives in
+# backend/<service>/activities.py registered by temporal/worker.py.
 
 FROM python:3.12-slim
 
