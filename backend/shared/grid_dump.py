@@ -115,7 +115,14 @@ def cleanup_old_grids() -> int:
     for layer_dir in root.iterdir():
         if not layer_dir.is_dir():
             continue
-        for f in layer_dir.iterdir():
+        try:
+            entries = list(layer_dir.iterdir())
+        except OSError:
+            # e.g. ext4 lost+found is root-owned and unreadable to the
+            # worker's UID; skip anything we can't traverse rather than
+            # crashing the whole cleanup activity.
+            continue
+        for f in entries:
             try:
                 if f.stat().st_mtime < cutoff:
                     f.unlink()
