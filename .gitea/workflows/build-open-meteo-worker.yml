@@ -46,8 +46,6 @@ jobs:
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -55,13 +53,13 @@ jobs:
           context: .
           file: temporal/open_meteo_worker.Dockerfile
           push: true
-          tags: |
-            registry.vanillax.me/radar-ng-open-meteo-worker:${{ steps.ver.outputs.version }}
-            registry.vanillax.me/radar-ng-open-meteo-worker:latest
+          tags: registry.vanillax.me/radar-ng-open-meteo-worker:${{ steps.ver.outputs.version }}
           labels: |
             org.opencontainers.image.source=https://gitea.vanillax.me/vanillax/radar-ng
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.ver.outputs.version }}
+          cache-from: type=registry,ref=registry.vanillax.me/radar-ng-open-meteo-worker:buildcache
+          cache-to: type=registry,ref=registry.vanillax.me/radar-ng-open-meteo-worker:buildcache,mode=max
 
       - name: Summary
         run: |

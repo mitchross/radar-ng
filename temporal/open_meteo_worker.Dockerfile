@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # radar-ng open-meteo Temporal worker.
 #
 # Lives in a separate pod from the main radar-ng-temporal-worker because its
@@ -15,9 +16,11 @@ USER root
 
 # Add Python + minimal build chain for temporalio's grpc deps. Keep small —
 # everything else lives in the upstream image already.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-pip python3-venv \
-    && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-pip python3-venv
 
 # Use a venv so we don't fight the upstream image's pip layout.
 RUN python3 -m venv /opt/temporal-worker-venv
@@ -26,7 +29,8 @@ ENV PATH="/opt/temporal-worker-venv/bin:$PATH"
 WORKDIR /workspace
 
 COPY temporal/requirements.txt /workspace/temporal/requirements.txt
-RUN pip install --no-cache-dir \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
       temporalio>=1.9.0 \
       loguru>=0.7.2
 
