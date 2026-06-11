@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
+from datetime import timedelta
 
 from loguru import logger
 from temporalio.client import Client
@@ -148,6 +150,12 @@ async def _main() -> None:
         deployment_config=deployment_config,
         max_concurrent_activities=max_concurrent_activities,
         max_concurrent_activity_task_polls=max_concurrent_activity_task_polls,
+        # On shutdown, stop polling and give in-flight activities this long
+        # to finish before they receive cancellation. Must stay under the
+        # pod's terminationGracePeriodSeconds or k8s SIGKILLs us anyway.
+        graceful_shutdown_timeout=timedelta(
+            seconds=_int_env("TEMPORAL_GRACEFUL_SHUTDOWN_S", 25)
+        ),
     )
     logger.info(
         (
@@ -161,7 +169,23 @@ async def _main() -> None:
         max_concurrent_activities,
         max_concurrent_activity_task_polls,
     )
+
+    # k8s sends SIGTERM on pod stop; without a handler the event loop just
+    # dies and in-flight activities are killed mid-write. worker.shutdown()
+    # stops polling, waits graceful_shutdown_timeout, then cancels stragglers
+    # — worker.run() returns once drain completes.
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(
+            sig,
+            lambda s=sig: (
+                logger.info("received signal {}, draining worker…", s),
+                asyncio.ensure_future(worker.shutdown()),
+            ),
+        )
+
     await worker.run()
+    logger.info("worker drained, exiting")
 
 
 if __name__ == "__main__":

@@ -185,8 +185,9 @@ def cleanup_old_tiles(base_dir: Path, retention_hours: int) -> None:
         except ValueError:
             continue
         if dt.timestamp() < cutoff:
-            shutil.rmtree(ts_dir, ignore_errors=True)
+            # Manifest first, then tiles — never advertise deleted tiles.
             update_manifest_file(LAYER_NAME, ts_dir.name, action="remove")
+            shutil.rmtree(ts_dir, ignore_errors=True)
             log.info("retention_expired", extra={"layer": LAYER_NAME, "timestamp": ts_dir.name, "path": str(ts_dir)})
 
 

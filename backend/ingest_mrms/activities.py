@@ -403,8 +403,9 @@ async def mrms_cleanup(inp: CleanupInput) -> CleanupResult:
                 except ValueError:
                     continue
                 if dt.timestamp() < cutoff:
-                    shutil.rmtree(ts_dir, ignore_errors=True)
+                    # Manifest first, then tiles — never advertise deleted tiles.
                     update_manifest_file(inp.layer_name, ts_dir.name, action="remove")
+                    shutil.rmtree(ts_dir, ignore_errors=True)
                     removed += 1
         grids_removed = cleanup_old_grids()
         return CleanupResult(tile_dirs_removed=removed, grid_files_removed=grids_removed)

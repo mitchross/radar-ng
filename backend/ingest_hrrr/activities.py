@@ -630,8 +630,9 @@ async def hrrr_cleanup(retention_hours: int) -> HrrrCleanupResult:
                 except ValueError:
                     continue
                 if dt.timestamp() < cutoff:
-                    shutil.rmtree(ts_dir, ignore_errors=True)
+                    # Manifest first, then tiles — never advertise deleted tiles.
                     update_manifest_file(layer, ts_dir.name, action="remove")
+                    shutil.rmtree(ts_dir, ignore_errors=True)
                     removed += 1
         grids_removed = cleanup_old_grids()
         return HrrrCleanupResult(tile_dirs_removed=removed, grid_files_removed=grids_removed)

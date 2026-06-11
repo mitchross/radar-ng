@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -205,11 +206,25 @@ def _load_seen() -> set[str]:
         return set()
 
 
-def _save_seen(ids: set[str]) -> None:
+def _save_seen(active: set[str], expired: set[str]) -> None:
+    """Persist seen alert ids: every currently-active id survives, expired ids
+    fill the remainder of the 5000 cap. (A plain `list(set)[-5000:]` trims in
+    arbitrary order and can forget an ACTIVE alert, which would re-notify it
+    as new on the next poll.) Written atomically — this activity can retry,
+    and a torn write here would re-fire every active alert at once.
+    """
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    # cap at 5000 to keep file small
-    capped = list(ids)[-5000:]
-    _ALERT_STATE_PATH.write_text(json.dumps(capped))
+    capped = sorted(active) + sorted(expired)[: max(0, 5000 - len(active))]
+    fd, tmp_name = tempfile.mkstemp(prefix=".alerts-seen.", suffix=".tmp", dir=str(STATE_DIR))
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(capped, fh)
+        os.replace(tmp_name, _ALERT_STATE_PATH)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
 
 
 def _alert_from_feature(feature: dict[str, Any]) -> AlertForSignal | None:
@@ -244,7 +259,7 @@ async def fetch_nws_active_alerts() -> FetchAlertsResult:
             if aid not in seen:
                 new_ids.append(aid)
                 new_alerts.append(alert)
-        _save_seen(seen | seen_after)
+        _save_seen(seen_after, seen - seen_after)
         return FetchAlertsResult(alert_count=len(features), new_alert_ids=new_ids, new_alerts=new_alerts)
 
     return await asyncio.to_thread(_go)
@@ -326,15 +341,18 @@ def _state_value(state: Any, key: str, default: Any = None) -> Any:
 async def signal_matching_storm_watches(inp: SignalWatchesInput) -> SignalWatchesResult:
     """Signal running WatchStormWorkflow instances whose center is inside the
     new alert polygon.
+
+    Reuses the process-wide singleton client — this activity fires once per
+    new NWS alert, and a fresh `Client.connect` per invocation leaks a gRPC
+    channel each time (the Python SDK has no Client.close; channels die only
+    with the process).
     """
-    from temporalio.client import Client
+    from backend.api.api.temporal_client import get_client
 
     if not inp.geometry:
         return SignalWatchesResult(matched=0)
 
-    target = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
-    namespace = os.environ.get("TEMPORAL_NAMESPACE", "default")
-    client = await Client.connect(target, namespace=namespace)
+    client = await get_client()
 
     matched = 0
     async for w in client.list_workflows("WorkflowType='WatchStormWorkflow' AND ExecutionStatus='Running'"):

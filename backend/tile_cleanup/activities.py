@@ -72,8 +72,11 @@ def _sweep_layer(layer: str, retention_min: int) -> int:
         except ValueError:
             continue
         if dt.timestamp() < cutoff:
-            shutil.rmtree(ts_dir, ignore_errors=True)
+            # De-list from the manifest BEFORE deleting tiles — the reverse
+            # order has a window where the app fetches a manifest that still
+            # advertises a timestamp whose tiles are already gone (404s).
             update_manifest_file(layer, ts_dir.name, action="remove")
+            shutil.rmtree(ts_dir, ignore_errors=True)
             removed += 1
     return removed
 

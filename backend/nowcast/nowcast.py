@@ -29,7 +29,7 @@ from logger import get_logger  # type: ignore  # noqa: E402
 from state import ProcessedSet  # type: ignore  # noqa: E402
 from tiler import apply_color_table, render_tiles  # type: ignore  # noqa: E402
 from palettes import get_palette_names, load_palette  # type: ignore  # noqa: E402
-from manifest import update_manifest_file  # type: ignore  # noqa: E402
+from manifest import replace_layer_manifest  # type: ignore  # noqa: E402
 
 GRID_DIR = Path(os.environ.get("GRID_DIR", "/data/grids"))
 TILE_DIR = Path(os.environ.get("TILE_DIR", "/data/tiles"))
@@ -159,7 +159,10 @@ def render_nowcast_frame(
     data: np.ndarray,
     lats: np.ndarray,
     lons: np.ndarray,
-) -> None:
+) -> list[str]:
+    """Render one leadtime. Manifest publishing happens once per run in
+    process() via replace_layer_manifest — see that call for why.
+    """
     rendered: list[str] = []
     for pname, tables in palette_tables.items():
         entry = tables.get("reflectivity")
@@ -175,8 +178,7 @@ def render_nowcast_frame(
             extra={"layer": "nowcast", "palette": pname, "timestamp": timestamp, "tiles": count},
         )
         rendered.append(pname)
-    if rendered:
-        update_manifest_file("nowcast", timestamp, palettes=rendered, action="add")
+    return rendered
 
 
 def process() -> bool:
@@ -234,14 +236,23 @@ def process() -> bool:
 
     palette_tables = {name: load_palette(name) for name in get_palette_names()}
 
+    rendered_timestamps: list[str] = []
+    rendered_palettes: set[str] = set()
     for i in range(n_leadtimes):
         valid = latest_dt + timedelta(minutes=(i + 1) * STEP_MIN)
         ts = valid.isoformat()
         frame = forecast[i]
         # Filter dBZ < 5 (transparent) — same rule as MRMS.
         frame = np.where(frame < 5, -9999.0, frame)
-        render_nowcast_frame(TILE_DIR, palette_tables, ts, frame, lats_arr, lons_arr)
+        palettes = render_nowcast_frame(TILE_DIR, palette_tables, ts, frame, lats_arr, lons_arr)
+        if palettes:
+            rendered_palettes.update(palettes)
+            rendered_timestamps.append(ts)
 
+    # One atomic swap: this run's frames replace ALL previous nowcast frames
+    # in the manifest, so the app's future window never mixes prediction
+    # vintages from older anchor runs.
+    replace_layer_manifest("nowcast", rendered_timestamps, palettes=rendered_palettes)
     state.add(latest_ts_iso)
     log.info("nowcast_complete", extra={"anchor": latest_ts_iso, "leadtimes": n_leadtimes})
     return True

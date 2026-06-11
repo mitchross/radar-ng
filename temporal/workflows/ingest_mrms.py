@@ -23,6 +23,7 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ActivityError
 
 with workflow.unsafe.imports_passed_through():
     from backend.ingest_mrms.activities import (
@@ -90,12 +91,16 @@ class IngestMrmsWorkflow:
 
         async def process_key(key: str) -> ProcessFrameResult:
             async with sem:
-                return await workflow.execute_activity(
-                    mrms_process_frame, ProcessFrameInput(key=key, layer_name=args.layer_name),
-                    start_to_close_timeout=timedelta(minutes=20),
-                    heartbeat_timeout=timedelta(seconds=180),
-                    retry_policy=_FRAME_RETRY,
-                )
+                try:
+                    return await self._process_frame(key, args.layer_name)
+                except ActivityError:
+                    # One unrenderable frame (corrupt GRIB, exhausted retries,
+                    # schedule_to_close hit) must not fail the whole run — the
+                    # other frames in this gather() would be cancelled with it.
+                    # Leave it unmarked so a later run can retry it while the
+                    # backlog window still includes it.
+                    workflow.logger.warning("frame failed after retries: %s", key)
+                    return ProcessFrameResult(key=key, rendered=False)
 
         rendered = 0
         results = await asyncio.gather(*(process_key(key) for key in listing.keys))
@@ -116,6 +121,20 @@ class IngestMrmsWorkflow:
             backlog_total=listing.backlog_total,
             rendered_count=rendered,
             cleanup=cleanup,
+        )
+
+    async def _process_frame(self, key: str, layer_name: str) -> ProcessFrameResult:
+        return await workflow.execute_activity(
+            mrms_process_frame, ProcessFrameInput(key=key, layer_name=layer_name),
+            start_to_close_timeout=timedelta(minutes=20),
+            # Total budget across ALL retry attempts + queue wait. Without it,
+            # 3 attempts × 20 min could pin this run for ~an hour while
+            # OverlapPolicy.SKIP drops every newer frame — better to give up
+            # on one bad frame and let the next schedule fire pick up fresh
+            # data.
+            schedule_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=timedelta(seconds=180),
+            retry_policy=_FRAME_RETRY,
         )
 
     async def _cleanup(self, layer_name: str) -> CleanupResult:

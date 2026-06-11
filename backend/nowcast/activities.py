@@ -21,7 +21,7 @@ from temporalio import activity
 
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
 from backend.shared.logger import get_logger
-from backend.shared.manifest import update_manifest_file
+from backend.shared.manifest import replace_layer_manifest
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
 from backend.shared.tiler import apply_color_table, render_tiles
@@ -132,6 +132,11 @@ def _run_nowcast(frames: list[np.ndarray], n_leadtimes: int) -> np.ndarray | Non
 
 
 def _render_frame(tile_base: Path, palette_tables: dict[str, dict], ts: str, data: np.ndarray, lats: np.ndarray, lons: np.ndarray) -> list[str]:
+    """Render one leadtime's tile pyramid. Manifest publishing happens once
+    per RUN (replace_layer_manifest in nowcast_run), not per frame — so a
+    half-finished run is never visible to the app, and frames from previous
+    anchor runs don't pile up in the manifest.
+    """
     rendered: list[str] = []
     for pname, tables in palette_tables.items():
         entry = tables.get("reflectivity")
@@ -141,8 +146,6 @@ def _render_frame(tile_base: Path, palette_tables: dict[str, dict], ts: str, dat
         out_dir = str(tile_base / "nowcast" / pname / ts)
         render_tiles(rgba=rgba, lats=lats, lons=lons, output_dir=out_dir, zoom_levels=ZOOM_LEVELS)
         rendered.append(pname)
-    if rendered:
-        update_manifest_file("nowcast", ts, palettes=rendered, action="add")
     return rendered
 
 
@@ -218,13 +221,14 @@ async def nowcast_run() -> NowcastResult:
 
     palette_tables = await asyncio.to_thread(_load_palette_tables)
     rendered_palettes: set[str] = set()
+    rendered_timestamps: list[str] = []
 
     for i in range(n_lead):
         valid = latest_dt + timedelta(minutes=(i + 1) * STEP_MIN)
         ts = valid.isoformat()
         frame = forecast[i]
         frame = np.where(frame < 5, -9999.0, frame)
-        for p in await run_sync_with_heartbeat(
+        palettes = await run_sync_with_heartbeat(
             _render_frame,
             TILE_DIR,
             palette_tables,
@@ -234,12 +238,18 @@ async def nowcast_run() -> NowcastResult:
             lons_arr,
             heartbeat_every=30,
             heartbeat_details=lambda i=i: {"phase": "render", "leadtime": i},
-        ):
-            rendered_palettes.add(p)
+        )
+        if palettes:
+            rendered_palettes.update(palettes)
+            rendered_timestamps.append(ts)
         if i % 4 == 0:
             activity.heartbeat({"phase": "render", "leadtime": i})
 
     def _commit() -> None:
+        # One atomic swap: this run's frames replace ALL previous nowcast
+        # frames in the manifest. Old tile dirs stay on disk until the
+        # cleanup sweep removes them, but the app never sees them again.
+        replace_layer_manifest("nowcast", rendered_timestamps, palettes=rendered_palettes)
         state = ProcessedSet(STATE_DIR / "nowcast.json", max_entries=100)
         state.add(latest_iso)
 
