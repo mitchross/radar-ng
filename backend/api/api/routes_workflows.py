@@ -8,10 +8,10 @@ directly (auth, port exposure, RN gRPC pain — see design spec §4).
 from __future__ import annotations
 
 import os
-from typing import Any, NoReturn
+from typing import Any, Literal, NoReturn
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
@@ -27,17 +27,23 @@ router = APIRouter(prefix="/v1")
 # ---------- request/response models ----------
 
 
+# These endpoints are unauthenticated and internet-facing — bound every
+# field so a hostile client can't stuff megabyte payloads into workflow
+# IDs, the push-token DB, or Temporal history. APNS tokens are 64 hex
+# chars; FCM registration tokens run ~140-200 chars; 512 is generous.
+
+
 class RegisterPushTokenBody(BaseModel):
-    user_id: str
-    token: str
-    platform: str  # "ios" | "android"
+    user_id: str = Field(min_length=1, max_length=128)
+    token: str = Field(min_length=16, max_length=512)
+    platform: Literal["ios", "android"]
 
 
 class StartWatchBody(BaseModel):
-    storm_cell_id: str
-    user_id: str
-    lat: float
-    lng: float
+    storm_cell_id: str = Field(min_length=1, max_length=128)
+    user_id: str = Field(min_length=1, max_length=128)
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
 
 
 class WorkflowStartedResponse(BaseModel):
@@ -69,8 +75,6 @@ def _state_value(state: Any, key: str, default: Any = None) -> Any:
 
 @router.post("/push-tokens", response_model=WorkflowStartedResponse)
 async def register_push_token(body: RegisterPushTokenBody) -> WorkflowStartedResponse:
-    if body.platform not in ("ios", "android"):
-        raise HTTPException(400, f"unknown platform: {body.platform}")
     client = await get_client()
     try:
         handle = await client.start_workflow(

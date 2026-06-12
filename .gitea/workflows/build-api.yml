@@ -1,27 +1,35 @@
 name: build api
 
-# Auto-semver build & push.
+# Auto-semver build & push for the tile-server (Caddy + FastAPI) image.
+#
+# RESTORED 2026-06-11: this was removed in 95767c3 alongside the genuinely
+# dead per-service ingest builds, but radar-ng-tile-server is NOT a zombie —
+# the talos repo's deployment-tile-server.yaml pins it (v1.0.10 at time of
+# restore) and it serves every /api/* and /v1/* route. With no workflow,
+# backend/api changes produced no image and Renovate had nothing to bump.
 #
 # Flow:
 #   1. Read existing :vX.Y.Z tags from registry.vanillax.me
 #   2. Bump patch by 1 (or start at v1.0.0 if no semver tag exists)
-#   3. Build the image
+#   3. Build the image (BuildKit registry cache, same as temporal-worker)
 #   4. Push :vX.Y.Z + :latest
 #
 # Renovate (configured in talos-argocd-proxmox/.github/renovate.json5)
 # scans the registry hourly, sees the new :v1.0.X, opens an auto-merging
 # PR in the talos repo bumping deployment-tile-server.yaml. ArgoCD then
 # rolls the cluster.
-#
-# This file is byte-portable to .github/workflows/ later — every action
-# is GHA-native.
 
 on:
   push:
     branches: [master]
+    # Everything the Dockerfile COPYs (context is backend/): api/api,
+    # shared/, api/Caddyfile, basemap/styles/. The pre-removal workflow
+    # missed backend/shared/** — a shared-module change silently didn't
+    # rebuild the API image.
     paths:
       - 'backend/api/**'
-      - 'backend/base/**'
+      - 'backend/shared/**'
+      - 'backend/basemap/styles/**'
       - '.gitea/workflows/build-api.yml'
   workflow_dispatch: {}
 
@@ -57,9 +65,10 @@ jobs:
           echo "next=$NEXT"
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
 
+      # docker-container driver is required for registry-backed BuildKit
+      # cache (`cache-to: type=registry,...`) — same rationale as
+      # build-temporal-worker.yml.
       - uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -70,12 +79,12 @@ jobs:
           tags: |
             registry.vanillax.me/radar-ng-tile-server:${{ steps.ver.outputs.version }}
             registry.vanillax.me/radar-ng-tile-server:latest
-          # OCI annotations carry the source git SHA so we can trace
-          # any image back to its commit without needing a :git-<sha> tag.
           labels: |
             org.opencontainers.image.source=https://gitea.vanillax.me/vanillax/radar-ng
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.ver.outputs.version }}
+          cache-from: type=registry,ref=registry.vanillax.me/radar-ng-tile-server:buildcache
+          cache-to: type=registry,ref=registry.vanillax.me/radar-ng-tile-server:buildcache,mode=max
 
       - name: Summary
         run: |

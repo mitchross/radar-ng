@@ -45,8 +45,6 @@ jobs:
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
 
       - name: Hydrate PMTiles archive from current basemap:latest
         run: |
@@ -65,6 +63,9 @@ jobs:
           context: .
           file: backend/basemap/Dockerfile
           push: true
+          # basemap keeps publishing :latest — the Hydrate step above
+          # pulls :latest as the source of truth for the PMTiles archive,
+          # so removing the tag breaks the bootstrap loop.
           tags: |
             registry.vanillax.me/radar-ng-basemap:${{ steps.ver.outputs.version }}
             registry.vanillax.me/radar-ng-basemap:latest
@@ -72,5 +73,7 @@ jobs:
             org.opencontainers.image.source=https://gitea.vanillax.me/vanillax/radar-ng
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.ver.outputs.version }}
+          cache-from: type=registry,ref=registry.vanillax.me/radar-ng-basemap:buildcache
+          cache-to: type=registry,ref=registry.vanillax.me/radar-ng-basemap:buildcache,mode=max
 
       - run: echo "✅ Pushed registry.vanillax.me/radar-ng-basemap:${{ steps.ver.outputs.version }}"

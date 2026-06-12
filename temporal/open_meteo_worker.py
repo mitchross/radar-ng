@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
+from datetime import timedelta
 
 from loguru import logger
 from temporalio.client import Client
@@ -54,13 +56,27 @@ async def _main() -> None:
         workflows=[],
         activities=[open_meteo_sync],
         deployment_config=deployment_config,
+        # Same graceful-drain pattern as the main worker — see worker.py.
+        graceful_shutdown_timeout=timedelta(seconds=25),
     )
     logger.info(
         "open-meteo worker starting on {} with 1 activity (versioning={})",
         TASK_QUEUE,
         deployment_config.version if deployment_config else "off",
     )
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(
+            sig,
+            lambda s=sig: (
+                logger.info("received signal {}, draining worker…", s),
+                asyncio.ensure_future(worker.shutdown()),
+            ),
+        )
+
     await worker.run()
+    logger.info("open-meteo worker drained, exiting")
 
 
 if __name__ == "__main__":

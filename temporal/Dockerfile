@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # radar-ng Temporal worker
 #
 # Single image containing every workflow + every activity registered on
@@ -8,21 +9,28 @@
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PYTHONDONTWRITEBYTECODE=1
 
 # System deps for scientific Python (cfgrib/eccodes, gdal, pyproj) +
 # build chain for pysteps which has no cp312 wheel on PyPI.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# BuildKit cache mounts persist apt indexes and downloaded .deb files
+# across builds so package-list-only changes don't re-download.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-get update && apt-get install -y --no-install-recommends \
       libeccodes-dev libgdal-dev libproj-dev \
-      build-essential gcc g++ \
-    && rm -rf /var/lib/apt/lists/*
+      build-essential gcc g++
 
 WORKDIR /app
 
-# Worker deps first for layer caching
+# Worker deps first for layer caching. The pip cache mount keeps the
+# compiled pysteps wheel (no cp312 wheel on PyPI) so any cache-busting
+# change downstream reuses the artifact instead of recompiling — the
+# difference between a 13-minute and a sub-2-minute build.
 COPY temporal/requirements.txt /app/temporal/requirements.txt
-RUN pip install -r /app/temporal/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r /app/temporal/requirements.txt
 
 # Each backend service ships its own requirements.txt; install them all into
 # this image so the worker can call any activity. base/ is a superset of
@@ -35,7 +43,8 @@ COPY backend/ingest_tropical/requirements.txt /app/backend/ingest_tropical/requi
 COPY backend/nowcast/requirements.txt /app/backend/nowcast/requirements.txt
 # open_meteo_sync isn't installed here — it's owned by the separate
 # radar-ng-open-meteo-worker image (temporal/open_meteo_worker.Dockerfile).
-RUN pip install \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
       -r /app/backend/base/requirements.txt \
       -r /app/backend/ingest_mrms/requirements.txt \
       -r /app/backend/ingest_hrrr/requirements.txt \

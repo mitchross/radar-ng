@@ -49,9 +49,11 @@ jobs:
           echo "next=$NEXT"
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
 
+      # docker-container driver is required for registry-backed BuildKit
+      # cache (`cache-to: type=registry,...`). The legacy `docker` driver
+      # has no cache export support, so every build was a full cold pip
+      # compile (pysteps has no cp312 wheel and rebuilds from source).
       - uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -59,13 +61,13 @@ jobs:
           context: .
           file: temporal/Dockerfile
           push: true
-          tags: |
-            registry.vanillax.me/radar-ng-temporal-worker:${{ steps.ver.outputs.version }}
-            registry.vanillax.me/radar-ng-temporal-worker:latest
+          tags: registry.vanillax.me/radar-ng-temporal-worker:${{ steps.ver.outputs.version }}
           labels: |
             org.opencontainers.image.source=https://gitea.vanillax.me/vanillax/radar-ng
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.ver.outputs.version }}
+          cache-from: type=registry,ref=registry.vanillax.me/radar-ng-temporal-worker:buildcache
+          cache-to: type=registry,ref=registry.vanillax.me/radar-ng-temporal-worker:buildcache,mode=max
 
       - name: Summary
         run: |

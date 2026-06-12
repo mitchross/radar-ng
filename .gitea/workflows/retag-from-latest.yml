@@ -13,7 +13,10 @@ name: retag from latest
 #     every service that didn't naturally bump
 #
 # Triggers via the Actions UI ("Run workflow" → optionally specify
-# services="basemap,nowcast" to scope it). Default = all 8.
+# services="basemap" to scope it). Default = every image still built by
+# this repo (the ingest_* / nowcast / api / base zombies were removed
+# when their Kubernetes deployments were retired in favor of the
+# consolidated temporal-worker image).
 
 on:
   workflow_dispatch:
@@ -21,7 +24,7 @@ on:
       services:
         description: 'Comma-separated services to retag (default: all)'
         required: false
-        default: 'base,basemap,ingest-hrrr,ingest-lightning,ingest-mrms,ingest-tropical,nowcast,tile-server'
+        default: 'basemap'
 
 jobs:
   retag:

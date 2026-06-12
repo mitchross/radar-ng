@@ -17,11 +17,20 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet } from "react-native";
 
+// Root-level error boundary: without it, a single throw anywhere in the tree
+// (a Skia worklet edge case, a MapLibre native error surfacing in JS) takes
+// down the whole app with a red screen. expo-router's built-in boundary
+// shows the error with a retry affordance instead.
+export { ErrorBoundary } from "expo-router";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
-      gcTime: 10 * 60_000,
+      // 5 min: weather data is stale after minutes anyway, and inactive
+      // queries (manifest refetches every 30s, per-location forecasts)
+      // otherwise pile up in memory on low-end devices.
+      gcTime: 5 * 60_000,
     },
   },
   queryCache: new QueryCache({

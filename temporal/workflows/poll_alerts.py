@@ -54,14 +54,19 @@ class PollAlertsWorkflow:
             retry_policy=_RETRY,
         )
 
-        alerts = fetched.new_alerts
-        if not alerts:
-            alerts = [{"alert_id": alert_id, "geometry": {}} for alert_id in fetched.new_alert_ids]
+        # Normalize to (id, geometry) tuples up front — the payload converter
+        # hands back AlertForSignal dataclasses, but keeping the loop body free
+        # of hasattr/type sniffing means a future payload-shape change can't
+        # silently flip code paths on replay.
+        normalized: list[tuple[str, dict]] = [(a.alert_id, a.geometry or {}) for a in fetched.new_alerts]
 
         signaled = 0
-        for alert in alerts:
-            alert_id = alert.alert_id if hasattr(alert, "alert_id") else alert["alert_id"]
-            geometry = alert.geometry if hasattr(alert, "geometry") else alert.get("geometry", {})
+        for alert_id, geometry in normalized:
+            if not geometry:
+                # Zoneless alerts can never match a watch polygon — the
+                # activity would return matched=0 immediately. Skipping here
+                # saves an activity execution per alert.
+                continue
             res: SignalWatchesResult = await workflow.execute_activity(
                 signal_matching_storm_watches,
                 SignalWatchesInput(alert_id=alert_id, geometry=geometry),

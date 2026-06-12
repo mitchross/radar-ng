@@ -95,6 +95,49 @@ def update_manifest_file(
         return manifest
 
 
+def replace_layer_manifest(
+    layer_name: str,
+    timestamps: list[str],
+    *,
+    palettes: list[str] | set[str] | tuple[str, ...] | None = None,
+    state_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Atomically swap a layer's ENTIRE timestamp list.
+
+    Built for forecast-style layers (nowcast) where every run supersedes the
+    previous one: per-frame `action="add"` calls would accumulate predictions
+    from every past anchor run, so the app's future window ends up mixing
+    fresh and stale vintages. One replace per run keeps only the latest
+    model's frames and makes them visible all-at-once, after tiles exist.
+    """
+    import fcntl
+
+    path = manifest_path(state_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix(".lock")
+
+    with lock_path.open("w") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        manifest = read_manifest_file(path.parent)
+        layers = manifest.setdefault("layers", {})
+
+        if timestamps:
+            layer = layers.setdefault(layer_name, {"timestamps": [], "palettes": []})
+            layer["timestamps"] = sorted(set(timestamps))
+            layer["latest"] = layer["timestamps"][-1]
+            if palettes:
+                layer["palettes"] = sorted({str(p) for p in palettes})
+            elif not layer.get("palettes"):
+                layer["palettes"] = ["classic"]
+        else:
+            layers.pop(layer_name, None)
+
+        manifest["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _atomic_write_json(path, manifest)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        return manifest
+
+
 def _atomic_write_json(path: Path, body: dict[str, Any]) -> None:
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
     try:

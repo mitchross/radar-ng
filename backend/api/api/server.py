@@ -412,6 +412,21 @@ async def tropical() -> JSONResponse:
         return _cached({"type": "FeatureCollection", "features": [], "error": str(exc)}, max_age=180)
 
 
+@app.get("/api/livez")
+async def livez() -> JSONResponse:
+    """Process-liveness only — 200 iff this FastAPI process answers.
+
+    This is the k8s probe target (hit via Caddy on :8080 so the probe
+    proves BOTH processes in the pod work — /start.sh backgrounds uvicorn,
+    and without a probe a dead uvicorn leaves Caddy 502ing /api/* forever).
+    /api/health is deliberately NOT a probe: it reports degraded on stale
+    radar DATA, a condition shared by every replica — wiring it to
+    liveness/readiness would restart or drain the whole fleet at once the
+    moment NOAA has a slow day.
+    """
+    return JSONResponse({"status": "ok"})
+
+
 @app.get("/api/health")
 async def health() -> JSONResponse:
     """Returns 'ok' when MRMS tiles are fresh, 'degraded' when stale."""
