@@ -85,7 +85,7 @@ build_push() {
 
 TARGETS=()
 if [[ $# -eq 0 ]]; then
-  TARGETS=(tile-server ingest-mrms ingest-hrrr ingest-lightning ingest-tropical nowcast basemap)
+  TARGETS=(tile-server ingest-mrms ingest-hrrr ingest-lightning ingest-tropical nowcast basemap temporal-worker open-meteo-worker)
 else
   TARGETS=("$@")
 fi
@@ -100,6 +100,11 @@ $needs_base && build_base
 
 for t in "${TARGETS[@]}"; do
   build_push "$t"
+done
+
+echo ""
+echo "All done. Pushed to $REGISTRY"
+ build_push "$t"
 done
 
 echo ""
