@@ -35,6 +35,15 @@
         header Access-Control-Allow-Origin "*"
     }
 
+    # Workflow endpoints (FastAPI) — push tokens + storm watches live under
+    # /v1 (routes_workflows.py mounts APIRouter(prefix="/v1")). Without this
+    # handle, Caddy answers /v1/* itself with an empty 200 and FastAPI never
+    # sees the request.
+    handle /v1/* {
+        reverse_proxy localhost:8000
+        header Access-Control-Allow-Origin "*"
+    }
+
     log {
         output stdout
         format console

@@ -107,6 +107,60 @@ token 16–512), `Literal["ios","android"]`, lat/lng range checks.
 
 ---
 
+## 1b. Deploy/CI verification pass (2026-06-11)
+
+Verified against the LIVE talos-argocd-proxmox manifests (fetched from
+GitHub), not just the reference copies in `deploy/k8s/`.
+
+**Confirmed healthy:**
+- PVCs are `ReadWriteMany` on `truenas-nfs` — the "RWO with 2 replicas"
+  concern from the first pass is definitively false.
+- Temporal cutover is fully live: kustomization includes the worker CRs and
+  the legacy ingest deployments are gone.
+- Worker pods: non-root, seccomp, dropped caps, sane requests/limits.
+  Progressive rollout (10% → 50%) with sunset delays via the Worker
+  Controller. Default 30s `terminationGracePeriodSeconds` fits the new 25s
+  graceful drain.
+- tile-server: HPA 3-8 @70% CPU, topology spread, PDB, memory limits tuned
+  after real OOM history.
+
+**Fixed in this pass:**
+- **`build-api.yml` restored** (`.gitea/workflows/build-api.yml`). Commit
+  95767c3 removed it as a "zombie" alongside the genuinely-dead per-service
+  builds — but `radar-ng-tile-server` is the live public API image (talos
+  pins v1.0.10, Renovate bumps from registry tags). Since May 22, changes
+  under `backend/api/**` built nothing and could never ship. Also fixed a
+  pre-existing gap: the old workflow didn't watch `backend/shared/**`,
+  which the image COPYs.
+- **`/v1/*` was unreachable through Caddy** (`backend/api/Caddyfile`). The
+  workflow router mounts at `/v1` but Caddy only proxied `/api/*` —
+  `/v1/push-tokens` and `/v1/watches` died at Caddy with an empty 200,
+  never reaching FastAPI. Unnoticed because the mobile app doesn't call
+  `/v1` yet. Added the `handle /v1/*` reverse-proxy block.
+- **`/api/livez` added** (`backend/api/api/server.py`) as the correct probe
+  target: 200 iff the FastAPI process answers, probed via Caddy:8080 so it
+  exercises both processes in the pod. `/api/health` must NOT be a probe —
+  it reports degraded on stale radar *data*, a condition shared by every
+  replica; wiring it to liveness/readiness would restart or drain the whole
+  fleet when NOAA is slow.
+
+**Needs a talos-repo change (user action):**
+- tile-server has **zero probes** today. `/start.sh` backgrounds uvicorn
+  under Caddy — if uvicorn dies, the pod stays Ready and 502s `/api/*`
+  forever. Once a tile-server image with `/api/livez` is deployed, add:
+  ```yaml
+  livenessProbe:
+    httpGet: { path: /api/livez, port: 8080 }
+    initialDelaySeconds: 10
+    periodSeconds: 15
+  readinessProbe:
+    httpGet: { path: /api/livez, port: 8080 }
+    periodSeconds: 10
+  ```
+- Temporal worker pods also have no probes (lower stakes — Temporal
+  server-side timeouts catch dead workers; a file-touch exec probe is the
+  cheap option if wanted).
+
 ## 2. Verified backlog (not applied — recommend in this order)
 
 1. **Delete (or extract) the legacy sync runners.** Each ingest service has a
