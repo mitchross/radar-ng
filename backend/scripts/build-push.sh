@@ -14,7 +14,7 @@
 set -euo pipefail
 
 REGISTRY="${REGISTRY:-registry.vanillax.me}"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SHA="$(cd "$REPO_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo dirty)"
 
 # Build the shared python base image. CI normally publishes this via
@@ -32,13 +32,15 @@ build_base() {
 
 # Map: service => "<dockerfile-rel-path>;<context-rel-path>"
 declare -A SERVICES=(
-  [tile-server]="backend/api/Dockerfile;services"
-  [ingest-mrms]="backend/ingest_mrms/Dockerfile;services"
-  [ingest-hrrr]="backend/ingest_hrrr/Dockerfile;services"
-  [ingest-lightning]="backend/ingest_lightning/Dockerfile;services"
-  [ingest-tropical]="backend/ingest_tropical/Dockerfile;services"
-  [nowcast]="backend/nowcast/Dockerfile;services"
+  [tile-server]="backend/api/Dockerfile;backend"
+  [ingest-mrms]="backend/ingest_mrms/Dockerfile;backend"
+  [ingest-hrrr]="backend/ingest_hrrr/Dockerfile;backend"
+  [ingest-lightning]="backend/ingest_lightning/Dockerfile;backend"
+  [ingest-tropical]="backend/ingest_tropical/Dockerfile;backend"
+  [nowcast]="backend/nowcast/Dockerfile;backend"
   [basemap]="backend/basemap/Dockerfile;."
+  [temporal-worker]="temporal/Dockerfile;."
+  [open-meteo-worker]="temporal/open_meteo_worker.Dockerfile;."
 )
 
 # Ingestors + nowcast FROM registry.vanillax.me/radar-ng-base:latest.
@@ -48,6 +50,10 @@ NEEDS_BASE=(ingest-mrms ingest-hrrr ingest-lightning ingest-tropical nowcast)
 build_push() {
   local name="$1"
   local spec="${SERVICES[$name]}"
+  if [[ -z "$spec" ]]; then
+    echo "Unknown service: $name"
+    exit 1
+  fi
   local dockerfile="${spec%%;*}"
   local context="${spec##*;}"
   local latest_tag="${REGISTRY}/radar-ng-${name}:latest"
@@ -100,11 +106,6 @@ $needs_base && build_base
 
 for t in "${TARGETS[@]}"; do
   build_push "$t"
-done
-
-echo ""
-echo "All done. Pushed to $REGISTRY"
- build_push "$t"
 done
 
 echo ""
