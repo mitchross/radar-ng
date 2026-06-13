@@ -17,35 +17,16 @@ REGISTRY="${REGISTRY:-registry.vanillax.me}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SHA="$(cd "$REPO_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo dirty)"
 
-# Build the shared python base image. CI normally publishes this via
-# .gitea/workflows/build-base.yml; this local build keeps the dev loop
-# fast. Tag matches the registry path so child Dockerfiles' FROM line
-# (registry.vanillax.me/radar-ng-base:latest) resolves to the local image
-# without a registry round-trip.
-build_base() {
-  local tag="${REGISTRY}/radar-ng-base:latest"
-  echo "[base] building $tag (local)"
-  docker build -t "$tag" \
-    -f "$REPO_ROOT/backend/base/Dockerfile" \
-    "$REPO_ROOT/backend"
-}
-
 # Map: service => "<dockerfile-rel-path>;<context-rel-path>"
+# The per-service ingest/nowcast images (and the radar-ng-base they FROM'd)
+# were deleted with the legacy daemons — every activity now ships in the
+# temporal-worker image. Only the four deployed images remain.
 declare -A SERVICES=(
   [tile-server]="backend/api/Dockerfile;backend"
-  [ingest-mrms]="backend/ingest_mrms/Dockerfile;backend"
-  [ingest-hrrr]="backend/ingest_hrrr/Dockerfile;backend"
-  [ingest-lightning]="backend/ingest_lightning/Dockerfile;backend"
-  [ingest-tropical]="backend/ingest_tropical/Dockerfile;backend"
-  [nowcast]="backend/nowcast/Dockerfile;backend"
   [basemap]="backend/basemap/Dockerfile;."
   [temporal-worker]="temporal/Dockerfile;."
   [open-meteo-worker]="temporal/open_meteo_worker.Dockerfile;."
 )
-
-# Ingestors + nowcast FROM registry.vanillax.me/radar-ng-base:latest.
-# tile-server FROMs python:3.12-slim directly; basemap FROMs protomaps/go-pmtiles.
-NEEDS_BASE=(ingest-mrms ingest-hrrr ingest-lightning ingest-tropical nowcast)
 
 build_push() {
   local name="$1"
@@ -91,18 +72,10 @@ build_push() {
 
 TARGETS=()
 if [[ $# -eq 0 ]]; then
-  TARGETS=(tile-server ingest-mrms ingest-hrrr ingest-lightning ingest-tropical nowcast basemap temporal-worker open-meteo-worker)
+  TARGETS=(tile-server basemap temporal-worker open-meteo-worker)
 else
   TARGETS=("$@")
 fi
-
-needs_base=false
-for t in "${TARGETS[@]}"; do
-  for b in "${NEEDS_BASE[@]}"; do
-    if [[ "$t" == "$b" ]]; then needs_base=true; fi
-  done
-done
-$needs_base && build_base
 
 for t in "${TARGETS[@]}"; do
   build_push "$t"

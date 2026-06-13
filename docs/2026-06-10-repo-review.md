@@ -163,11 +163,15 @@ GitHub), not just the reference copies in `deploy/k8s/`.
 
 ## 2. Verified backlog (not applied — recommend in this order)
 
-1. **Delete (or extract) the legacy sync runners.** Each ingest service has a
-   near-duplicate `ingest.py` (standalone loop) and `activities.py` (Temporal)
-   — ~100-150 duplicated lines apiece, already diverging (the sync MRMS path
-   has no ProcessPool). Temporal owns orchestration now; the sync runners are
-   drift liabilities. Either delete them or thin both onto shared helpers.
+1. ~~**Delete (or extract) the legacy sync runners.**~~ **DONE** — landed
+   independently as `0bdb9c8` ("Drop HRRR z9 tiles and remove legacy ingest
+   daemons", authored 2026-05-21 on another machine, merged 2026-06-12).
+   Deleted every `ingest.py`/`nowcast.py` daemon, their Dockerfiles, and the
+   per-service workflows; also dropped HRRR z9 (client caps at z8 anyway).
+   The review fixes that touched those deleted files live on in the
+   `activities.py` versions, which all survived the merge.
+   `backend/scripts/build-push.sh` was the one conflict artifact (it still
+   mapped the deleted Dockerfiles) — cleaned up 2026-06-12.
 2. **Atomic tile-pyramid publish.** `mrms_process_frame` writes PNGs in place;
    a crash leaves a partial pyramid, and a palette that fails while another
    succeeds publishes a manifest entry missing that palette's tiles. Render to
