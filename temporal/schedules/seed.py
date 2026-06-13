@@ -33,9 +33,26 @@ from temporalio.client import (
     ScheduleSpec,
     ScheduleUpdate,
 )
+from temporalio.service import RPCError, RPCStatusCode
 
 
 TASK_QUEUE = "radar-ng"
+
+# RPC status codes worth retrying while seeding at worker startup. The
+# dominant case: a Temporal server that just (re)started has history shards
+# still warming up, so it rejects RPCs with "shard status unknown"
+# (UNAVAILABLE) for seconds-to-minutes. Previously a single such error
+# propagated out of _main() and killed the worker (exitCode 1), so k8s
+# crash-looped every replica until the shards settled — and any scheduled
+# run landing in that window (e.g. nowcast) could fail in the churn.
+_RETRYABLE_RPC_CODES = frozenset({
+    RPCStatusCode.UNAVAILABLE,
+    RPCStatusCode.DEADLINE_EXCEEDED,
+    RPCStatusCode.RESOURCE_EXHAUSTED,
+    RPCStatusCode.ABORTED,
+    RPCStatusCode.INTERNAL,
+    RPCStatusCode.UNKNOWN,
+})
 
 
 @dataclass
@@ -128,11 +145,44 @@ async def seed(client: Client) -> None:
             print(f"[seed] updated schedule {s.schedule_id}")
 
 
+async def seed_with_retry(
+    client: Client,
+    *,
+    max_attempts: int = 10,
+    base_delay: float = 1.0,
+    max_delay: float = 20.0,
+) -> None:
+    """Run seed() with bounded exponential backoff over transient RPC errors.
+
+    seed() is idempotent (create-or-update per schedule_id), so re-running the
+    whole pass after a partial failure is safe — already-created schedules
+    fall through to the update path. Non-retryable errors and exhausted
+    attempts re-raise, so a genuinely-down Temporal still fails startup and
+    lets k8s restart the pod rather than parking a worker with no schedules.
+
+    Default budget (~10 attempts, 1s→20s capped) covers ~110s of shard
+    warmup, comfortably more than a normal Temporal restart needs.
+    """
+    for attempt in range(1, max_attempts + 1):
+        try:
+            await seed(client)
+            return
+        except RPCError as exc:
+            if exc.status not in _RETRYABLE_RPC_CODES or attempt == max_attempts:
+                raise
+            delay = min(max_delay, base_delay * 2 ** (attempt - 1))
+            print(
+                f"[seed] transient RPC error ({exc.status.name}) on attempt "
+                f"{attempt}/{max_attempts}: {exc.message!r}; retrying in {delay:.0f}s"
+            )
+            await asyncio.sleep(delay)
+
+
 async def _main() -> None:
     target = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
     namespace = os.environ.get("TEMPORAL_NAMESPACE", "default")
     client = await Client.connect(target, namespace=namespace)
-    await seed(client)
+    await seed_with_retry(client)
 
 
 if __name__ == "__main__":
