@@ -24,8 +24,8 @@ RUN touch /app/backend/__init__.py /app/backend/shared/__init__.py /app/backend/
 COPY api/Caddyfile /etc/caddy/Caddyfile
 COPY basemap/styles/ /srv/basemap/styles/
 
-RUN printf '#!/bin/sh\nset -e\npython -m uvicorn backend.api.api.server:app --host 0.0.0.0 --port 8000 &\ncaddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n' > /start.sh \
-    && chmod +x /start.sh
+COPY api/start.sh /start.sh
+RUN chmod +x /start.sh
 
 RUN useradd -u 1000 -m -s /bin/sh app \
     && mkdir -p /home/app/.local/share/caddy /home/app/.config/caddy \
