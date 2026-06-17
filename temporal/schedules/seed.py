@@ -94,8 +94,13 @@ SCHEDULES: list[ScheduleDef] = [
     # bounded by the 6h interval regardless.
     ScheduleDef(
         "open-meteo-sync-gfs", "OpenMeteoSyncWorkflow",
+        # ncep_gfs013 (0.13° surface), NOT ncep_gfs025: open-meteo restructured
+        # its S3 open-data so ncep_gfs025 now holds only upper-air/pressure-level
+        # fields — surface vars (temperature_2m, dew_point_2m, …) moved to
+        # ncep_gfs013. Syncing gfs025 silently fetched no surface data, which is
+        # why the 7-day forecast went all-null (~2026-06-13).
         workflow_input=[{
-            "model": "ncep_gfs025",
+            "model": "ncep_gfs013",
             "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure,uv_index",
             "past_days": 2,
         }],
