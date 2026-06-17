@@ -128,7 +128,7 @@ export default function NowcastScreen() {
           {/* Big chart */}
           <View style={styles.card}>
             <View style={styles.chartHeader}>
-              <Text style={styles.chartLabel}>INTENSITY {"\u00B7"} MM/HR</Text>
+              <Text style={styles.chartLabel}>INTENSITY {"\u00B7"} IN/HR</Text>
               <Text style={styles.chartLabel}>NEXT 60 MIN</Text>
             </View>
             <NowcastChart minutes={minutes} />
@@ -186,7 +186,7 @@ export default function NowcastScreen() {
           <SectionHeader title="FORECAST MODEL" />
           <View style={styles.card}>
             <Row label="Model" value="HRRR + MRMS blend" />
-            <Row label="Resolution" value="3 km / 15 min" />
+            <Row label="Resolution" value="1.9 mi / 15 min" />
             <Row label="Confidence">
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <View style={styles.confTrack}>

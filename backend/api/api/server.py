@@ -34,11 +34,11 @@ FORECAST_TTL = int(os.environ.get("FORECAST_TTL_S", "900"))  # 15min
 CURRENT_FIELDS = (
     "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,"
     "wind_speed_10m,wind_direction_10m,wind_gusts_10m,"
-    "dew_point_2m,surface_pressure"
+    "dew_point_2m,surface_pressure,precipitation"
 )
 HOURLY_FIELDS = (
-    "temperature_2m,precipitation_probability,weather_code,wind_speed_10m,"
-    "relative_humidity_2m,apparent_temperature"
+    "temperature_2m,precipitation,precipitation_probability,weather_code,"
+    "wind_speed_10m,relative_humidity_2m,apparent_temperature"
 )
 DAILY_FIELDS = (
     "temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum,"
