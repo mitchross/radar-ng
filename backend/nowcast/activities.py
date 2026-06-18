@@ -33,7 +33,12 @@ STATE_DIR = Path(os.environ.get("STATE_DIR", "/data/state"))
 HORIZON_MIN = int(os.environ.get("NOWCAST_HORIZON_MIN", "60"))
 STEP_MIN = int(os.environ.get("NOWCAST_STEP_MIN", "5"))
 N_INPUT_FRAMES = int(os.environ.get("NOWCAST_INPUT_FRAMES", "4"))
-ZOOM_LEVELS = [4, 5, 6, 7, 8]
+# Zoom 4-7. Dropped z8 (2026-06-18): the nowcast renders a full pyramid per
+# leadtime x12 leadtimes; z8 is ~75% of all tiles (each level = 4x the prior)
+# and on ~1km MRMS data z8 is pure upsampling — no real detail. Cutting it lets
+# the render finish inside the activity timeout so the `nowcast` layer (the
+# future-radar frames) actually publishes instead of getting cancelled mid-render.
+ZOOM_LEVELS = [4, 5, 6, 7]
 
 log = get_logger("nowcast-activities")
 

@@ -35,6 +35,10 @@ class NowcastWorkflow:
         return await workflow.execute_activity(
             nowcast_run,
             start_to_close_timeout=timedelta(minutes=15),
-            heartbeat_timeout=timedelta(seconds=120),
+            # 300s (was 120s): a single leadtime's tile-pyramid render can
+            # exceed 120s on NFS, tripping the heartbeat and cancelling the run
+            # mid-render so the nowcast layer never publishes. 300s tolerates a
+            # slow per-leadtime render while still catching a truly hung worker.
+            heartbeat_timeout=timedelta(seconds=300),
             retry_policy=_RETRY,
         )
