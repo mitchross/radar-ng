@@ -13,6 +13,7 @@ interface WeatherState {
   longitude: number | null;
   locationMode: LocationMode;
   selectedPlace: SelectedPlace | null;
+  devicePlace: SelectedPlace | null;
   radarOpacity: number;
   radarVisible: boolean;
   activeLayer: LayerType;
@@ -34,6 +35,7 @@ interface WeatherState {
   setPlaybackSpeed: (speed: number) => void;
   setLocation: (lat: number, lon: number) => void;
   setSelectedPlace: (place: SelectedPlace) => void;
+  setDevicePlace: (place: SelectedPlace | null) => void;
   useDeviceLocation: () => void;
   setRadarOpacity: (opacity: number) => void;
   setRadarVisible: (visible: boolean) => void;
@@ -83,6 +85,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   longitude: initialResolvedLocationMode === "city" && initialSelectedPlace ? initialSelectedPlace.longitude : null,
   locationMode: initialResolvedLocationMode,
   selectedPlace: initialSelectedPlace,
+  devicePlace: null,
   radarOpacity: RADAR.DEFAULT_OPACITY,
   radarVisible: true,
   activeLayer: "radar" as LayerType,
@@ -113,6 +116,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
       longitude: place.longitude,
     });
   },
+  setDevicePlace: (place) => set({ devicePlace: place }),
   useDeviceLocation: () => {
     setString("locationMode", "device");
     set({ locationMode: "device" });

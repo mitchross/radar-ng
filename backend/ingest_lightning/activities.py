@@ -21,6 +21,7 @@ import os
 import random
 import time
 from collections import deque
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -119,9 +120,27 @@ async def lightning_consume_stream(duration_s: int) -> LightningRunResult:
     deadline = time.monotonic() + duration_s
     started = time.time()
     strikes: deque[dict] = deque(maxlen=MAX_STRIKES)
-    msgs = parsed = in_bbox = 0
+    stats = {"msgs": 0, "parsed": 0, "in_bbox": 0, "buffer": 0}
     last_flush = 0.0
-    last_heartbeat = 0.0
+
+    def _prune() -> None:
+        cutoff = time.time() - RETENTION_MIN * 60
+        while strikes and strikes[0]["t"] < cutoff:
+            strikes.popleft()
+
+    # Heartbeat from a background task on a fixed 30s cadence, decoupled from
+    # message arrival. Blitzortung frames can stop for long stretches (quiet
+    # weather, a half-open socket), during which the `async for` below blocks;
+    # heartbeating inline would then starve and trip Temporal's heartbeat
+    # timeout even though the activity is healthy. The same tick also flushes
+    # and prunes so an idle stream still ages old strikes out of the buffer.
+    async def _beat() -> None:
+        while True:
+            await asyncio.sleep(30)
+            _prune()
+            stats["buffer"] = len(strikes)
+            _write_geojson(strikes)
+            activity.heartbeat(dict(stats))
 
     primary_host = "ws2.blitzortung.org"
     fallback_hosts = [f"ws{i}.blitzortung.org" for i in range(1, 9) if i != 2]
@@ -132,64 +151,66 @@ async def lightning_consume_stream(duration_s: int) -> LightningRunResult:
     # Always emit an empty file at start so the API never 404s.
     _write_geojson(strikes)
 
-    while time.monotonic() < deadline:
-        host, scheme, port = random.choice(variants)
-        url = f"{scheme}://{host}:{port}/"
-        try:
-            log.info("ws_connect", extra={"url": url})
-            async with websockets.connect(url, ping_interval=30, ping_timeout=30) as ws:
-                await ws.send(json.dumps({"a": 111}))
-                async for msg in ws:
-                    if time.monotonic() >= deadline:
-                        break
-                    msgs += 1
-                    if isinstance(msg, bytes):
-                        try:
-                            msg = msg.decode("latin-1")
-                        except UnicodeDecodeError:
-                            continue
-                    elif not isinstance(msg, str):
-                        continue
-                    data = None
-                    for attempt in (msg, _decode_payload(msg)):
-                        try:
-                            data = json.loads(attempt)
+    beat = asyncio.create_task(_beat())
+    try:
+        while time.monotonic() < deadline:
+            host, scheme, port = random.choice(variants)
+            url = f"{scheme}://{host}:{port}/"
+            try:
+                log.info("ws_connect", extra={"url": url})
+                async with websockets.connect(url, ping_interval=30, ping_timeout=30) as ws:
+                    await ws.send(json.dumps({"a": 111}))
+                    async for msg in ws:
+                        if time.monotonic() >= deadline:
                             break
-                        except json.JSONDecodeError:
+                        stats["msgs"] += 1
+                        if isinstance(msg, bytes):
+                            try:
+                                msg = msg.decode("latin-1")
+                            except UnicodeDecodeError:
+                                continue
+                        elif not isinstance(msg, str):
                             continue
-                    if data is None:
-                        continue
-                    parsed += 1
-                    lat = float(data.get("lat", 0))
-                    lon = float(data.get("lon", 0))
-                    t_ns = int(data.get("time", 0))
-                    if not _in_bbox(lat, lon) or t_ns == 0:
-                        continue
-                    in_bbox += 1
-                    strikes.append({
-                        "t": t_ns / 1e9,
-                        "lat": lat,
-                        "lon": lon,
-                        "pol": int(data.get("pol", 0)),
-                        "mds": int(data.get("mds", 0)),
-                    })
-                    cutoff = time.time() - RETENTION_MIN * 60
-                    while strikes and strikes[0]["t"] < cutoff:
-                        strikes.popleft()
-                    now = time.time()
-                    if now - last_flush >= FLUSH_EVERY_S:
-                        _write_geojson(strikes)
-                        last_flush = now
-                    if now - last_heartbeat >= 30:
-                        activity.heartbeat({"msgs": msgs, "parsed": parsed, "in_bbox": in_bbox, "buffer": len(strikes)})
-                        last_heartbeat = now
-        except Exception as exc:  # noqa: BLE001
-            log.warning("ws_disconnect", extra={"url": url, "err": str(exc)})
-            _write_geojson(strikes)
-            await asyncio.sleep(5 + random.random() * 5)
+                        data = None
+                        for attempt in (msg, _decode_payload(msg)):
+                            try:
+                                data = json.loads(attempt)
+                                break
+                            except json.JSONDecodeError:
+                                continue
+                        if data is None:
+                            continue
+                        stats["parsed"] += 1
+                        lat = float(data.get("lat", 0))
+                        lon = float(data.get("lon", 0))
+                        t_ns = int(data.get("time", 0))
+                        if not _in_bbox(lat, lon) or t_ns == 0:
+                            continue
+                        stats["in_bbox"] += 1
+                        strikes.append({
+                            "t": t_ns / 1e9,
+                            "lat": lat,
+                            "lon": lon,
+                            "pol": int(data.get("pol", 0)),
+                            "mds": int(data.get("mds", 0)),
+                        })
+                        _prune()
+                        now = time.time()
+                        if now - last_flush >= FLUSH_EVERY_S:
+                            _write_geojson(strikes)
+                            last_flush = now
+            except Exception as exc:  # noqa: BLE001
+                log.warning("ws_disconnect", extra={"url": url, "err": str(exc)})
+                _write_geojson(strikes)
+                await asyncio.sleep(5 + random.random() * 5)
+    finally:
+        beat.cancel()
+        with suppress(asyncio.CancelledError):
+            await beat
 
     _write_geojson(strikes)
     return LightningRunResult(
         duration_s=round(time.time() - started, 1),
-        msgs=msgs, parsed=parsed, in_bbox=in_bbox, final_buffer=len(strikes),
+        msgs=stats["msgs"], parsed=stats["parsed"], in_bbox=stats["in_bbox"],
+        final_buffer=len(strikes),
     )

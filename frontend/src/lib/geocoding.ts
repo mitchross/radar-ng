@@ -1,6 +1,43 @@
 import type { SelectedPlace } from "../types/location";
 
 const GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
+const NOMINATIM_URL = "https://nominatim.openstreetmap.org";
+
+export async function reverseGeocode(
+  latitude: number,
+  longitude: number,
+): Promise<SelectedPlace | null> {
+  const params = new URLSearchParams({
+    format: "json",
+    addressdetails: "1",
+    limit: "1",
+  });
+  const response = await fetch(
+    `${NOMINATIM_URL}/reverse?lat=${latitude}&lon=${longitude}&${params.toString()}`,
+    {
+      headers: {
+        // Nominatim requires a User-Agent
+        "User-Agent": "radar-ng/1.0",
+      },
+    },
+  );
+  const body = await response.json();
+
+  if (!response.ok || !body.display_name) {
+    return null;
+  }
+
+  const address = body.address || {};
+  return {
+    id: body.place_id ?? 0,
+    name: address.city || address.town || address.village || address.municipality || body.display_name.split(",")[0],
+    latitude: body.lat ? parseFloat(body.lat) : latitude,
+    longitude: body.lon ? parseFloat(body.lon) : longitude,
+    admin1: address.state,
+    country: address.country,
+    countryCode: address.country_code?.toUpperCase(),
+  };
+}
 
 interface OpenMeteoPlace {
   id: number;

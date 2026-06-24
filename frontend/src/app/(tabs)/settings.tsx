@@ -44,6 +44,7 @@ export default function SettingsScreen() {
   const setServerUrl = useWeatherStore((s) => s.setServerUrl);
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
+  const devicePlace = useWeatherStore((s) => s.devicePlace);
   const setSelectedPlace = useWeatherStore((s) => s.setSelectedPlace);
   const useDeviceLocation = useWeatherStore((s) => s.useDeviceLocation);
 
@@ -92,7 +93,7 @@ export default function SettingsScreen() {
   );
 
   const stackHost = useMemo(() => hostOf(serverUrl), [serverUrl]);
-  const locationLabel = activeLocationLabel(locationMode, selectedPlace);
+  const locationLabel = activeLocationLabel(locationMode, selectedPlace, devicePlace);
 
   return (
     <LinearGradient colors={CONDITION_GRADIENTS.clearNight} style={styles.container}>

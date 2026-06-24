@@ -28,6 +28,7 @@ export default function NowcastScreen() {
   const router = useRouter();
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
+  const devicePlace = useWeatherStore((s) => s.devicePlace);
   const { data: forecast, isLoading } = useForecast();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -68,7 +69,7 @@ export default function NowcastScreen() {
   const totalIn = totalMm / 25.4;
 
   const confidence = estimateConfidence(forecast);
-  const location = activeLocationLabel(locationMode, selectedPlace);
+  const location = activeLocationLabel(locationMode, selectedPlace, devicePlace);
 
   return (
     <LinearGradient colors={gradient} style={styles.container}>

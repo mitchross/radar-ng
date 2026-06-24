@@ -22,12 +22,13 @@ export function LayerLocationMarker() {
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
+  const devicePlace = useWeatherStore((s) => s.devicePlace);
   const { data: forecast } = useForecast();
 
   if (latitude == null || longitude == null) return null;
 
   const body = renderBody(activeLayer, forecast, temperatureUnit);
-  const label = activeLocationLabel(locationMode, selectedPlace);
+  const label = activeLocationLabel(locationMode, selectedPlace, devicePlace);
 
   return (
     <Marker lngLat={[longitude, latitude]} anchor="bottom">

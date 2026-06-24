@@ -33,7 +33,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
-  const { data: forecast, isLoading } = useForecast();
+  const devicePlace = useWeatherStore((s) => s.devicePlace);
+  const { data: forecast, isLoading, isError, refetch } = useForecast();
   const { data: alertData } = useAlerts();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -54,6 +55,25 @@ export default function HomeScreen() {
       setRefreshing(false);
     }
   }, [queryClient]);
+
+  // A failed fetch must not masquerade as a perpetual "Loading…": when the
+  // forecast errors and we have no cached data, surface it with a retry so the
+  // screen is honest and recoverable instead of stuck forever.
+  if (isError && !forecast) {
+    return (
+      <LinearGradient colors={CONDITION_GRADIENTS.clearNight} style={styles.container}>
+        <SafeAreaView style={[styles.flex, styles.center]}>
+          <Text style={styles.errorTitle}>Couldn&apos;t load weather</Text>
+          <Text style={styles.errorBody}>
+            The forecast service is unreachable right now.
+          </Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
+            <Text style={styles.retryText}>Try again</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
 
   if (isLoading || !forecast) {
     return (
@@ -81,7 +101,7 @@ export default function HomeScreen() {
   const lo = Math.round(forecast.daily.temperature_2m_min[0] ?? temp);
 
   const conditionLabel = CONDITION_LABELS[condition];
-  const locationLabel = activeLocationLabel(locationMode, selectedPlace);
+  const locationLabel = activeLocationLabel(locationMode, selectedPlace, devicePlace);
 
   // Nowcast banner logic — use minutely_15 to detect precip start
   const nowcastHeadline = buildNowcastHeadline(forecast.minutely_15);
@@ -562,6 +582,18 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { paddingBottom: 140 },
   loading: { color: "rgba(255,255,255,0.6)", fontSize: 16, textAlign: "center", marginTop: 120 },
+  center: { alignItems: "center", justifyContent: "center", paddingHorizontal: 32 },
+  errorTitle: { color: "#fff", fontSize: 20, fontWeight: "700", textAlign: "center", marginBottom: 8 },
+  errorBody: { color: "rgba(255,255,255,0.65)", fontSize: 14, textAlign: "center", marginBottom: 20 },
+  retryBtn: {
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 14,
+  },
+  retryText: { color: "#fff", fontSize: 15, fontWeight: "600" },
 
   // Top bar
   topBar: {
