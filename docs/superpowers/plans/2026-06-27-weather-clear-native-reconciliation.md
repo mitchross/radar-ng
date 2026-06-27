@@ -25,7 +25,7 @@
 
 ### Modify
 
-- `frontend/package.json`, `frontend/bun.lock` — native Newsreader and Spline Sans font packages.
+- `frontend/package.json`, `frontend/bun.lock`, `frontend/app.json` — native Newsreader and Spline Sans font packages and build-time embedding.
 - `frontend/src/stores/useWeatherStore.ts` — persisted Light/Dark/System preference without disturbing the user’s default-location edits.
 - `frontend/__tests__/stores/useWeatherStore.test.ts` — appearance persistence tests.
 - `frontend/src/app/_layout.tsx` — font loading, theme provider, canvas color, and status-bar style.
@@ -466,6 +466,7 @@ git commit -m "feat: add Weather Clear appearance themes"
 
 - Modify: `frontend/package.json`
 - Modify: `frontend/bun.lock`
+- Modify: `frontend/app.json`
 - Modify: `frontend/src/app/_layout.tsx`
 - Create: `frontend/src/components/ui/WeatherClearUI.tsx`
 - Modify: `frontend/src/app/(tabs)/_layout.tsx`
@@ -477,7 +478,7 @@ Run:
 
 ```bash
 cd frontend
-bun add @expo-google-fonts/newsreader @expo-google-fonts/spline-sans
+bunx expo install @expo-google-fonts/newsreader @expo-google-fonts/spline-sans
 ```
 
 Expected: both dependencies are recorded in `package.json` and `bun.lock`.
@@ -496,10 +497,10 @@ function source(relativePath: string): string {
 
 describe("Weather Clear native UI contracts", () => {
   it("loads both design font families before rendering navigation", () => {
-    const root = source("app/_layout.tsx");
-    expect(root).toContain("Newsreader_400Regular");
-    expect(root).toContain("SplineSans_400Regular");
-    expect(root).toContain("if (!fontsLoaded)");
+    const appConfig = readFileSync(path.join(__dirname, "../../app.json"), "utf8");
+    expect(appConfig).toContain("Newsreader_400Regular.ttf");
+    expect(appConfig).toContain("SplineSans_400Regular.ttf");
+    expect(appConfig).toContain("SplineSans_700Bold.ttf");
   });
 
   it("keeps all tab controls accessible and at least 44 points tall", () => {
@@ -556,27 +557,45 @@ export function ScreenState(props: {
 
 Each pressable must use `minWidth: theme.controlMinSize`, `minHeight: theme.controlMinSize`, an accessibility role/label/state, and theme-derived colors. `ScreenState` must use `accessibilityRole="alert"` only for `kind="error"` and must not animate when the system requests reduced motion.
 
-- [ ] **Step 5: Load fonts and apply the root theme**
+- [ ] **Step 5: Embed fonts and apply the root theme**
 
-In `frontend/src/app/_layout.tsx`:
+Replace the string `"expo-font"` plugin in `frontend/app.json` with:
 
-```tsx
-import {
-  Newsreader_400Regular,
-  Newsreader_400Regular_Italic,
-  Newsreader_500Medium,
-} from "@expo-google-fonts/newsreader";
-import {
-  SplineSans_400Regular,
-  SplineSans_500Medium,
-  SplineSans_600SemiBold,
-  SplineSans_700Bold,
-} from "@expo-google-fonts/spline-sans";
-import { useFonts } from "expo-font";
-import { WeatherClearThemeProvider, useWeatherClearTheme } from "../theme/WeatherClearThemeProvider";
+```json
+[
+  "expo-font",
+  {
+    "fonts": [
+      "node_modules/@expo-google-fonts/newsreader/400Regular/Newsreader_400Regular.ttf",
+      "node_modules/@expo-google-fonts/newsreader/400Regular_Italic/Newsreader_400Regular_Italic.ttf",
+      "node_modules/@expo-google-fonts/newsreader/500Medium/Newsreader_500Medium.ttf",
+      "node_modules/@expo-google-fonts/spline-sans/400Regular/SplineSans_400Regular.ttf",
+      "node_modules/@expo-google-fonts/spline-sans/500Medium/SplineSans_500Medium.ttf",
+      "node_modules/@expo-google-fonts/spline-sans/600SemiBold/SplineSans_600SemiBold.ttf",
+      "node_modules/@expo-google-fonts/spline-sans/700Bold/SplineSans_700Bold.ttf"
+    ]
+  }
+]
 ```
 
-Load all seven faces with one `useFonts` call, return `null` until it reports loaded, wrap the navigation tree with `WeatherClearThemeProvider`, and render the status bar from a themed child:
+In `frontend/src/theme/weatherClearTheme.ts`, resolve Android filename families and iOS PostScript families with `process.env.EXPO_OS`, for example:
+
+```ts
+const isIOS = process.env.EXPO_OS === "ios";
+const font = (android: string, ios: string): string => isIOS ? ios : android;
+
+const typography = {
+  display: font("Newsreader_400Regular", "Newsreader-Regular"),
+  displayItalic: font("Newsreader_400Regular_Italic", "Newsreader-Italic"),
+  ui: font("SplineSans_400Regular", "SplineSans-Regular"),
+  uiMedium: font("SplineSans_500Medium", "SplineSans-Medium"),
+  uiSemibold: font("SplineSans_600SemiBold", "SplineSans-SemiBold"),
+  uiBold: font("SplineSans_700Bold", "SplineSans-Bold"),
+  mono: "monospace",
+} as const;
+```
+
+In `frontend/src/app/_layout.tsx`, wrap the navigation tree with `WeatherClearThemeProvider` and render the status bar from a themed child:
 
 ```tsx
 function ThemedStatusBar() {
@@ -605,14 +624,26 @@ Run:
 cd frontend
 bun run test -- __tests__/components/weatherClearContracts.test.ts --runInBand
 bunx tsc --noEmit
+bunx expo config --type public
 ```
 
-Expected: contract test PASS and TypeScript exits 0.
+Expected: contract test PASS, TypeScript exits 0, and Expo config resolves all seven font paths.
+
+Regenerate and install the Android development build so the config plugin runs:
+
+```bash
+cd frontend
+bunx expo prebuild --platform android
+cd android
+./gradlew :app:installDebug
+```
+
+Expected: prebuild and installation complete without a missing-font resource error.
 
 - [ ] **Step 8: Commit shared chrome**
 
 ```bash
-git add frontend/package.json frontend/bun.lock frontend/src/app/_layout.tsx \
+git add frontend/package.json frontend/bun.lock frontend/app.json frontend/src/app/_layout.tsx \
   'frontend/src/app/(tabs)/_layout.tsx' frontend/src/components/ui \
   frontend/__tests__/components/weatherClearContracts.test.ts
 git diff --cached --check
