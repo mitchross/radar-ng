@@ -182,6 +182,7 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
           onPress={() => zoomBy(+1)}
           style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
           hitSlop={6}
+          accessibilityRole="button"
           accessibilityLabel="Zoom in"
         >
           <Text style={styles.zoomLabel}>+</Text>
@@ -191,6 +192,7 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
           onPress={() => zoomBy(-1)}
           style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
           hitSlop={6}
+          accessibilityRole="button"
           accessibilityLabel="Zoom out"
         >
           <Text style={styles.zoomLabel}>−</Text>
@@ -218,6 +220,8 @@ const styles = StyleSheet.create({
   zoomBtn: {
     width: 44,
     height: 44,
+    minWidth: 44,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
   },

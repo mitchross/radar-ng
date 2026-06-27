@@ -124,6 +124,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     width: 36,
     height: 36,
+    minWidth: 44,
+    minHeight: 44,
     borderRadius: 18,
     backgroundColor: "rgba(10,10,20,0.78)",
     borderWidth: 1,

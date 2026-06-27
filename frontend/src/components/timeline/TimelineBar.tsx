@@ -4,7 +4,7 @@
  * track (past / nowcast / HRRR / long-range) + NOW marker + draggable thumb.
  * Playback advances every 420ms within the active zoom window.
  */
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import Slider from "@react-native-community/slider";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWeatherStore } from "../../stores/useWeatherStore";
@@ -105,7 +105,13 @@ export function TimelineBar() {
     <View style={styles.container}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.playBtn} onPress={togglePlaying} activeOpacity={0.8}>
+          <Pressable
+            style={({ pressed }) => [styles.playBtn, pressed ? styles.controlPressed : null]}
+            onPress={togglePlaying}
+            accessibilityRole="button"
+            accessibilityLabel={isPlaying ? "Pause radar animation" : "Play radar animation"}
+            accessibilityState={{ selected: isPlaying }}
+          >
             {isPlaying ? (
               <View style={styles.pauseIcon}>
                 <View style={styles.pauseBar} />
@@ -114,7 +120,7 @@ export function TimelineBar() {
             ) : (
               <View style={styles.playIcon} />
             )}
-          </TouchableOpacity>
+          </Pressable>
 
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.layerTitle} numberOfLines={1}>
@@ -125,14 +131,20 @@ export function TimelineBar() {
 
           <View style={styles.segmented}>
             {(["1h", "12h"] as const).map((z) => (
-              <TouchableOpacity
+              <Pressable
                 key={z}
                 onPress={() => setZoom(z)}
-                style={[styles.seg, zoom === z && styles.segActive]}
-                activeOpacity={0.8}
+                style={({ pressed }) => [
+                  styles.seg,
+                  zoom === z ? styles.segActive : null,
+                  pressed ? styles.controlPressed : null,
+                ]}
+                accessibilityRole="radio"
+                accessibilityLabel={`${z} radar timeline`}
+                accessibilityState={{ checked: zoom === z }}
               >
-                <Text style={[styles.segText, zoom === z && styles.segTextActive]}>{z}</Text>
-              </TouchableOpacity>
+                <Text style={[styles.segText, zoom === z ? styles.segTextActive : null]}>{z}</Text>
+              </Pressable>
             ))}
           </View>
         </View>
@@ -190,6 +202,7 @@ export function TimelineBar() {
             minimumTrackTintColor="transparent"
             maximumTrackTintColor="transparent"
             thumbTintColor="#ffffff"
+            accessibilityLabel={`${layerTitle} timeline, ${dateLabel}`}
           />
         </View>
 
@@ -255,9 +268,9 @@ const styles = StyleSheet.create({
   },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   playBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    minWidth: 44,
+    minHeight: 44,
+    borderRadius: 22,
     backgroundColor: "rgba(11,18,32,0.08)",
     alignItems: "center",
     justifyContent: "center",
@@ -279,16 +292,17 @@ const styles = StyleSheet.create({
   segmented: {
     flexDirection: "row",
     backgroundColor: "rgba(11,18,32,0.08)",
-    borderRadius: 14,
+    borderRadius: 24,
     padding: 2,
-    height: 28,
+    minHeight: 44,
   },
   seg: {
     paddingHorizontal: 12,
-    height: 24,
+    minHeight: 44,
     justifyContent: "center",
-    borderRadius: 12,
+    borderRadius: 22,
   },
+  controlPressed: { opacity: 0.68 },
   segActive: {
     backgroundColor: "#fff",
     shadowColor: "#000",

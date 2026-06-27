@@ -33,4 +33,17 @@ describe("Weather Clear native UI contracts", () => {
     expect(settings).toContain("setAppearanceMode");
     expect(settings).toContain("setMapStyle");
   });
+
+  it("keeps radar close, playback, layers, and map style controls labeled", () => {
+    const radar = source("app/(tabs)/radar.tsx");
+    const fabs = source("components/map/RadarFABs.tsx");
+    const timeline = source("components/timeline/TimelineBar.tsx");
+    const mapStyle = source("components/map/MapStylePicker.tsx");
+    expect(radar).toContain('accessibilityLabel="Close radar"');
+    expect(fabs).toContain("accessibilityLabel");
+    expect(timeline).toContain("accessibilityLabel");
+    expect(mapStyle).toContain('accessibilityLabel="Close map style picker"');
+    expect(mapStyle).toContain('accessibilityRole="radio"');
+    expect(mapStyle).toContain("minHeight: 44");
+  });
 });
