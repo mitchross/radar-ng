@@ -57,7 +57,20 @@
       "./plugins/withCarPlayScene",
       "./plugins/withScriptSandboxOff",
       "@bacons/apple-targets",
-      "expo-font",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "node_modules/@expo-google-fonts/newsreader/400Regular/Newsreader_400Regular.ttf",
+            "node_modules/@expo-google-fonts/newsreader/400Regular_Italic/Newsreader_400Regular_Italic.ttf",
+            "node_modules/@expo-google-fonts/newsreader/500Medium/Newsreader_500Medium.ttf",
+            "node_modules/@expo-google-fonts/spline-sans/400Regular/SplineSans_400Regular.ttf",
+            "node_modules/@expo-google-fonts/spline-sans/500Medium/SplineSans_500Medium.ttf",
+            "node_modules/@expo-google-fonts/spline-sans/600SemiBold/SplineSans_600SemiBold.ttf",
+            "node_modules/@expo-google-fonts/spline-sans/700Bold/SplineSans_700Bold.ttf"
+          ]
+        }
+      ],
       "expo-image",
       "expo-web-browser"
     ],

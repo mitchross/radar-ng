@@ -1,12 +1,14 @@
 /**
- * Cumulus 5-tab bar — Home · Nowcast · Radar · Alerts · Settings.
- * Matches design_handoff_radar_app: persistent dark translucent pill, hidden on Radar.
+ * Weather Clear 5-tab bar — Home · Nowcast · Radar · Alerts · Settings.
+ * Uses the editorial theme and remains hidden on the full-screen Radar route.
  */
 import { View, StyleSheet, Text, Pressable } from "react-native";
-import type { ComponentProps } from "react";
+import { useMemo, type ComponentProps } from "react";
 import { Tabs } from "expo-router";
-import { cumulus, cumulusFonts } from "../../lib/cumulusTheme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAlerts } from "../../hooks/useAlerts";
+import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
+import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 
 type ExpoTabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>["tabBar"]>>[0];
 
@@ -29,6 +31,9 @@ function CumulusTabBar({ state, descriptors, navigation }: ExpoTabBarProps) {
   const activeRoute = state.routes[state.index]?.name;
   const alertsQuery = useAlerts();
   const alertCount = alertsQuery.data?.features?.length ?? 0;
+  const { bottom } = useSafeAreaInsets();
+  const { theme } = useWeatherClearTheme();
+  const bar = useMemo(() => createBarStyles(theme, bottom), [bottom, theme]);
 
   // Hide on Radar for full-bleed map
   if (activeRoute === "radar") return null;
@@ -57,19 +62,24 @@ function CumulusTabBar({ state, descriptors, navigation }: ExpoTabBarProps) {
               key={route.key}
               onPress={onPress}
               style={bar.item}
-              android_ripple={{ color: "rgba(255,255,255,0.08)", borderless: true, radius: 40 }}
+              android_ripple={{ color: theme.colors.accentSoft, borderless: true, radius: 40 }}
               accessibilityRole="tab"
+              accessibilityLabel={label}
               accessibilityState={{ selected: active }}
             >
-              <View style={[bar.iconWrap, active && bar.iconWrapActive]}>
-                <Icon active={active} />
-                {showBadge && (
-                  <View style={bar.badge}>
+              <View style={bar.iconWrap}>
+                <Icon
+                  active={active}
+                  color={active ? theme.colors.accent : theme.colors.textFaint}
+                  mutedDetail={theme.colors.border}
+                />
+                {showBadge ? (
+                  <View style={[bar.badge, { backgroundColor: theme.colors.destructive }]}>
                     <Text style={bar.badgeText}>{alertCount > 9 ? "9+" : alertCount}</Text>
                   </View>
-                )}
+                ) : null}
               </View>
-              <Text style={[bar.label, active && bar.labelActive]}>{label}</Text>
+              <Text style={[bar.label, active ? bar.labelActive : null]}>{label}</Text>
             </Pressable>
           );
         })}
@@ -78,67 +88,64 @@ function CumulusTabBar({ state, descriptors, navigation }: ExpoTabBarProps) {
   );
 }
 
-const ICON_COLOR = cumulus.inkFaint;
-const ICON_COLOR_ACTIVE = cumulus.accent;
-const col = (active: boolean) => (active ? ICON_COLOR_ACTIVE : ICON_COLOR);
+type TabIconProps = {
+  active: boolean;
+  color: string;
+  mutedDetail: string;
+};
 
-function HomeIcon({ active }: { active: boolean }) {
-  const c = col(active);
+function HomeIcon({ active, color, mutedDetail }: TabIconProps) {
   return (
     <View style={icon.box}>
-      <View style={[icon.homeRoof, { borderBottomColor: c }]} />
-      <View style={[icon.homeBody, { backgroundColor: c }]} />
-      <View style={[icon.homeDoor, { backgroundColor: active ? cumulus.accent : "rgba(0,0,0,0.15)" }]} />
+      <View style={[icon.homeRoof, { borderBottomColor: color }]} />
+      <View style={[icon.homeBody, { backgroundColor: color }]} />
+      <View style={[icon.homeDoor, { backgroundColor: active ? "#ffffff" : mutedDetail }]} />
     </View>
   );
 }
 
-function NowcastIcon({ active }: { active: boolean }) {
-  const c = col(active);
+function NowcastIcon({ color }: TabIconProps) {
   return (
     <View style={icon.box}>
-      <View style={[icon.bar, icon.bar1, { backgroundColor: c }]} />
-      <View style={[icon.bar, icon.bar2, { backgroundColor: c }]} />
-      <View style={[icon.bar, icon.bar3, { backgroundColor: c }]} />
-      <View style={[icon.bar, icon.bar4, { backgroundColor: c }]} />
+      <View style={[icon.bar, icon.bar1, { backgroundColor: color }]} />
+      <View style={[icon.bar, icon.bar2, { backgroundColor: color }]} />
+      <View style={[icon.bar, icon.bar3, { backgroundColor: color }]} />
+      <View style={[icon.bar, icon.bar4, { backgroundColor: color }]} />
     </View>
   );
 }
 
-function RadarIcon({ active }: { active: boolean }) {
-  const c = col(active);
+function RadarIcon({ active, color }: TabIconProps) {
   return (
     <View style={icon.box}>
-      <View style={[icon.radarOuter, { borderColor: c }]} />
-      <View style={[icon.radarMid, { borderColor: c }]} />
-      <View style={[icon.radarInner, { backgroundColor: c }]} />
-      <View style={[icon.radarSweep, { backgroundColor: c, opacity: active ? 0.9 : 0.5 }]} />
+      <View style={[icon.radarOuter, { borderColor: color }]} />
+      <View style={[icon.radarMid, { borderColor: color }]} />
+      <View style={[icon.radarInner, { backgroundColor: color }]} />
+      <View style={[icon.radarSweep, { backgroundColor: color, opacity: active ? 0.9 : 0.5 }]} />
     </View>
   );
 }
 
-function AlertsIcon({ active }: { active: boolean }) {
-  const c = col(active);
+function AlertsIcon({ active, color, mutedDetail }: TabIconProps) {
   return (
     <View style={icon.box}>
-      <View style={[icon.alertTri, { borderBottomColor: c }]} />
-      <View style={[icon.alertBar, { backgroundColor: active ? cumulus.alert : "rgba(0,0,0,0.15)" }]} />
-      <View style={[icon.alertDot, { backgroundColor: active ? cumulus.alert : "rgba(0,0,0,0.15)" }]} />
+      <View style={[icon.alertTri, { borderBottomColor: color }]} />
+      <View style={[icon.alertBar, { backgroundColor: active ? "#ffffff" : mutedDetail }]} />
+      <View style={[icon.alertDot, { backgroundColor: active ? "#ffffff" : mutedDetail }]} />
     </View>
   );
 }
 
-function SettingsIcon({ active }: { active: boolean }) {
-  const c = col(active);
+function SettingsIcon({ active, color, mutedDetail }: TabIconProps) {
   return (
     <View style={icon.box}>
-      <View style={[icon.gearRing, { borderColor: c }]} />
-      <View style={[icon.gearDot, { backgroundColor: active ? cumulus.accent : c }]} />
+      <View style={[icon.gearRing, { borderColor: color }]} />
+      <View style={[icon.gearDot, { backgroundColor: active ? color : mutedDetail }]} />
     </View>
   );
 }
 
-const ICONS: Record<string, React.ComponentType<{ active: boolean }>> = {
+const ICONS: Record<string, React.ComponentType<TabIconProps>> = {
   index: HomeIcon,
   nowcast: NowcastIcon,
   radar: RadarIcon,
@@ -146,7 +153,8 @@ const ICONS: Record<string, React.ComponentType<{ active: boolean }>> = {
   settings: SettingsIcon,
 };
 
-const bar = StyleSheet.create({
+function createBarStyles(theme: WeatherClearTheme, bottom: number) {
+  return StyleSheet.create({
   wrap: {
     position: "absolute",
     left: 0,
@@ -155,21 +163,21 @@ const bar = StyleSheet.create({
   },
   pill: {
     flexDirection: "row",
-    backgroundColor: "rgba(246,242,234,0.94)",
+    backgroundColor: theme.colors.canvas,
     borderTopWidth: 1,
-    borderTopColor: "#e7e0d3",
-    paddingTop: 10,
-    paddingBottom: 22,
+    borderTopColor: theme.colors.divider,
+    paddingTop: 6,
+    paddingBottom: Math.max(bottom, 8),
     paddingHorizontal: 12,
   },
-  item: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 4 },
+  item: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", paddingVertical: 3 },
   iconWrap: {
     width: 42,
     height: 30,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 14,
-    marginBottom: 3,
+    marginBottom: 2,
   },
   iconWrapActive: {},
   badge: {
@@ -180,20 +188,20 @@ const bar = StyleSheet.create({
     height: 14,
     paddingHorizontal: 3,
     borderRadius: 7,
-    backgroundColor: cumulus.alert,
     alignItems: "center",
     justifyContent: "center",
   },
   badgeText: { color: "#fff", fontSize: 9, fontWeight: "800", lineHeight: 12 },
   label: {
-    fontFamily: cumulusFonts.ui,
+    fontFamily: theme.typography.uiSemibold,
     fontSize: 10,
     fontWeight: "600",
-    color: cumulus.inkFaint,
+    color: theme.colors.textFaint,
     letterSpacing: 0.2,
   },
-  labelActive: { color: cumulus.accent, fontWeight: "700" },
-});
+  labelActive: { color: theme.colors.accent, fontFamily: theme.typography.uiBold },
+  });
+}
 
 const icon = StyleSheet.create({
   box: { width: 22, height: 22, alignItems: "center", justifyContent: "center" },

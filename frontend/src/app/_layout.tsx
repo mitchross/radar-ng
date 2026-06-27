@@ -15,7 +15,11 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
+import {
+  WeatherClearThemeProvider,
+  useWeatherClearTheme,
+} from "../theme/WeatherClearThemeProvider";
 
 // Root-level error boundary: without it, a single throw anywhere in the tree
 // (a Skia worklet edge case, a MapLibre native error surfacing in JS) takes
@@ -52,17 +56,33 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <StatusBar style="light" />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen
-              name="alert/[id]"
-              options={{ presentation: "modal", headerShown: false }}
-            />
-          </Stack>
+          <WeatherClearThemeProvider>
+            <ThemedApp />
+          </WeatherClearThemeProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+function ThemedApp() {
+  const { resolvedAppearance, theme } = useWeatherClearTheme();
+  return (
+    <View style={[styles.container, { backgroundColor: theme.colors.canvas }]}>
+      <StatusBar style={resolvedAppearance === "dark" ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: theme.colors.canvas },
+        }}
+      >
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="alert/[id]"
+          options={{ presentation: "modal", headerShown: false }}
+        />
+      </Stack>
+    </View>
   );
 }
 

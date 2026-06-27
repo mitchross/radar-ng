@@ -70,7 +70,7 @@ export function WindDial({ dir = 0 }: { dir: number }) {
         style="stroke"
         strokeWidth={1}
       />
-      <Group transform={[{ rotate: dir, px: 17, py: 17 }]}>
+      <Group origin={{ x: 17, y: 17 }} transform={[{ rotate: dir }]}>
         <Path path={arrowPath} color={cumulus.accent} />
       </Group>
     </Canvas>

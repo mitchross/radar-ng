@@ -13,6 +13,8 @@
     "test": "jest"
   },
   "dependencies": {
+    "@expo-google-fonts/newsreader": "^0.4.1",
+    "@expo-google-fonts/spline-sans": "^0.4.2",
     "@expo/ui": "~56.0.8",
     "@maplibre/maplibre-react-native": "^11.2.1",
     "@opentelemetry/api": "^1.9.1",
