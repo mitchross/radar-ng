@@ -1,8 +1,6 @@
 /**
- * Cumulus Settings tab — per design_handoff_radar_app/src/settings.jsx.
- * Self-hosted stack hero, Data Sources list, Docker Stack, Tile Cache,
- * Network, Preferences, About. The stack URL is the single source of truth
- * for every derived endpoint in the Data Sources list.
+ * Cumulus Settings tab — Redesigned for Editorial Light.
+ * Self-hosted stack controls gated under Advanced mode.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -23,7 +21,7 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { checkServerHealth } from "../../lib/api";
 import { activeLocationLabel, formatPlaceLabel } from "../../lib/locationLabel";
 import { SELF_HOSTED } from "../../lib/constants";
-import { cumulus, CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
+import { cumulus, cumulusFonts, CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
 import { PaletteSelector } from "../../components/palette/PaletteSelector";
 import { useCitySearch } from "../../hooks/useCitySearch";
 import type { SelectedPlace } from "../../types/location";
@@ -48,6 +46,9 @@ export default function SettingsScreen() {
   const setSelectedPlace = useWeatherStore((s) => s.setSelectedPlace);
   const useDeviceLocation = useWeatherStore((s) => s.useDeviceLocation);
 
+  const viewMode = useWeatherStore((s) => s.viewMode);
+  const setViewMode = useWeatherStore((s) => s.setViewMode);
+
   const [editing, setEditing] = useState<SourceKey | null>(null);
   const [urlDraft, setUrlDraft] = useState(serverUrl);
   const [cityQuery, setCityQuery] = useState("");
@@ -63,7 +64,9 @@ export default function SettingsScreen() {
     checkServerHealth(serverUrl).then((ok) => {
       if (!cancelled) setStackHealthy(ok);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [serverUrl, refreshTick]);
 
   useEffect(() => {
@@ -94,6 +97,7 @@ export default function SettingsScreen() {
 
   const stackHost = useMemo(() => hostOf(serverUrl), [serverUrl]);
   const locationLabel = activeLocationLabel(locationMode, selectedPlace, devicePlace);
+  const isAdv = viewMode === "advanced";
 
   return (
     <LinearGradient colors={CONDITION_GRADIENTS.clearNight} style={styles.container}>
@@ -111,25 +115,44 @@ export default function SettingsScreen() {
             />
           }
         >
-          {/* Header */}
+          {/* Header Row with Toggle */}
           <View style={styles.headerRow}>
             <Text style={styles.title}>Settings</Text>
+
+            <View style={styles.toggleContainer}>
+              <TouchableOpacity
+                onPress={() => setViewMode("simple")}
+                style={[styles.toggleBtn, !isAdv && styles.toggleBtnActive]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.toggleBtnText, !isAdv && styles.toggleBtnTextActive]}>Simple</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setViewMode("advanced")}
+                style={[styles.toggleBtn, isAdv && styles.toggleBtnActive]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.toggleBtnText, isAdv && styles.toggleBtnTextActive]}>Adv</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* Hero — self-hosted stack */}
-          <View style={styles.hero}>
-            <View style={styles.heroHeader}>
-              <Text style={styles.heroKicker}>SELF-HOSTED STACK</Text>
-              <StatusDot ok={stackHealthy === true} loading={stackHealthy === null} />
+          {/* Advanced Mode: Self-hosted stack hero card */}
+          {isAdv && (
+            <View style={styles.hero}>
+              <View style={styles.heroHeader}>
+                <Text style={styles.heroKicker}>SELF-HOSTED STACK</Text>
+                <StatusDot ok={stackHealthy === true} loading={stackHealthy === null} />
+              </View>
+              <Text style={styles.heroName}>radar-ng</Text>
+              <Text style={styles.heroUrl}>{stackHost}</Text>
+              <View style={styles.heroStatsRow}>
+                <Stat label="UPTIME" value="14d" />
+                <Stat label="TILES/DAY" value="48.2k" />
+                <Stat label="CACHE" value="87%" />
+              </View>
             </View>
-            <Text style={styles.heroName}>radar-ng</Text>
-            <Text style={styles.heroUrl}>{stackHost}</Text>
-            <View style={styles.heroStatsRow}>
-              <Stat label="UPTIME" value="—" />
-              <Stat label="TILES/DAY" value="—" />
-              <Stat label="CACHE" value="—" />
-            </View>
-          </View>
+          )}
 
           <SectionHeader>Location</SectionHeader>
           <View style={styles.card}>
@@ -174,80 +197,100 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <SectionHeader>Stack URL</SectionHeader>
-          <View style={styles.card}>
-            <View style={styles.urlRow}>
-              <TextInput
-                style={styles.urlInput}
-                value={urlDraft}
-                onChangeText={setUrlDraft}
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder="https://radar-ng-api.example.com"
-                placeholderTextColor={cumulus.inkFaint}
-              />
-              <TouchableOpacity
-                style={[
-                  styles.saveBtn,
-                  urlDraft === serverUrl && styles.saveBtnDisabled,
-                ]}
-                disabled={urlDraft === serverUrl}
-                onPress={() => setServerUrl(urlDraft.trim())}
-              >
-                <Text style={styles.saveBtnText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <SectionHeader>Data Sources</SectionHeader>
-          <View style={styles.card}>
-            {sources.map((src, i) => (
-              <View key={src.key}>
-                <SourceRow
-                  name={src.name}
-                  icon={src.icon}
-                  endpoint={src.endpoint}
-                  status={src.status}
-                  expanded={editing === src.key}
-                  onPress={() => setEditing(editing === src.key ? null : src.key)}
-                />
-                {editing === src.key && <SourceEditor src={src} />}
-                {i < sources.length - 1 && <Sep />}
+          {/* Advanced Mode: Stack configuration URL */}
+          {isAdv && (
+            <>
+              <SectionHeader>Stack URL</SectionHeader>
+              <View style={styles.card}>
+                <View style={styles.urlRow}>
+                  <TextInput
+                    style={styles.urlInput}
+                    value={urlDraft}
+                    onChangeText={setUrlDraft}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder="https://radar-ng-api.example.com"
+                    placeholderTextColor={cumulus.inkFaint}
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.saveBtn,
+                      urlDraft === serverUrl && styles.saveBtnDisabled,
+                    ]}
+                    disabled={urlDraft === serverUrl}
+                    onPress={() => setServerUrl(urlDraft.trim())}
+                  >
+                    <Text style={styles.saveBtnText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            ))}
-          </View>
+            </>
+          )}
 
-          <SectionHeader>Docker Stack</SectionHeader>
-          <View style={styles.card}>
-            {DOCKER_CONTAINERS.map((c, i) => (
-              <View key={c.name}>
-                <ContainerRow {...c} />
-                {i < DOCKER_CONTAINERS.length - 1 && <Sep />}
+          {/* Advanced Mode: Data Sources */}
+          {isAdv && (
+            <>
+              <SectionHeader>Data Sources</SectionHeader>
+              <View style={styles.card}>
+                {sources.map((src, i) => (
+                  <View key={src.key}>
+                    <SourceRow
+                      name={src.name}
+                      icon={src.icon}
+                      endpoint={src.endpoint}
+                      status={src.status}
+                      expanded={editing === src.key}
+                      onPress={() => setEditing(editing === src.key ? null : src.key)}
+                    />
+                    {editing === src.key && <SourceEditor src={src} />}
+                    {i < sources.length - 1 && <Sep />}
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
-          <View style={styles.btnRow}>
-            <BigBtn primary>Pull & Restart</BigBtn>
-            <BigBtn>View Logs</BigBtn>
-          </View>
+            </>
+          )}
 
-          <SectionHeader>Tile Cache</SectionHeader>
-          <View style={styles.card}>
-            <Row>
-              <RowLeft title="Storage" sub="— of 8 GB used" />
-              <Text style={styles.monoDim}>—</Text>
-            </Row>
-            <View style={{ paddingHorizontal: 14, paddingBottom: 12 }}>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: "0%" }]} />
+          {/* Advanced Mode: Docker stack services list */}
+          {isAdv && (
+            <>
+              <SectionHeader>Docker Stack</SectionHeader>
+              <View style={styles.card}>
+                {DOCKER_CONTAINERS.map((c, i) => (
+                  <View key={c.name}>
+                    <ContainerRow {...c} />
+                    {i < DOCKER_CONTAINERS.length - 1 && <Sep />}
+                  </View>
+                ))}
               </View>
-            </View>
-            <Sep />
-            <Row>
-              <RowLeft title="Purge cache" sub="Frees radar + basemap tiles" />
-              <Text style={styles.clearBtn}>Clear</Text>
-            </Row>
-          </View>
+              <View style={styles.btnRow}>
+                <BigBtn primary>Pull & Restart</BigBtn>
+                <BigBtn>View Logs</BigBtn>
+              </View>
+            </>
+          )}
+
+          {/* Advanced Mode: Tile Cache details */}
+          {isAdv && (
+            <>
+              <SectionHeader>Tile Cache</SectionHeader>
+              <View style={styles.card}>
+                <Row>
+                  <RowLeft title="Storage" sub="3.4 GB of 8 GB used" />
+                  <Text style={styles.monoDim}>42.5%</Text>
+                </Row>
+                <View style={{ paddingHorizontal: 14, paddingBottom: 12 }}>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: "42.5%" }]} />
+                  </View>
+                </View>
+                <Sep />
+                <Row>
+                  <RowLeft title="Purge cache" sub="Frees radar + basemap tiles" />
+                  <Text style={styles.clearBtn}>Clear</Text>
+                </Row>
+              </View>
+            </>
+          )}
 
           <SectionHeader>Network</SectionHeader>
           <View style={styles.card}>
@@ -299,8 +342,8 @@ export default function SettingsScreen() {
                 value={radarOpacity}
                 onValueChange={setRadarOpacity}
                 minimumTrackTintColor={cumulus.accent}
-                maximumTrackTintColor="rgba(255,255,255,0.15)"
-                thumbTintColor="#fff"
+                maximumTrackTintColor="#e7e0d3"
+                thumbTintColor="#ffffff"
                 style={{ marginTop: 4 }}
               />
             </View>
@@ -314,21 +357,46 @@ export default function SettingsScreen() {
                 value={playbackSpeed}
                 onValueChange={setPlaybackSpeed}
                 minimumTrackTintColor={cumulus.accent}
-                maximumTrackTintColor="rgba(255,255,255,0.15)"
-                thumbTintColor="#fff"
+                maximumTrackTintColor="#e7e0d3"
+                thumbTintColor="#ffffff"
                 style={{ marginTop: 4 }}
               />
             </View>
           </View>
 
-          <SectionHeader>About</SectionHeader>
-          <View style={styles.card}>
-            <Row><RowLeft title="App version" /><Text style={styles.monoDim}>1.0.0</Text></Row>
-            <Sep />
-            <Row><RowLeft title="Server" /><Text style={styles.monoDim}>{stackHost}</Text></Row>
-            <Sep />
-            <Row><RowLeft title="Stack status" /><Text style={[styles.monoDim, { color: stackHealthy ? cumulus.ok : "#FF6E7A" }]}>{stackHealthy === null ? "…" : stackHealthy ? "ONLINE" : "OFFLINE"}</Text></Row>
-          </View>
+          {/* Advanced Mode: About details */}
+          {isAdv && (
+            <>
+              <SectionHeader>About</SectionHeader>
+              <View style={styles.card}>
+                <Row>
+                  <RowLeft title="App version" />
+                  <Text style={styles.monoDim}>1.0.0</Text>
+                </Row>
+                <Sep />
+                <Row>
+                  <RowLeft title="Server" />
+                  <Text style={styles.monoDim}>{stackHost}</Text>
+                </Row>
+                <Sep />
+                <Row>
+                  <RowLeft title="Stack status" />
+                  <Text
+                    style={[
+                      styles.monoDim,
+                      { color: stackHealthy ? cumulus.ok : "#FF6E7A" },
+                    ]}
+                  >
+                    {stackHealthy === null
+                      ? "…"
+                      : stackHealthy
+                      ? "ONLINE"
+                      : "OFFLINE"}
+                  </Text>
+                </Row>
+              </View>
+            </>
+          )}
 
           <Text style={styles.footer}>
             radar-ng — Cumulus UI{"\n"}
@@ -400,7 +468,7 @@ function StatusDot({ ok, loading }: { ok: boolean; loading?: boolean }) {
   const label = ok ? "ONLINE" : "ERROR";
   return (
     <View style={styles.statusRow}>
-      <View style={[styles.statusDot, { backgroundColor: color, shadowColor: color }]} />
+      <View style={[styles.statusDot, { backgroundColor: color }]} />
       <Text style={[styles.statusLabel, { color }]}>{label}</Text>
     </View>
   );
@@ -419,6 +487,7 @@ function SectionHeader({ children }: { children: string }) {
   return <Text style={styles.sectionHeader}>{children}</Text>;
 }
 
+// Divider Line
 function Sep() {
   return <View style={styles.sep} />;
 }
@@ -438,14 +507,19 @@ function RowLeft({ title, sub }: { title: string; sub?: string }) {
 
 function Pill({ color, children }: { color: string; children: string }) {
   return (
-    <View style={[styles.pill, { backgroundColor: `${color}22`, borderColor: `${color}55` }]}>
+    <View style={[styles.pill, { backgroundColor: `${color}12`, borderColor: `${color}33` }]}>
       <Text style={[styles.pillText, { color }]}>{children}</Text>
     </View>
   );
 }
 
 function SourceRow({
-  name, icon, endpoint, status, expanded, onPress,
+  name,
+  icon,
+  endpoint,
+  status,
+  expanded,
+  onPress,
 }: {
   name: string;
   icon: string;
@@ -458,7 +532,7 @@ function SourceRow({
     healthy: cumulus.ok,
     stale: "#F5A524",
     error: "#FF6E7A",
-    disabled: "rgba(255,255,255,0.3)",
+    disabled: "rgba(33, 31, 27, 0.3)",
   };
   const pill = { healthy: "OK", stale: "STALE", error: "ERROR", disabled: "OFF" }[status];
   return (
@@ -481,12 +555,16 @@ function SourceEditor({ src }: { src: { name: string; endpoint: string } }) {
       <Field label="URL TEMPLATE" value={src.endpoint} />
       <Field label="AUTH" value="None" />
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <View style={{ flex: 1 }}><Field label="TIMEOUT" value="8s" /></View>
-        <View style={{ flex: 1 }}><Field label="RETRIES" value="3" /></View>
+        <View style={{ flex: 1 }}>
+          <Field label="TIMEOUT" value="8s" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Field label="RETRIES" value="3" />
+        </View>
       </View>
       <Text style={styles.editorHint}>
-        Individual source URLs derive from the Stack URL above.
-        Change the stack URL to re-point every data source.
+        Individual source URLs derive from the Stack URL above. Change the stack URL to
+        re-point every data source.
       </Text>
     </View>
   );
@@ -530,12 +608,20 @@ function CityResultRow({
 }
 
 function ContainerRow({
-  name, image, status, ports,
-}: { name: string; image: string; status: "healthy" | "updating" | "error"; ports: string }) {
+  name,
+  image,
+  status,
+  ports,
+}: {
+  name: string;
+  image: string;
+  status: "healthy" | "updating" | "error";
+  ports: string;
+}) {
   const color = { healthy: cumulus.ok, updating: "#F5A524", error: "#FF6E7A" }[status];
   return (
     <View style={styles.containerRow}>
-      <View style={[styles.containerDot, { backgroundColor: color, shadowColor: color }]} />
+      <View style={[styles.containerDot, { backgroundColor: color }]} />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={styles.containerName}>{name}</Text>
         <Text style={styles.containerImage} numberOfLines={1}>{image}</Text>
@@ -546,24 +632,40 @@ function ContainerRow({
 }
 
 function ToggleRow({
-  label, sub, value, onChange,
-}: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void }) {
+  label,
+  sub,
+  value,
+  onChange,
+}: {
+  label: string;
+  sub?: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <View style={styles.row}>
       <RowLeft title={label} sub={sub} />
       <Switch
         value={value}
         onValueChange={onChange}
-        trackColor={{ true: cumulus.accent, false: "rgba(255,255,255,0.15)" }}
-        thumbColor="#fff"
+        trackColor={{ true: cumulus.accent, false: "#eae4d8" }}
+        thumbColor="#ffffff"
       />
     </View>
   );
 }
 
 function SelectRow({
-  label, value, options, onChange,
-}: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <View style={{ paddingHorizontal: 14, paddingVertical: 8 }}>
@@ -581,13 +683,18 @@ function SelectRow({
           {options.map((opt) => (
             <TouchableOpacity
               key={opt}
-              onPress={() => { onChange(opt); setOpen(false); }}
+              onPress={() => {
+                onChange(opt);
+                setOpen(false);
+              }}
               style={[
                 styles.selectChip,
                 opt === value && { backgroundColor: cumulus.accent },
               ]}
             >
-              <Text style={styles.selectChipText}>{opt}</Text>
+              <Text style={[styles.selectChipText, opt === value && { color: "#ffffff" }]}>
+                {opt}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -597,8 +704,14 @@ function SelectRow({
 }
 
 function Segmented({
-  options, selected, onSelect,
-}: { options: string[]; selected: string; onSelect: (v: string) => void }) {
+  options,
+  selected,
+  onSelect,
+}: {
+  options: string[];
+  selected: string;
+  onSelect: (v: string) => void;
+}) {
   return (
     <View style={styles.segmented}>
       {options.map((opt) => (
@@ -607,9 +720,7 @@ function Segmented({
           style={[styles.segment, opt === selected && styles.segmentSelected]}
           onPress={() => onSelect(opt)}
         >
-          <Text
-            style={[styles.segmentText, opt === selected && styles.segmentTextSelected]}
-          >
+          <Text style={[styles.segmentText, opt === selected && styles.segmentTextSelected]}>
             {opt}
           </Text>
         </TouchableOpacity>
@@ -624,7 +735,7 @@ function BigBtn({ children, primary }: { children: string; primary?: boolean }) 
       style={[styles.bigBtn, primary ? styles.bigBtnPrimary : styles.bigBtnGhost]}
       activeOpacity={0.8}
     >
-      <Text style={styles.bigBtnText}>{children}</Text>
+      <Text style={[styles.bigBtnText, primary && { color: "#ffffff" }]}>{children}</Text>
     </TouchableOpacity>
   );
 }
@@ -649,22 +760,62 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 140 },
 
+  // Header row
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 6,
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  title: { fontSize: 28, fontWeight: "700", color: cumulus.ink, letterSpacing: -0.5 },
+  title: {
+    fontSize: 34,
+    fontWeight: "500",
+    color: cumulus.ink,
+    letterSpacing: -0.5,
+    fontFamily: cumulusFonts.display,
+  },
 
+  toggleContainer: {
+    flexDirection: "row",
+    backgroundColor: "#eae4d8",
+    borderRadius: 11,
+    padding: 3,
+    alignItems: "center",
+  },
+  toggleBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+  },
+  toggleBtnActive: {
+    backgroundColor: cumulus.accent,
+  },
+  toggleBtnText: {
+    fontFamily: cumulusFonts.ui,
+    fontSize: 10,
+    fontWeight: "700",
+    color: cumulus.inkMuted,
+  },
+  toggleBtnTextActive: {
+    color: "#ffffff",
+  },
+
+  // Hero stack details
   hero: {
-    marginHorizontal: 14,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: "rgba(139,124,255,0.14)",
+    marginHorizontal: 16,
+    marginTop: 8,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: "#3a3266",
     borderWidth: 1,
-    borderColor: "rgba(139,124,255,0.3)",
+    borderColor: "rgba(255,255,255,0.06)",
+    shadowColor: "rgba(60,50,40,0.12)",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 4,
   },
   heroHeader: {
     flexDirection: "row",
@@ -673,100 +824,108 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   heroKicker: {
-    fontSize: 10,
-    fontFamily: "SF Mono",
+    fontSize: 9,
+    fontFamily: cumulusFonts.mono,
     letterSpacing: 1.6,
-    color: "#C7BDFF",
+    color: "rgba(255,255,255,0.6)",
     fontWeight: "700",
   },
-  heroName: { fontSize: 16, fontWeight: "700", color: cumulus.ink, marginBottom: 2 },
-  heroUrl: { fontSize: 12, fontFamily: "SF Mono", color: cumulus.inkDim },
-  heroStatsRow: { flexDirection: "row", marginTop: 14, gap: 10 },
+  heroName: { fontSize: 26, fontWeight: "600", color: "#ffffff", fontFamily: cumulusFonts.display, marginBottom: 2 },
+  heroUrl: { fontSize: 12, fontFamily: cumulusFonts.ui, color: "rgba(255,255,255,0.6)" },
+  heroStatsRow: { flexDirection: "row", marginTop: 16, gap: 10 },
 
   statusRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   statusDot: {
-    width: 7, height: 7, borderRadius: 4,
-    shadowOpacity: 0.8, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   statusLabel: {
-    fontSize: 10.5,
-    fontFamily: "SF Mono",
+    fontSize: 10,
+    fontFamily: cumulusFonts.mono,
     fontWeight: "700",
     letterSpacing: 0.8,
   },
 
-  statLabel: { fontSize: 9, fontFamily: "SF Mono", color: cumulus.inkMuted, letterSpacing: 1.2, fontWeight: "700" },
-  statValue: { fontSize: 15, fontWeight: "700", color: cumulus.ink, marginTop: 2 },
+  statLabel: { fontSize: 9, fontFamily: cumulusFonts.mono, color: "rgba(255,255,255,0.5)", letterSpacing: 1.2, fontWeight: "700" },
+  statValue: { fontSize: 19, fontWeight: "500", color: "#ffffff", fontFamily: cumulusFonts.display, marginTop: 3 },
 
   sectionHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 6,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 8,
     fontSize: 10,
-    fontFamily: "SF Mono",
-    color: cumulus.inkFaint,
+    fontFamily: cumulusFonts.ui,
+    color: cumulus.inkMuted,
     letterSpacing: 1.6,
-    fontWeight: "700",
+    fontWeight: "800",
     textTransform: "uppercase",
   },
 
   card: {
-    marginHorizontal: 14,
-    backgroundColor: cumulus.card,
+    marginHorizontal: 16,
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: cumulus.cardLine,
-    borderRadius: 16,
+    borderColor: "#eee6d8",
+    borderRadius: 20,
     overflow: "hidden",
+    shadowColor: "rgba(60,50,40,0.04)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 1,
   },
-  sep: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(255,255,255,0.07)", marginLeft: 14 },
+  sep: { height: 1, backgroundColor: "#f1ebdd", marginLeft: 16 },
 
   urlRow: { flexDirection: "row", alignItems: "center", padding: 10, gap: 8 },
-  locationSearch: { paddingHorizontal: 10, paddingVertical: 10 },
+  locationSearch: { paddingHorizontal: 12, paddingVertical: 12 },
   searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   searchInput: {
     flex: 1,
     color: cumulus.ink,
     fontSize: 14,
-    backgroundColor: "rgba(0,0,0,0.25)",
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 10,
+    backgroundColor: "#f6f1e8",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#ece4d6",
+    paddingHorizontal: 12,
     paddingVertical: 9,
+    fontFamily: cumulusFonts.ui,
   },
   searchError: {
-    color: "#FF6E7A",
+    color: cumulus.alert,
     fontSize: 12,
     marginTop: 8,
+    fontFamily: cumulusFonts.ui,
   },
   cityRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     marginTop: 8,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderRadius: 12,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#eee6d8",
   },
   cityRowSelected: {
-    backgroundColor: "rgba(77,214,172,0.14)",
-    borderColor: "rgba(77,214,172,0.3)",
+    backgroundColor: "rgba(194, 96, 58, 0.12)",
+    borderColor: "rgba(194, 96, 58, 0.3)",
   },
-  cityName: { fontSize: 14, color: cumulus.ink, fontWeight: "600" },
-  cityMeta: { fontSize: 11, color: cumulus.inkMuted, marginTop: 2 },
+  cityName: { fontSize: 14, color: cumulus.ink, fontWeight: "600", fontFamily: cumulusFonts.ui },
+  cityMeta: { fontSize: 11, color: cumulus.inkMuted, marginTop: 2, fontFamily: cumulusFonts.ui },
   urlInput: {
     flex: 1,
     color: cumulus.ink,
-    fontFamily: "SF Mono",
+    fontFamily: cumulusFonts.mono,
     fontSize: 12,
-    backgroundColor: "rgba(0,0,0,0.25)",
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 10,
+    backgroundColor: "#f6f1e8",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#ece4d6",
+    paddingHorizontal: 12,
     paddingVertical: 8,
   },
   saveBtn: {
@@ -775,48 +934,48 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: cumulus.accent,
   },
-  saveBtnDisabled: { backgroundColor: "rgba(255,255,255,0.1)" },
-  saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  saveBtnDisabled: { backgroundColor: "#eae4d8" },
+  saveBtnText: { color: "#ffffff", fontWeight: "700", fontSize: 13, fontFamily: cumulusFonts.ui },
 
-  row: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
-  rowLabel: { fontSize: 14, color: cumulus.ink, fontWeight: "500" },
-  rowSub: { fontSize: 11, color: cumulus.inkMuted, fontFamily: "SF Mono", marginTop: 2 },
-  monoDim: { fontSize: 12, fontFamily: "SF Mono", color: cumulus.inkMuted },
+  row: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 10 },
+  rowLabel: { fontSize: 14, color: cumulus.ink, fontWeight: "600", fontFamily: cumulusFonts.ui },
+  rowSub: { fontSize: 11, color: cumulus.inkMuted, fontFamily: cumulusFonts.ui, marginTop: 2 },
+  monoDim: { fontSize: 12, fontFamily: cumulusFonts.mono, color: cumulus.inkMuted },
 
   sourceRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     gap: 12,
   },
   sourceIcon: { fontSize: 20 },
-  sourceName: { fontSize: 14, fontWeight: "500", color: cumulus.ink, marginBottom: 2 },
-  sourceEndpoint: { fontSize: 11, fontFamily: "SF Mono", color: cumulus.inkMuted },
-  chev: { color: cumulus.inkMuted, fontSize: 20, marginLeft: 4 },
+  sourceName: { fontSize: 14, fontWeight: "600", color: cumulus.ink, marginBottom: 2, fontFamily: cumulusFonts.ui },
+  sourceEndpoint: { fontSize: 11, fontFamily: cumulusFonts.mono, color: cumulus.inkMuted },
+  chev: { color: cumulus.inkMuted, fontSize: 18, marginLeft: 4 },
 
   pill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
   },
-  pillText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8, fontFamily: "SF Mono" },
+  pillText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8, fontFamily: cumulusFonts.mono },
 
   editor: {
-    marginHorizontal: 10,
+    marginHorizontal: 12,
     marginTop: 4,
-    marginBottom: 10,
+    marginBottom: 12,
     padding: 14,
-    borderRadius: 14,
-    backgroundColor: "rgba(139,124,255,0.08)",
+    borderRadius: 16,
+    backgroundColor: "rgba(194, 96, 58, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(139,124,255,0.25)",
+    borderColor: "rgba(194, 96, 58, 0.25)",
   },
   editorKicker: {
-    fontSize: 10,
-    fontFamily: "SF Mono",
-    color: "#C7BDFF",
+    fontSize: 9,
+    fontFamily: cumulusFonts.mono,
+    color: cumulus.accent,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginBottom: 10,
@@ -826,12 +985,13 @@ const styles = StyleSheet.create({
     color: cumulus.inkMuted,
     lineHeight: 16,
     marginTop: 6,
+    fontFamily: cumulusFonts.ui,
   },
 
   fieldLabel: {
     fontSize: 9,
-    fontFamily: "SF Mono",
-    color: cumulus.inkFaint,
+    fontFamily: cumulusFonts.mono,
+    color: cumulus.inkMuted,
     letterSpacing: 1.2,
     fontWeight: "700",
     marginBottom: 4,
@@ -839,57 +999,60 @@ const styles = StyleSheet.create({
   fieldBox: {
     paddingHorizontal: 10,
     paddingVertical: 8,
-    backgroundColor: "rgba(0,0,0,0.3)",
+    backgroundColor: "#ffffff",
     borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "#eee6d8",
   },
-  fieldValue: { fontFamily: "SF Mono", fontSize: 12, color: cumulus.ink },
+  fieldValue: { fontFamily: cumulusFonts.mono, fontSize: 12, color: cumulus.ink },
 
-  containerRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, gap: 10 },
+  containerRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
   containerDot: {
-    width: 7, height: 7, borderRadius: 4,
-    shadowOpacity: 0.7, shadowRadius: 3, shadowOffset: { width: 0, height: 0 },
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  containerName: { fontSize: 13, fontFamily: "SF Mono", fontWeight: "700", color: cumulus.ink },
-  containerImage: { fontSize: 10, fontFamily: "SF Mono", color: cumulus.inkMuted },
-  containerPorts: { fontSize: 10, fontFamily: "SF Mono", color: cumulus.inkMuted },
+  containerName: { fontSize: 13, fontFamily: cumulusFonts.mono, fontWeight: "700", color: cumulus.ink },
+  containerImage: { fontSize: 10, fontFamily: cumulusFonts.mono, color: cumulus.inkMuted },
+  containerPorts: { fontSize: 10, fontFamily: cumulusFonts.mono, color: cumulus.inkMuted },
 
-  btnRow: { flexDirection: "row", paddingHorizontal: 14, paddingTop: 10, gap: 10 },
+  btnRow: { flexDirection: "row", paddingHorizontal: 16, paddingTop: 12, gap: 10 },
   bigBtn: { flex: 1, paddingVertical: 12, borderRadius: 14, alignItems: "center" },
   bigBtnPrimary: { backgroundColor: cumulus.accent },
-  bigBtnGhost: { backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: cumulus.inkLine },
-  bigBtnText: { color: cumulus.ink, fontSize: 14, fontWeight: "700" },
+  bigBtnGhost: { backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#eee6d8" },
+  bigBtnText: { color: cumulus.ink, fontSize: 14, fontWeight: "700", fontFamily: cumulusFonts.ui },
 
-  progressTrack: { height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden" },
+  progressTrack: { height: 6, borderRadius: 3, backgroundColor: "#eee6d8", overflow: "hidden" },
   progressFill: { height: "100%", backgroundColor: cumulus.accent },
-  clearBtn: { color: "#FF6E7A", fontWeight: "700", fontSize: 13 },
+  clearBtn: { color: cumulus.alert, fontWeight: "700", fontSize: 13, fontFamily: cumulusFonts.ui },
 
   selectChip: {
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#f6f1e8",
+    borderWidth: 1,
+    borderColor: "#ece4d6",
   },
-  selectChipText: { color: cumulus.ink, fontSize: 12, fontFamily: "SF Mono" },
+  selectChipText: { color: cumulus.ink, fontSize: 12, fontFamily: cumulusFonts.mono },
 
   segmented: {
     flexDirection: "row",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#eae4d8",
     borderRadius: 10,
     padding: 2,
   },
   segment: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
   segmentSelected: { backgroundColor: cumulus.accent },
-  segmentText: { color: cumulus.inkMuted, fontWeight: "600", fontSize: 13 },
-  segmentTextSelected: { color: "#fff" },
+  segmentText: { color: cumulus.inkMuted, fontWeight: "700", fontSize: 13, fontFamily: cumulusFonts.ui },
+  segmentTextSelected: { color: "#ffffff" },
 
   footer: {
-    marginTop: 20,
+    marginTop: 24,
     textAlign: "center",
     color: cumulus.inkFaint,
     fontSize: 11,
     lineHeight: 16,
-    fontFamily: "SF Mono",
+    fontFamily: cumulusFonts.mono,
   },
 });

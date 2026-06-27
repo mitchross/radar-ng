@@ -5,7 +5,7 @@
 import { View, StyleSheet, Text, Pressable } from "react-native";
 import type { ComponentProps } from "react";
 import { Tabs } from "expo-router";
-import { cumulus } from "../../lib/cumulusTheme";
+import { cumulus, cumulusFonts } from "../../lib/cumulusTheme";
 import { useAlerts } from "../../hooks/useAlerts";
 
 type ExpoTabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>["tabBar"]>>[0];
@@ -78,8 +78,8 @@ function CumulusTabBar({ state, descriptors, navigation }: ExpoTabBarProps) {
   );
 }
 
-const ICON_COLOR = cumulus.inkMuted;
-const ICON_COLOR_ACTIVE = "#FFFFFF";
+const ICON_COLOR = cumulus.inkFaint;
+const ICON_COLOR_ACTIVE = cumulus.accent;
 const col = (active: boolean) => (active ? ICON_COLOR_ACTIVE : ICON_COLOR);
 
 function HomeIcon({ active }: { active: boolean }) {
@@ -88,7 +88,7 @@ function HomeIcon({ active }: { active: boolean }) {
     <View style={icon.box}>
       <View style={[icon.homeRoof, { borderBottomColor: c }]} />
       <View style={[icon.homeBody, { backgroundColor: c }]} />
-      <View style={[icon.homeDoor, { backgroundColor: active ? cumulus.accent : "rgba(0,0,0,0.45)" }]} />
+      <View style={[icon.homeDoor, { backgroundColor: active ? cumulus.accent : "rgba(0,0,0,0.15)" }]} />
     </View>
   );
 }
@@ -122,8 +122,8 @@ function AlertsIcon({ active }: { active: boolean }) {
   return (
     <View style={icon.box}>
       <View style={[icon.alertTri, { borderBottomColor: c }]} />
-      <View style={[icon.alertBar, { backgroundColor: active ? cumulus.alert : "rgba(0,0,0,0.55)" }]} />
-      <View style={[icon.alertDot, { backgroundColor: active ? cumulus.alert : "rgba(0,0,0,0.55)" }]} />
+      <View style={[icon.alertBar, { backgroundColor: active ? cumulus.alert : "rgba(0,0,0,0.15)" }]} />
+      <View style={[icon.alertDot, { backgroundColor: active ? cumulus.alert : "rgba(0,0,0,0.15)" }]} />
     </View>
   );
 }
@@ -152,23 +152,15 @@ const bar = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 10,
-    paddingBottom: 18,
-    paddingTop: 8,
   },
   pill: {
     flexDirection: "row",
-    backgroundColor: "rgba(10,10,20,0.78)",
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.45,
-    shadowRadius: 22,
-    elevation: 14,
+    backgroundColor: "rgba(246,242,234,0.94)",
+    borderTopWidth: 1,
+    borderTopColor: "#e7e0d3",
+    paddingTop: 10,
+    paddingBottom: 22,
+    paddingHorizontal: 12,
   },
   item: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 4 },
   iconWrap: {
@@ -179,11 +171,7 @@ const bar = StyleSheet.create({
     borderRadius: 14,
     marginBottom: 3,
   },
-  iconWrapActive: {
-    backgroundColor: cumulus.accentSoft,
-    borderWidth: 1,
-    borderColor: cumulus.accentBorder,
-  },
+  iconWrapActive: {},
   badge: {
     position: "absolute",
     top: -2,
@@ -197,8 +185,14 @@ const bar = StyleSheet.create({
     justifyContent: "center",
   },
   badgeText: { color: "#fff", fontSize: 9, fontWeight: "800", lineHeight: 12 },
-  label: { fontSize: 10.5, fontWeight: "600", color: cumulus.inkMuted, letterSpacing: 0.2 },
-  labelActive: { color: "#FFFFFF", fontWeight: "700" },
+  label: {
+    fontFamily: cumulusFonts.ui,
+    fontSize: 10,
+    fontWeight: "600",
+    color: cumulus.inkFaint,
+    letterSpacing: 0.2,
+  },
+  labelActive: { color: cumulus.accent, fontWeight: "700" },
 });
 
 const icon = StyleSheet.create({

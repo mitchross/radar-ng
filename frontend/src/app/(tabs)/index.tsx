@@ -1,8 +1,6 @@
 /**
- * Cumulus Home screen — ported from UI-Handoff home.jsx to Expo/RN.
- * Location row + gear (→ settings modal), hero temp + WeatherIcon, nowcast
- * banner, 24h hourly strip, 24h precip chart, 7-day forecast, radar mini
- * tease, stat grid (UV/wind/humidity/visibility/pressure/AQI), sun arc.
+ * Cumulus Home screen — Redesigned for Editorial Light.
+ * Warm paper background, display serif headers, Simple/Advanced layout gating.
  */
 import { useCallback, useState } from "react";
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable, RefreshControl } from "react-native";
@@ -17,16 +15,24 @@ import { activeLocationLabel } from "../../lib/locationLabel";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import {
   cumulus,
+  cumulusFonts,
   CONDITION_GRADIENTS,
   getCumulusCondition,
   getIconKind,
   getUVInfo,
-  getWindInfo,
   getWindDirection,
   isNightAt,
 } from "../../lib/cumulusTheme";
 import WeatherIcon from "../../components/weather/WeatherIcon";
 import { RadarMiniMap } from "../../components/home/RadarMiniMap";
+import {
+  UVBar,
+  WindDial,
+  FillRing,
+  VisBars,
+  PressureGauge,
+  SunArc,
+} from "../../components/home/StatWidgets";
 
 export default function HomeScreen() {
   useLocation();
@@ -34,19 +40,17 @@ export default function HomeScreen() {
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
   const devicePlace = useWeatherStore((s) => s.devicePlace);
+  const viewMode = useWeatherStore((s) => s.viewMode);
+  const setViewMode = useWeatherStore((s) => s.setViewMode);
+
   const { data: forecast, isLoading, isError, refetch } = useForecast();
   const { data: alertData } = useAlerts();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      // refetchQueries (vs invalidateQueries) bypasses React Query's
-      // staleTime — without this the pull gesture is a no-op while data
-      // is still "fresh" (we set staleTime=15min, same as the server's
-      // forecast cache TTL, so an active query never naturally goes stale
-      // between mounts). The user's mental model of pull-to-refresh is
-      // "give me a new request right now," so honor that.
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["forecast"] }),
         queryClient.refetchQueries({ queryKey: ["alerts"] }),
@@ -56,12 +60,9 @@ export default function HomeScreen() {
     }
   }, [queryClient]);
 
-  // A failed fetch must not masquerade as a perpetual "Loading…": when the
-  // forecast errors and we have no cached data, surface it with a retry so the
-  // screen is honest and recoverable instead of stuck forever.
   if (isError && !forecast) {
     return (
-      <LinearGradient colors={CONDITION_GRADIENTS.clearNight} style={styles.container}>
+      <View style={styles.errorContainer}>
         <SafeAreaView style={[styles.flex, styles.center]}>
           <Text style={styles.errorTitle}>Couldn&apos;t load weather</Text>
           <Text style={styles.errorBody}>
@@ -71,17 +72,17 @@ export default function HomeScreen() {
             <Text style={styles.retryText}>Try again</Text>
           </TouchableOpacity>
         </SafeAreaView>
-      </LinearGradient>
+      </View>
     );
   }
 
   if (isLoading || !forecast) {
     return (
-      <LinearGradient colors={CONDITION_GRADIENTS.clearNight} style={styles.container}>
+      <View style={styles.loadingContainer}>
         <SafeAreaView style={styles.flex}>
           <Text style={styles.loading}>Loading weather...</Text>
         </SafeAreaView>
-      </LinearGradient>
+      </View>
     );
   }
 
@@ -103,10 +104,10 @@ export default function HomeScreen() {
   const conditionLabel = CONDITION_LABELS[condition];
   const locationLabel = activeLocationLabel(locationMode, selectedPlace, devicePlace);
 
-  // Nowcast banner logic — use minutely_15 to detect precip start
+  // Nowcast banner logic
   const nowcastHeadline = buildNowcastHeadline(forecast.minutely_15);
 
-  // 24h hourly (next 24 starting at current hour)
+  // 24h hourly strip
   const hourlyStart = findStartHourIndex(forecast.hourly.time);
   const hourly = forecast.hourly.time.slice(hourlyStart, hourlyStart + 24).map((t, i) => {
     const idx = hourlyStart + i;
@@ -122,13 +123,7 @@ export default function HomeScreen() {
   });
   const precipTotalIn = forecast.daily.precipitation_sum[0]?.toFixed(2) ?? "0.00";
 
-  // 7-day. Match "Today" against the device's local calendar date
-  // rather than `i === 0` — if the upstream forecast cache is stale
-  // across midnight (Open-Meteo + our 15-min server cache + Cloudflare),
-  // forecast.daily.time[0] can still hold yesterday's date. Labeling
-  // that row "Today" while the row that IS today shows up as "Sun" with
-  // no current-temp dot is the bug. Build today's local YYYY-MM-DD the
-  // same way Open-Meteo formats daily.time[i].
+  // 7-day forecast
   const todayLocal = (() => {
     const d = now;
     const y = d.getFullYear();
@@ -150,22 +145,21 @@ export default function HomeScreen() {
   const weekHi = Math.max(...daily.map((d) => d.hi));
   const weekLo = Math.min(...daily.map((d) => d.lo));
 
-  // Stats — everything nullish-guarded since Open-Meteo can return null
-  // for missing fields (e.g. humidity, pressure in some regions/times).
+  // Stats
   const uv = forecast.daily.uv_index_max?.[0] ?? 0;
   const uvInfo = getUVInfo(uv);
   const windMph = Math.round(forecast.current.wind_speed_10m ?? 0);
-  const windInfo = getWindInfo(windMph);
   const windDeg = forecast.current.wind_direction_10m ?? 0;
   const windCompass = getWindDirection(windDeg);
   const humidity = Math.round(forecast.current.relative_humidity_2m ?? 0);
   const dew = Math.round(forecast.current.dew_point_2m ?? 0);
-  // Open-Meteo visibility is in meters → miles
   const visM = forecast.hourly.visibility?.[hourlyStart];
   const visibility = visM != null ? Math.min(10, visM / 1609) : 10;
   const pressure = Math.round(forecast.current.surface_pressure ?? 1013);
   const dayMs = sunset.getTime() - sunrise.getTime();
   const dayProgress = Math.max(0, Math.min(1, (now.getTime() - sunrise.getTime()) / dayMs));
+
+  const isAdv = viewMode === "advanced";
 
   return (
     <LinearGradient colors={gradient} style={styles.container}>
@@ -182,33 +176,45 @@ export default function HomeScreen() {
             />
           }
         >
-          {/* Top bar — location + gear (→ settings) */}
+          {/* Top bar — Location & Toggle */}
           <View style={styles.topBar}>
-            <View>
-              <View style={styles.locationRow}>
-                <View style={styles.locationDotOuter}>
-                  <View style={styles.locationDotInner} />
-                </View>
-                <Text style={styles.locationText}>{locationLabel}</Text>
-              </View>
-              <Text style={styles.updated}>
-                {"UPDATED " + now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toUpperCase()}
-              </Text>
-            </View>
             <TouchableOpacity
-              style={styles.iconBtn}
               onPress={() => router.push("/(tabs)/settings" as any)}
+              style={styles.locationContainer}
               activeOpacity={0.7}
             >
-              <View style={styles.gearRing} />
-              <View style={styles.gearDot} />
+              <View style={styles.locationRow}>
+                <View style={styles.locationDot} />
+                <Text style={styles.locationLabelText}>MY LOCATION</Text>
+              </View>
+              <View style={styles.locationNameRow}>
+                <Text style={styles.locationNameText}>{locationLabel}</Text>
+                <Text style={styles.expandChevron}>{"\u25BE"}</Text>
+              </View>
             </TouchableOpacity>
+
+            <View style={styles.toggleContainer}>
+              <TouchableOpacity
+                onPress={() => setViewMode("simple")}
+                style={[styles.toggleBtn, !isAdv && styles.toggleBtnActive]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.toggleBtnText, !isAdv && styles.toggleBtnTextActive]}>Simple</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setViewMode("advanced")}
+                style={[styles.toggleBtn, isAdv && styles.toggleBtnActive]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.toggleBtnText, isAdv && styles.toggleBtnTextActive]}>Adv</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* Hero — temp + weather icon */}
+          {/* Hero section */}
           <View style={styles.hero}>
             <View style={styles.heroIcon}>
-              <WeatherIcon kind={iconKind} size={140} time={isNight ? "night" : "day"} />
+              <WeatherIcon kind={iconKind} size={130} time={isNight ? "night" : "day"} />
             </View>
             <Text style={styles.heroCondition}>{conditionLabel}</Text>
             <View style={styles.heroTempRow}>
@@ -216,11 +222,7 @@ export default function HomeScreen() {
               <Text style={styles.heroDeg}>{"\u00B0"}</Text>
             </View>
             <Text style={styles.heroMeta}>
-              Feels like <Text style={styles.heroMetaStrong}>{feels}{"\u00B0"}</Text>
-              <Text style={styles.heroMetaDim}>  {"\u00B7"}  </Text>
-              H <Text style={styles.heroMetaStrong}>{hi}{"\u00B0"}</Text>
-              <Text style={styles.heroMetaDim}>  L  </Text>
-              <Text style={styles.heroMetaStrong}>{lo}{"\u00B0"}</Text>
+              Feels {feels}{"\u00B0"}   {"\u00B7"}   H {hi}{"\u00B0"}   L {lo}{"\u00B0"}
             </Text>
           </View>
 
@@ -231,7 +233,7 @@ export default function HomeScreen() {
               onPress={() => router.push("/nowcast" as never)}
             >
               <View style={styles.nowcastIcon}>
-                <WeatherIcon kind="rain" size={28} />
+                <WeatherIcon kind="rain" size={24} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.nowcastHeadline}>{nowcastHeadline.headline}</Text>
@@ -241,7 +243,7 @@ export default function HomeScreen() {
             </Pressable>
           )}
 
-          {/* Active alert */}
+          {/* Active alerts */}
           {alertData && alertData.features.length > 0 && (
             <TouchableOpacity
               style={styles.alertCard}
@@ -253,7 +255,7 @@ export default function HomeScreen() {
                 })
               }
             >
-              <View style={styles.alertDot} />
+              <View style={styles.alertIndicatorDot} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.alertTitle}>{alertData.features[0].properties.event}</Text>
                 <Text style={styles.alertSub} numberOfLines={1}>
@@ -268,8 +270,8 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
 
-          {/* 24h hourly strip */}
-          <SectionHeader title="HOURLY · NEXT 24" right="48H" />
+          {/* Hourly strip */}
+          <SectionHeader title="HOURLY" />
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -283,15 +285,10 @@ export default function HomeScreen() {
                 <Text style={[styles.hourlyTime, h.isNow && styles.hourlyTimeNow]}>
                   {h.isNow ? "NOW" : h.time}
                 </Text>
-                <View style={{ marginVertical: 3 }}>
-                  <WeatherIcon kind={h.icon} size={30} time={isNight ? "night" : "day"} />
+                <View style={{ marginVertical: 6 }}>
+                  <WeatherIcon kind={h.icon} size={22} time={isNight ? "night" : "day"} />
                 </View>
                 <Text style={styles.hourlyTemp}>{h.temp}{"\u00B0"}</Text>
-                {h.precip > 0 ? (
-                  <Text style={styles.hourlyPrecip}>{h.precip}%</Text>
-                ) : (
-                  <View style={{ height: 11 }} />
-                )}
               </View>
             ))}
           </ScrollView>
@@ -317,15 +314,13 @@ export default function HomeScreen() {
             </View>
             <View style={styles.precipAxis}>
               <Text style={styles.axisLabel}>NOW</Text>
-              <Text style={styles.axisLabel}>+6h</Text>
-              <Text style={styles.axisLabel}>+12h</Text>
-              <Text style={styles.axisLabel}>+18h</Text>
-              <Text style={styles.axisLabel}>+24h</Text>
+              <Text style={styles.axisLabel}>+12H</Text>
+              <Text style={styles.axisLabel}>+24H</Text>
             </View>
           </View>
 
-          {/* 7 day */}
-          <SectionHeader title="7 DAY FORECAST" />
+          {/* 7-day forecast */}
+          <SectionHeader title="7-DAY FORECAST" />
           <View style={[styles.card, { padding: 0, overflow: "hidden" }]}>
             {daily.map((d, i) => {
               const range = weekHi - weekLo || 1;
@@ -343,15 +338,13 @@ export default function HomeScreen() {
                   <Text style={[styles.dailyDay, d.day === "Today" && styles.dailyDayToday]}>
                     {d.day}
                   </Text>
-                  <View style={{ width: 30 }}>
-                    <WeatherIcon kind={d.icon} size={28} />
+                  <View style={{ width: 24, alignItems: "center" }}>
+                    <WeatherIcon kind={d.icon} size={21} />
                   </View>
-                  <Text style={styles.dailyPrecip}>
-                    {d.precip > 0 ? `${d.precip}%` : ""}
-                  </Text>
+                  <Text style={styles.dailyLo}>{d.lo}{"\u00B0"}</Text>
                   <View style={styles.dailyBarTrack}>
                     <LinearGradient
-                      colors={[cumulus.cold, cumulus.sun, cumulus.hot]}
+                      colors={["#6db4d8", "#f0c34e", "#df6a3c"]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
                       style={{
@@ -371,104 +364,138 @@ export default function HomeScreen() {
                       />
                     )}
                   </View>
-                  <Text style={styles.dailyLo}>{d.lo}{"\u00B0"}</Text>
                   <Text style={styles.dailyHi}>{d.hi}{"\u00B0"}</Text>
                 </View>
               );
             })}
           </View>
 
-          {/* Real radar mini-map — see components/home/RadarMiniMap.tsx */}
+          {/* Mini radar map */}
           <RadarMiniMap
             headline={nowcastHeadline ? "Precip developing nearby" : "Clear skies overhead"}
           />
 
-          {/* Stat grid */}
-          <View style={styles.statGrid}>
-            <StatCard
-              label="UV INDEX"
-              value={Math.round(uv).toString()}
-              sub={uvInfo.label}
-              accent={uvInfo.color}
-              barPct={Math.min(1, uv / 11)}
-            />
-            <StatCard
-              label="WIND"
-              value={windMph.toString()}
-              unit="mph"
-              sub={`${windCompass} \u00B7 ${windInfo.label}`}
-              accent={windInfo.color}
-              barPct={Math.min(1, windMph / 40)}
-            />
-            <StatCard
-              label="HUMIDITY"
-              value={humidity.toString()}
-              unit="%"
-              sub={`Dew ${dew}\u00B0`}
-              accent={cumulus.rain}
-              barPct={humidity / 100}
-            />
-            <StatCard
-              label="VISIBILITY"
-              value={visibility.toFixed(1)}
-              unit="mi"
-              sub={visibility >= 9 ? "Clear" : visibility >= 3 ? "Hazy" : "Low"}
-              accent={cumulus.rain}
-              barPct={Math.min(1, visibility / 10)}
-            />
-            <StatCard
-              label="PRESSURE"
-              value={pressure.toString()}
-              unit="hPa"
-              sub={pressure < 1010 ? "Falling" : pressure > 1020 ? "High" : "Steady"}
-              accent={cumulus.accent}
-              barPct={Math.max(0, Math.min(1, (pressure - 980) / 60))}
-            />
-            <StatCard
-              label="DEWPOINT"
-              value={dew.toString()}
-              unit={"\u00B0"}
-              sub={dew > 65 ? "Oppressive" : dew > 55 ? "Sticky" : "Pleasant"}
-              accent={cumulus.accent}
-              barPct={Math.max(0, Math.min(1, (dew - 20) / 60))}
-            />
-          </View>
+          {/* Advanced Mode: Stats grid & Twilight sun path */}
+          {isAdv && (
+            <>
+              <SectionHeader title="CONDITIONS" />
+              <View style={styles.statGrid}>
+                {/* 1. UV Index */}
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>UV INDEX</Text>
+                  <Text style={styles.statValue}>{Math.round(uv)}</Text>
+                  <Text style={[styles.statSubText, { color: uvInfo.color }]}>
+                    {uvInfo.label}
+                  </Text>
+                  <View style={styles.widgetWrapper}>
+                    <UVBar value={uv} />
+                  </View>
+                </View>
 
-          {/* Sun + daylight */}
-          <SectionHeader title="SUN & DAYLIGHT" />
-          <View style={styles.card}>
-            <View style={styles.sunRow}>
-              <View>
-                <Text style={styles.sunLabel}>SUNRISE</Text>
-                <Text style={styles.sunValue}>
-                  {sunrise.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                </Text>
+                {/* 2. Wind compass */}
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>WIND</Text>
+                  <View style={styles.statValueRow}>
+                    <Text style={styles.statValue}>{windMph}</Text>
+                    <Text style={styles.statUnit}>mph</Text>
+                  </View>
+                  <Text style={styles.statSubText}>{windCompass}</Text>
+                  <View style={styles.widgetWrapper}>
+                    <WindDial dir={windDeg} />
+                  </View>
+                </View>
+
+                {/* 3. Humidity */}
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>HUMIDITY</Text>
+                  <View style={styles.statValueRow}>
+                    <Text style={styles.statValue}>{humidity}</Text>
+                    <Text style={styles.statUnit}>%</Text>
+                  </View>
+                  <Text style={styles.statSubText}>Dew pt {dew}°</Text>
+                  <View style={styles.widgetWrapper}>
+                    <FillRing value={humidity / 100} color={cumulus.rain} />
+                  </View>
+                </View>
+
+                {/* 4. Visibility */}
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>VISIBILITY</Text>
+                  <View style={styles.statValueRow}>
+                    <Text style={styles.statValue}>{Math.round(visibility)}</Text>
+                    <Text style={styles.statUnit}>mi</Text>
+                  </View>
+                  <Text style={styles.statSubText}>
+                    {visibility >= 9 ? "Clear view" : "Hazy"}
+                  </Text>
+                  <View style={styles.widgetWrapper}>
+                    <VisBars value={visibility} />
+                  </View>
+                </View>
+
+                {/* 5. Pressure */}
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>PRESSURE</Text>
+                  <View style={styles.statValueRow}>
+                    <Text style={styles.statValue}>{pressure}</Text>
+                    <Text style={styles.statUnit}>hPa</Text>
+                  </View>
+                  <Text style={styles.statSubText}>
+                    {pressure < 1010 ? "Low press." : "Normal"}
+                  </Text>
+                  <View style={styles.widgetWrapper}>
+                    <PressureGauge value={pressure} />
+                  </View>
+                </View>
+
+                {/* 6. Dew point */}
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>DEW POINT</Text>
+                  <View style={styles.statValueRow}>
+                    <Text style={styles.statValue}>{dew}</Text>
+                    <Text style={styles.statUnit}>°</Text>
+                  </View>
+                  <Text style={styles.statSubText}>
+                    {dew > 60 ? "Humid air" : "Comfortable"}
+                  </Text>
+                  <View style={styles.widgetWrapper}>
+                    <FillRing value={Math.max(0, Math.min(1, (dew - 20) / 60))} color="#df6a3c" />
+                  </View>
+                </View>
               </View>
-              <View style={{ alignItems: "center" }}>
-                <Text style={styles.sunLabel}>DAYLIGHT</Text>
-                <Text style={styles.sunValue}>
-                  {Math.floor(dayMs / 3600000)}h {Math.round((dayMs % 3600000) / 60000)}m
-                </Text>
+
+              {/* Sunrise/Sunset widgets grid row */}
+              <View style={styles.sunriseSunsetGrid}>
+                <View style={[styles.statCard, styles.rowLayoutCard]}>
+                  <Text style={styles.widgetIconText}>🌅</Text>
+                  <View>
+                    <Text style={styles.rowLayoutLabel}>SUNRISE</Text>
+                    <Text style={styles.rowLayoutVal}>
+                      {sunrise.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase()}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.statCard, styles.rowLayoutCard]}>
+                  <Text style={styles.widgetIconText}>🌇</Text>
+                  <View>
+                    <Text style={styles.rowLayoutLabel}>SUNSET</Text>
+                    <Text style={styles.rowLayoutVal}>
+                      {sunset.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase()}
+                    </Text>
+                  </View>
+                </View>
               </View>
-              <View>
-                <Text style={[styles.sunLabel, { textAlign: "right" }]}>SUNSET</Text>
-                <Text style={[styles.sunValue, { textAlign: "right" }]}>
-                  {sunset.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.daylightTrack}>
-              <View style={[styles.daylightFill, { width: `${dayProgress * 100}%` }]} />
-              {!isNight && (
-                <View
-                  style={[
-                    styles.daylightSun,
-                    { left: `${dayProgress * 100}%` },
-                  ]}
+
+              {/* Sun Arc */}
+              <View style={[styles.card, styles.sunArcCard]}>
+                <SunArc
+                  sunrise={sunrise.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase()}
+                  sunset={sunset.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase()}
+                  progress={dayProgress}
                 />
-              )}
-            </View>
-          </View>
+              </View>
+            </>
+          )}
 
           <View style={{ height: 100 }} />
         </ScrollView>
@@ -484,36 +511,6 @@ function SectionHeader({ title, right }: { title: string; right?: string }) {
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionTitle}>{title}</Text>
       {right ? <Text style={styles.sectionRight}>{right}</Text> : null}
-    </View>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  unit,
-  sub,
-  accent,
-  barPct,
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  sub: string;
-  accent: string;
-  barPct: number;
-}) {
-  return (
-    <View style={styles.statCard}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <View style={styles.statValueRow}>
-        <Text style={styles.statValue}>{value}</Text>
-        {unit ? <Text style={styles.statUnit}>{unit}</Text> : null}
-      </View>
-      <Text style={styles.statSub}>{sub}</Text>
-      <View style={styles.statBarTrack}>
-        <View style={[styles.statBarFill, { width: `${Math.max(2, barPct * 100)}%`, backgroundColor: accent }]} />
-      </View>
     </View>
   );
 }
@@ -553,11 +550,10 @@ function buildNowcastHeadline(
   const now = Date.now();
   const startIdx = minutely.time.findIndex((t) => new Date(t).getTime() >= now - 7.5 * 60_000);
   if (startIdx < 0) return null;
-  const slice = minutely.precipitation.slice(startIdx, startIdx + 8); // next 2h at 15m
+  const slice = minutely.precipitation.slice(startIdx, startIdx + 8);
   const firstWet = slice.findIndex((p) => p > 0.01);
   if (firstWet < 0) return null;
   const minutes = firstWet * 15;
-  // Find end of precip
   const continuedWet = slice.slice(firstWet).findIndex((p) => p < 0.005);
   const lastsMin = (continuedWet < 0 ? slice.length - firstWet : continuedWet) * 15;
   const total = slice.slice(firstWet).reduce((s, p) => s + Math.max(0, p), 0);
@@ -580,469 +576,441 @@ type OpenMeteoMinutely = NonNullable<
 const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
-  scroll: { paddingBottom: 140 },
-  loading: { color: "rgba(255,255,255,0.6)", fontSize: 16, textAlign: "center", marginTop: 120 },
+  scroll: { paddingBottom: 120 },
+  errorContainer: { flex: 1, backgroundColor: cumulus.background },
+  loadingContainer: { flex: 1, backgroundColor: cumulus.background },
+  loading: {
+    color: cumulus.inkDim,
+    fontSize: 16,
+    textAlign: "center",
+    marginTop: 120,
+    fontFamily: cumulusFonts.ui,
+  },
   center: { alignItems: "center", justifyContent: "center", paddingHorizontal: 32 },
-  errorTitle: { color: "#fff", fontSize: 20, fontWeight: "700", textAlign: "center", marginBottom: 8 },
-  errorBody: { color: "rgba(255,255,255,0.65)", fontSize: 14, textAlign: "center", marginBottom: 20 },
+  errorTitle: {
+    color: cumulus.ink,
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 8,
+    fontFamily: cumulusFonts.ui,
+  },
+  errorBody: {
+    color: cumulus.inkDim,
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 20,
+    fontFamily: cumulusFonts.ui,
+  },
   retryBtn: {
-    backgroundColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "#eae4d8",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: "#e3dccf",
     paddingVertical: 12,
     paddingHorizontal: 28,
     borderRadius: 14,
   },
-  retryText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  retryText: { color: cumulus.ink, fontSize: 15, fontWeight: "600", fontFamily: cumulusFonts.ui },
 
-  // Top bar
+  // Top Bar Location + Toggle
   topBar: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 2,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
   },
-  locationRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  locationDotOuter: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: "rgba(139,124,255,0.25)",
-    alignItems: "center",
-    justifyContent: "center",
+  locationContainer: {
+    flexDirection: "column",
   },
-  locationDotInner: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  locationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: cumulus.accent,
+    marginRight: 8,
+  },
+  locationLabelText: {
+    fontFamily: cumulusFonts.ui,
+    fontSize: 11,
+    fontWeight: "700",
+    color: cumulus.inkMuted,
+    letterSpacing: 1.6,
+  },
+  locationNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  locationNameText: {
+    fontFamily: cumulusFonts.display,
+    fontSize: 29,
+    fontWeight: "500",
+    color: cumulus.ink,
+    letterSpacing: -0.2,
+  },
+  expandChevron: {
+    fontSize: 16,
+    color: "#bcb3a3",
+    marginLeft: 4,
+    marginTop: 4,
+  },
+
+  toggleContainer: {
+    flexDirection: "row",
+    backgroundColor: "#eae4d8",
+    borderRadius: 11,
+    padding: 3,
+    alignItems: "center",
+  },
+  toggleBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+  },
+  toggleBtnActive: {
     backgroundColor: cumulus.accent,
   },
-  locationText: { color: cumulus.ink, fontSize: 15, fontWeight: "600" },
-  updated: {
-    color: cumulus.inkMuted,
+  toggleBtnText: {
+    fontFamily: cumulusFonts.ui,
     fontSize: 10,
-    letterSpacing: 0.8,
-    marginTop: 2,
-    fontVariant: ["tabular-nums"],
+    fontWeight: "700",
+    color: cumulus.inkMuted,
   },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: cumulus.inkLine,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gearRing: {
-    position: "absolute",
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 1.5,
-    borderColor: cumulus.ink,
-  },
-  gearDot: {
-    position: "absolute",
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: cumulus.ink,
+  toggleBtnTextActive: {
+    color: "#ffffff",
   },
 
   // Hero
   hero: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 4,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 16,
     position: "relative",
-    minHeight: 180,
+    minHeight: 168,
   },
-  heroIcon: { position: "absolute", right: 10, top: -10, opacity: 0.95 },
-  heroCondition: { color: cumulus.inkDim, fontSize: 13, fontWeight: "500" },
-  heroTempRow: { flexDirection: "row", alignItems: "flex-start", marginTop: 2 },
+  heroIcon: { position: "absolute", right: 24, top: 4, opacity: 0.95 },
+  heroCondition: {
+    color: cumulus.inkDim,
+    fontSize: 19,
+    fontFamily: cumulusFonts.display,
+    fontStyle: "italic",
+  },
+  heroTempRow: { flexDirection: "row", alignItems: "flex-start", marginTop: 8 },
   heroTemp: {
     color: cumulus.ink,
-    fontSize: 112,
-    lineHeight: 112,
-    fontWeight: "200",
-    letterSpacing: -5,
+    fontSize: 104,
+    lineHeight: 104,
+    fontWeight: "300",
+    fontFamily: cumulusFonts.display,
+    letterSpacing: -3,
   },
   heroDeg: {
     color: cumulus.ink,
-    fontSize: 56,
+    fontSize: 48,
     fontWeight: "300",
-    marginTop: 10,
-    letterSpacing: -2,
-    opacity: 0.55,
+    fontFamily: cumulusFonts.display,
+    marginTop: 4,
+    opacity: 0.85,
   },
-  heroMeta: { color: cumulus.inkDim, fontSize: 14, marginTop: -2 },
-  heroMetaStrong: { color: cumulus.ink, fontWeight: "600" },
-  heroMetaDim: { color: cumulus.inkFaint },
+  heroMeta: {
+    color: cumulus.inkMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 14,
+    fontFamily: cumulusFonts.ui,
+  },
 
-  // Nowcast banner
+  // Nowcast
   nowcastBanner: {
     marginHorizontal: 16,
-    marginTop: 14,
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: "rgba(79,184,255,0.18)",
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "rgba(79,184,255,0.45)",
+    borderColor: "#eee6d8",
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    shadowColor: "rgba(60,50,40,0.06)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 2,
   },
   nowcastIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: "rgba(79,184,255,0.3)",
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "rgba(77,127,184,0.12)",
     alignItems: "center",
     justifyContent: "center",
   },
-  nowcastHeadline: { color: cumulus.ink, fontSize: 14, fontWeight: "600" },
-  nowcastSub: { color: cumulus.inkDim, fontSize: 12, marginTop: 1 },
+  nowcastHeadline: { color: cumulus.ink, fontSize: 14, fontWeight: "600", fontFamily: cumulusFonts.ui },
+  nowcastSub: { color: cumulus.inkDim, fontSize: 12, marginTop: 1, fontFamily: cumulusFonts.ui },
 
-  // Alert
+  // Alerts card
   alertCard: {
     marginHorizontal: 16,
     marginTop: 10,
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,59,74,0.15)",
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: "rgba(223,106,106,0.12)",
     borderWidth: 1,
-    borderColor: "rgba(255,59,74,0.45)",
+    borderColor: "rgba(223,106,106,0.3)",
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
-  alertDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: cumulus.alert },
-  alertTitle: { color: "#FF8A80", fontSize: 14, fontWeight: "700" },
-  alertSub: { color: "#EF9A9A", fontSize: 12, marginTop: 1 },
+  alertIndicatorDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: cumulus.alert },
+  alertTitle: { color: cumulus.alert, fontSize: 14, fontWeight: "700", fontFamily: cumulusFonts.ui },
+  alertSub: { color: cumulus.inkDim, fontSize: 12, marginTop: 1, fontFamily: cumulusFonts.ui },
+  chevron: { color: cumulus.inkMuted, fontSize: 20, fontWeight: "400" },
 
-  chevron: { color: cumulus.ink, fontSize: 22, fontWeight: "400" },
-
-  // Section header
+  // Section Header
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    paddingHorizontal: 20,
-    paddingTop: 22,
+    paddingHorizontal: 24,
+    paddingTop: 24,
     paddingBottom: 10,
   },
   sectionTitle: {
     color: cumulus.inkMuted,
-    fontSize: 11,
-    fontWeight: "700",
+    fontSize: 10,
+    fontWeight: "800",
     letterSpacing: 1.6,
+    fontFamily: cumulusFonts.ui,
   },
   sectionRight: {
     color: cumulus.inkDim,
     fontSize: 11,
-    letterSpacing: 0.8,
-    fontVariant: ["tabular-nums"],
+    fontWeight: "700",
+    fontFamily: cumulusFonts.display,
   },
 
   // Hourly strip
   hourlyStrip: { paddingHorizontal: 16, gap: 8 },
   hourlyCell: {
     minWidth: 54,
-    padding: 8,
+    paddingVertical: 12,
     alignItems: "center",
-    backgroundColor: cumulus.card,
-    borderRadius: 14,
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: cumulus.cardLine,
+    borderColor: "#eee6d8",
   },
   hourlyCellNow: {
-    backgroundColor: cumulus.accentSoft,
-    borderColor: cumulus.accentBorder,
+    backgroundColor: "#eae4d8",
+    borderColor: "#e3dccf",
   },
   hourlyTime: {
     color: cumulus.inkMuted,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "700",
-    letterSpacing: 0.3,
+    fontFamily: cumulusFonts.ui,
   },
-  hourlyTimeNow: { color: "#C7BDFF" },
-  hourlyTemp: { color: cumulus.ink, fontSize: 15, fontWeight: "700", marginTop: 2 },
-  hourlyPrecip: {
-    color: cumulus.rain,
-    fontSize: 9,
-    fontWeight: "700",
-    marginTop: 1,
-    fontVariant: ["tabular-nums"],
+  hourlyTimeNow: { color: cumulus.accent },
+  hourlyTemp: {
+    color: cumulus.ink,
+    fontSize: 17,
+    fontWeight: "500",
+    fontFamily: cumulusFonts.display,
   },
 
   // Card
   card: {
     marginHorizontal: 16,
-    backgroundColor: cumulus.card,
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: cumulus.cardLine,
-    borderRadius: 18,
-    padding: 14,
+    borderColor: "#eee6d8",
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: "rgba(60,50,40,0.04)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 1,
   },
 
   // Precip chart
   precipChart: {
     flexDirection: "row",
     alignItems: "flex-end",
-    height: 48,
-    gap: 2,
+    height: 44,
+    gap: 3,
   },
   precipBarSlot: { flex: 1, justifyContent: "flex-end" },
   precipBar: {
     width: "100%",
-    borderRadius: 2,
+    borderRadius: 3,
     backgroundColor: cumulus.rain,
   },
   precipAxis: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 6,
+    marginTop: 8,
   },
   axisLabel: {
-    color: cumulus.inkMuted,
-    fontSize: 10,
-    fontVariant: ["tabular-nums"],
+    color: cumulus.inkFaint,
+    fontSize: 9,
+    fontWeight: "700",
+    fontFamily: cumulusFonts.ui,
   },
 
-  // Daily
+  // Daily row
   dailyRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 11,
   },
   dailyRowBorder: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: cumulus.cardLine,
+    borderTopWidth: 1,
+    borderTopColor: "#e7e0d3",
   },
-  dailyDay: { color: cumulus.inkDim, fontSize: 14, fontWeight: "500", width: 52 },
-  dailyDayToday: { color: cumulus.ink, fontWeight: "700" },
-  dailyPrecip: {
-    color: cumulus.rain,
-    fontSize: 11,
-    fontWeight: "700",
-    width: 32,
+  dailyDay: {
+    color: cumulus.ink,
+    fontSize: 14,
+    fontWeight: "600",
+    fontFamily: cumulusFonts.ui,
+    width: 44,
+  },
+  dailyDayToday: { fontWeight: "700" },
+  dailyLo: {
+    color: cumulus.inkMuted,
+    fontSize: 13,
+    width: 28,
     textAlign: "right",
-    fontVariant: ["tabular-nums"],
+    fontFamily: cumulusFonts.ui,
+  },
+  dailyHi: {
+    color: cumulus.ink,
+    fontSize: 13,
+    fontWeight: "600",
+    width: 28,
+    textAlign: "right",
+    fontFamily: cumulusFonts.ui,
   },
   dailyBarTrack: {
     flex: 1,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#e7e0d3",
     position: "relative",
   },
   dailyNowDot: {
     position: "absolute",
-    top: -2,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    top: -3,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: "#fff",
-    borderWidth: 2,
-    borderColor: "#000",
-    marginLeft: -5,
-  },
-  dailyLo: {
-    color: cumulus.inkDim,
-    fontSize: 13,
-    width: 26,
-    textAlign: "right",
-    fontVariant: ["tabular-nums"],
-  },
-  dailyHi: {
-    color: cumulus.ink,
-    fontSize: 13,
-    fontWeight: "500",
-    width: 26,
-    textAlign: "right",
-    fontVariant: ["tabular-nums"],
+    borderWidth: 3,
+    borderColor: cumulus.accent,
+    marginLeft: -6,
   },
 
-  // Radar tease
-  radarTease: {
-    marginHorizontal: 16,
-    marginTop: 18,
-    height: 140,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: cumulus.cardLine,
-    overflow: "hidden",
-  },
-  radarBlob: { position: "absolute", borderRadius: 40 },
-  radarSweepWrap: {
-    position: "absolute",
-    right: 18,
-    top: 18,
-    bottom: 18,
-    width: 104,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  radarRing: {
-    position: "absolute",
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(139,124,255,0.35)",
-  },
-  radarRing1: { width: 100, height: 100, opacity: 0.28 },
-  radarRing2: { width: 70, height: 70, opacity: 0.5 },
-  radarRing3: { width: 42, height: 42, opacity: 0.75 },
-  radarCenter: {
-    position: "absolute",
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: cumulus.accent,
-  },
-  radarArm: {
-    position: "absolute",
-    width: 2,
-    height: 50,
-    top: 6,
-    borderRadius: 1,
-    backgroundColor: cumulus.accent,
-    opacity: 0.85,
-    transform: [{ rotate: "38deg" }, { translateY: 18 }],
-  },
-  radarLive: {
-    position: "absolute",
-    top: 10,
-    left: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  radarLiveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: cumulus.ok,
-  },
-  radarLiveText: {
-    color: cumulus.ok,
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1.4,
-  },
-  radarBottom: {
-    position: "absolute",
-    left: 14,
-    right: 14,
-    bottom: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  radarLabel: {
-    color: "rgba(255,255,255,0.65)",
-    fontSize: 10,
-    letterSpacing: 1.6,
-    fontVariant: ["tabular-nums"],
-  },
-  radarTitle: { color: cumulus.ink, fontSize: 15, fontWeight: "600", marginTop: 2 },
-  radarChevronBox: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // Stat grid
+  // Stats Grid
   statGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginHorizontal: 11,
-    marginTop: 12,
-    gap: 10,
+    marginHorizontal: 16,
+    gap: 9,
   },
   statCard: {
     flexBasis: "47%",
     flexGrow: 1,
-    backgroundColor: cumulus.card,
-    borderRadius: 16,
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: cumulus.cardLine,
+    borderColor: "#eee6d8",
     padding: 12,
-    minHeight: 92,
+    minHeight: 110,
+    position: "relative",
   },
   statLabel: {
     color: cumulus.inkMuted,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
-    letterSpacing: 1.2,
+    letterSpacing: 0.6,
+    fontFamily: cumulusFonts.ui,
+  },
+  statValue: {
+    color: cumulus.ink,
+    fontSize: 22,
+    fontFamily: cumulusFonts.display,
+    fontWeight: "500",
+    marginTop: 4,
   },
   statValueRow: {
     flexDirection: "row",
     alignItems: "baseline",
     marginTop: 4,
-    gap: 4,
+    gap: 2,
   },
-  statValue: {
-    color: cumulus.ink,
-    fontSize: 24,
-    fontWeight: "500",
-    letterSpacing: -0.5,
-  },
-  statUnit: { color: cumulus.inkDim, fontSize: 12 },
-  statSub: { color: cumulus.inkDim, fontSize: 11, marginTop: 2 },
-  statBarTrack: {
-    marginTop: 10,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    overflow: "hidden",
-  },
-  statBarFill: { height: "100%", borderRadius: 2 },
-
-  // Sun
-  sunRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  sunLabel: {
+  statUnit: {
     color: cumulus.inkMuted,
     fontSize: 10,
+    fontFamily: cumulusFonts.ui,
+    fontWeight: "500",
+  },
+  statSubText: {
+    color: cumulus.inkMuted,
+    fontSize: 10,
+    fontWeight: "500",
+    fontFamily: cumulusFonts.ui,
+    marginTop: 1,
+  },
+  widgetWrapper: {
+    position: "absolute",
+    right: 12,
+    bottom: 12,
+  },
+
+  // Sunrise sunset cells
+  sunriseSunsetGrid: {
+    flexDirection: "row",
+    marginHorizontal: 16,
+    marginTop: 9,
+    gap: 9,
+  },
+  rowLayoutCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 52,
+    paddingVertical: 10,
+  },
+  widgetIconText: {
+    fontSize: 24,
+  },
+  rowLayoutLabel: {
+    fontSize: 9,
     fontWeight: "700",
-    letterSpacing: 1.2,
+    color: cumulus.inkMuted,
+    letterSpacing: 0.6,
+    fontFamily: cumulusFonts.ui,
   },
-  sunValue: { color: cumulus.ink, fontSize: 15, fontWeight: "700", marginTop: 2 },
-  daylightTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    position: "relative",
+  rowLayoutVal: {
+    fontSize: 18,
+    fontFamily: cumulusFonts.display,
+    fontWeight: "500",
+    color: cumulus.ink,
+    marginTop: 2,
   },
-  daylightFill: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,193,77,0.5)",
-  },
-  daylightSun: {
-    position: "absolute",
-    top: -3,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginLeft: -5,
-    backgroundColor: cumulus.sun,
-    borderWidth: 2,
-    borderColor: "rgba(0,0,0,0.3)",
+
+  // Sun Arc Card
+  sunArcCard: {
+    marginTop: 12,
+    paddingVertical: 14,
   },
 });

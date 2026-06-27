@@ -1,6 +1,6 @@
 /**
- * Cumulus Alerts tab — NWS active alerts list, severity-colored cards.
- * Empty state when none active. Tap → /alert/[id] detail modal.
+ * Cumulus Alerts tab — Redesigned for Editorial Light.
+ * NWS active alerts list with Simple/Advanced gating.
  */
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,30 +8,33 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useLocation } from "../../hooks/useLocation";
-import { cumulus, CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
+import { useWeatherStore } from "../../stores/useWeatherStore";
+import { cumulus, cumulusFonts, CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
 import type { NWSAlert } from "../../types/weather";
 
 const SEVERITY_COLOR: Record<NWSAlert["properties"]["severity"], string> = {
-  Extreme: "#FF3B4A",
-  Severe: "#FF8A3A",
-  Moderate: "#F5D042",
-  Minor: "#4FB8FF",
-  Unknown: "rgba(255,255,255,0.4)",
+  Extreme: cumulus.alert,
+  Severe: cumulus.accent,
+  Moderate: "#f0c34e",
+  Minor: cumulus.rain,
+  Unknown: "rgba(33, 31, 27, 0.4)",
 };
 
 const SEVERITY_GLOW: Record<NWSAlert["properties"]["severity"], string> = {
-  Extreme: "rgba(255,59,74,0.35)",
-  Severe: "rgba(255,138,58,0.30)",
-  Moderate: "rgba(245,208,66,0.25)",
-  Minor: "rgba(79,184,255,0.22)",
-  Unknown: "rgba(255,255,255,0.10)",
+  Extreme: "rgba(223, 106, 106, 0.2)",
+  Severe: "rgba(194, 96, 58, 0.15)",
+  Moderate: "rgba(240, 195, 78, 0.15)",
+  Minor: "rgba(77, 127, 180, 0.15)",
+  Unknown: "rgba(33, 31, 27, 0.05)",
 };
 
 export default function AlertsScreen() {
   useLocation();
   const router = useRouter();
+  const viewMode = useWeatherStore((s) => s.viewMode);
   const { data, isLoading, refetch, isFetching } = useAlerts();
   const alerts = data?.features ?? [];
+  const isAdv = viewMode === "advanced";
 
   return (
     <LinearGradient colors={CONDITION_GRADIENTS.storm} style={styles.container}>
@@ -39,10 +42,12 @@ export default function AlertsScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.kicker}>ACTIVE ALERTS</Text>
-            <Text style={styles.title}>{alerts.length > 0 ? `${alerts.length} in your area` : "All clear"}</Text>
+            <Text style={styles.title}>
+              {alerts.length > 0 ? `${alerts.length} active` : "All clear"}
+            </Text>
           </View>
           <TouchableOpacity onPress={() => refetch()} style={styles.refresh} activeOpacity={0.7}>
-            <Text style={styles.refreshText}>{isFetching ? "↻" : "↻"}</Text>
+            <Text style={styles.refreshText}>↻</Text>
           </TouchableOpacity>
         </View>
 
@@ -59,7 +64,7 @@ export default function AlertsScreen() {
           }
         >
           {isLoading && <Text style={styles.muted}>Loading…</Text>}
-          {!isLoading && alerts.length === 0 && <EmptyState />}
+          {!isLoading && alerts.length === 0 && <EmptyState isAdv={isAdv} />}
           {alerts.map((alert) => (
             <AlertCard
               key={alert.id}
@@ -79,7 +84,10 @@ function AlertCard({ alert, onPress }: { alert: NWSAlert; onPress: () => void })
   const glow = SEVERITY_GLOW[alert.properties.severity];
   const expires = new Date(alert.properties.expires);
   const expiresLabel = expires.toLocaleString([], {
-    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
   return (
     <TouchableOpacity
@@ -89,28 +97,17 @@ function AlertCard({ alert, onPress }: { alert: NWSAlert; onPress: () => void })
         styles.card,
         {
           shadowColor: glow,
-          shadowOpacity: 1,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.4,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
         },
       ]}
     >
       <View style={[styles.stripe, { backgroundColor: color }]} />
       <View style={styles.cardBody}>
         <View style={styles.cardHeaderRow}>
-          <View style={[styles.severityPill, { borderColor: `${color}55`, backgroundColor: `${color}22` }]}>
-            <View
-              style={[
-                styles.severityDot,
-                {
-                  backgroundColor: color,
-                  shadowColor: color,
-                  shadowOpacity: 0.85,
-                  shadowRadius: 4,
-                  shadowOffset: { width: 0, height: 0 },
-                },
-              ]}
-            />
+          <View style={[styles.severityPill, { borderColor: `${color}33`, backgroundColor: `${color}12` }]}>
+            <View style={[styles.severityDot, { backgroundColor: color }]} />
             <Text style={[styles.severityText, { color }]}>{alert.properties.severity.toUpperCase()}</Text>
           </View>
           <Text style={styles.urgency}>{alert.properties.urgency.toUpperCase()}</Text>
@@ -128,16 +125,38 @@ function AlertCard({ alert, onPress }: { alert: NWSAlert; onPress: () => void })
   );
 }
 
-function EmptyState() {
+function EmptyState({ isAdv }: { isAdv: boolean }) {
   return (
-    <View style={styles.empty}>
-      <View style={styles.emptyDotOuter}>
-        <View style={styles.emptyDot} />
+    <View style={styles.emptyContainer}>
+      <View style={styles.empty}>
+        {/* Pulsing check circle indicator */}
+        <View style={styles.pulsingCircle}>
+          <View style={styles.innerCheckCircle}>
+            <Text style={styles.checkMarkText}>✓</Text>
+          </View>
+        </View>
+        <Text style={styles.emptyTitle}>No active alerts</Text>
+        <Text style={styles.emptyMeta}>
+          The National Weather Service reports no warnings, watches, or advisories for your location.
+        </Text>
       </View>
-      <Text style={styles.emptyTitle}>No active alerts</Text>
-      <Text style={styles.emptyMeta}>
-        National Weather Service reports no warnings, watches, or advisories for your location.
-      </Text>
+
+      {isAdv && (
+        <View style={styles.metadataCard}>
+          <View style={styles.metadataRow}>
+            <Text style={styles.metadataLabel}>Source</Text>
+            <Text style={styles.metadataValue}>NWS CAP</Text>
+          </View>
+          <View style={[styles.metadataRow, styles.rowBorder]}>
+            <Text style={styles.metadataLabel}>Monitored zone</Text>
+            <Text style={styles.metadataValue}>MIZ064 · Kent</Text>
+          </View>
+          <View style={[styles.metadataRow, styles.rowBorder]}>
+            <Text style={styles.metadataLabel}>Last polled</Text>
+            <Text style={styles.metadataValue}>2 min ago</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -149,39 +168,46 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
   kicker: {
-    fontSize: 11,
-    fontFamily: "SF Mono",
-    fontWeight: "700",
+    fontSize: 10,
+    fontFamily: cumulusFonts.ui,
+    fontWeight: "800",
     color: cumulus.inkMuted,
     letterSpacing: 1.6,
   },
-  title: { fontSize: 28, color: cumulus.ink, fontWeight: "700", letterSpacing: -0.4, marginTop: 2 },
+  title: {
+    fontSize: 34,
+    color: cumulus.ink,
+    fontFamily: cumulusFonts.display,
+    fontWeight: "500",
+    letterSpacing: -0.4,
+    marginTop: 4,
+  },
   refresh: {
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: cumulus.cardStrong,
+    backgroundColor: "#eae4d8",
     borderWidth: 1,
-    borderColor: cumulus.inkLine,
+    borderColor: "#e3dccf",
     alignItems: "center",
     justifyContent: "center",
   },
   refreshText: { color: cumulus.ink, fontSize: 18, fontWeight: "700" },
 
   scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 140 },
-  muted: { color: cumulus.inkMuted, textAlign: "center", paddingVertical: 20 },
+  muted: { color: cumulus.inkMuted, textAlign: "center", paddingVertical: 20, fontFamily: cumulusFonts.ui },
 
   card: {
     flexDirection: "row",
-    backgroundColor: cumulus.card,
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: cumulus.cardLine,
-    borderRadius: 18,
+    borderColor: "#eee6d8",
+    borderRadius: 20,
     overflow: "hidden",
     marginBottom: 10,
   },
@@ -198,42 +224,102 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   severityDot: { width: 6, height: 6, borderRadius: 3 },
-  severityText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8, fontFamily: "SF Mono" },
-  urgency: { fontSize: 10, color: cumulus.inkMuted, fontFamily: "SF Mono", letterSpacing: 0.8 },
-  event: { color: cumulus.ink, fontSize: 17, fontWeight: "700", letterSpacing: -0.2 },
-  headline: { color: cumulus.inkDim, fontSize: 13, marginTop: 5, lineHeight: 18 },
+  severityText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8, fontFamily: cumulusFonts.mono },
+  urgency: { fontSize: 10, color: cumulus.inkMuted, fontFamily: cumulusFonts.mono, letterSpacing: 0.8 },
+  event: { color: cumulus.ink, fontSize: 17, fontWeight: "700", letterSpacing: -0.2, fontFamily: cumulusFonts.ui },
+  headline: { color: cumulus.inkDim, fontSize: 13, marginTop: 5, lineHeight: 18, fontFamily: cumulusFonts.ui },
   metaRow: { flexDirection: "row", alignItems: "center", marginTop: 8, gap: 6 },
-  area: { flex: 1, color: cumulus.inkMuted, fontSize: 11, fontFamily: "SF Mono" },
-  expires: { color: cumulus.inkMuted, fontSize: 11, fontFamily: "SF Mono" },
+  area: { flex: 1, color: cumulus.inkMuted, fontSize: 11, fontFamily: cumulusFonts.mono },
+  expires: { color: cumulus.inkMuted, fontSize: 11, fontFamily: cumulusFonts.mono },
 
+  emptyContainer: {
+    width: "100%",
+  },
   empty: {
     alignItems: "center",
-    paddingTop: 80,
+    paddingTop: 64,
     paddingHorizontal: 40,
   },
-  emptyDotOuter: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "rgba(74,222,128,0.12)",
+  pulsingCircle: {
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: "rgba(46, 158, 99, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(74,222,128,0.35)",
+    borderColor: "rgba(46, 158, 99, 0.18)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 18,
+    marginBottom: 26,
   },
-  emptyDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: cumulus.ok,
+  innerCheckCircle: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: "#2e9e63",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#2e9e63",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  emptyTitle: { color: cumulus.ink, fontSize: 22, fontWeight: "700", letterSpacing: -0.3 },
+  checkMarkText: {
+    color: "#ffffff",
+    fontSize: 26,
+    fontWeight: "700",
+  },
+  emptyTitle: {
+    color: cumulus.ink,
+    fontSize: 25,
+    fontFamily: cumulusFonts.display,
+    fontWeight: "500",
+  },
   emptyMeta: {
     color: cumulus.inkDim,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 14,
+    lineHeight: 20,
     textAlign: "center",
     marginTop: 8,
+    fontFamily: cumulusFonts.ui,
+  },
+
+  // Metadata card
+  metadataCard: {
+    marginTop: 34,
+    marginHorizontal: 16,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#eee6d8",
+    borderRadius: 20,
+    paddingVertical: 4,
+    paddingHorizontal: 16,
+    shadowColor: "rgba(60,50,40,0.04)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  metadataRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 13,
+  },
+  metadataLabel: {
+    fontSize: 13,
+    fontFamily: cumulusFonts.ui,
+    fontWeight: "600",
+    color: cumulus.inkDim,
+  },
+  metadataValue: {
+    fontSize: 14,
+    fontFamily: cumulusFonts.display,
+    fontWeight: "500",
+    color: cumulus.ink,
+  },
+  rowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: "#f1ebdd",
   },
 });

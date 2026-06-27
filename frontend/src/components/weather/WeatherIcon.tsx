@@ -194,7 +194,7 @@ function Moon({ size, cx = 32, cy = 30, r = 11 }: { size: number; cx?: number; c
           width: R * 1.9,
           height: R * 1.9,
           borderRadius: R * 0.95,
-          backgroundColor: "#241858",
+          backgroundColor: cumulus.background,
         }}
       />
     </>

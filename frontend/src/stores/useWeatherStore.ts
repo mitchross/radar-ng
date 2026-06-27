@@ -27,6 +27,7 @@ interface WeatherState {
   // overwhelm the radar view for casual users; opt-in via this flag.
   extrasVisible: boolean;
   serverUrl: string;
+  viewMode: "simple" | "advanced";
 
   setFrames: (frames: RadarFrame[]) => void;
   setCurrentFrameIndex: (index: number) => void;
@@ -48,6 +49,7 @@ interface WeatherState {
   setActiveLayer: (layer: LayerType) => void;
   toggleOverlay: (layer: LayerType) => void;
   setServerUrl: (url: string) => void;
+  setViewMode: (mode: "simple" | "advanced") => void;
   nextFrame: () => void;
 }
 
@@ -99,6 +101,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   timelineMode: (getString("timelineMode", "forecast") as TimelineMode),
   extrasVisible: getString("extrasVisible", "0") === "1",
   serverUrl: getString("serverUrl", SELF_HOSTED.DEFAULT_URL),
+  viewMode: (getString("viewMode", "simple") as "simple" | "advanced"),
 
   setFrames: (frames) => set({ frames }),
   setCurrentFrameIndex: (index) => set({ currentFrameIndex: index }),
@@ -155,6 +158,10 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setServerUrl: (url) => {
     setString("serverUrl", url);
     set({ serverUrl: url });
+  },
+  setViewMode: (mode) => {
+    setString("viewMode", mode);
+    set({ viewMode: mode });
   },
   nextFrame: () => {
     const { frames, currentFrameIndex } = get();

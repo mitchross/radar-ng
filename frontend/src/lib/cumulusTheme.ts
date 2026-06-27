@@ -1,34 +1,38 @@
-/**
- * Cumulus design system — ported from UI-Handoff/design_handoff_cumulus_weather/src/design.js.
- * Single violet accent, condition-driven dark gradient backgrounds, dBZ radar scale.
- */
+import { Platform } from "react-native";
 
 export const cumulus = {
-  accent: "#8B7CFF",
-  accentBright: "#A594FF",
-  accentDim: "#5B4FD6",
-  accentSoft: "rgba(139,124,255,0.18)",
-  accentBorder: "rgba(139,124,255,0.55)",
+  background: "#f6f2ea",
+  accent: "#c2603a",
+  accentBright: "#e3794f",
+  accentDim: "#914424",
+  accentSoft: "rgba(194, 96, 58, 0.12)",
+  accentBorder: "rgba(194, 96, 58, 0.30)",
 
-  ink: "#FFFFFF",
-  inkDim: "rgba(255,255,255,0.72)",
-  inkMuted: "rgba(255,255,255,0.48)",
-  inkFaint: "rgba(255,255,255,0.28)",
-  inkLine: "rgba(255,255,255,0.10)",
+  ink: "#211f1b",
+  inkDim: "#5d574d",
+  inkMuted: "#8c857a",
+  inkFaint: "#a39a8a",
+  inkLine: "#e7e0d3",
 
-  card: "rgba(255,255,255,0.06)",
-  cardStrong: "rgba(255,255,255,0.10)",
-  cardLine: "rgba(255,255,255,0.08)",
+  card: "#ffffff",
+  cardStrong: "#fbf9f5",
+  cardLine: "#eee6d8",
 
-  rain: "#4FB8FF",
-  rainHeavy: "#1E7FFF",
-  snow: "#C7E6FF",
-  sun: "#FFC14D",
-  temp: "#FF6E3A",
-  cold: "#5BD4FF",
-  hot: "#FF4D6D",
-  alert: "#FF3B4A",
-  ok: "#4ADE80",
+  rain: "#4d7fb8",
+  rainHeavy: "#3f6fd6",
+  snow: "#b5cde6",
+  sun: "#f0c34e",
+  temp: "#df6a3c",
+  cold: "#6db4d8",
+  hot: "#df6a3c",
+  alert: "#df6a6a",
+  ok: "#2e9e63",
+} as const;
+
+export const cumulusFonts = {
+  display: Platform.OS === "ios" ? "Georgia" : "serif",
+  ui: Platform.OS === "ios" ? "System" : "sans-serif",
+  mono: Platform.OS === "ios" ? "Courier" : "monospace",
 } as const;
 
 /** 5-stop dark gradient per weather condition — hand-tuned from the prototype's CSS gradients. */
@@ -42,13 +46,13 @@ export type CumulusCondition =
   | "fog";
 
 export const CONDITION_GRADIENTS: Record<CumulusCondition, readonly [string, string, string, string, string]> = {
-  clearDay:   ["#5B8FFF", "#3E5DE0", "#2A3FA8", "#1E2670", "#140E3D"],
-  clearNight: ["#2B2060", "#1F1750", "#150B3D", "#0B0725", "#050316"],
-  cloudy:     ["#3F4A6B", "#2F3858", "#1E2540", "#151A30", "#0C1020"],
-  rain:       ["#2C5076", "#234262", "#18304F", "#101E38", "#070D1C"],
-  storm:      ["#5B2A7A", "#442060", "#321551", "#1D0C30", "#0A0418"],
-  snow:       ["#4A5B78", "#384A66", "#26324E", "#161F34", "#0B1020"],
-  fog:        ["#4A5566", "#3A4350", "#2A313F", "#1C222C", "#0F131A"],
+  clearDay:   ["#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea"],
+  clearNight: ["#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea"],
+  cloudy:     ["#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea"],
+  rain:       ["#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea"],
+  storm:      ["#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea"],
+  snow:       ["#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea"],
+  fog:        ["#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea"],
 };
 
 /** Map WMO weather code + day/night to Cumulus condition. */

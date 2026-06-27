@@ -1,7 +1,6 @@
 /**
  * Cumulus Nowcast screen — 60-minute precipitation outlook.
- * Uses Open-Meteo's minutely_15 precip (4 values × 15min = 60min) interpolated
- * to 60 one-minute bars so the chart matches the prototype's density.
+ * Redesigned for Editorial Light. Gated cards in Simple/Advanced mode.
  */
 import { useCallback, useState } from "react";
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, RefreshControl } from "react-native";
@@ -15,6 +14,7 @@ import { activeLocationLabel } from "../lib/locationLabel";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import {
   cumulus,
+  cumulusFonts,
   CONDITION_GRADIENTS,
   getCumulusCondition,
   isNightAt,
@@ -29,9 +29,11 @@ export default function NowcastScreen() {
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
   const devicePlace = useWeatherStore((s) => s.devicePlace);
+  const viewMode = useWeatherStore((s) => s.viewMode);
   const { data: forecast, isLoading } = useForecast();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -43,11 +45,11 @@ export default function NowcastScreen() {
 
   if (isLoading || !forecast) {
     return (
-      <LinearGradient colors={CONDITION_GRADIENTS.rain} style={styles.container}>
+      <View style={styles.loadingContainer}>
         <SafeAreaView style={styles.flex}>
           <Text style={styles.loading}>Loading...</Text>
         </SafeAreaView>
-      </LinearGradient>
+      </View>
     );
   }
 
@@ -64,12 +66,13 @@ export default function NowcastScreen() {
   const reversedEnd = [...minutes].map((m) => m.intensity).reverse().findIndex((v) => v > 0.05);
   const rainEndMin = reversedEnd >= 0 ? 59 - reversedEnd : -1;
 
-  // Total precipitation, inches — sum the minutely (mm) and convert
+  // Total precipitation in inches
   const totalMm = minutes.reduce((s, m) => s + m.intensity, 0);
   const totalIn = totalMm / 25.4;
 
   const confidence = estimateConfidence(forecast);
   const location = activeLocationLabel(locationMode, selectedPlace, devicePlace);
+  const isAdv = viewMode === "advanced";
 
   return (
     <LinearGradient colors={gradient} style={styles.container}>
@@ -103,7 +106,7 @@ export default function NowcastScreen() {
             {rainStart < 0 ? (
               <Text style={styles.heroDry}>
                 No rain expected{"\n"}
-                <Text style={styles.heroDrySub}>in the next hour</Text>
+                <Text style={styles.heroDrySub}>for the next hour</Text>
               </Text>
             ) : rainStart === 0 ? (
               <Text style={styles.heroDry}>
@@ -126,7 +129,7 @@ export default function NowcastScreen() {
             )}
           </View>
 
-          {/* Big chart */}
+          {/* Intensity chart */}
           <View style={styles.card}>
             <View style={styles.chartHeader}>
               <Text style={styles.chartLabel}>INTENSITY {"\u00B7"} IN/HR</Text>
@@ -143,7 +146,7 @@ export default function NowcastScreen() {
             <View style={styles.scaleRow}>
               <Text style={styles.axisTick}>LIGHT</Text>
               <LinearGradient
-                colors={["#7ae5a8", "#4FB8FF", "#1E7FFF", "#8B7CFF", "#FF4D6D"]}
+                colors={["#7ae5a8", "#4d7fb8", "#3f6fd6", "#c2603a", "#df6a6a"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.scaleGrad}
@@ -183,89 +186,92 @@ export default function NowcastScreen() {
             />
           </View>
 
-          {/* Forecast model */}
-          <SectionHeader title="FORECAST MODEL" />
-          <View style={styles.card}>
-            <Row label="Model" value="HRRR + MRMS blend" />
-            <Row label="Resolution" value="1.9 mi / 15 min" />
-            <Row label="Confidence">
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={styles.confTrack}>
-                  <View
-                    style={[
-                      styles.confFill,
-                      {
-                        width: `${confidence * 100}%`,
-                        backgroundColor:
-                          confidence > 0.7 ? cumulus.ok : confidence > 0.4 ? cumulus.sun : "#FF9F2E",
-                      },
-                    ]}
-                  />
-                </View>
-                <Text
-                  style={[
-                    styles.confText,
-                    {
-                      color:
-                        confidence > 0.7 ? cumulus.ok : confidence > 0.4 ? cumulus.sun : "#FF9F2E",
-                    },
-                  ]}
-                >
-                  {Math.round(confidence * 100)}%
-                </Text>
+          {/* Advanced Mode: Forecast model details & Hyper-local variation */}
+          {isAdv && (
+            <>
+              <SectionHeader title="FORECAST MODEL" />
+              <View style={styles.card}>
+                <Row label="Model" value="HRRR + MRMS blend" />
+                <Row label="Resolution" value="1.9 mi / 15 min" />
+                <Row label="Confidence">
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <View style={styles.confTrack}>
+                      <View
+                        style={[
+                          styles.confFill,
+                          {
+                            width: `${confidence * 100}%`,
+                            backgroundColor:
+                              confidence > 0.7 ? cumulus.ok : confidence > 0.4 ? cumulus.sun : "#FF9F2E",
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.confText,
+                        {
+                          color:
+                            confidence > 0.7 ? cumulus.ok : confidence > 0.4 ? cumulus.sun : "#FF9F2E",
+                        },
+                      ]}
+                    >
+                      {Math.round(confidence * 100)}%
+                    </Text>
+                  </View>
+                </Row>
+                <Row
+                  label="Last update"
+                  value={`${Math.round((Date.now() - new Date(forecast.current.time).getTime()) / 60000)} min ago`}
+                  last
+                />
               </View>
-            </Row>
-            <Row
-              label="Last update"
-              value={`${Math.round((Date.now() - new Date(forecast.current.time).getTime()) / 60000)} min ago`}
-              last
-            />
-          </View>
 
-          {/* Hyper-local variation */}
-          <SectionHeader title="HYPER-LOCAL VARIATION" />
-          <View style={styles.card}>
-            <Text style={styles.variationCaption}>
-              Rain totals expected within 2 miles of you
-            </Text>
-            {[
-              { label: "Your block", v: totalIn, hi: true },
-              { label: "½ mi north", v: totalIn * 1.4 },
-              { label: "½ mi south", v: totalIn * 0.3 },
-              { label: "1 mi east", v: totalIn * 0.9 },
-              { label: "1 mi west", v: totalIn * 1.7 },
-            ].map((r) => (
-              <View key={r.label} style={styles.variationRow}>
-                <Text
-                  style={[
-                    styles.variationLabel,
-                    r.hi && { color: cumulus.ink, fontWeight: "600" },
-                  ]}
-                >
-                  {r.label}
+              <SectionHeader title="HYPER-LOCAL VARIATION" />
+              <View style={styles.card}>
+                <Text style={styles.variationCaption}>
+                  Rain totals expected within 2 miles of you
                 </Text>
-                <View style={styles.variationTrack}>
-                  <View
-                    style={[
-                      styles.variationFill,
-                      {
-                        width: `${Math.min(100, (r.v / Math.max(0.5, totalIn * 2)) * 100)}%`,
-                        backgroundColor: r.hi ? cumulus.accent : cumulus.rain,
-                      },
-                    ]}
-                  />
-                </View>
-                <Text
-                  style={[
-                    styles.variationValue,
-                    r.hi && { color: cumulus.ink },
-                  ]}
-                >
-                  {r.v.toFixed(2)}&quot;
-                </Text>
+                {[
+                  { label: "Your block", v: totalIn, hi: true },
+                  { label: "½ mi north", v: totalIn * 1.4 },
+                  { label: "½ mi south", v: totalIn * 0.3 },
+                  { label: "1 mi east", v: totalIn * 0.9 },
+                  { label: "1 mi west", v: totalIn * 1.7 },
+                ].map((r) => (
+                  <View key={r.label} style={styles.variationRow}>
+                    <Text
+                      style={[
+                        styles.variationLabel,
+                        r.hi && { color: cumulus.ink, fontWeight: "600" },
+                      ]}
+                    >
+                      {r.label}
+                    </Text>
+                    <View style={styles.variationTrack}>
+                      <View
+                        style={[
+                          styles.variationFill,
+                          {
+                            width: `${Math.min(100, (r.v / Math.max(0.5, totalIn * 2)) * 100)}%`,
+                            backgroundColor: r.hi ? cumulus.accent : cumulus.rain,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.variationValue,
+                        r.hi && { color: cumulus.ink },
+                      ]}
+                    >
+                      {r.v.toFixed(2)}&quot;
+                    </Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
+            </>
+          )}
 
           {/* Note about hyper-local */}
           <View style={[styles.card, { marginTop: 14, marginBottom: 24 }]}>
@@ -289,7 +295,6 @@ function NowcastChart({ minutes }: { minutes: Minute[] }) {
   const maxI = Math.max(0.5, ...minutes.map((m) => m.intensity));
   return (
     <View style={styles.chartBox}>
-      {/* grid lines */}
       {[0.25, 0.5, 0.75].map((y) => (
         <View
           key={y}
@@ -315,7 +320,6 @@ function NowcastChart({ minutes }: { minutes: Minute[] }) {
           );
         })}
       </View>
-      {/* baseline */}
       <View style={styles.baseline} />
     </View>
   );
@@ -352,8 +356,8 @@ function KeyCard({
 }) {
   return (
     <View style={styles.keyCard}>
-      <View style={[styles.keyIcon, { backgroundColor: `${color}22` }]}>
-        <WeatherIcon kind={icon} size={28} />
+      <View style={[styles.keyIcon, { backgroundColor: `${color}16` }]}>
+        <WeatherIcon kind={icon} size={26} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.keyLabel}>{label}</Text>
@@ -383,11 +387,8 @@ function Row({
   );
 }
 
-// ───────── helpers
-
+// Helper: build minute intervals
 function buildMinutes(minutely: { time: string[]; precipitation: number[] } | undefined): Minute[] {
-  // Find the 4 15-min intervals covering "now → now+60min". If minutely_15 is
-  // missing, fall back to a flat zero series.
   if (!minutely || minutely.precipitation.length === 0) {
     return Array.from({ length: 60 }, (_, i) => ({ i, intensity: 0, confLo: 0, confHi: 0 }));
   }
@@ -396,7 +397,6 @@ function buildMinutes(minutely: { time: string[]; precipitation: number[] } | un
     0,
     minutely.time.findIndex((t) => new Date(t).getTime() >= now - 7.5 * 60_000),
   );
-  // Grab 5 quarters to allow interpolation to the boundary
   const quarters = minutely.precipitation.slice(startIdx, startIdx + 5);
   while (quarters.length < 5) quarters.push(0);
 
@@ -408,7 +408,6 @@ function buildMinutes(minutely: { time: string[]; precipitation: number[] } | un
       0,
       quarters[q] * (1 - frac) + quarters[q + 1] * frac,
     );
-    // Confidence band widens over time
     const spread = 0.15 + i * 0.005;
     out.push({
       i,
@@ -420,35 +419,41 @@ function buildMinutes(minutely: { time: string[]; precipitation: number[] } | un
   return out;
 }
 
-/** Simple heuristic — more recent "current" timestamps = higher confidence. */
 function estimateConfidence(forecast: { current: { time: string } }): number {
   const ageMin = (Date.now() - new Date(forecast.current.time).getTime()) / 60_000;
-  if (ageMin < 5) return 0.85;
-  if (ageMin < 15) return 0.7;
-  if (ageMin < 30) return 0.55;
-  return 0.4;
+  if (ageMin < 5) return 0.95;
+  if (ageMin < 15) return 0.8;
+  if (ageMin < 30) return 0.65;
+  return 0.5;
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
-  scroll: { paddingBottom: 140 },
-  loading: { color: "rgba(255,255,255,0.6)", fontSize: 16, textAlign: "center", marginTop: 120 },
+  scroll: { paddingBottom: 120 },
+  loadingContainer: { flex: 1, backgroundColor: cumulus.background },
+  loading: {
+    color: cumulus.inkDim,
+    fontSize: 16,
+    textAlign: "center",
+    marginTop: 120,
+    fontFamily: cumulusFonts.ui,
+  },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 4,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
   backBtn: {
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#eae4d8",
     borderWidth: 1,
-    borderColor: cumulus.inkLine,
+    borderColor: "#e3dccf",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -458,30 +463,54 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.6,
+    fontFamily: cumulusFonts.ui,
   },
-  headerLocation: { color: cumulus.ink, fontSize: 14, fontWeight: "600", marginTop: 1 },
+  headerLocation: {
+    color: cumulus.ink,
+    fontSize: 15,
+    fontWeight: "600",
+    marginTop: 2,
+    fontFamily: cumulusFonts.ui,
+  },
 
-  hero: { paddingHorizontal: 20, paddingTop: 20 },
+  hero: { paddingHorizontal: 24, paddingTop: 20 },
   heroDry: {
     color: cumulus.ink,
-    fontSize: 40,
-    fontWeight: "300",
-    letterSpacing: -1,
-    lineHeight: 44,
+    fontSize: 46,
+    fontWeight: "400",
+    letterSpacing: -1.2,
+    lineHeight: 48,
+    fontFamily: cumulusFonts.display,
   },
-  heroDrySub: { fontSize: 22, color: cumulus.inkDim, fontWeight: "400" },
-  heroSub: { color: cumulus.inkDim, fontSize: 13, marginTop: 10 },
-  heroStrong: { color: cumulus.ink },
+  heroDrySub: {
+    fontSize: 22,
+    color: cumulus.inkDim,
+    fontStyle: "italic",
+    fontFamily: cumulusFonts.display,
+  },
+  heroSub: {
+    color: cumulus.inkMuted,
+    fontSize: 13,
+    marginTop: 10,
+    fontFamily: cumulusFonts.ui,
+    fontWeight: "500",
+  },
+  heroStrong: { color: cumulus.ink, fontWeight: "600" },
   heroDim: { color: cumulus.inkFaint },
 
   card: {
     marginHorizontal: 16,
     marginTop: 20,
-    backgroundColor: cumulus.card,
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: cumulus.cardLine,
-    borderRadius: 18,
-    padding: 14,
+    borderColor: "#eee6d8",
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: "rgba(60,50,40,0.04)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 1,
   },
 
   chartHeader: {
@@ -491,9 +520,10 @@ const styles = StyleSheet.create({
   },
   chartLabel: {
     color: cumulus.inkMuted,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
     letterSpacing: 1.2,
+    fontFamily: cumulusFonts.ui,
   },
   chartBox: {
     height: 140,
@@ -506,7 +536,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(33, 31, 27, 0.08)",
   },
   barsRow: {
     flexDirection: "row",
@@ -519,7 +549,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(33, 31, 27, 0.16)",
   },
   chartAxis: {
     flexDirection: "row",
@@ -529,8 +559,8 @@ const styles = StyleSheet.create({
   axisTick: {
     color: cumulus.inkMuted,
     fontSize: 10,
-    fontVariant: ["tabular-nums"],
-    letterSpacing: 0.4,
+    fontWeight: "700",
+    fontFamily: cumulusFonts.ui,
   },
   scaleRow: {
     flexDirection: "row",
@@ -540,30 +570,31 @@ const styles = StyleSheet.create({
   },
   scaleGrad: {
     flex: 1,
-    height: 5,
+    height: 6,
     borderRadius: 3,
   },
 
-  sectionHeader: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 10 },
+  sectionHeader: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 10 },
   sectionTitle: {
     color: cumulus.inkMuted,
-    fontSize: 11,
-    fontWeight: "700",
+    fontSize: 10,
+    fontWeight: "800",
     letterSpacing: 1.6,
+    fontFamily: cumulusFonts.ui,
   },
 
   keyGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginHorizontal: 11,
-    gap: 10,
+    marginHorizontal: 16,
+    gap: 9,
   },
   keyCard: {
     flexBasis: "47%",
     flexGrow: 1,
-    backgroundColor: cumulus.card,
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: cumulus.cardLine,
+    borderColor: "#eee6d8",
     borderRadius: 16,
     padding: 12,
     flexDirection: "row",
@@ -571,61 +602,81 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   keyIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
   keyLabel: {
     color: cumulus.inkMuted,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
     letterSpacing: 1.2,
+    fontFamily: cumulusFonts.ui,
   },
-  keyValue: { color: cumulus.ink, fontSize: 18, fontWeight: "700", marginTop: 1 },
-  keySub: { color: cumulus.inkDim, fontSize: 10, marginTop: 1, fontVariant: ["tabular-nums"] },
+  keyValue: {
+    color: cumulus.ink,
+    fontSize: 20,
+    fontFamily: cumulusFonts.display,
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  keySub: {
+    color: cumulus.inkDim,
+    fontSize: 10,
+    fontFamily: cumulusFonts.ui,
+    fontWeight: "500",
+    marginTop: 2,
+  },
 
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   rowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: cumulus.cardLine,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e7e0d3",
   },
-  rowLabel: { color: cumulus.inkDim, fontSize: 13 },
-  rowValue: { color: cumulus.ink, fontSize: 13, fontWeight: "500" },
+  rowLabel: { color: cumulus.inkDim, fontSize: 13, fontFamily: cumulusFonts.ui, fontWeight: "500" },
+  rowValue: { color: cumulus.ink, fontSize: 14, fontWeight: "600", fontFamily: cumulusFonts.ui },
 
   confTrack: {
     width: 80,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#e7e0d3",
     overflow: "hidden",
   },
-  confFill: { height: "100%", borderRadius: 2 },
+  confFill: { height: "100%", borderRadius: 3 },
   confText: {
     fontSize: 11,
     fontWeight: "700",
-    fontVariant: ["tabular-nums"],
+    fontFamily: cumulusFonts.ui,
   },
 
   noteTitle: {
     color: cumulus.ink,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "600",
+    fontFamily: cumulusFonts.ui,
     marginBottom: 6,
   },
   noteBody: {
     color: cumulus.inkDim,
     fontSize: 12,
     lineHeight: 18,
+    fontFamily: cumulusFonts.ui,
   },
 
-  variationCaption: { color: cumulus.inkDim, fontSize: 12, marginBottom: 10 },
+  variationCaption: {
+    color: cumulus.inkDim,
+    fontSize: 12,
+    fontFamily: cumulusFonts.ui,
+    marginBottom: 10,
+  },
   variationRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -636,12 +687,13 @@ const styles = StyleSheet.create({
     width: 86,
     fontSize: 12,
     color: cumulus.inkDim,
+    fontFamily: cumulusFonts.ui,
   },
   variationTrack: {
     flex: 1,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#e7e0d3",
     overflow: "hidden",
   },
   variationFill: { height: "100%", borderRadius: 3 },
@@ -649,7 +701,7 @@ const styles = StyleSheet.create({
     width: 48,
     textAlign: "right",
     fontSize: 12,
-    fontFamily: "SF Mono",
+    fontFamily: cumulusFonts.mono,
     color: cumulus.inkDim,
   },
 });

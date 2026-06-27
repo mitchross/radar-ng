@@ -1,7 +1,6 @@
 /**
- * Alert Detail — severity-tinted hero, polygon mini-map, time block,
- * description, what-to-do, and source. Matches design_handoff_radar_ng
- * AlertDetailScreen.
+ * Alert Detail — Redesigned for Editorial Light.
+ * Warm paper layout, high-contrast text, clear map coordinates projection.
  */
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -10,37 +9,37 @@ import { Canvas, Path as SkPath, Rect as SkRect, Circle as SkCircle, Skia } from
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { cumulus } from "../../lib/cumulusTheme";
+import { cumulus, cumulusFonts } from "../../lib/cumulusTheme";
 import type { NWSAlert } from "../../types/weather";
 
 type Severity = NWSAlert["properties"]["severity"];
 
 const SEVERITY: Record<Severity, { color: string; label: string; glow: string }> = {
-  Extreme: { color: "#FF3B4A", label: "EXTREME", glow: "rgba(255,59,74,0.35)" },
-  Severe: { color: "#FF8A3A", label: "SEVERE", glow: "rgba(255,138,58,0.30)" },
-  Moderate: { color: "#F5D042", label: "MODERATE", glow: "rgba(245,208,66,0.25)" },
-  Minor: { color: "#4FB8FF", label: "MINOR", glow: "rgba(79,184,255,0.22)" },
-  Unknown: { color: "rgba(255,255,255,0.4)", label: "UNKNOWN", glow: "rgba(255,255,255,0.15)" },
+  Extreme: { color: cumulus.alert, label: "EXTREME", glow: "rgba(223,106,106,0.2)" },
+  Severe: { color: cumulus.accent, label: "SEVERE", glow: "rgba(194,96,58,0.15)" },
+  Moderate: { color: "#f0c34e", label: "MODERATE", glow: "rgba(240,195,78,0.15)" },
+  Minor: { color: cumulus.rain, label: "MINOR", glow: "rgba(77,127,180,0.15)" },
+  Unknown: { color: "rgba(33, 31, 27, 0.4)", label: "UNKNOWN", glow: "rgba(33,31,27,0.05)" },
 };
 
-const STORM_BG: readonly [string, string, string] = ["#1a0d2e", "#0f1424", "#0a0e1a"];
+const STORM_BG: readonly [string, string, string] = ["#f6f2ea", "#f6f2ea", "#f6f2ea"];
 
 export default function AlertDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { data: alertData } = useAlerts();
+  const alertData = useAlerts();
   const userLat = useWeatherStore((s) => s.latitude);
   const userLon = useWeatherStore((s) => s.longitude);
 
-  const alert = alertData?.features.find((f) => f.properties.id === id || f.id === id);
+  const alert = alertData.data?.features.find((f) => f.properties.id === id || f.id === id);
 
   if (!alert) {
     return (
-      <LinearGradient colors={STORM_BG} style={styles.container}>
+      <View style={styles.errorContainer}>
         <SafeAreaView style={styles.flex} edges={["top"]}>
           <Text style={styles.notFound}>Alert not found.</Text>
         </SafeAreaView>
-      </LinearGradient>
+      </View>
     );
   }
 
@@ -56,10 +55,10 @@ export default function AlertDetailScreen() {
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
         >
-          {/* Severity-tinted hero band */}
+          {/* Severity header band */}
           <LinearGradient
-            colors={[`${sev.color}55`, `${sev.color}11`]}
-            style={[styles.heroBand, { borderBottomColor: `${sev.color}33` }]}
+            colors={[`${sev.color}16`, `${sev.color}05`]}
+            style={[styles.heroBand, { borderBottomColor: `${sev.color}22` }]}
           >
             <TouchableOpacity
               onPress={() => router.back()}
@@ -83,10 +82,9 @@ export default function AlertDetailScreen() {
             <Text style={styles.area}>{alert.properties.areaDesc}</Text>
           </LinearGradient>
 
-          {/* Polygon mini-map (only when we have real geometry; otherwise the
-              county list below is more useful than a fake placeholder shape). */}
+          {/* Polygon mini-map */}
           {(alert.geometry?.coordinates?.[0]?.length ?? 0) >= 3 ? (
-            <View style={[styles.polyWrap, { shadowColor: sev.color }]}>
+            <View style={styles.polyWrap}>
               <PolygonMap alert={alert} color={sev.color} userLat={userLat} userLon={userLon} />
               <Text style={styles.polyKicker}>WARNING POLYGON</Text>
               <TouchableOpacity
@@ -177,7 +175,7 @@ function Section({
         style={[
           styles.sectionBody,
           tint
-            ? { backgroundColor: `${tint}15`, borderColor: `${tint}33` }
+            ? { backgroundColor: `${tint}12`, borderColor: `${tint}22` }
             : null,
         ]}
       >
@@ -202,8 +200,6 @@ function PolygonMap({
   const H = 160;
   const rawCoords = alert.geometry?.coordinates?.[0] ?? [];
 
-  // Project polygon → canvas; fall back to a stylized placeholder shape if
-  // the alert lacks a polygon.
   let polyPts: { x: number; y: number }[];
   let userPt: { x: number; y: number } | null = null;
 
@@ -256,7 +252,6 @@ function PolygonMap({
   });
   polyPath.close();
 
-  // Backdrop grid as a single compound path
   const gridPath = Skia.Path.Make();
   for (let i = 1; i < 8; i++) {
     gridPath.moveTo(i * 45, 0);
@@ -267,29 +262,27 @@ function PolygonMap({
     gridPath.lineTo(W, i * 30);
   }
 
-  // Skia's reconciler does not handle React Fragments — list each element
-  // directly. Always render the user pin (off-canvas if no point known).
   const userX = userPt?.x ?? -100;
   const userY = userPt?.y ?? -100;
 
   return (
-    <Canvas style={{ width: "100%", height: H, backgroundColor: "#0e1726" }}>
-      <SkRect x={0} y={0} width={W} height={H} color="#0e1726" />
+    <Canvas style={{ width: "100%", height: H, backgroundColor: "#fbf9f5" }}>
+      <SkRect x={0} y={0} width={W} height={H} color="#fbf9f5" />
       <SkPath
         path={gridPath}
         style="stroke"
         strokeWidth={0.5}
-        color="rgba(255,255,255,0.08)"
+        color="rgba(33, 31, 27, 0.08)"
       />
-      <SkPath path={polyPath} color={`${color}52`} />
+      <SkPath path={polyPath} color={`${color}22`} />
       <SkPath path={polyPath} style="stroke" strokeWidth={1.5} color={color} />
       <SkCircle cx={userX} cy={userY} r={14} color={`${color}33`} />
-      <SkCircle cx={userX} cy={userY} r={5} color="#ffffff" />
+      <SkCircle cx={userX} cy={userY} r={5} color={cumulus.accent} />
       <SkCircle
         cx={userX}
         cy={userY}
         r={5}
-        color="#0e1726"
+        color="#fbf9f5"
         style="stroke"
         strokeWidth={2}
       />
@@ -313,24 +306,33 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
   scroll: { paddingBottom: 60 },
-  notFound: { color: cumulus.inkDim, fontSize: 16, textAlign: "center", marginTop: 120 },
+  errorContainer: { flex: 1, backgroundColor: cumulus.background },
+  notFound: {
+    color: cumulus.inkDim,
+    fontSize: 16,
+    textAlign: "center",
+    marginTop: 120,
+    fontFamily: cumulusFonts.ui,
+  },
 
   heroBand: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingHorizontal: 24,
+    paddingTop: 16,
     paddingBottom: 20,
     borderBottomWidth: 1,
   },
   backBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(0,0,0,0.3)",
+    borderRadius: 12,
+    backgroundColor: "#eae4d8",
+    borderWidth: 1,
+    borderColor: "#e3dccf",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 12,
   },
-  backChev: { color: "#fff", fontSize: 22, fontWeight: "500", marginTop: -2 },
+  backChev: { color: cumulus.ink, fontSize: 22, fontWeight: "500", marginTop: -2 },
 
   severityRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
   severityPill: {
@@ -345,58 +347,58 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#fff",
-    shadowColor: "#fff",
-    shadowOpacity: 0.7,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 0 },
+    backgroundColor: "#ffffff",
   },
   severityText: {
-    color: "#fff",
+    color: "#ffffff",
     fontSize: 10,
-    fontFamily: "SF Mono",
+    fontFamily: cumulusFonts.mono,
     fontWeight: "800",
     letterSpacing: 1.4,
   },
   urgency: {
     fontSize: 11,
-    fontFamily: "SF Mono",
-    color: "rgba(255,255,255,0.7)",
+    fontFamily: cumulusFonts.mono,
+    color: cumulus.inkMuted,
     letterSpacing: 0.6,
   },
   event: {
     color: cumulus.ink,
     fontSize: 26,
-    fontWeight: "700",
+    fontWeight: "600",
     letterSpacing: -0.4,
     lineHeight: 30,
+    fontFamily: cumulusFonts.display,
   },
   area: {
     fontSize: 13,
     color: cumulus.inkDim,
     marginTop: 6,
+    fontFamily: cumulusFonts.ui,
   },
 
   polyWrap: {
     marginHorizontal: 16,
     marginTop: 14,
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: "hidden",
-    backgroundColor: "#0e1726",
+    backgroundColor: "#fbf9f5",
     borderWidth: 1,
-    borderColor: cumulus.cardLine,
+    borderColor: "#eee6d8",
     position: "relative",
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
+    shadowColor: "rgba(60,50,40,0.06)",
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   polyKicker: {
     position: "absolute",
     top: 10,
     left: 12,
-    fontSize: 10,
-    fontFamily: "SF Mono",
-    color: "rgba(255,255,255,0.6)",
+    fontSize: 9,
+    fontFamily: cumulusFonts.mono,
+    color: cumulus.inkMuted,
     letterSpacing: 1.4,
     fontWeight: "700",
   },
@@ -407,26 +409,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: "#eae4d8",
+    borderWidth: 1,
+    borderColor: "#e3dccf",
   },
   openInRadarText: {
-    color: "#0a0e1a",
+    color: cumulus.ink,
     fontSize: 11,
     fontWeight: "700",
+    fontFamily: cumulusFonts.ui,
   },
 
   areaCard: {
     marginHorizontal: 16,
     marginTop: 14,
     padding: 14,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 16,
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: cumulus.cardLine,
+    borderColor: "#eee6d8",
   },
   areaKicker: {
-    fontSize: 10,
-    fontFamily: "SF Mono",
+    fontSize: 9,
+    fontFamily: cumulusFonts.mono,
     color: cumulus.inkMuted,
     letterSpacing: 1.4,
     fontWeight: "700",
@@ -436,11 +441,12 @@ const styles = StyleSheet.create({
     color: cumulus.ink,
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: cumulusFonts.ui,
   },
   areaNote: {
     color: cumulus.inkMuted,
     fontSize: 11,
-    fontFamily: "SF Mono",
+    fontFamily: cumulusFonts.mono,
     marginTop: 8,
   },
 
@@ -448,16 +454,16 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 14,
     padding: 14,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 16,
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: cumulus.cardLine,
+    borderColor: "#eee6d8",
   },
   timeRow: { flexDirection: "row", gap: 12 },
   timeCell: { flex: 1 },
   timeLabel: {
     fontSize: 9,
-    fontFamily: "SF Mono",
+    fontFamily: cumulusFonts.mono,
     color: cumulus.inkMuted,
     letterSpacing: 1.4,
     fontWeight: "700",
@@ -465,26 +471,26 @@ const styles = StyleSheet.create({
   },
   timeValue: {
     fontSize: 13,
-    fontFamily: "SF Mono",
+    fontFamily: cumulusFonts.mono,
     fontWeight: "600",
     color: cumulus.ink,
   },
   timeFooter: {
     marginTop: 12,
     paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: cumulus.cardLine,
+    borderTopWidth: 1,
+    borderTopColor: "#e7e0d3",
   },
   timeFooterText: {
     fontSize: 11,
-    fontFamily: "SF Mono",
+    fontFamily: cumulusFonts.mono,
     color: cumulus.inkMuted,
   },
 
   section: { marginHorizontal: 16, marginTop: 14 },
   sectionLabel: {
-    fontSize: 10,
-    fontFamily: "SF Mono",
+    fontSize: 9,
+    fontFamily: cumulusFonts.mono,
     color: cumulus.inkMuted,
     letterSpacing: 1.6,
     fontWeight: "700",
@@ -494,22 +500,24 @@ const styles = StyleSheet.create({
   },
   sectionBody: {
     padding: 14,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 16,
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: cumulus.cardLine,
+    borderColor: "#eee6d8",
   },
 
   bodyText: {
     fontSize: 14,
     lineHeight: 22,
-    color: "rgba(255,255,255,0.82)",
+    color: cumulus.inkDim,
+    fontFamily: cumulusFonts.ui,
   },
   instructionText: {
     fontSize: 14,
     lineHeight: 22,
     color: cumulus.ink,
     fontWeight: "500",
+    fontFamily: cumulusFonts.ui,
   },
   sourceRow: {
     flexDirection: "row",
@@ -517,7 +525,7 @@ const styles = StyleSheet.create({
   },
   sourceText: {
     fontSize: 12,
-    fontFamily: "SF Mono",
+    fontFamily: cumulusFonts.mono,
     color: cumulus.inkMuted,
   },
 });
