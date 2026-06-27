@@ -2,10 +2,10 @@
  * Cumulus Home screen — Redesigned for Editorial Light.
  * Warm paper background, display serif headers, Simple/Advanced layout gating.
  */
-import { useCallback, useState } from "react";
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable, RefreshControl } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useCallback, useMemo, useState } from "react";
+import { ScrollView, View, Text, StyleSheet, Pressable, RefreshControl } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../../hooks/useForecast";
@@ -14,8 +14,6 @@ import { useLocation } from "../../hooks/useLocation";
 import { activeLocationLabel } from "../../lib/locationLabel";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import {
-  cumulus,
-  cumulusFonts,
   CONDITION_GRADIENTS,
   getCumulusCondition,
   getIconKind,
@@ -23,6 +21,14 @@ import {
   getWindDirection,
   isNightAt,
 } from "../../lib/cumulusTheme";
+import { getForecastScreenState } from "../../lib/weatherPresentation";
+import {
+  ScreenState,
+  SectionLabel,
+  SegmentedControl,
+} from "../../components/ui/WeatherClearUI";
+import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
+import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import WeatherIcon from "../../components/weather/WeatherIcon";
 import { RadarMiniMap } from "../../components/home/RadarMiniMap";
 import {
@@ -37,13 +43,21 @@ import {
 export default function HomeScreen() {
   useLocation();
   const router = useRouter();
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
   const devicePlace = useWeatherStore((s) => s.devicePlace);
   const viewMode = useWeatherStore((s) => s.viewMode);
   const setViewMode = useWeatherStore((s) => s.setViewMode);
 
-  const { data: forecast, isLoading, isError, refetch } = useForecast();
+  const {
+    data: forecast,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  } = useForecast();
   const { data: alertData } = useAlerts();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -60,28 +74,35 @@ export default function HomeScreen() {
     }
   }, [queryClient]);
 
-  if (isError && !forecast) {
+  const presentation = getForecastScreenState({
+    data: forecast,
+    isLoading,
+    isError,
+    isFetching,
+  });
+
+  if (presentation.kind === "error") {
     return (
-      <View style={styles.errorContainer}>
-        <SafeAreaView style={[styles.flex, styles.center]}>
-          <Text style={styles.errorTitle}>Couldn&apos;t load weather</Text>
-          <Text style={styles.errorBody}>
-            The forecast service is unreachable right now.
-          </Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
-            <Text style={styles.retryText}>Try again</Text>
-          </TouchableOpacity>
-        </SafeAreaView>
+      <View style={styles.stateContainer}>
+        <ScreenState
+          kind="error"
+          title="Couldn’t load weather"
+          message="The forecast service is unreachable right now."
+          actionLabel="Try again"
+          onAction={() => refetch()}
+        />
       </View>
     );
   }
 
-  if (isLoading || !forecast) {
+  if (presentation.kind === "loading" || !forecast) {
     return (
-      <View style={styles.loadingContainer}>
-        <SafeAreaView style={styles.flex}>
-          <Text style={styles.loading}>Loading weather...</Text>
-        </SafeAreaView>
+      <View style={styles.stateContainer}>
+        <ScreenState
+          kind="loading"
+          title="Loading weather"
+          message="Fetching the latest local forecast."
+        />
       </View>
     );
   }
@@ -94,7 +115,9 @@ export default function HomeScreen() {
   const weatherCode = forecast.current.weather_code;
   const condition = getCumulusCondition(weatherCode, isNight);
   const iconKind = getIconKind(weatherCode, isNight);
-  const gradient = CONDITION_GRADIENTS[condition];
+  const gradient = theme.dark
+    ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
+    : CONDITION_GRADIENTS[condition];
 
   const temp = Math.round(forecast.current.temperature_2m ?? 0);
   const feels = Math.round(forecast.current.apparent_temperature ?? temp);
@@ -162,59 +185,68 @@ export default function HomeScreen() {
   const isAdv = viewMode === "advanced";
 
   return (
-    <LinearGradient colors={gradient} style={styles.container}>
+    <LinearGradient
+      accessibilityLabel="Current weather"
+      colors={gradient}
+      style={styles.container}
+    >
       <SafeAreaView style={styles.flex} edges={["top"]}>
         <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scroll}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={cumulus.ink}
-              colors={[cumulus.accent]}
+              tintColor={theme.colors.text}
+              colors={[theme.colors.accent]}
             />
           }
         >
           {/* Top bar — Location & Toggle */}
           <View style={styles.topBar}>
-            <TouchableOpacity
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Choose weather location. Current location: ${locationLabel}`}
               onPress={() => router.push("/(tabs)/settings" as any)}
               style={styles.locationContainer}
-              activeOpacity={0.7}
             >
               <View style={styles.locationRow}>
                 <View style={styles.locationDot} />
                 <Text style={styles.locationLabelText}>MY LOCATION</Text>
               </View>
               <View style={styles.locationNameRow}>
-                <Text style={styles.locationNameText}>{locationLabel}</Text>
+                <Text
+                  numberOfLines={1}
+                  style={styles.locationNameText}
+                >
+                  {locationLabel}
+                </Text>
                 <Text style={styles.expandChevron}>{"\u25BE"}</Text>
               </View>
-            </TouchableOpacity>
+            </Pressable>
 
-            <View style={styles.toggleContainer}>
-              <TouchableOpacity
-                onPress={() => setViewMode("simple")}
-                style={[styles.toggleBtn, !isAdv && styles.toggleBtnActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.toggleBtnText, !isAdv && styles.toggleBtnTextActive]}>Simple</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setViewMode("advanced")}
-                style={[styles.toggleBtn, isAdv && styles.toggleBtnActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.toggleBtnText, isAdv && styles.toggleBtnTextActive]}>Adv</Text>
-              </TouchableOpacity>
-            </View>
+            <SegmentedControl
+              accessibilityLabel="Forecast detail"
+              options={[
+                { label: "Simple", value: "simple" },
+                { label: "Adv", value: "advanced" },
+              ]}
+              value={viewMode}
+              onChange={setViewMode}
+            />
           </View>
+          {presentation.stale ? (
+            <Text accessibilityRole="alert" style={styles.staleNotice}>
+              Showing the last available forecast
+            </Text>
+          ) : null}
 
           {/* Hero section */}
           <View style={styles.hero}>
             <View style={styles.heroIcon}>
-              <WeatherIcon kind={iconKind} size={130} time={isNight ? "night" : "day"} />
+              <WeatherIcon kind={iconKind} size={76} time={isNight ? "night" : "day"} />
             </View>
             <Text style={styles.heroCondition}>{conditionLabel}</Text>
             <View style={styles.heroTempRow}>
@@ -227,8 +259,10 @@ export default function HomeScreen() {
           </View>
 
           {/* Nowcast banner */}
-          {nowcastHeadline && (
+          {nowcastHeadline ? (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${nowcastHeadline.headline}. ${nowcastHeadline.sub}`}
               style={styles.nowcastBanner}
               onPress={() => router.push("/nowcast" as never)}
             >
@@ -241,13 +275,14 @@ export default function HomeScreen() {
               </View>
               <Text style={styles.chevron}>{"\u203A"}</Text>
             </Pressable>
-          )}
+          ) : null}
 
           {/* Active alerts */}
-          {alertData && alertData.features.length > 0 && (
-            <TouchableOpacity
+          {alertData && alertData.features.length > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${alertData.features[0].properties.event}. Open alert details`}
               style={styles.alertCard}
-              activeOpacity={0.8}
               onPress={() =>
                 router.push({
                   pathname: "/alert/[id]",
@@ -267,11 +302,13 @@ export default function HomeScreen() {
                 </Text>
               </View>
               <Text style={styles.chevron}>{"\u203A"}</Text>
-            </TouchableOpacity>
-          )}
+            </Pressable>
+          ) : null}
 
           {/* Hourly strip */}
-          <SectionHeader title="HOURLY" />
+          <View style={styles.sectionWrap}>
+            <SectionLabel>HOURLY</SectionLabel>
+          </View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -280,9 +317,11 @@ export default function HomeScreen() {
             {hourly.map((h, i) => (
               <View
                 key={i}
-                style={[styles.hourlyCell, h.isNow && styles.hourlyCellNow]}
+                accessible
+                accessibilityLabel={`${h.isNow ? "Now" : h.time}, ${h.temp} degrees, ${h.precip} percent chance of precipitation`}
+                style={[styles.hourlyCell, h.isNow ? styles.hourlyCellNow : null]}
               >
-                <Text style={[styles.hourlyTime, h.isNow && styles.hourlyTimeNow]}>
+                <Text style={[styles.hourlyTime, h.isNow ? styles.hourlyTimeNow : null]}>
                   {h.isNow ? "NOW" : h.time}
                 </Text>
                 <View style={{ marginVertical: 6 }}>
@@ -294,8 +333,14 @@ export default function HomeScreen() {
           </ScrollView>
 
           {/* 24h precip chart */}
-          <SectionHeader title="PRECIPITATION · 24H" right={`${precipTotalIn}"`} />
-          <View style={styles.card}>
+          <View style={styles.sectionWrap}>
+            <SectionLabel trailing={`${precipTotalIn}"`}>PRECIPITATION · 24H</SectionLabel>
+          </View>
+          <View
+            accessible
+            accessibilityLabel={`24 hour precipitation total ${precipTotalIn} inches`}
+            style={styles.card}
+          >
             <View style={styles.precipChart}>
               {hourly.map((h, i) => {
                 const pct = h.precip / 100;
@@ -320,7 +365,9 @@ export default function HomeScreen() {
           </View>
 
           {/* 7-day forecast */}
-          <SectionHeader title="7-DAY FORECAST" />
+          <View style={styles.sectionWrap}>
+            <SectionLabel>7-DAY FORECAST</SectionLabel>
+          </View>
           <View style={[styles.card, { padding: 0, overflow: "hidden" }]}>
             {daily.map((d, i) => {
               const range = weekHi - weekLo || 1;
@@ -332,10 +379,12 @@ export default function HomeScreen() {
                   key={i}
                   style={[
                     styles.dailyRow,
-                    i > 0 && styles.dailyRowBorder,
+                    i > 0 ? styles.dailyRowBorder : null,
                   ]}
+                  accessible
+                  accessibilityLabel={`${d.day}, low ${d.lo} degrees, high ${d.hi} degrees, ${d.precip} percent chance of precipitation`}
                 >
-                  <Text style={[styles.dailyDay, d.day === "Today" && styles.dailyDayToday]}>
+                  <Text style={[styles.dailyDay, d.day === "Today" ? styles.dailyDayToday : null]}>
                     {d.day}
                   </Text>
                   <View style={{ width: 24, alignItems: "center" }}>
@@ -355,14 +404,14 @@ export default function HomeScreen() {
                         borderRadius: 3,
                       }}
                     />
-                    {d.now != null && (
+                    {d.now != null ? (
                       <View
                         style={[
                           styles.dailyNowDot,
                           { left: `${nowPct}%` },
                         ]}
                       />
-                    )}
+                    ) : null}
                   </View>
                   <Text style={styles.dailyHi}>{d.hi}{"\u00B0"}</Text>
                 </View>
@@ -376,9 +425,11 @@ export default function HomeScreen() {
           />
 
           {/* Advanced Mode: Stats grid & Twilight sun path */}
-          {isAdv && (
+          {isAdv ? (
             <>
-              <SectionHeader title="CONDITIONS" />
+              <View style={styles.sectionWrap}>
+                <SectionLabel>CONDITIONS</SectionLabel>
+              </View>
               <View style={styles.statGrid}>
                 {/* 1. UV Index */}
                 <View style={styles.statCard}>
@@ -414,7 +465,7 @@ export default function HomeScreen() {
                   </View>
                   <Text style={styles.statSubText}>Dew pt {dew}°</Text>
                   <View style={styles.widgetWrapper}>
-                    <FillRing value={humidity / 100} color={cumulus.rain} />
+                    <FillRing value={humidity / 100} color={theme.colors.rain} />
                   </View>
                 </View>
 
@@ -459,7 +510,7 @@ export default function HomeScreen() {
                     {dew > 60 ? "Humid air" : "Comfortable"}
                   </Text>
                   <View style={styles.widgetWrapper}>
-                    <FillRing value={Math.max(0, Math.min(1, (dew - 20) / 60))} color="#df6a3c" />
+                    <FillRing value={Math.max(0, Math.min(1, (dew - 20) / 60))} color={theme.colors.hot} />
                   </View>
                 </View>
               </View>
@@ -495,23 +546,12 @@ export default function HomeScreen() {
                 />
               </View>
             </>
-          )}
+          ) : null}
 
           <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
-  );
-}
-
-// ───────── sub-components
-
-function SectionHeader({ title, right }: { title: string; right?: string }) {
-  return (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {right ? <Text style={styles.sectionRight}>{right}</Text> : null}
-    </View>
   );
 }
 
@@ -573,10 +613,27 @@ type OpenMeteoMinutely = NonNullable<
     : never
 >;
 
-const styles = StyleSheet.create({
+function createStyles(theme: WeatherClearTheme) {
+  const cumulus = {
+    background: theme.colors.canvas,
+    accent: theme.colors.accent,
+    alert: theme.colors.destructive,
+    rain: theme.colors.rain,
+    ink: theme.colors.text,
+    inkDim: theme.colors.textSecondary,
+    inkMuted: theme.colors.textMuted,
+    inkFaint: theme.colors.textFaint,
+  };
+  const cumulusFonts = {
+    display: theme.typography.display,
+    ui: theme.typography.ui,
+  };
+
+  return StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
   scroll: { paddingBottom: 120 },
+  stateContainer: { flex: 1, backgroundColor: theme.colors.canvas },
   errorContainer: { flex: 1, backgroundColor: cumulus.background },
   loadingContainer: { flex: 1, backgroundColor: cumulus.background },
   loading: {
@@ -603,9 +660,9 @@ const styles = StyleSheet.create({
     fontFamily: cumulusFonts.ui,
   },
   retryBtn: {
-    backgroundColor: "#eae4d8",
+    backgroundColor: theme.colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#e3dccf",
+    borderColor: theme.colors.divider,
     paddingVertical: 12,
     paddingHorizontal: 28,
     borderRadius: 14,
@@ -622,7 +679,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   locationContainer: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: "68%",
     flexDirection: "column",
+  },
+  staleNotice: {
+    paddingHorizontal: 24,
+    paddingTop: 4,
+    color: theme.colors.warning,
+    fontFamily: theme.typography.uiSemibold,
+    fontSize: 11,
   },
   locationRow: {
     flexDirection: "row",
@@ -648,6 +715,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   locationNameText: {
+    flexShrink: 1,
     fontFamily: cumulusFonts.display,
     fontSize: 29,
     fontWeight: "500",
@@ -656,14 +724,14 @@ const styles = StyleSheet.create({
   },
   expandChevron: {
     fontSize: 16,
-    color: "#bcb3a3",
+    color: theme.colors.textFaint,
     marginLeft: 4,
     marginTop: 4,
   },
 
   toggleContainer: {
     flexDirection: "row",
-    backgroundColor: "#eae4d8",
+    backgroundColor: theme.colors.surfaceMuted,
     borderRadius: 11,
     padding: 3,
     alignItems: "center",
@@ -732,23 +800,21 @@ const styles = StyleSheet.create({
     marginTop: 12,
     padding: 14,
     borderRadius: 20,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    shadowColor: "rgba(60,50,40,0.06)",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 2,
+    boxShadow: theme.dark
+      ? "0 4px 12px rgba(0,0,0,0.28)"
+      : "0 4px 12px rgba(60,50,40,0.08)",
   },
   nowcastIcon: {
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: "rgba(77,127,184,0.12)",
+    backgroundColor: theme.colors.accentSoft,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -761,9 +827,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
     padding: 14,
     borderRadius: 20,
-    backgroundColor: "rgba(223,106,106,0.12)",
+    backgroundColor: theme.dark
+      ? "rgba(228,125,125,0.16)"
+      : "rgba(223,106,106,0.12)",
     borderWidth: 1,
-    borderColor: "rgba(223,106,106,0.3)",
+    borderColor: theme.dark
+      ? "rgba(228,125,125,0.36)"
+      : "rgba(223,106,106,0.3)",
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
@@ -774,6 +844,11 @@ const styles = StyleSheet.create({
   chevron: { color: cumulus.inkMuted, fontSize: 20, fontWeight: "400" },
 
   // Section Header
+  sectionWrap: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 8,
+  },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -802,14 +877,14 @@ const styles = StyleSheet.create({
     minWidth: 54,
     paddingVertical: 12,
     alignItems: "center",
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
   },
   hourlyCellNow: {
-    backgroundColor: "#eae4d8",
-    borderColor: "#e3dccf",
+    backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.divider,
   },
   hourlyTime: {
     color: cumulus.inkMuted,
@@ -828,16 +903,14 @@ const styles = StyleSheet.create({
   // Card
   card: {
     marginHorizontal: 16,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
     borderRadius: 20,
     padding: 16,
-    shadowColor: "rgba(60,50,40,0.04)",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 1,
+    boxShadow: theme.dark
+      ? "0 3px 10px rgba(0,0,0,0.24)"
+      : "0 3px 10px rgba(60,50,40,0.05)",
   },
 
   // Precip chart
@@ -875,7 +948,7 @@ const styles = StyleSheet.create({
   },
   dailyRowBorder: {
     borderTopWidth: 1,
-    borderTopColor: "#e7e0d3",
+    borderTopColor: theme.colors.divider,
   },
   dailyDay: {
     color: cumulus.ink,
@@ -904,7 +977,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#e7e0d3",
+    backgroundColor: theme.colors.divider,
     position: "relative",
   },
   dailyNowDot: {
@@ -913,7 +986,7 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: "#fff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 3,
     borderColor: cumulus.accent,
     marginLeft: -6,
@@ -929,10 +1002,10 @@ const styles = StyleSheet.create({
   statCard: {
     flexBasis: "47%",
     flexGrow: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
     padding: 12,
     minHeight: 110,
     position: "relative",
@@ -1013,4 +1086,5 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingVertical: 14,
   },
-});
+  });
+}

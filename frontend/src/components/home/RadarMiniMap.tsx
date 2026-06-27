@@ -11,13 +11,15 @@
  * a 60s interval matching the rest of the app's cadence.
  */
 import { useMemo } from "react";
-import { View, Text, StyleSheet, Image, Pressable } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
+import { Image } from "expo-image";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { fetchSelfHostedManifest } from "../../lib/api";
 import { DEFAULTS } from "../../lib/constants";
-import { cumulus } from "../../lib/cumulusTheme";
+import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
+import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 
 const MINI_ZOOM = 6;
 
@@ -36,6 +38,8 @@ function lonLatToTile(lon: number, lat: number, z: number): { x: number; y: numb
 
 export function RadarMiniMap({ headline }: { headline?: string }) {
   const router = useRouter();
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const activePalette = useWeatherStore((s) => s.activePalette);
   const lat = useWeatherStore((s) => s.latitude) ?? DEFAULTS.LATITUDE;
@@ -62,7 +66,12 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
     : null;
 
   return (
-    <Pressable style={styles.wrap} onPress={() => router.push("/radar")}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open full radar. ${headline ?? (latest ? "Live radar available" : "Radar loading")}`}
+      style={styles.wrap}
+      onPress={() => router.push("/radar")}
+    >
       {/* Dark gradient background. We don't pull a basemap tile here
           because OSM's tile-usage policy forbids embedded mobile-app
           consumption (returns "Access blocked" image), and this is a
@@ -70,13 +79,13 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
       <View style={styles.basemapTint} pointerEvents="none" />
 
       {/* radar overlay */}
-      {radarUrl && (
+      {radarUrl ? (
         <Image
           source={{ uri: radarUrl }}
           style={styles.radar}
-          resizeMode="cover"
+          contentFit="cover"
         />
-      )}
+      ) : null}
 
       {/* user-location pin */}
       <View style={styles.pinWrap} pointerEvents="none">
@@ -106,14 +115,15 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: WeatherClearTheme) {
+  return StyleSheet.create({
   wrap: {
     marginHorizontal: 16,
     marginTop: 18,
     height: 180,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: cumulus.cardLine,
+    borderColor: theme.colors.border,
     overflow: "hidden",
     backgroundColor: "#0d1428",
   },
@@ -145,7 +155,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: cumulus.accent,
+    backgroundColor: theme.colors.accent,
   },
   liveBadge: {
     position: "absolute",
@@ -159,8 +169,13 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 8,
   },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: cumulus.ok },
-  liveText: { color: cumulus.ok, fontSize: 10, fontWeight: "700", letterSpacing: 1.4 },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.colors.success },
+  liveText: {
+    color: theme.colors.success,
+    fontSize: 10,
+    fontFamily: theme.typography.uiBold,
+    letterSpacing: 1.4,
+  },
   footer: {
     position: "absolute",
     left: 12,
@@ -176,9 +191,15 @@ const styles = StyleSheet.create({
   footerLabel: {
     color: "rgba(255,255,255,0.7)",
     fontSize: 10,
+    fontFamily: theme.typography.uiSemibold,
     letterSpacing: 1.6,
   },
-  footerTitle: { color: cumulus.ink, fontSize: 14, fontWeight: "600", marginTop: 2 },
+  footerTitle: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontFamily: theme.typography.uiSemibold,
+    marginTop: 2,
+  },
   chevronBox: {
     width: 28,
     height: 28,
@@ -187,5 +208,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  chevron: { color: cumulus.ink, fontSize: 18 },
-});
+  chevron: { color: "#ffffff", fontSize: 18 },
+  });
+}

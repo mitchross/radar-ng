@@ -296,14 +296,15 @@ const styles = StyleSheet.create({
   },
   segmented: {
     flexDirection: "row",
-    padding: 3,
+    minHeight: 44,
+    padding: 4,
     borderRadius: 12,
     borderCurve: "continuous",
     gap: 2,
   },
   segment: {
     minWidth: 44,
-    minHeight: 44,
+    minHeight: 36,
     paddingHorizontal: 10,
     borderRadius: 9,
     borderCurve: "continuous",
