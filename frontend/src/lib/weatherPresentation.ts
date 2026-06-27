@@ -61,3 +61,14 @@ export function describeNowcast(verdict: NowcastVerdict): string {
       return `Rain starts in ${verdict.startMinute} minutes, peaks at ${verdict.peakMinute} minutes, and ends near ${verdict.endMinute} minutes.`;
   }
 }
+
+export function getAlertsScreenState(input: {
+  data: { features: readonly unknown[] } | undefined;
+  isLoading: boolean;
+  isError: boolean;
+}): { kind: "loading" | "error" | "empty" | "content" } {
+  if (input.data?.features.length) return { kind: "content" };
+  if (input.data) return { kind: "empty" };
+  if (input.isLoading) return { kind: "loading" };
+  return { kind: input.isError ? "error" : "loading" };
+}

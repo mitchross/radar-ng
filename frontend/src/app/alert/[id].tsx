@@ -2,31 +2,26 @@
  * Alert Detail — Redesigned for Editorial Light.
  * Warm paper layout, high-contrast text, clear map coordinates projection.
  */
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { useMemo } from "react";
+import { ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Canvas, Path as SkPath, Rect as SkRect, Circle as SkCircle, Skia } from "@shopify/react-native-skia";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { cumulus, cumulusFonts } from "../../lib/cumulusTheme";
+import { ScreenState } from "../../components/ui/WeatherClearUI";
+import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
+import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { NWSAlert } from "../../types/weather";
 
 type Severity = NWSAlert["properties"]["severity"];
 
-const SEVERITY: Record<Severity, { color: string; label: string; glow: string }> = {
-  Extreme: { color: cumulus.alert, label: "EXTREME", glow: "rgba(223,106,106,0.2)" },
-  Severe: { color: cumulus.accent, label: "SEVERE", glow: "rgba(194,96,58,0.15)" },
-  Moderate: { color: "#f0c34e", label: "MODERATE", glow: "rgba(240,195,78,0.15)" },
-  Minor: { color: cumulus.rain, label: "MINOR", glow: "rgba(77,127,180,0.15)" },
-  Unknown: { color: "rgba(33, 31, 27, 0.4)", label: "UNKNOWN", glow: "rgba(33,31,27,0.05)" },
-};
-
-const STORM_BG: readonly [string, string, string] = ["#f6f2ea", "#f6f2ea", "#f6f2ea"];
-
 export default function AlertDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const alertData = useAlerts();
   const userLat = useWeatherStore((s) => s.latitude);
   const userLon = useWeatherStore((s) => s.longitude);
@@ -36,22 +31,31 @@ export default function AlertDetailScreen() {
   if (!alert) {
     return (
       <View style={styles.errorContainer}>
-        <SafeAreaView style={styles.flex} edges={["top"]}>
-          <Text style={styles.notFound}>Alert not found.</Text>
-        </SafeAreaView>
+        <ScreenState
+          kind="empty"
+          title="Alert unavailable"
+          message="This alert is no longer active or has not been loaded."
+          actionLabel="Go back"
+          onAction={() => router.back()}
+        />
       </View>
     );
   }
 
-  const sev = SEVERITY[alert.properties.severity];
+  const sev = severityStyle(alert.properties.severity, theme);
   const onset = formatStamp(alert.properties.onset);
   const effective = formatStamp(alert.properties.effective);
   const expires = formatStamp(alert.properties.expires);
 
   return (
-    <LinearGradient colors={STORM_BG} style={styles.container}>
+    <LinearGradient
+      accessibilityLabel="Weather alert detail"
+      colors={[theme.colors.canvas, theme.colors.canvas]}
+      style={styles.container}
+    >
       <SafeAreaView style={styles.flex} edges={["top"]}>
         <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
         >
@@ -60,13 +64,14 @@ export default function AlertDetailScreen() {
             colors={[`${sev.color}16`, `${sev.color}05`]}
             style={[styles.heroBand, { borderBottomColor: `${sev.color}22` }]}
           >
-            <TouchableOpacity
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close alert detail"
               onPress={() => router.back()}
               style={styles.backBtn}
-              activeOpacity={0.7}
             >
               <Text style={styles.backChev}>{"‹"}</Text>
-            </TouchableOpacity>
+            </Pressable>
 
             <View style={styles.severityRow}>
               <View style={[styles.severityPill, { backgroundColor: sev.color }]}>
@@ -87,13 +92,14 @@ export default function AlertDetailScreen() {
             <View style={styles.polyWrap}>
               <PolygonMap alert={alert} color={sev.color} userLat={userLat} userLon={userLon} />
               <Text style={styles.polyKicker}>WARNING POLYGON</Text>
-              <TouchableOpacity
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open alert polygon in Radar"
                 style={styles.openInRadar}
                 onPress={() => router.push("/(tabs)/radar" as never)}
-                activeOpacity={0.85}
               >
                 <Text style={styles.openInRadarText}>Open in Radar →</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
           ) : (
             <View style={styles.areaCard}>
@@ -121,13 +127,13 @@ export default function AlertDetailScreen() {
 
           {/* Description */}
           <Section label="DESCRIPTION">
-            <Text style={styles.bodyText}>{alert.properties.description}</Text>
+            <Text selectable style={styles.bodyText}>{alert.properties.description}</Text>
           </Section>
 
           {/* What to do */}
           {alert.properties.instruction ? (
             <Section label="WHAT TO DO" tint={sev.color}>
-              <Text style={styles.instructionText}>{alert.properties.instruction}</Text>
+              <Text selectable style={styles.instructionText}>{alert.properties.instruction}</Text>
             </Section>
           ) : null}
 
@@ -149,6 +155,8 @@ export default function AlertDetailScreen() {
 }
 
 function TimeCell({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={styles.timeCell}>
       <Text style={styles.timeLabel}>{label}</Text>
@@ -168,6 +176,8 @@ function Section({
   tint?: string;
   children: React.ReactNode;
 }) {
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={styles.section}>
       <Text style={styles.sectionLabel}>{label}</Text>
@@ -196,7 +206,9 @@ function PolygonMap({
   userLat: number | null;
   userLon: number | null;
 }) {
-  const W = 360;
+  const { theme } = useWeatherClearTheme();
+  const { width } = useWindowDimensions();
+  const W = Math.min(360, width - 32);
   const H = 160;
   const rawCoords = alert.geometry?.coordinates?.[0] ?? [];
 
@@ -266,28 +278,44 @@ function PolygonMap({
   const userY = userPt?.y ?? -100;
 
   return (
-    <Canvas style={{ width: "100%", height: H, backgroundColor: "#fbf9f5" }}>
-      <SkRect x={0} y={0} width={W} height={H} color="#fbf9f5" />
+    <Canvas
+      accessibilityLabel={`Warning polygon for ${alert.properties.areaDesc}`}
+      style={{ width: "100%", height: H, backgroundColor: theme.colors.surfaceStrong }}
+    >
+      <SkRect x={0} y={0} width={W} height={H} color={theme.colors.surfaceStrong} />
       <SkPath
         path={gridPath}
         style="stroke"
         strokeWidth={0.5}
-        color="rgba(33, 31, 27, 0.08)"
+        color={theme.colors.divider}
       />
       <SkPath path={polyPath} color={`${color}22`} />
       <SkPath path={polyPath} style="stroke" strokeWidth={1.5} color={color} />
       <SkCircle cx={userX} cy={userY} r={14} color={`${color}33`} />
-      <SkCircle cx={userX} cy={userY} r={5} color={cumulus.accent} />
+      <SkCircle cx={userX} cy={userY} r={5} color={theme.colors.accent} />
       <SkCircle
         cx={userX}
         cy={userY}
         r={5}
-        color="#fbf9f5"
+        color={theme.colors.surfaceStrong}
         style="stroke"
         strokeWidth={2}
       />
     </Canvas>
   );
+}
+
+function severityStyle(
+  severity: Severity,
+  theme: WeatherClearTheme,
+): { color: string; label: string } {
+  return {
+    Extreme: { color: theme.colors.destructive, label: "EXTREME" },
+    Severe: { color: theme.colors.accent, label: "SEVERE" },
+    Moderate: { color: theme.colors.warning, label: "MODERATE" },
+    Minor: { color: theme.colors.rain, label: "MINOR" },
+    Unknown: { color: theme.colors.textMuted, label: "UNKNOWN" },
+  }[severity];
 }
 
 function formatStamp(s: string | null | undefined): string {
@@ -302,7 +330,20 @@ function formatStamp(s: string | null | undefined): string {
   });
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: WeatherClearTheme) {
+  const cumulus = {
+    background: theme.colors.canvas,
+    ink: theme.colors.text,
+    inkDim: theme.colors.textSecondary,
+    inkMuted: theme.colors.textMuted,
+  };
+  const cumulusFonts = {
+    display: theme.typography.display,
+    ui: theme.typography.ui,
+    mono: theme.typography.mono,
+  };
+
+  return StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
   scroll: { paddingBottom: 60 },
@@ -322,12 +363,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   backBtn: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: 12,
-    backgroundColor: "#eae4d8",
+    backgroundColor: theme.colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#e3dccf",
+    borderColor: theme.colors.divider,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 12,
@@ -382,15 +423,13 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderRadius: 20,
     overflow: "hidden",
-    backgroundColor: "#fbf9f5",
+    backgroundColor: theme.colors.surfaceStrong,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
     position: "relative",
-    shadowColor: "rgba(60,50,40,0.06)",
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    boxShadow: theme.dark
+      ? "0 4px 12px rgba(0,0,0,0.28)"
+      : "0 4px 12px rgba(60,50,40,0.08)",
   },
   polyKicker: {
     position: "absolute",
@@ -407,11 +446,12 @@ const styles = StyleSheet.create({
     bottom: 10,
     right: 12,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    minHeight: 44,
+    paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: "#eae4d8",
+    backgroundColor: theme.colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#e3dccf",
+    borderColor: theme.colors.divider,
   },
   openInRadarText: {
     color: cumulus.ink,
@@ -425,9 +465,9 @@ const styles = StyleSheet.create({
     marginTop: 14,
     padding: 14,
     borderRadius: 16,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
   },
   areaKicker: {
     fontSize: 9,
@@ -455,9 +495,9 @@ const styles = StyleSheet.create({
     marginTop: 14,
     padding: 14,
     borderRadius: 16,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
   },
   timeRow: { flexDirection: "row", gap: 12 },
   timeCell: { flex: 1 },
@@ -479,7 +519,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: "#e7e0d3",
+    borderTopColor: theme.colors.divider,
   },
   timeFooterText: {
     fontSize: 11,
@@ -501,9 +541,9 @@ const styles = StyleSheet.create({
   sectionBody: {
     padding: 14,
     borderRadius: 16,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
   },
 
   bodyText: {
@@ -528,4 +568,5 @@ const styles = StyleSheet.create({
     fontFamily: cumulusFonts.mono,
     color: cumulus.inkMuted,
   },
-});
+  });
+}

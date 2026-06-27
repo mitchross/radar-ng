@@ -1,5 +1,6 @@
 import {
   describeNowcast,
+  getAlertsScreenState,
   getForecastScreenState,
   getNowcastVerdict,
 } from "../../src/lib/weatherPresentation";
@@ -37,5 +38,14 @@ describe("forecast presentation", () => {
     })).toBe(
       "Rain starts in 15 minutes, peaks at 30 minutes, and ends near 50 minutes.",
     );
+  });
+
+  it.each([
+    [{ data: undefined, isLoading: true, isError: false }, "loading"],
+    [{ data: undefined, isLoading: false, isError: true }, "error"],
+    [{ data: { features: [] }, isLoading: false, isError: false }, "empty"],
+    [{ data: { features: [{ id: "one" }] }, isLoading: false, isError: false }, "content"],
+  ] as const)("maps alert query state to %s", (input, kind) => {
+    expect(getAlertsScreenState(input).kind).toBe(kind);
   });
 });
