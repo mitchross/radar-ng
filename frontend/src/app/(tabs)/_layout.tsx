@@ -79,7 +79,14 @@ function CumulusTabBar({ state, descriptors, navigation }: ExpoTabBarProps) {
                   </View>
                 ) : null}
               </View>
-              <Text style={[bar.label, active ? bar.labelActive : null]}>{label}</Text>
+              <Text
+                style={[bar.label, active ? bar.labelActive : null]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+              >
+                {label}
+              </Text>
             </Pressable>
           );
         })}
@@ -170,7 +177,14 @@ function createBarStyles(theme: WeatherClearTheme, bottom: number) {
     paddingBottom: Math.max(bottom, 8),
     paddingHorizontal: 12,
   },
-  item: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", paddingVertical: 3 },
+  item: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 3,
+  },
   iconWrap: {
     width: 42,
     height: 30,
@@ -193,6 +207,8 @@ function createBarStyles(theme: WeatherClearTheme, bottom: number) {
   },
   badgeText: { color: "#fff", fontSize: 9, fontWeight: "800", lineHeight: 12 },
   label: {
+    width: "100%",
+    textAlign: "center",
     fontFamily: theme.typography.uiSemibold,
     fontSize: 10,
     fontWeight: "600",

@@ -853,13 +853,16 @@ function createStyles(theme: WeatherClearTheme) {
   // Header row
   headerRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
+    rowGap: 8,
     paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 8,
   },
   title: {
+    flexShrink: 1,
     fontSize: 34,
     fontWeight: "500",
     color: cumulus.ink,

@@ -18,6 +18,8 @@ describe("Weather Clear native UI contracts", () => {
     expect(tabs).toContain('accessibilityRole="tab"');
     expect(tabs).toContain("accessibilityState={{ selected: active }}");
     expect(tabs).toContain("minHeight: 44");
+    expect(tabs).toContain("adjustsFontSizeToFit");
+    expect(tabs).toContain("numberOfLines={1}");
   });
 
   it("hides the tab bar only on the full-screen radar route", () => {
@@ -32,6 +34,7 @@ describe("Weather Clear native UI contracts", () => {
     expect(settings).toContain('value: "system"');
     expect(settings).toContain("setAppearanceMode");
     expect(settings).toContain("setMapStyle");
+    expect(settings).toContain('flexWrap: "wrap"');
   });
 
   it("keeps radar close, playback, layers, and map style controls labeled", () => {
@@ -45,5 +48,14 @@ describe("Weather Clear native UI contracts", () => {
     expect(mapStyle).toContain('accessibilityLabel="Close map style picker"');
     expect(mapStyle).toContain('accessibilityRole="radio"');
     expect(mapStyle).toContain("minHeight: 44");
+  });
+
+  it.each([
+    ["app/(tabs)/index.tsx", "Current weather"],
+    ["screens/NowcastScreen.tsx", "Next hour precipitation"],
+    ["app/(tabs)/alerts.tsx", "Weather alerts"],
+    ["app/(tabs)/settings.tsx", "Weather settings"],
+  ])("labels the primary %s screen region", (file, label) => {
+    expect(source(file)).toContain(`accessibilityLabel="${label}"`);
   });
 });
