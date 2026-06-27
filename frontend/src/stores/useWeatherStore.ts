@@ -3,6 +3,7 @@ import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, MapProjection, P
 import type { LocationMode, SelectedPlace } from "../types/location";
 import { DEFAULTS, RADAR, SELF_HOSTED } from "../lib/constants";
 import { getString, setString } from "../lib/storage";
+import type { AppearanceMode } from "../theme/weatherClearTheme";
 
 interface WeatherState {
   frames: RadarFrame[];
@@ -28,6 +29,7 @@ interface WeatherState {
   extrasVisible: boolean;
   serverUrl: string;
   viewMode: "simple" | "advanced";
+  appearanceMode: AppearanceMode;
 
   setFrames: (frames: RadarFrame[]) => void;
   setCurrentFrameIndex: (index: number) => void;
@@ -50,6 +52,7 @@ interface WeatherState {
   toggleOverlay: (layer: LayerType) => void;
   setServerUrl: (url: string) => void;
   setViewMode: (mode: "simple" | "advanced") => void;
+  setAppearanceMode: (mode: AppearanceMode) => void;
   nextFrame: () => void;
 }
 
@@ -71,6 +74,10 @@ function parseSelectedPlace(value: string): SelectedPlace | null {
     }
   } catch {}
   return null;
+}
+
+function parseAppearanceMode(value: string): AppearanceMode {
+  return value === "light" || value === "dark" ? value : "system";
 }
 
 const initialLocationMode = parseLocationMode(getString("locationMode", "device"));
@@ -102,6 +109,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   extrasVisible: getString("extrasVisible", "0") === "1",
   serverUrl: getString("serverUrl", SELF_HOSTED.DEFAULT_URL),
   viewMode: (getString("viewMode", "simple") as "simple" | "advanced"),
+  appearanceMode: parseAppearanceMode(getString("appearanceMode", "system")),
 
   setFrames: (frames) => set({ frames }),
   setCurrentFrameIndex: (index) => set({ currentFrameIndex: index }),
@@ -162,6 +170,10 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setViewMode: (mode) => {
     setString("viewMode", mode);
     set({ viewMode: mode });
+  },
+  setAppearanceMode: (mode) => {
+    setString("appearanceMode", mode);
+    set({ appearanceMode: mode });
   },
   nextFrame: () => {
     const { frames, currentFrameIndex } = get();
