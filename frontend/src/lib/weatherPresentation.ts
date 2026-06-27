@@ -48,3 +48,16 @@ export function getNowcastVerdict(
     ? { kind: "raining", peakMinute, endMinute }
     : { kind: "starting", startMinute, peakMinute, endMinute };
 }
+
+export function describeNowcast(verdict: NowcastVerdict): string {
+  switch (verdict.kind) {
+    case "unavailable":
+      return "Next hour precipitation forecast unavailable.";
+    case "dry":
+      return "No rain expected for the next hour.";
+    case "raining":
+      return `Raining now, peaks at ${verdict.peakMinute} minutes, and ends near ${verdict.endMinute} minutes.`;
+    case "starting":
+      return `Rain starts in ${verdict.startMinute} minutes, peaks at ${verdict.peakMinute} minutes, and ends near ${verdict.endMinute} minutes.`;
+  }
+}

@@ -2,35 +2,48 @@
  * Cumulus Nowcast screen — 60-minute precipitation outlook.
  * Redesigned for Editorial Light. Gated cards in Simple/Advanced mode.
  */
-import { useCallback, useState } from "react";
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, RefreshControl } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { ScrollView, View, Text, StyleSheet, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../hooks/useForecast";
 import { useLocation } from "../hooks/useLocation";
 import { activeLocationLabel } from "../lib/locationLabel";
 import { useWeatherStore } from "../stores/useWeatherStore";
+import { CONDITION_GRADIENTS, getCumulusCondition, isNightAt } from "../lib/cumulusTheme";
 import {
-  cumulus,
-  cumulusFonts,
-  CONDITION_GRADIENTS,
-  getCumulusCondition,
-  isNightAt,
-} from "../lib/cumulusTheme";
+  describeNowcast,
+  getForecastScreenState,
+  getNowcastVerdict,
+} from "../lib/weatherPresentation";
+import {
+  ScreenState,
+  SectionLabel,
+  SegmentedControl,
+} from "../components/ui/WeatherClearUI";
+import { useWeatherClearTheme } from "../theme/WeatherClearThemeProvider";
+import type { WeatherClearTheme } from "../theme/weatherClearTheme";
 import WeatherIcon from "../components/weather/WeatherIcon";
 
 type Minute = { i: number; intensity: number; confLo: number; confHi: number };
 
 export default function NowcastScreen() {
   useLocation();
-  const router = useRouter();
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
   const devicePlace = useWeatherStore((s) => s.devicePlace);
   const viewMode = useWeatherStore((s) => s.viewMode);
-  const { data: forecast, isLoading } = useForecast();
+  const setViewMode = useWeatherStore((s) => s.setViewMode);
+  const {
+    data: forecast,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  } = useForecast();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -43,12 +56,35 @@ export default function NowcastScreen() {
     }
   }, [queryClient]);
 
-  if (isLoading || !forecast) {
+  const presentation = getForecastScreenState({
+    data: forecast,
+    isLoading,
+    isError,
+    isFetching,
+  });
+
+  if (presentation.kind === "error") {
     return (
-      <View style={styles.loadingContainer}>
-        <SafeAreaView style={styles.flex}>
-          <Text style={styles.loading}>Loading...</Text>
-        </SafeAreaView>
+      <View style={styles.stateContainer}>
+        <ScreenState
+          kind="error"
+          title="Nowcast unavailable"
+          message="The next-hour precipitation forecast could not be loaded."
+          actionLabel="Try again"
+          onAction={() => refetch()}
+        />
+      </View>
+    );
+  }
+
+  if (presentation.kind === "loading" || !forecast) {
+    return (
+      <View style={styles.stateContainer}>
+        <ScreenState
+          kind="loading"
+          title="Loading nowcast"
+          message="Fetching the next-hour precipitation forecast."
+        />
       </View>
     );
   }
@@ -58,13 +94,30 @@ export default function NowcastScreen() {
   const sunset = new Date(forecast.daily.sunset[0]);
   const isNight = isNightAt(now, sunrise, sunset);
   const condition = getCumulusCondition(forecast.current.weather_code, isNight);
-  const gradient = CONDITION_GRADIENTS[condition];
+  const gradient = theme.dark
+    ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
+    : CONDITION_GRADIENTS[condition];
 
   const minutes = buildMinutes(forecast.minutely_15);
-  const rainStart = minutes.findIndex((m) => m.intensity > 0.08);
-  const peakMin = minutes.reduce((best, m, i) => (m.intensity > minutes[best].intensity ? i : best), 0);
-  const reversedEnd = [...minutes].map((m) => m.intensity).reverse().findIndex((v) => v > 0.05);
-  const rainEndMin = reversedEnd >= 0 ? 59 - reversedEnd : -1;
+  const verdict = getNowcastVerdict(
+    forecast.minutely_15?.precipitation?.length
+      ? minutes.map((minute) => minute.intensity)
+      : undefined,
+  );
+  const rainStart =
+    verdict.kind === "starting"
+      ? verdict.startMinute
+      : verdict.kind === "raining"
+        ? 0
+        : -1;
+  const peakMin =
+    verdict.kind === "starting" || verdict.kind === "raining"
+      ? verdict.peakMinute
+      : 0;
+  const rainEndMin =
+    verdict.kind === "starting" || verdict.kind === "raining"
+      ? verdict.endMinute
+      : -1;
 
   // Total precipitation in inches
   const totalMm = minutes.reduce((s, m) => s + m.intensity, 0);
@@ -84,53 +137,75 @@ export default function NowcastScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={cumulus.ink}
-              colors={[cumulus.accent]}
+              tintColor={theme.colors.text}
+              colors={[theme.colors.accent]}
             />
           }
         >
           {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
-              <Text style={styles.backChev}>{"\u2039"}</Text>
-            </TouchableOpacity>
-            <View style={{ flex: 1, alignItems: "center" }}>
+          <View
+            accessibilityLabel="Next hour precipitation"
+            style={styles.header}
+          >
+            <View style={styles.headerCopy}>
               <Text style={styles.headerKicker}>HYPER-LOCAL NOWCAST</Text>
-              <Text style={styles.headerLocation}>{location}</Text>
+              <Text numberOfLines={1} style={styles.headerLocation}>{location}</Text>
             </View>
-            <View style={{ width: 36 }} />
+            <SegmentedControl
+              accessibilityLabel="Forecast detail"
+              options={[
+                { label: "Simple", value: "simple" },
+                { label: "Adv", value: "advanced" },
+              ]}
+              value={viewMode}
+              onChange={setViewMode}
+            />
           </View>
+          {presentation.stale ? (
+            <Text accessibilityRole="alert" style={styles.staleNotice}>
+              Showing the last available nowcast
+            </Text>
+          ) : null}
 
           {/* Hero verdict */}
           <View style={styles.hero}>
-            {rainStart < 0 ? (
+            {verdict.kind === "unavailable" ? (
+              <Text style={styles.heroDry}>
+                Forecast{"\n"}
+                <Text style={styles.heroDrySub}>unavailable</Text>
+              </Text>
+            ) : verdict.kind === "dry" ? (
               <Text style={styles.heroDry}>
                 No rain expected{"\n"}
                 <Text style={styles.heroDrySub}>for the next hour</Text>
               </Text>
-            ) : rainStart === 0 ? (
+            ) : verdict.kind === "raining" ? (
               <Text style={styles.heroDry}>
-                Raining <Text style={{ color: cumulus.rain, fontWeight: "500" }}>now.</Text>
+                Raining <Text style={{ color: theme.colors.rain }}>now.</Text>
               </Text>
             ) : (
               <Text style={styles.heroDry}>
                 Rain starts in{"\n"}
-                <Text style={{ color: cumulus.rain, fontWeight: "500" }}>
+                <Text style={{ color: theme.colors.rain }}>
                   {rainStart} {rainStart === 1 ? "minute" : "minutes"}
                 </Text>
               </Text>
             )}
-            {rainStart >= 0 && rainEndMin > 0 && (
+            {rainStart >= 0 && rainEndMin > 0 ? (
               <Text style={styles.heroSub}>
                 Expected to last ~{rainEndMin - rainStart} min
                 <Text style={styles.heroDim}>  {"\u00B7"}  peaks at </Text>
                 <Text style={styles.heroStrong}>+{peakMin}m</Text>
               </Text>
-            )}
+            ) : null}
           </View>
 
           {/* Intensity chart */}
-          <View style={styles.card}>
+          <View
+            accessible
+            accessibilityLabel={describeNowcast(verdict)}
+            style={styles.card}
+          >
             <View style={styles.chartHeader}>
               <Text style={styles.chartLabel}>INTENSITY {"\u00B7"} IN/HR</Text>
               <Text style={styles.chartLabel}>NEXT 60 MIN</Text>
@@ -156,40 +231,44 @@ export default function NowcastScreen() {
           </View>
 
           {/* Key moments */}
-          <SectionHeader title="KEY MOMENTS" />
+          <View style={styles.sectionWrap}>
+            <SectionLabel>KEY MOMENTS</SectionLabel>
+          </View>
           <View style={styles.keyGrid}>
             <KeyCard
               label="STARTS"
               value={rainStart < 0 ? "\u2014" : `+${rainStart}m`}
               icon="rain"
-              color={cumulus.rain}
+              color={theme.colors.rain}
             />
             <KeyCard
               label="PEAK"
               value={rainStart < 0 ? "\u2014" : `+${peakMin}m`}
               sub={rainStart < 0 ? undefined : `${(minutes[peakMin].intensity / 25.4).toFixed(2)}"/hr`}
               icon="heavyRain"
-              color={cumulus.hot}
+              color={theme.colors.hot}
             />
             <KeyCard
               label="ENDS"
               value={rainEndMin < 0 ? "\u2014" : `+${rainEndMin}m`}
               icon="partlyCloudy"
-              color={cumulus.sun}
+              color={theme.colors.warning}
             />
             <KeyCard
               label="TOTAL"
               value={`${totalIn.toFixed(2)}"`}
               sub="next hour"
               icon="cloudy"
-              color={cumulus.accent}
+              color={theme.colors.accent}
             />
           </View>
 
           {/* Advanced Mode: Forecast model details & Hyper-local variation */}
-          {isAdv && (
+          {isAdv ? (
             <>
-              <SectionHeader title="FORECAST MODEL" />
+              <View style={styles.sectionWrap}>
+                <SectionLabel>FORECAST MODEL</SectionLabel>
+              </View>
               <View style={styles.card}>
                 <Row label="Model" value="HRRR + MRMS blend" />
                 <Row label="Resolution" value="1.9 mi / 15 min" />
@@ -202,7 +281,11 @@ export default function NowcastScreen() {
                           {
                             width: `${confidence * 100}%`,
                             backgroundColor:
-                              confidence > 0.7 ? cumulus.ok : confidence > 0.4 ? cumulus.sun : "#FF9F2E",
+                              confidence > 0.7
+                                ? theme.colors.success
+                                : confidence > 0.4
+                                  ? theme.colors.warning
+                                  : "#FF9F2E",
                           },
                         ]}
                       />
@@ -212,7 +295,11 @@ export default function NowcastScreen() {
                         styles.confText,
                         {
                           color:
-                            confidence > 0.7 ? cumulus.ok : confidence > 0.4 ? cumulus.sun : "#FF9F2E",
+                            confidence > 0.7
+                              ? theme.colors.success
+                              : confidence > 0.4
+                                ? theme.colors.warning
+                                : "#FF9F2E",
                         },
                       ]}
                     >
@@ -227,7 +314,9 @@ export default function NowcastScreen() {
                 />
               </View>
 
-              <SectionHeader title="HYPER-LOCAL VARIATION" />
+              <View style={styles.sectionWrap}>
+                <SectionLabel>HYPER-LOCAL VARIATION</SectionLabel>
+              </View>
               <View style={styles.card}>
                 <Text style={styles.variationCaption}>
                   Rain totals expected within 2 miles of you
@@ -243,7 +332,7 @@ export default function NowcastScreen() {
                     <Text
                       style={[
                         styles.variationLabel,
-                        r.hi && { color: cumulus.ink, fontWeight: "600" },
+                        r.hi ? { color: theme.colors.text } : null,
                       ]}
                     >
                       {r.label}
@@ -254,7 +343,9 @@ export default function NowcastScreen() {
                           styles.variationFill,
                           {
                             width: `${Math.min(100, (r.v / Math.max(0.5, totalIn * 2)) * 100)}%`,
-                            backgroundColor: r.hi ? cumulus.accent : cumulus.rain,
+                            backgroundColor: r.hi
+                              ? theme.colors.accent
+                              : theme.colors.rain,
                           },
                         ]}
                       />
@@ -262,7 +353,7 @@ export default function NowcastScreen() {
                     <Text
                       style={[
                         styles.variationValue,
-                        r.hi && { color: cumulus.ink },
+                        r.hi ? { color: theme.colors.text } : null,
                       ]}
                     >
                       {r.v.toFixed(2)}&quot;
@@ -271,7 +362,7 @@ export default function NowcastScreen() {
                 ))}
               </View>
             </>
-          )}
+          ) : null}
 
           {/* Note about hyper-local */}
           <View style={[styles.card, { marginTop: 14, marginBottom: 24 }]}>
@@ -291,6 +382,8 @@ export default function NowcastScreen() {
 }
 
 function NowcastChart({ minutes }: { minutes: Minute[] }) {
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const H = 140;
   const maxI = Math.max(0.5, ...minutes.map((m) => m.intensity));
   return (
@@ -304,7 +397,7 @@ function NowcastChart({ minutes }: { minutes: Minute[] }) {
       <View style={styles.barsRow}>
         {minutes.map((m, i) => {
           const h = Math.max(1, (m.intensity / maxI) * H * 0.95);
-          const color = intensityColor(m.intensity / maxI);
+          const color = intensityColor(m.intensity / maxI, theme);
           return (
             <View
               key={i}
@@ -325,20 +418,12 @@ function NowcastChart({ minutes }: { minutes: Minute[] }) {
   );
 }
 
-function intensityColor(pct: number): string {
+function intensityColor(pct: number, theme: WeatherClearTheme): string {
   if (pct < 0.15) return "#7ae5a8";
-  if (pct < 0.35) return cumulus.rain;
-  if (pct < 0.6) return cumulus.rainHeavy;
-  if (pct < 0.85) return cumulus.accent;
-  return cumulus.hot;
-}
-
-function SectionHeader({ title }: { title: string }) {
-  return (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-    </View>
-  );
+  if (pct < 0.35) return theme.colors.rain;
+  if (pct < 0.6) return theme.colors.cold;
+  if (pct < 0.85) return theme.colors.accent;
+  return theme.colors.hot;
 }
 
 function KeyCard({
@@ -354,8 +439,14 @@ function KeyCard({
   icon: Parameters<typeof WeatherIcon>[0]["kind"];
   color: string;
 }) {
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
-    <View style={styles.keyCard}>
+    <View
+      accessible
+      accessibilityLabel={`${label}: ${value}${sub ? `, ${sub}` : ""}`}
+      style={styles.keyCard}
+    >
       <View style={[styles.keyIcon, { backgroundColor: `${color}16` }]}>
         <WeatherIcon kind={icon} size={26} />
       </View>
@@ -379,8 +470,10 @@ function Row({
   children?: React.ReactNode;
   last?: boolean;
 }) {
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
-    <View style={[styles.row, !last && styles.rowBorder]}>
+    <View style={[styles.row, last ? null : styles.rowBorder]}>
       <Text style={styles.rowLabel}>{label}</Text>
       {children ?? <Text style={styles.rowValue}>{value}</Text>}
     </View>
@@ -427,10 +520,25 @@ function estimateConfidence(forecast: { current: { time: string } }): number {
   return 0.5;
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: WeatherClearTheme) {
+  const cumulus = {
+    background: theme.colors.canvas,
+    ink: theme.colors.text,
+    inkDim: theme.colors.textSecondary,
+    inkMuted: theme.colors.textMuted,
+    inkFaint: theme.colors.textFaint,
+  };
+  const cumulusFonts = {
+    display: theme.typography.display,
+    ui: theme.typography.ui,
+    mono: theme.typography.mono,
+  };
+
+  return StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
   scroll: { paddingBottom: 120 },
+  stateContainer: { flex: 1, backgroundColor: theme.colors.canvas },
   loadingContainer: { flex: 1, backgroundColor: cumulus.background },
   loading: {
     color: cumulus.inkDim,
@@ -443,17 +551,30 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 8,
+  },
+  headerCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  staleNotice: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    color: theme.colors.warning,
+    fontFamily: theme.typography.uiSemibold,
+    fontSize: 11,
   },
   backBtn: {
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: "#eae4d8",
+    backgroundColor: theme.colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#e3dccf",
+    borderColor: theme.colors.divider,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -501,16 +622,14 @@ const styles = StyleSheet.create({
   card: {
     marginHorizontal: 16,
     marginTop: 20,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
     borderRadius: 20,
     padding: 16,
-    shadowColor: "rgba(60,50,40,0.04)",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 1,
+    boxShadow: theme.dark
+      ? "0 3px 10px rgba(0,0,0,0.24)"
+      : "0 3px 10px rgba(60,50,40,0.05)",
   },
 
   chartHeader: {
@@ -536,7 +655,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(33, 31, 27, 0.08)",
+    backgroundColor: theme.colors.divider,
   },
   barsRow: {
     flexDirection: "row",
@@ -549,7 +668,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 1,
-    backgroundColor: "rgba(33, 31, 27, 0.16)",
+    backgroundColor: theme.colors.border,
   },
   chartAxis: {
     flexDirection: "row",
@@ -574,6 +693,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
 
+  sectionWrap: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 10 },
   sectionHeader: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 10 },
   sectionTitle: {
     color: cumulus.inkMuted,
@@ -592,9 +712,9 @@ const styles = StyleSheet.create({
   keyCard: {
     flexBasis: "47%",
     flexGrow: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
     borderRadius: 16,
     padding: 12,
     flexDirection: "row",
@@ -638,7 +758,7 @@ const styles = StyleSheet.create({
   },
   rowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: "#e7e0d3",
+    borderBottomColor: theme.colors.divider,
   },
   rowLabel: { color: cumulus.inkDim, fontSize: 13, fontFamily: cumulusFonts.ui, fontWeight: "500" },
   rowValue: { color: cumulus.ink, fontSize: 14, fontWeight: "600", fontFamily: cumulusFonts.ui },
@@ -647,7 +767,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#e7e0d3",
+    backgroundColor: theme.colors.divider,
     overflow: "hidden",
   },
   confFill: { height: "100%", borderRadius: 3 },
@@ -693,7 +813,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#e7e0d3",
+    backgroundColor: theme.colors.divider,
     overflow: "hidden",
   },
   variationFill: { height: "100%", borderRadius: 3 },
@@ -704,4 +824,5 @@ const styles = StyleSheet.create({
     fontFamily: cumulusFonts.mono,
     color: cumulus.inkDim,
   },
-});
+  });
+}
