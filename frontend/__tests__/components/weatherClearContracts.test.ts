@@ -24,4 +24,13 @@ describe("Weather Clear native UI contracts", () => {
     const tabs = source("app/(tabs)/_layout.tsx");
     expect(tabs).toContain('activeRoute === "radar"');
   });
+
+  it("offers Light, Dark, and System independently of radar map style", () => {
+    const settings = source("app/(tabs)/settings.tsx");
+    expect(settings).toContain('value: "light"');
+    expect(settings).toContain('value: "dark"');
+    expect(settings).toContain('value: "system"');
+    expect(settings).toContain("setAppearanceMode");
+    expect(settings).toContain("setMapStyle");
+  });
 });

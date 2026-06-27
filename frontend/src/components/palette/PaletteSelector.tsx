@@ -2,10 +2,12 @@
  * Three-swatch palette picker — Classic (NWS), Vivid (CARROT-style),
  * Muted (viridis, colorblind-safe). Lives in Settings.
  */
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { useMemo } from "react";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { cumulus } from "../../lib/cumulusTheme";
+import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
+import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { Palette } from "../../types/weather";
 
 const PALETTES: {
@@ -35,6 +37,8 @@ const PALETTES: {
 ];
 
 export function PaletteSelector() {
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const activePalette = useWeatherStore((s) => s.activePalette);
   const setActivePalette = useWeatherStore((s) => s.setActivePalette);
 
@@ -43,11 +47,13 @@ export function PaletteSelector() {
       {PALETTES.map((p) => {
         const active = activePalette === p.id;
         return (
-          <TouchableOpacity
+          <Pressable
             key={p.id}
+            accessibilityRole="radio"
+            accessibilityLabel={`${p.label} radar palette, ${p.description}`}
+            accessibilityState={{ selected: active }}
             onPress={() => setActivePalette(p.id)}
-            style={[styles.tile, active && styles.tileActive]}
-            activeOpacity={0.85}
+            style={[styles.tile, active ? styles.tileActive : null]}
           >
             <LinearGradient
               colors={p.swatch}
@@ -55,29 +61,31 @@ export function PaletteSelector() {
               end={{ x: 1, y: 0 }}
               style={styles.swatch}
             />
-            <Text style={[styles.label, active && styles.labelActive]}>{p.label}</Text>
+            <Text style={[styles.label, active ? styles.labelActive : null]}>{p.label}</Text>
             <Text style={styles.description}>{p.description}</Text>
-          </TouchableOpacity>
+          </Pressable>
         );
       })}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: WeatherClearTheme) {
+  return StyleSheet.create({
   row: { flexDirection: "row", gap: 10 },
   tile: {
     flex: 1,
+    minHeight: 64,
     padding: 10,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: theme.colors.surfaceStrong,
     borderWidth: 2,
     borderColor: "transparent",
     alignItems: "center",
   },
   tileActive: {
-    borderColor: cumulus.accent,
-    backgroundColor: "rgba(139,124,255,0.14)",
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.colors.accentSoft,
   },
   swatch: {
     width: "100%",
@@ -85,7 +93,17 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     marginBottom: 8,
   },
-  label: { color: cumulus.ink, fontSize: 13, fontWeight: "600" },
-  labelActive: { color: cumulus.accentBright },
-  description: { color: cumulus.inkMuted, fontSize: 10, marginTop: 2 },
-});
+  label: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontFamily: theme.typography.uiSemibold,
+  },
+  labelActive: { color: theme.colors.accent },
+  description: {
+    color: theme.colors.textMuted,
+    fontSize: 10,
+    fontFamily: theme.typography.ui,
+    marginTop: 2,
+  },
+  });
+}

@@ -8,7 +8,7 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   Switch,
   TextInput,
   ActivityIndicator,
@@ -21,15 +21,28 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { checkServerHealth } from "../../lib/api";
 import { activeLocationLabel, formatPlaceLabel } from "../../lib/locationLabel";
 import { SELF_HOSTED } from "../../lib/constants";
-import { cumulus, cumulusFonts, CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
+import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
 import { PaletteSelector } from "../../components/palette/PaletteSelector";
+import {
+  SectionLabel,
+  SegmentedControl,
+} from "../../components/ui/WeatherClearUI";
 import { useCitySearch } from "../../hooks/useCitySearch";
 import type { SelectedPlace } from "../../types/location";
+import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
+import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 
 type SourceKey = "radar" | "satellite" | "forecast" | "basemap" | "alerts";
 type SourceStatus = "healthy" | "stale" | "error" | "disabled";
 
+function useSettingsTheme() {
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  return { theme, styles };
+}
+
 export default function SettingsScreen() {
+  const { theme, styles } = useSettingsTheme();
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const setMapStyle = useWeatherStore((s) => s.setMapStyle);
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
@@ -48,6 +61,8 @@ export default function SettingsScreen() {
 
   const viewMode = useWeatherStore((s) => s.viewMode);
   const setViewMode = useWeatherStore((s) => s.setViewMode);
+  const appearanceMode = useWeatherStore((s) => s.appearanceMode);
+  const setAppearanceMode = useWeatherStore((s) => s.setAppearanceMode);
 
   const [editing, setEditing] = useState<SourceKey | null>(null);
   const [urlDraft, setUrlDraft] = useState(serverUrl);
@@ -98,9 +113,16 @@ export default function SettingsScreen() {
   const stackHost = useMemo(() => hostOf(serverUrl), [serverUrl]);
   const locationLabel = activeLocationLabel(locationMode, selectedPlace, devicePlace);
   const isAdv = viewMode === "advanced";
+  const gradient = theme.dark
+    ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
+    : CONDITION_GRADIENTS.clearNight;
 
   return (
-    <LinearGradient colors={CONDITION_GRADIENTS.clearNight} style={styles.container}>
+    <LinearGradient
+      accessibilityLabel="Weather settings"
+      colors={gradient}
+      style={styles.container}
+    >
       <SafeAreaView style={styles.flex} edges={["top"]}>
         <ScrollView
           style={styles.flex}
@@ -110,8 +132,8 @@ export default function SettingsScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={cumulus.ink}
-              colors={[cumulus.accent]}
+              tintColor={theme.colors.text}
+              colors={[theme.colors.accent]}
             />
           }
         >
@@ -119,22 +141,15 @@ export default function SettingsScreen() {
           <View style={styles.headerRow}>
             <Text style={styles.title}>Settings</Text>
 
-            <View style={styles.toggleContainer}>
-              <TouchableOpacity
-                onPress={() => setViewMode("simple")}
-                style={[styles.toggleBtn, !isAdv && styles.toggleBtnActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.toggleBtnText, !isAdv && styles.toggleBtnTextActive]}>Simple</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setViewMode("advanced")}
-                style={[styles.toggleBtn, isAdv && styles.toggleBtnActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.toggleBtnText, isAdv && styles.toggleBtnTextActive]}>Adv</Text>
-              </TouchableOpacity>
-            </View>
+            <SegmentedControl
+              accessibilityLabel="Settings detail"
+              options={[
+                { label: "Simple", value: "simple" },
+                { label: "Adv", value: "advanced" },
+              ]}
+              value={viewMode}
+              onChange={setViewMode}
+            />
           </View>
 
           {/* Advanced Mode: Self-hosted stack hero card */}
@@ -158,13 +173,16 @@ export default function SettingsScreen() {
           <View style={styles.card}>
             <Row>
               <RowLeft title="Radar location" sub={locationLabel} />
-              <TouchableOpacity
-                style={[styles.saveBtn, locationMode === "device" && styles.saveBtnDisabled]}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Use device GPS location"
+                accessibilityState={{ disabled: locationMode === "device" }}
+                style={[styles.saveBtn, locationMode === "device" ? styles.saveBtnDisabled : null]}
                 disabled={locationMode === "device"}
                 onPress={useDeviceLocation}
               >
                 <Text style={styles.saveBtnText}>Use GPS</Text>
-              </TouchableOpacity>
+              </Pressable>
             </Row>
             <Sep />
             <View style={styles.locationSearch}>
@@ -176,13 +194,14 @@ export default function SettingsScreen() {
                   autoCapitalize="words"
                   autoCorrect={false}
                   placeholder="Search city"
-                  placeholderTextColor={cumulus.inkFaint}
+                  accessibilityLabel="Search city"
+                  placeholderTextColor={theme.colors.textFaint}
                 />
-                {citySearching && <ActivityIndicator size="small" color={cumulus.inkMuted} />}
+                {citySearching ? <ActivityIndicator size="small" color={theme.colors.textMuted} /> : null}
               </View>
-              {citySearchError && (
+              {citySearchError ? (
                 <Text style={styles.searchError}>City search unavailable</Text>
-              )}
+              ) : null}
               {cityResults.map((place) => (
                 <CityResultRow
                   key={place.id}
@@ -210,18 +229,21 @@ export default function SettingsScreen() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     placeholder="https://radar-ng-api.example.com"
-                    placeholderTextColor={cumulus.inkFaint}
+                    accessibilityLabel="Stack URL"
+                    placeholderTextColor={theme.colors.textFaint}
                   />
-                  <TouchableOpacity
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Save stack URL"
                     style={[
                       styles.saveBtn,
-                      urlDraft === serverUrl && styles.saveBtnDisabled,
+                      urlDraft === serverUrl ? styles.saveBtnDisabled : null,
                     ]}
                     disabled={urlDraft === serverUrl}
                     onPress={() => setServerUrl(urlDraft.trim())}
                   >
                     <Text style={styles.saveBtnText}>Save</Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 </View>
               </View>
             </>
@@ -310,6 +332,20 @@ export default function SettingsScreen() {
 
           <SectionHeader>Preferences</SectionHeader>
           <View style={styles.card}>
+            <Row>
+              <RowLeft title="Appearance" sub="App chrome and content" />
+              <SegmentedControl
+                accessibilityLabel="App appearance"
+                options={[
+                  { label: "Light", value: "light" },
+                  { label: "Dark", value: "dark" },
+                  { label: "System", value: "system" },
+                ]}
+                value={appearanceMode}
+                onChange={setAppearanceMode}
+              />
+            </Row>
+            <Sep />
             <ToggleRow
               label="Dark basemap"
               sub="Affects Radar map style"
@@ -341,8 +377,8 @@ export default function SettingsScreen() {
                 step={0.05}
                 value={radarOpacity}
                 onValueChange={setRadarOpacity}
-                minimumTrackTintColor={cumulus.accent}
-                maximumTrackTintColor="#e7e0d3"
+                minimumTrackTintColor={theme.colors.accent}
+                maximumTrackTintColor={theme.colors.divider}
                 thumbTintColor="#ffffff"
                 style={{ marginTop: 4 }}
               />
@@ -356,8 +392,8 @@ export default function SettingsScreen() {
                 step={1}
                 value={playbackSpeed}
                 onValueChange={setPlaybackSpeed}
-                minimumTrackTintColor={cumulus.accent}
-                maximumTrackTintColor="#e7e0d3"
+                minimumTrackTintColor={theme.colors.accent}
+                maximumTrackTintColor={theme.colors.divider}
                 thumbTintColor="#ffffff"
                 style={{ marginTop: 4 }}
               />
@@ -384,7 +420,7 @@ export default function SettingsScreen() {
                   <Text
                     style={[
                       styles.monoDim,
-                      { color: stackHealthy ? cumulus.ok : "#FF6E7A" },
+                          { color: stackHealthy ? theme.colors.success : theme.colors.destructive },
                     ]}
                   >
                     {stackHealthy === null
@@ -463,8 +499,9 @@ function hostOf(url: string): string {
 }
 
 function StatusDot({ ok, loading }: { ok: boolean; loading?: boolean }) {
-  if (loading) return <ActivityIndicator size="small" color={cumulus.inkMuted} />;
-  const color = ok ? cumulus.ok : "#FF6E7A";
+  const { theme, styles } = useSettingsTheme();
+  if (loading) return <ActivityIndicator size="small" color={theme.colors.textMuted} />;
+  const color = ok ? theme.colors.success : theme.colors.destructive;
   const label = ok ? "ONLINE" : "ERROR";
   return (
     <View style={styles.statusRow}>
@@ -475,6 +512,7 @@ function StatusDot({ ok, loading }: { ok: boolean; loading?: boolean }) {
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
+  const { styles } = useSettingsTheme();
   return (
     <View style={{ flex: 1 }}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -484,28 +522,37 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 function SectionHeader({ children }: { children: string }) {
-  return <Text style={styles.sectionHeader}>{children}</Text>;
+  const { styles } = useSettingsTheme();
+  return (
+    <View style={styles.sectionHeader}>
+      <SectionLabel>{children.toUpperCase()}</SectionLabel>
+    </View>
+  );
 }
 
 // Divider Line
 function Sep() {
+  const { styles } = useSettingsTheme();
   return <View style={styles.sep} />;
 }
 
 function Row({ children }: { children: React.ReactNode }) {
+  const { styles } = useSettingsTheme();
   return <View style={styles.row}>{children}</View>;
 }
 
 function RowLeft({ title, sub }: { title: string; sub?: string }) {
+  const { styles } = useSettingsTheme();
   return (
     <View style={{ flex: 1, minWidth: 0 }}>
       <Text style={styles.rowLabel}>{title}</Text>
-      {sub && <Text style={styles.rowSub}>{sub}</Text>}
+      {sub ? <Text style={styles.rowSub}>{sub}</Text> : null}
     </View>
   );
 }
 
 function Pill({ color, children }: { color: string; children: string }) {
+  const { styles } = useSettingsTheme();
   return (
     <View style={[styles.pill, { backgroundColor: `${color}12`, borderColor: `${color}33` }]}>
       <Text style={[styles.pillText, { color }]}>{children}</Text>
@@ -528,27 +575,35 @@ function SourceRow({
   expanded: boolean;
   onPress: () => void;
 }) {
+  const { theme, styles } = useSettingsTheme();
   const colors: Record<SourceStatus, string> = {
-    healthy: cumulus.ok,
-    stale: "#F5A524",
-    error: "#FF6E7A",
-    disabled: "rgba(33, 31, 27, 0.3)",
+    healthy: theme.colors.success,
+    stale: theme.colors.warning,
+    error: theme.colors.destructive,
+    disabled: theme.colors.textFaint,
   };
   const pill = { healthy: "OK", stale: "STALE", error: "ERROR", disabled: "OFF" }[status];
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={styles.sourceRow}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${name}, ${pill}`}
+      accessibilityState={{ expanded }}
+      onPress={onPress}
+      style={styles.sourceRow}
+    >
       <Text style={styles.sourceIcon}>{icon}</Text>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={styles.sourceName}>{name}</Text>
         <Text style={styles.sourceEndpoint} numberOfLines={1}>{endpoint}</Text>
       </View>
       <Pill color={colors[status]}>{pill}</Pill>
-      <Text style={[styles.chev, expanded && { transform: [{ rotate: "90deg" }] }]}>›</Text>
-    </TouchableOpacity>
+      <Text style={[styles.chev, expanded ? { transform: [{ rotate: "90deg" }] } : null]}>›</Text>
+    </Pressable>
   );
 }
 
 function SourceEditor({ src }: { src: { name: string; endpoint: string } }) {
+  const { styles } = useSettingsTheme();
   return (
     <View style={styles.editor}>
       <Text style={styles.editorKicker}>EDIT ENDPOINT</Text>
@@ -571,6 +626,7 @@ function SourceEditor({ src }: { src: { name: string; endpoint: string } }) {
 }
 
 function Field({ label, value }: { label: string; value: string }) {
+  const { styles } = useSettingsTheme();
   return (
     <View style={{ marginBottom: 8 }}>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -590,10 +646,13 @@ function CityResultRow({
   selected: boolean;
   onPress: () => void;
 }) {
+  const { theme, styles } = useSettingsTheme();
   return (
-    <TouchableOpacity
-      style={[styles.cityRow, selected && styles.cityRowSelected]}
-      activeOpacity={0.75}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Use ${formatPlaceLabel(place)}`}
+      accessibilityState={{ selected }}
+      style={[styles.cityRow, selected ? styles.cityRowSelected : null]}
       onPress={onPress}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -602,8 +661,8 @@ function CityResultRow({
           {[place.admin1, place.country].filter(Boolean).join(" · ")}
         </Text>
       </View>
-      {selected && <Pill color={cumulus.ok}>SET</Pill>}
-    </TouchableOpacity>
+      {selected ? <Pill color={theme.colors.success}>SET</Pill> : null}
+    </Pressable>
   );
 }
 
@@ -618,7 +677,12 @@ function ContainerRow({
   status: "healthy" | "updating" | "error";
   ports: string;
 }) {
-  const color = { healthy: cumulus.ok, updating: "#F5A524", error: "#FF6E7A" }[status];
+  const { theme, styles } = useSettingsTheme();
+  const color = {
+    healthy: theme.colors.success,
+    updating: theme.colors.warning,
+    error: theme.colors.destructive,
+  }[status];
   return (
     <View style={styles.containerRow}>
       <View style={[styles.containerDot, { backgroundColor: color }]} />
@@ -642,14 +706,16 @@ function ToggleRow({
   value: boolean;
   onChange: (v: boolean) => void;
 }) {
+  const { theme, styles } = useSettingsTheme();
   return (
     <View style={styles.row}>
       <RowLeft title={label} sub={sub} />
       <Switch
         value={value}
         onValueChange={onChange}
-        trackColor={{ true: cumulus.accent, false: "#eae4d8" }}
-        thumbColor="#ffffff"
+        accessibilityLabel={label}
+        trackColor={{ true: theme.colors.accent, false: theme.colors.surfaceMuted }}
+        thumbColor={theme.colors.surface}
       />
     </View>
   );
@@ -666,39 +732,44 @@ function SelectRow({
   options: string[];
   onChange: (v: string) => void;
 }) {
+  const { theme, styles } = useSettingsTheme();
   const [open, setOpen] = useState(false);
   return (
     <View style={{ paddingHorizontal: 14, paddingVertical: 8 }}>
-      <TouchableOpacity
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${label}, ${value}`}
+        accessibilityState={{ expanded: open }}
         style={{ flexDirection: "row", alignItems: "center", paddingVertical: 4 }}
         onPress={() => setOpen(!open)}
-        activeOpacity={0.7}
       >
         <Text style={[styles.rowLabel, { flex: 1 }]}>{label}</Text>
         <Text style={styles.monoDim}>{value}</Text>
         <Text style={styles.chev}>{open ? "▾" : "▸"}</Text>
-      </TouchableOpacity>
-      {open && (
+      </Pressable>
+      {open ? (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, paddingTop: 6 }}>
           {options.map((opt) => (
-            <TouchableOpacity
+            <Pressable
               key={opt}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: opt === value }}
               onPress={() => {
                 onChange(opt);
                 setOpen(false);
               }}
-              style={[
-                styles.selectChip,
-                opt === value && { backgroundColor: cumulus.accent },
-              ]}
-            >
-              <Text style={[styles.selectChipText, opt === value && { color: "#ffffff" }]}>
-                {opt}
-              </Text>
-            </TouchableOpacity>
+                style={[
+                  styles.selectChip,
+                  opt === value ? { backgroundColor: theme.colors.accent } : null,
+                ]}
+              >
+                <Text style={[styles.selectChipText, opt === value ? { color: "#ffffff" } : null]}>
+                  {opt}
+                </Text>
+              </Pressable>
           ))}
         </View>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -712,31 +783,35 @@ function Segmented({
   selected: string;
   onSelect: (v: string) => void;
 }) {
+  const { styles } = useSettingsTheme();
   return (
     <View style={styles.segmented}>
       {options.map((opt) => (
-        <TouchableOpacity
+        <Pressable
           key={opt}
-          style={[styles.segment, opt === selected && styles.segmentSelected]}
+          accessibilityRole="radio"
+          accessibilityState={{ selected: opt === selected }}
+          style={[styles.segment, opt === selected ? styles.segmentSelected : null]}
           onPress={() => onSelect(opt)}
         >
-          <Text style={[styles.segmentText, opt === selected && styles.segmentTextSelected]}>
+          <Text style={[styles.segmentText, opt === selected ? styles.segmentTextSelected : null]}>
             {opt}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       ))}
     </View>
   );
 }
 
 function BigBtn({ children, primary }: { children: string; primary?: boolean }) {
+  const { styles } = useSettingsTheme();
   return (
-    <TouchableOpacity
+    <Pressable
+      accessibilityRole="button"
       style={[styles.bigBtn, primary ? styles.bigBtnPrimary : styles.bigBtnGhost]}
-      activeOpacity={0.8}
     >
-      <Text style={[styles.bigBtnText, primary && { color: "#ffffff" }]}>{children}</Text>
-    </TouchableOpacity>
+      <Text style={[styles.bigBtnText, primary ? { color: "#ffffff" } : null]}>{children}</Text>
+    </Pressable>
   );
 }
 
@@ -755,7 +830,22 @@ const DOCKER_CONTAINERS: {
   { name: "caddy", image: "caddy:2.7", status: "healthy", ports: "443→443" },
 ];
 
-const styles = StyleSheet.create({
+function createStyles(theme: WeatherClearTheme) {
+  const cumulus = {
+    accent: theme.colors.accent,
+    alert: theme.colors.destructive,
+    ok: theme.colors.success,
+    ink: theme.colors.text,
+    inkMuted: theme.colors.textMuted,
+    inkFaint: theme.colors.textFaint,
+  };
+  const cumulusFonts = {
+    display: theme.typography.display,
+    ui: theme.typography.ui,
+    mono: theme.typography.mono,
+  };
+
+  return StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
   scroll: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 140 },
@@ -854,28 +944,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 8,
-    fontSize: 10,
-    fontFamily: cumulusFonts.ui,
-    color: cumulus.inkMuted,
-    letterSpacing: 1.6,
-    fontWeight: "800",
-    textTransform: "uppercase",
   },
 
   card: {
     marginHorizontal: 16,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
     borderRadius: 20,
     overflow: "hidden",
-    shadowColor: "rgba(60,50,40,0.04)",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 1,
+    boxShadow: theme.dark
+      ? "0 3px 10px rgba(0,0,0,0.24)"
+      : "0 3px 10px rgba(60,50,40,0.05)",
   },
-  sep: { height: 1, backgroundColor: "#f1ebdd", marginLeft: 16 },
+  sep: { height: 1, backgroundColor: theme.colors.divider, marginLeft: 16 },
 
   urlRow: { flexDirection: "row", alignItems: "center", padding: 10, gap: 8 },
   locationSearch: { paddingHorizontal: 12, paddingVertical: 12 },
@@ -884,10 +966,10 @@ const styles = StyleSheet.create({
     flex: 1,
     color: cumulus.ink,
     fontSize: 14,
-    backgroundColor: "#f6f1e8",
+    backgroundColor: theme.colors.surfaceStrong,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#ece4d6",
+    borderColor: theme.colors.border,
     paddingHorizontal: 12,
     paddingVertical: 9,
     fontFamily: cumulusFonts.ui,
@@ -906,13 +988,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
   },
   cityRowSelected: {
-    backgroundColor: "rgba(194, 96, 58, 0.12)",
-    borderColor: "rgba(194, 96, 58, 0.3)",
+    backgroundColor: theme.colors.accentSoft,
+    borderColor: theme.colors.accentBorder,
   },
   cityName: { fontSize: 14, color: cumulus.ink, fontWeight: "600", fontFamily: cumulusFonts.ui },
   cityMeta: { fontSize: 11, color: cumulus.inkMuted, marginTop: 2, fontFamily: cumulusFonts.ui },
@@ -921,10 +1003,10 @@ const styles = StyleSheet.create({
     color: cumulus.ink,
     fontFamily: cumulusFonts.mono,
     fontSize: 12,
-    backgroundColor: "#f6f1e8",
+    backgroundColor: theme.colors.surfaceStrong,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#ece4d6",
+    borderColor: theme.colors.border,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -934,7 +1016,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: cumulus.accent,
   },
-  saveBtnDisabled: { backgroundColor: "#eae4d8" },
+  saveBtnDisabled: { backgroundColor: theme.colors.surfaceMuted },
   saveBtnText: { color: "#ffffff", fontWeight: "700", fontSize: 13, fontFamily: cumulusFonts.ui },
 
   row: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 10 },
@@ -968,9 +1050,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 14,
     borderRadius: 16,
-    backgroundColor: "rgba(194, 96, 58, 0.08)",
+    backgroundColor: theme.colors.accentSoft,
     borderWidth: 1,
-    borderColor: "rgba(194, 96, 58, 0.25)",
+    borderColor: theme.colors.accentBorder,
   },
   editorKicker: {
     fontSize: 9,
@@ -999,10 +1081,10 @@ const styles = StyleSheet.create({
   fieldBox: {
     paddingHorizontal: 10,
     paddingVertical: 8,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
   },
   fieldValue: { fontFamily: cumulusFonts.mono, fontSize: 12, color: cumulus.ink },
 
@@ -1017,12 +1099,12 @@ const styles = StyleSheet.create({
   containerPorts: { fontSize: 10, fontFamily: cumulusFonts.mono, color: cumulus.inkMuted },
 
   btnRow: { flexDirection: "row", paddingHorizontal: 16, paddingTop: 12, gap: 10 },
-  bigBtn: { flex: 1, paddingVertical: 12, borderRadius: 14, alignItems: "center" },
+  bigBtn: { flex: 1, minHeight: 44, paddingVertical: 12, borderRadius: 14, alignItems: "center" },
   bigBtnPrimary: { backgroundColor: cumulus.accent },
-  bigBtnGhost: { backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#eee6d8" },
+  bigBtnGhost: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
   bigBtnText: { color: cumulus.ink, fontSize: 14, fontWeight: "700", fontFamily: cumulusFonts.ui },
 
-  progressTrack: { height: 6, borderRadius: 3, backgroundColor: "#eee6d8", overflow: "hidden" },
+  progressTrack: { height: 6, borderRadius: 3, backgroundColor: theme.colors.divider, overflow: "hidden" },
   progressFill: { height: "100%", backgroundColor: cumulus.accent },
   clearBtn: { color: cumulus.alert, fontWeight: "700", fontSize: 13, fontFamily: cumulusFonts.ui },
 
@@ -1030,15 +1112,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "#f6f1e8",
+    backgroundColor: theme.colors.surfaceStrong,
     borderWidth: 1,
-    borderColor: "#ece4d6",
+    borderColor: theme.colors.border,
   },
   selectChipText: { color: cumulus.ink, fontSize: 12, fontFamily: cumulusFonts.mono },
 
   segmented: {
     flexDirection: "row",
-    backgroundColor: "#eae4d8",
+    backgroundColor: theme.colors.surfaceMuted,
     borderRadius: 10,
     padding: 2,
   },
@@ -1055,4 +1137,5 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontFamily: cumulusFonts.mono,
   },
-});
+  });
+}
