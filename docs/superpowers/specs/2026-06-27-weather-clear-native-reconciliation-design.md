@@ -14,9 +14,10 @@ The result must be a native phone application for iOS and Android. Web support i
 The reference artifacts have this precedence:
 
 1. `Weather app redesign/Weather Clear.dc.html` defines intended layout, hierarchy, interactions, and component states.
-2. `Weather app redesign/uploads/01-home.png` through `05-settings.png` define the canonical light-theme appearance at 1080 × 2400.
-3. `Weather app redesign/Weather Redesign.dc.html` is an exploratory concept board. Its Clear direction may clarify intent but does not override the completed Weather Clear artifact.
-4. Existing application behavior is authoritative where the static design does not specify dynamic or failure behavior.
+2. `Weather app redesign/Weather Redesign.dc.html` is an exploratory concept board. Its Clear direction may clarify intent but does not override the completed Weather Clear artifact.
+3. Existing application behavior is authoritative where the static design does not specify dynamic or failure behavior.
+
+`Weather app redesign/uploads/01-home.png` through `05-settings.png` are historical dark-app inputs, not Weather Clear targets. The files currently under `frontend/screenshots/` are byte-for-byte copies of those historical inputs and therefore are not evidence of the current native implementation.
 
 Reference copy and values such as temperature, location, timestamps, alerts, and forecast rows are examples. The application continues to render live data.
 
@@ -119,7 +120,7 @@ Radar tile and map failures must leave navigation and recovery controls usable.
 ## Audit and Implementation Method
 
 1. Capture a clean Android emulator baseline for every tab and relevant state.
-2. Compare the baseline against the canonical screenshots and interactive HTML.
+2. Compare the native baseline against the locally rendered interactive HTML, inspecting each tab and Simple/Advanced state.
 3. Inventory mismatches by structure, typography, spacing, color, component styling, interaction, state handling, accessibility, and platform behavior.
 4. Fix shared tokens and primitives before screen-specific differences.
 5. Reconcile one screen or interaction slice at a time using a failing behavioral or regression test before production changes.
