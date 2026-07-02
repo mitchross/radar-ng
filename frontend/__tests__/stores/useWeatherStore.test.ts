@@ -23,6 +23,16 @@ describe("useWeatherStore", () => {
     expect(state.radarOpacity).toBe(0.8);
     expect(state.activeLayer).toBe("radar");
     expect(state.serverUrl).toContain("radar-ng-api");
+    expect(state.appearanceMode).toBe("system");
+  });
+
+  it("persists an explicit appearance mode independently of map style", () => {
+    useWeatherStore.getState().setMapStyle("satellite");
+    useWeatherStore.getState().setAppearanceMode("dark");
+
+    expect(useWeatherStore.getState().appearanceMode).toBe("dark");
+    expect(useWeatherStore.getState().mapStyle).toBe("satellite");
+    expect(setString).toHaveBeenCalledWith("appearanceMode", "dark");
   });
 
   it("setFrames updates frames", () => {

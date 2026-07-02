@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchSelfHostedManifest } from "../lib/api";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { DEFAULTS } from "../lib/constants";
-import { getString, setString } from "../lib/storage";
 import type { RadarFrame, SelfHostedManifest } from "../types/weather";
 
 /**
@@ -83,39 +82,6 @@ export function pickNowFrameIndex(frames: RadarFrame[]): number {
   return best;
 }
 
-/**
- * THE manifest query — every consumer must go through this hook (one query
- * key → one network flight, shared by the radar screen and the home-tab
- * mini map alike).
- *
- * The last good manifest is persisted to MMKV and used as `initialData`
- * with `initialDataUpdatedAt: 0`: render instantly from cache on cold
- * start / network loss, while React Query still refetches immediately in
- * the background.
- */
-export function useManifestQuery(serverUrl: string) {
-  const storageKey = `manifest:${serverUrl}`;
-  return useQuery({
-    queryKey: ["manifest", serverUrl],
-    queryFn: async () => {
-      const manifest = await fetchSelfHostedManifest(serverUrl);
-      setString(storageKey, JSON.stringify(manifest));
-      return manifest;
-    },
-    refetchInterval: DEFAULTS.MANIFEST_REFETCH_MS,
-    initialData: () => {
-      const cached = getString(storageKey, "");
-      if (!cached) return undefined;
-      try {
-        return JSON.parse(cached) as SelfHostedManifest;
-      } catch {
-        return undefined;
-      }
-    },
-    initialDataUpdatedAt: 0,
-  });
-}
-
 export function useManifest() {
   const setFrames = useWeatherStore((s) => s.setFrames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
@@ -124,7 +90,11 @@ export function useManifest() {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const timelineMode = useWeatherStore((s) => s.timelineMode);
 
-  const query = useManifestQuery(serverUrl);
+  const query = useQuery({
+    queryKey: ["manifest", serverUrl],
+    queryFn: () => fetchSelfHostedManifest(serverUrl),
+    refetchInterval: DEFAULTS.MANIFEST_REFETCH_MS,
+  });
 
   const frames = useMemo(
     () => (query.data ? buildSelfHostedFrames(query.data, activeLayer, timelineMode) : []),

@@ -2,21 +2,18 @@
  * Cumulus radar timeline — Apple-Weather-inspired "forecast pill".
  * Violet play button + layer/date header + 1h/12h segmented zoom + segmented
  * track (past / nowcast / HRRR / long-range) + NOW marker + draggable thumb.
- *
- * Playback itself lives in hooks/usePlayback.ts (called from the radar
- * screen). Per-tick state (`currentFrameIndex`) is only subscribed to by
- * two leaf components — FrameDateLabel and FrameSlider — so the rest of
- * this card doesn't re-render 2×/second during playback.
+ * Playback advances every 420ms within the active zoom window.
  */
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import Slider from "@react-native-community/slider";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
 import type { LayerType } from "../../types/weather";
 
 const NOWCAST_MIN = 60;
 const HRRR_MIN = 360;
+const PLAYBACK_MS = 420;
 
 const LAYER_TITLE: Record<LayerType, string> = {
   radar: "Radar",
@@ -34,13 +31,17 @@ type Zoom = "1h" | "12h";
 
 export function TimelineBar() {
   const frames = useWeatherStore((s) => s.frames);
+  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
   const isPlaying = useWeatherStore((s) => s.isPlaying);
   const togglePlaying = useWeatherStore((s) => s.togglePlaying);
+  const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
-  const setPlaybackWindow = useWeatherStore((s) => s.setPlaybackWindow);
 
   const [zoom, setZoom] = useState<Zoom>("1h");
+
+  const idxRef = useRef(currentFrameIndex);
+  useEffect(() => { idxRef.current = currentFrameIndex; }, [currentFrameIndex]);
 
   const nowSec = useMemo(() => Math.floor(Date.now() / 1000), []);
 
@@ -57,19 +58,9 @@ export function TimelineBar() {
     return { startIdx: s, endIdx: e };
   }, [frames, zoom, nowSec]);
 
-  // Publish the zoom window so the radar carousel prefetches the frames
-  // playback will actually visit (including the loop wrap). Cleared on
-  // unmount so a stale window never constrains another screen.
-  useEffect(() => {
-    setPlaybackWindow({ start: startIdx, end: endIdx });
-  }, [startIdx, endIdx, setPlaybackWindow]);
-  useEffect(() => () => setPlaybackWindow(null), [setPlaybackWindow]);
-
-  // Snap current frame into zoom window when switching. Reads the index via
-  // getState() so this component doesn't re-render on every playback tick.
+  // Snap current frame into zoom window when switching
   useEffect(() => {
     if (frames.length === 0) return;
-    const currentFrameIndex = useWeatherStore.getState().currentFrameIndex;
     if (currentFrameIndex < startIdx || currentFrameIndex > endIdx) {
       const nowIdx = findClosestIdx(frames, nowSec);
       setCurrentFrameIndex(Math.max(startIdx, Math.min(endIdx, nowIdx)));
@@ -77,44 +68,58 @@ export function TimelineBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, startIdx, endIdx, frames.length]);
 
-  // Loading shell instead of nothing — prevents the whole card popping into
-  // existence once the manifest arrives.
-  if (frames.length === 0) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.card}>
-          <View style={styles.headerRow}>
-            <View style={[styles.playBtn, styles.playBtnDisabled]}>
-              <View style={styles.playIcon} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.layerTitle} numberOfLines={1}>
-                {LAYER_TITLE[activeLayer] ?? "Radar"}
-              </Text>
-              <Text style={styles.dateLabel} numberOfLines={1}>Loading frames…</Text>
-            </View>
-          </View>
-          <View style={styles.trackContainer} />
-        </View>
-      </View>
-    );
-  }
+  // 420ms playback tick within zoom window
+  useEffect(() => {
+    if (!isPlaying || frames.length === 0 || endIdx <= startIdx) return;
+    const id = setInterval(() => {
+      const next = idxRef.current + 1 > endIdx ? startIdx : idxRef.current + 1;
+      setCurrentFrameIndex(next);
+    }, PLAYBACK_MS);
+    return () => clearInterval(id);
+  }, [isPlaying, startIdx, endIdx, frames.length, setCurrentFrameIndex]);
 
+  // Segment boundaries depend only on the frame stream + zoom window, not on the
+  // playback index — memoize so the 420ms tick doesn't re-run three O(n) frame
+  // scans (over the full merged forecast stream) on every single frame. Must
+  // stay above the early return below to satisfy rules-of-hooks.
+  const { nowPct, nowcastPct, hrrrPct } = useMemo(() => {
+    const winLen = Math.max(1, endIdx - startIdx);
+    const toPct = (i: number) => ((i - startIdx) / winLen) * 100;
+    const nowIdx = findClosestIdx(frames, nowSec);
+    const nowcastEndIdx = findClosestIdx(frames, nowSec + NOWCAST_MIN * 60);
+    const hrrrEndIdx = findClosestIdx(frames, nowSec + HRRR_MIN * 60);
+    return {
+      nowPct: clampPct(toPct(nowIdx)),
+      nowcastPct: clampPct(toPct(nowcastEndIdx)),
+      hrrrPct: clampPct(toPct(hrrrEndIdx)),
+    };
+  }, [frames, nowSec, startIdx, endIdx]);
+
+  if (frames.length === 0) return null;
+
+  const currentFrame = frames[currentFrameIndex];
+  const offsetMin = currentFrame ? Math.round((currentFrame.time - nowSec) / 60) : 0;
   const layerTitle = LAYER_TITLE[activeLayer] ?? "Radar";
-  const winLen = Math.max(1, endIdx - startIdx);
-  const frameToPct = (i: number) => ((i - startIdx) / winLen) * 100;
-  const nowIdx = findClosestIdx(frames, nowSec);
-  const nowcastEndIdx = findClosestIdx(frames, nowSec + NOWCAST_MIN * 60);
-  const hrrrEndIdx = findClosestIdx(frames, nowSec + HRRR_MIN * 60);
-  const nowPct = clampPct(frameToPct(nowIdx));
-  const nowcastPct = clampPct(frameToPct(nowcastEndIdx));
-  const hrrrPct = clampPct(frameToPct(hrrrEndIdx));
+  const frameDate = new Date((currentFrame?.time ?? nowSec) * 1000);
+  const dateLabel = frameDate.toLocaleDateString([], {
+    weekday: "long",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  const mode = offsetMin === 0 ? "Now" : offsetMin > 0 ? "Forecast" : "Past";
 
   return (
     <View style={styles.container}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.playBtn} onPress={togglePlaying} activeOpacity={0.8}>
+          <Pressable
+            style={({ pressed }) => [styles.playBtn, pressed ? styles.controlPressed : null]}
+            onPress={togglePlaying}
+            accessibilityRole="button"
+            accessibilityLabel={isPlaying ? "Pause radar animation" : "Play radar animation"}
+            accessibilityState={{ selected: isPlaying }}
+          >
             {isPlaying ? (
               <View style={styles.pauseIcon}>
                 <View style={styles.pauseBar} />
@@ -123,20 +128,31 @@ export function TimelineBar() {
             ) : (
               <View style={styles.playIcon} />
             )}
-          </TouchableOpacity>
+          </Pressable>
 
-          <FrameDateLabel layerTitle={layerTitle} nowSec={nowSec} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.layerTitle} numberOfLines={1}>
+              {layerTitle} · {mode}
+            </Text>
+            <Text style={styles.dateLabel} numberOfLines={1}>{dateLabel}</Text>
+          </View>
 
           <View style={styles.segmented}>
             {(["1h", "12h"] as const).map((z) => (
-              <TouchableOpacity
+              <Pressable
                 key={z}
                 onPress={() => setZoom(z)}
-                style={[styles.seg, zoom === z && styles.segActive]}
-                activeOpacity={0.8}
+                style={({ pressed }) => [
+                  styles.seg,
+                  zoom === z ? styles.segActive : null,
+                  pressed ? styles.controlPressed : null,
+                ]}
+                accessibilityRole="radio"
+                accessibilityLabel={`${z} radar timeline`}
+                accessibilityState={{ checked: zoom === z }}
               >
-                <Text style={[styles.segText, zoom === z && styles.segTextActive]}>{z}</Text>
-              </TouchableOpacity>
+                <Text style={[styles.segText, zoom === z ? styles.segTextActive : null]}>{z}</Text>
+              </Pressable>
             ))}
           </View>
         </View>
@@ -181,7 +197,21 @@ export function TimelineBar() {
           {nowPct > 0 && nowPct < 100 && (
             <View style={[styles.nowMarker, { left: `${nowPct}%` }]} />
           )}
-          <FrameSlider startIdx={startIdx} endIdx={endIdx} />
+          <Slider
+            style={styles.slider}
+            minimumValue={startIdx}
+            maximumValue={endIdx}
+            step={1}
+            value={currentFrameIndex}
+            onValueChange={(v) => {
+              setIsPlaying(false);
+              setCurrentFrameIndex(Math.round(v));
+            }}
+            minimumTrackTintColor="transparent"
+            maximumTrackTintColor="transparent"
+            thumbTintColor="#ffffff"
+            accessibilityLabel={`${layerTitle} timeline, ${dateLabel}`}
+          />
         </View>
 
         <View style={styles.axisRow}>
@@ -202,58 +232,6 @@ export function TimelineBar() {
         </View>
       </View>
     </View>
-  );
-}
-
-/**
- * Per-tick leaves — the ONLY components that subscribe to
- * `currentFrameIndex`, so a playback tick re-renders two small text nodes
- * and a slider thumb instead of the whole timeline card.
- */
-function FrameDateLabel({ layerTitle, nowSec }: { layerTitle: string; nowSec: number }) {
-  const frames = useWeatherStore((s) => s.frames);
-  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
-
-  const currentFrame = frames[currentFrameIndex];
-  const offsetMin = currentFrame ? Math.round((currentFrame.time - nowSec) / 60) : 0;
-  const frameDate = new Date((currentFrame?.time ?? nowSec) * 1000);
-  const dateLabel = frameDate.toLocaleDateString([], {
-    weekday: "long",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  const mode = offsetMin === 0 ? "Now" : offsetMin > 0 ? "Forecast" : "Past";
-
-  return (
-    <View style={{ flex: 1, minWidth: 0 }}>
-      <Text style={styles.layerTitle} numberOfLines={1}>
-        {layerTitle} · {mode}
-      </Text>
-      <Text style={styles.dateLabel} numberOfLines={1}>{dateLabel}</Text>
-    </View>
-  );
-}
-
-function FrameSlider({ startIdx, endIdx }: { startIdx: number; endIdx: number }) {
-  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
-  const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
-  const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
-
-  return (
-    <Slider
-      style={styles.slider}
-      minimumValue={startIdx}
-      maximumValue={endIdx}
-      step={1}
-      value={currentFrameIndex}
-      onValueChange={(v) => {
-        setIsPlaying(false);
-        setCurrentFrameIndex(Math.round(v));
-      }}
-      minimumTrackTintColor="transparent"
-      maximumTrackTintColor="transparent"
-      thumbTintColor="#ffffff"
-    />
   );
 }
 
@@ -298,9 +276,9 @@ const styles = StyleSheet.create({
   },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   playBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    minWidth: 44,
+    minHeight: 44,
+    borderRadius: 22,
     backgroundColor: "rgba(11,18,32,0.08)",
     alignItems: "center",
     justifyContent: "center",
@@ -313,7 +291,6 @@ const styles = StyleSheet.create({
     borderBottomColor: "transparent",
     marginLeft: 2,
   },
-  playBtnDisabled: { opacity: 0.4 },
   pauseIcon: { flexDirection: "row", gap: 3 },
   pauseBar: { width: 3, height: 11, backgroundColor: "#0b1220", borderRadius: 1 },
 
@@ -323,16 +300,17 @@ const styles = StyleSheet.create({
   segmented: {
     flexDirection: "row",
     backgroundColor: "rgba(11,18,32,0.08)",
-    borderRadius: 14,
+    borderRadius: 24,
     padding: 2,
-    height: 28,
+    minHeight: 44,
   },
   seg: {
     paddingHorizontal: 12,
-    height: 24,
+    minHeight: 44,
     justifyContent: "center",
-    borderRadius: 12,
+    borderRadius: 22,
   },
+  controlPressed: { opacity: 0.68 },
   segActive: {
     backgroundColor: "#fff",
     shadowColor: "#000",

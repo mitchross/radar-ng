@@ -21,4 +21,15 @@ describe("WeatherMap", () => {
     expect(source).toContain("center: centerCoord");
     expect(source).toContain("[latitude, longitude]");
   });
+
+  it("keeps zoom controls accessible with minimum native targets", () => {
+    const source = readFileSync(
+      path.join(__dirname, "../../src/components/map/WeatherMap.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain('accessibilityRole="button"');
+    expect(source).toContain("minWidth: 44");
+    expect(source).toContain("minHeight: 44");
+  });
 });

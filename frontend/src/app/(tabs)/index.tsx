@@ -1,58 +1,63 @@
 /**
  * Cumulus Home screen — Redesigned for Editorial Light.
  * Warm paper background, display serif headers, Simple/Advanced layout gating.
- *
- * Perf structure: each visual section is a React.memo component under
- * src/components/home/ receiving plain derived props; derived arrays are
- * computed once here with useMemo keyed on the forecast query data.
  */
 import { useCallback, useMemo, useState } from "react";
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, RefreshControl } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ScrollView, View, Text, StyleSheet, Pressable, RefreshControl } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../../hooks/useForecast";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useLocation } from "../../hooks/useLocation";
-import { activeLocationLabel } from "../../lib/locationLabel";
+import { activeLocationLabel, activeLocationName } from "../../lib/locationLabel";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import {
-  cumulus,
-  cumulusFonts,
   CONDITION_GRADIENTS,
   getCumulusCondition,
   getIconKind,
+  getUVInfo,
   getWindDirection,
   isNightAt,
 } from "../../lib/cumulusTheme";
+import { getForecastScreenState } from "../../lib/weatherPresentation";
 import {
-  CONDITION_LABELS,
-  buildNowcastHeadline,
-  findStartHourIndex,
-  formatHour,
-} from "../../lib/forecastDisplay";
+  ScreenState,
+  SectionLabel,
+  SegmentedControl,
+} from "../../components/ui/WeatherClearUI";
+import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
+import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
+import WeatherIcon from "../../components/weather/WeatherIcon";
 import { RadarMiniMap } from "../../components/home/RadarMiniMap";
-import { SectionHeader } from "../../components/home/SectionHeader";
-import { HomeTopBar } from "../../components/home/HomeTopBar";
-import { HeroSection } from "../../components/home/HeroSection";
-import { NowcastBanner } from "../../components/home/NowcastBanner";
-import { AlertsCard } from "../../components/home/AlertsCard";
-import { HourlyStrip, type HourlyEntry } from "../../components/home/HourlyStrip";
-import { PrecipChart } from "../../components/home/PrecipChart";
-import { DailyList, type DailyEntry } from "../../components/home/DailyList";
-import { StatsGrid } from "../../components/home/StatsGrid";
-import { SunriseSunsetRow } from "../../components/home/SunriseSunsetRow";
-import { SunArcCard } from "../../components/home/SunArcCard";
+import {
+  UVBar,
+  WindDial,
+  FillRing,
+  VisBars,
+  PressureGauge,
+  SunArc,
+} from "../../components/home/StatWidgets";
 
 export default function HomeScreen() {
   useLocation();
+  const router = useRouter();
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
   const devicePlace = useWeatherStore((s) => s.devicePlace);
   const viewMode = useWeatherStore((s) => s.viewMode);
   const setViewMode = useWeatherStore((s) => s.setViewMode);
 
-  const { data: forecast, isLoading, isError, refetch } = useForecast();
+  const {
+    data: forecast,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  } = useForecast();
   const { data: alertData } = useAlerts();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -69,234 +74,356 @@ export default function HomeScreen() {
     }
   }, [queryClient]);
 
-  // False positive: Open-Meteo's `forecast.current` field trips the React
-  // Compiler's ref-`.current` heuristic; deps [forecast] are correct
-  // (react-query replaces the object identity on refetch). The compiler is
-  // disabled in app.json, so this diagnostic is lint-only.
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
-  const derived = useMemo(() => {
-    if (!forecast) return null;
+  const presentation = getForecastScreenState({
+    data: forecast,
+    isLoading,
+    isError,
+    isFetching,
+  });
 
-    const now = new Date();
-    const sunrise = new Date(forecast.daily.sunrise[0]);
-    const sunset = new Date(forecast.daily.sunset[0]);
-    const isNight = isNightAt(now, sunrise, sunset);
-
-    const weatherCode = forecast.current.weather_code;
-    const condition = getCumulusCondition(weatherCode, isNight);
-    const iconKind = getIconKind(weatherCode, isNight);
-    const gradient = CONDITION_GRADIENTS[condition];
-
-    const temp = Math.round(forecast.current.temperature_2m ?? 0);
-    const feels = Math.round(forecast.current.apparent_temperature ?? temp);
-    const hi = Math.round(forecast.daily.temperature_2m_max[0] ?? temp);
-    const lo = Math.round(forecast.daily.temperature_2m_min[0] ?? temp);
-
-    const conditionLabel = CONDITION_LABELS[condition];
-
-    // Nowcast banner logic
-    const nowcastHeadline = buildNowcastHeadline(forecast.minutely_15);
-
-    // 24h hourly strip
-    const hourlyStart = findStartHourIndex(forecast.hourly.time);
-    const hourly: HourlyEntry[] = forecast.hourly.time.slice(hourlyStart, hourlyStart + 24).map((t, i) => {
-      const idx = hourlyStart + i;
-      const hr = new Date(t);
-      const hrIsNight = hr < sunrise || hr > sunset;
-      return {
-        time: formatHour(hr, i),
-        temp: Math.round(forecast.hourly.temperature_2m[idx]),
-        icon: getIconKind(forecast.hourly.weather_code[idx], hrIsNight),
-        precip: forecast.hourly.precipitation_probability?.[idx] ?? 0,
-        isNow: i === 0,
-      };
-    });
-    const precipTotalIn = forecast.daily.precipitation_sum[0]?.toFixed(2) ?? "0.00";
-
-    // 7-day forecast
-    const todayLocal = (() => {
-      const d = now;
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${y}-${m}-${day}`;
-    })();
-    const daily: DailyEntry[] = forecast.daily.time.map((t, i) => {
-      const isToday = t === todayLocal;
-      return {
-        day: isToday ? "Today" : new Date(t).toLocaleDateString([], { weekday: "short" }),
-        icon: getIconKind(forecast.daily.weather_code[i], false),
-        hi: Math.round(forecast.daily.temperature_2m_max[i]),
-        lo: Math.round(forecast.daily.temperature_2m_min[i]),
-        precip: Math.round(forecast.daily.precipitation_probability_max?.[i] ?? 0),
-        now: isToday ? temp : undefined,
-      };
-    });
-    const weekHi = Math.max(...daily.map((d) => d.hi));
-    const weekLo = Math.min(...daily.map((d) => d.lo));
-
-    // Stats
-    const uv = forecast.daily.uv_index_max?.[0] ?? 0;
-    const windMph = Math.round(forecast.current.wind_speed_10m ?? 0);
-    const windDeg = forecast.current.wind_direction_10m ?? 0;
-    const windCompass = getWindDirection(windDeg);
-    const humidity = Math.round(forecast.current.relative_humidity_2m ?? 0);
-    const dew = Math.round(forecast.current.dew_point_2m ?? 0);
-    const visM = forecast.hourly.visibility?.[hourlyStart];
-    const visibility = visM != null ? Math.min(10, visM / 1609) : 10;
-    const pressure = Math.round(forecast.current.surface_pressure ?? 1013);
-    const dayMs = sunset.getTime() - sunrise.getTime();
-    const dayProgress = Math.max(0, Math.min(1, (now.getTime() - sunrise.getTime()) / dayMs));
-    const sunriseText = sunrise.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase();
-    const sunsetText = sunset.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase();
-
-    return {
-      isNight,
-      iconKind,
-      gradient,
-      conditionLabel,
-      temp,
-      feels,
-      hi,
-      lo,
-      nowcastHeadline,
-      hourly,
-      precipTotalIn,
-      daily,
-      weekHi,
-      weekLo,
-      uv,
-      windMph,
-      windDeg,
-      windCompass,
-      humidity,
-      dew,
-      visibility,
-      pressure,
-      dayProgress,
-      sunriseText,
-      sunsetText,
-    };
-  }, [forecast]);
-
-  if (isError && !forecast) {
+  if (presentation.kind === "error") {
     return (
-      <View style={styles.errorContainer}>
-        <SafeAreaView style={[styles.flex, styles.center]}>
-          <Text style={styles.errorTitle}>Couldn&apos;t load weather</Text>
-          <Text style={styles.errorBody}>
-            The forecast service is unreachable right now.
-          </Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
-            <Text style={styles.retryText}>Try again</Text>
-          </TouchableOpacity>
-        </SafeAreaView>
+      <View style={styles.stateContainer}>
+        <ScreenState
+          kind="error"
+          title="Couldn’t load weather"
+          message="The forecast service is unreachable right now."
+          actionLabel="Try again"
+          onAction={() => refetch()}
+        />
       </View>
     );
   }
 
-  if (isLoading || !forecast || !derived) {
+  if (presentation.kind === "loading" || !forecast) {
     return (
-      <View style={styles.loadingContainer}>
-        <SafeAreaView style={styles.flex}>
-          <Text style={styles.loading}>Loading weather...</Text>
-        </SafeAreaView>
+      <View style={styles.stateContainer}>
+        <ScreenState
+          kind="loading"
+          title="Loading weather"
+          message="Fetching the latest local forecast."
+        />
       </View>
     );
   }
 
-  const {
-    isNight,
-    iconKind,
-    gradient,
-    conditionLabel,
-    temp,
-    feels,
-    hi,
-    lo,
-    nowcastHeadline,
-    hourly,
-    precipTotalIn,
-    daily,
-    weekHi,
-    weekLo,
-    uv,
-    windMph,
-    windDeg,
-    windCompass,
-    humidity,
-    dew,
-    visibility,
-    pressure,
-    dayProgress,
-    sunriseText,
-    sunsetText,
-  } = derived;
+  const now = new Date();
+  const sunrise = new Date(forecast.daily.sunrise[0]);
+  const sunset = new Date(forecast.daily.sunset[0]);
+  const isNight = isNightAt(now, sunrise, sunset);
 
+  const weatherCode = forecast.current.weather_code;
+  const condition = getCumulusCondition(weatherCode, isNight);
+  const iconKind = getIconKind(weatherCode, isNight);
+  const gradient = theme.dark
+    ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
+    : CONDITION_GRADIENTS[condition];
+
+  const temp = Math.round(forecast.current.temperature_2m ?? 0);
+  const feels = Math.round(forecast.current.apparent_temperature ?? temp);
+  const hi = Math.round(forecast.daily.temperature_2m_max[0] ?? temp);
+  const lo = Math.round(forecast.daily.temperature_2m_min[0] ?? temp);
+
+  const conditionLabel = CONDITION_LABELS[condition];
   const locationLabel = activeLocationLabel(locationMode, selectedPlace, devicePlace);
+  const locationName = activeLocationName(locationMode, selectedPlace, devicePlace);
+
+  // Nowcast banner logic
+  const nowcastHeadline = buildNowcastHeadline(forecast.minutely_15);
+
+  // 24h hourly strip
+  const hourlyStart = findStartHourIndex(forecast.hourly.time);
+  const hourly = forecast.hourly.time.slice(hourlyStart, hourlyStart + 24).map((t, i) => {
+    const idx = hourlyStart + i;
+    const hr = new Date(t);
+    const hrIsNight = hr < sunrise || hr > sunset;
+    return {
+      time: formatHour(hr, i),
+      temp: Math.round(forecast.hourly.temperature_2m[idx]),
+      icon: getIconKind(forecast.hourly.weather_code[idx], hrIsNight),
+      precip: forecast.hourly.precipitation_probability?.[idx] ?? 0,
+      isNow: i === 0,
+    };
+  });
+  const precipTotalIn = forecast.daily.precipitation_sum[0]?.toFixed(2) ?? "0.00";
+
+  // 7-day forecast
+  const todayLocal = (() => {
+    const d = now;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  })();
+  const daily = forecast.daily.time.map((t, i) => {
+    const isToday = t === todayLocal;
+    return {
+      // `t` is a date-only string ("2026-07-03"); `new Date(t)` parses it as UTC
+      // midnight, which renders as the previous day in US timezones. Append a
+      // local time component so the weekday label matches local calendar days.
+      day: isToday
+        ? "Today"
+        : new Date(`${t}T00:00:00`).toLocaleDateString([], { weekday: "short" }),
+      icon: getIconKind(forecast.daily.weather_code[i], false),
+      hi: Math.round(forecast.daily.temperature_2m_max[i]),
+      lo: Math.round(forecast.daily.temperature_2m_min[i]),
+      precip: Math.round(forecast.daily.precipitation_probability_max?.[i] ?? 0),
+      now: isToday ? temp : undefined,
+    };
+  });
+  const weekHi = Math.max(...daily.map((d) => d.hi));
+  const weekLo = Math.min(...daily.map((d) => d.lo));
+
+  // Stats
+  const uv = forecast.daily.uv_index_max?.[0] ?? 0;
+  const uvInfo = getUVInfo(uv);
+  const windMph = Math.round(forecast.current.wind_speed_10m ?? 0);
+  const windDeg = forecast.current.wind_direction_10m ?? 0;
+  const windCompass = getWindDirection(windDeg);
+  const humidity = Math.round(forecast.current.relative_humidity_2m ?? 0);
+  const dew = Math.round(forecast.current.dew_point_2m ?? 0);
+  const visM = forecast.hourly.visibility?.[hourlyStart];
+  const visibility = visM != null ? Math.min(10, visM / 1609) : 10;
+  const pressure = Math.round(forecast.current.surface_pressure ?? 1013);
+  const dayMs = sunset.getTime() - sunrise.getTime();
+  const dayProgress = Math.max(0, Math.min(1, (now.getTime() - sunrise.getTime()) / dayMs));
+
   const isAdv = viewMode === "advanced";
 
   return (
-    <LinearGradient colors={gradient} style={styles.container}>
+    <LinearGradient
+      accessibilityLabel="Current weather"
+      colors={gradient}
+      style={styles.container}
+    >
       <SafeAreaView style={styles.flex} edges={["top"]}>
         <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scroll}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={cumulus.ink}
-              colors={[cumulus.accent]}
+              tintColor={theme.colors.text}
+              colors={[theme.colors.accent]}
             />
           }
         >
           {/* Top bar — Location & Toggle */}
-          <HomeTopBar
-            locationLabel={locationLabel}
-            isAdv={isAdv}
-            onSetViewMode={setViewMode}
-          />
+          <View style={styles.topBar}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Choose weather location. Current location: ${locationLabel}`}
+              onPress={() => router.push("/(tabs)/settings" as any)}
+              style={styles.locationContainer}
+            >
+              <View style={styles.locationRow}>
+                <View style={styles.locationDot} />
+                <Text style={styles.locationLabelText}>MY LOCATION</Text>
+              </View>
+              <View style={styles.locationNameRow}>
+                <Text
+                  numberOfLines={1}
+                  style={styles.locationNameText}
+                >
+                  {locationName}
+                </Text>
+                <Text style={styles.expandChevron}>{"\u25BE"}</Text>
+              </View>
+            </Pressable>
+
+            <SegmentedControl
+              accessibilityLabel="Forecast detail"
+              options={[
+                { label: "Simple", value: "simple" },
+                { label: "Adv", value: "advanced" },
+              ]}
+              value={viewMode}
+              onChange={setViewMode}
+            />
+          </View>
+          {presentation.stale ? (
+            <Text accessibilityRole="alert" style={styles.staleNotice}>
+              Showing the last available forecast
+            </Text>
+          ) : null}
 
           {/* Hero section */}
-          <HeroSection
-            iconKind={iconKind}
-            isNight={isNight}
-            conditionLabel={conditionLabel}
-            temp={temp}
-            feels={feels}
-            hi={hi}
-            lo={lo}
-          />
+          <View style={styles.hero}>
+            <View style={styles.heroIcon}>
+              <WeatherIcon kind={iconKind} size={76} time={isNight ? "night" : "day"} />
+            </View>
+            <Text style={styles.heroCondition}>{conditionLabel}</Text>
+            <View style={styles.heroTempRow}>
+              <Text style={styles.heroTemp}>{temp}</Text>
+              <Text style={styles.heroDeg}>{"\u00B0"}</Text>
+            </View>
+            <Text style={styles.heroMeta}>
+              Feels {feels}{"\u00B0"}   {"\u00B7"}   H {hi}{"\u00B0"}   L {lo}{"\u00B0"}
+            </Text>
+          </View>
 
           {/* Nowcast banner */}
-          {nowcastHeadline && (
-            <NowcastBanner
-              headline={nowcastHeadline.headline}
-              sub={nowcastHeadline.sub}
-            />
-          )}
+          {nowcastHeadline ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${nowcastHeadline.headline}. ${nowcastHeadline.sub}`}
+              style={styles.nowcastBanner}
+              onPress={() => router.push("/nowcast" as never)}
+            >
+              <View style={styles.nowcastIcon}>
+                <WeatherIcon kind="rain" size={24} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.nowcastHeadline}>{nowcastHeadline.headline}</Text>
+                <Text style={styles.nowcastSub}>{nowcastHeadline.sub}</Text>
+              </View>
+              <Text style={styles.chevron}>{"\u203A"}</Text>
+            </Pressable>
+          ) : null}
 
           {/* Active alerts */}
-          {alertData && alertData.features.length > 0 && (
-            <AlertsCard
-              id={alertData.features[0].properties.id}
-              event={alertData.features[0].properties.event}
-              expires={alertData.features[0].properties.expires}
-            />
-          )}
+          {alertData && alertData.features.length > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${alertData.features[0].properties.event}. Open alert details`}
+              style={styles.alertCard}
+              onPress={() =>
+                router.push({
+                  pathname: "/alert/[id]",
+                  params: { id: alertData.features[0].properties.id },
+                })
+              }
+            >
+              <View style={styles.alertIndicatorDot} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.alertTitle}>{alertData.features[0].properties.event}</Text>
+                <Text style={styles.alertSub} numberOfLines={1}>
+                  Until{" "}
+                  {new Date(alertData.features[0].properties.expires).toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </Text>
+              </View>
+              <Text style={styles.chevron}>{"\u203A"}</Text>
+            </Pressable>
+          ) : null}
 
           {/* Hourly strip */}
-          <SectionHeader title="HOURLY" />
-          <HourlyStrip hourly={hourly} isNight={isNight} />
+          <View style={styles.sectionWrap}>
+            <SectionLabel>HOURLY</SectionLabel>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.hourlyStrip}
+          >
+            {hourly.map((h, i) => (
+              <View
+                key={i}
+                accessible
+                accessibilityLabel={`${h.isNow ? "Now" : h.time}, ${h.temp} degrees, ${h.precip} percent chance of precipitation`}
+                style={[styles.hourlyCell, h.isNow ? styles.hourlyCellNow : null]}
+              >
+                <Text style={[styles.hourlyTime, h.isNow ? styles.hourlyTimeNow : null]}>
+                  {h.isNow ? "NOW" : h.time}
+                </Text>
+                <View style={{ marginVertical: 6 }}>
+                  <WeatherIcon kind={h.icon} size={22} time={isNight ? "night" : "day"} />
+                </View>
+                <Text style={styles.hourlyTemp}>{h.temp}{"\u00B0"}</Text>
+              </View>
+            ))}
+          </ScrollView>
 
           {/* 24h precip chart */}
-          <SectionHeader title="PRECIPITATION · 24H" right={`${precipTotalIn}"`} />
-          <PrecipChart hourly={hourly} />
+          <View style={styles.sectionWrap}>
+            <SectionLabel trailing={`${precipTotalIn}"`}>PRECIPITATION · 24H</SectionLabel>
+          </View>
+          <View
+            accessible
+            accessibilityLabel={`24 hour precipitation total ${precipTotalIn} inches`}
+            style={styles.card}
+          >
+            <View style={styles.precipChart}>
+              {hourly.map((h, i) => {
+                const pct = h.precip / 100;
+                const barH = Math.max(2, pct * 42);
+                return (
+                  <View key={i} style={styles.precipBarSlot}>
+                    <View
+                      style={[
+                        styles.precipBar,
+                        { height: barH, opacity: pct > 0.05 ? 1 : 0.25 },
+                      ]}
+                    />
+                  </View>
+                );
+              })}
+            </View>
+            <View style={styles.precipAxis}>
+              <Text style={styles.axisLabel}>NOW</Text>
+              <Text style={styles.axisLabel}>+12H</Text>
+              <Text style={styles.axisLabel}>+24H</Text>
+            </View>
+          </View>
 
           {/* 7-day forecast */}
-          <SectionHeader title="7-DAY FORECAST" />
-          <DailyList daily={daily} weekHi={weekHi} weekLo={weekLo} />
+          <View style={styles.sectionWrap}>
+            <SectionLabel>7-DAY FORECAST</SectionLabel>
+          </View>
+          <View style={[styles.card, { padding: 0, overflow: "hidden" }]}>
+            {daily.map((d, i) => {
+              const range = weekHi - weekLo || 1;
+              const leftPct = ((d.lo - weekLo) / range) * 100;
+              const widthPct = ((d.hi - d.lo) / range) * 100;
+              const nowPct = d.now != null ? ((d.now - weekLo) / range) * 100 : 0;
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.dailyRow,
+                    i > 0 ? styles.dailyRowBorder : null,
+                  ]}
+                  accessible
+                  accessibilityLabel={`${d.day}, low ${d.lo} degrees, high ${d.hi} degrees, ${d.precip} percent chance of precipitation`}
+                >
+                  <Text style={[styles.dailyDay, d.day === "Today" ? styles.dailyDayToday : null]}>
+                    {d.day}
+                  </Text>
+                  <View style={{ width: 24, alignItems: "center" }}>
+                    <WeatherIcon kind={d.icon} size={21} />
+                  </View>
+                  <Text style={styles.dailyLo}>{d.lo}{"\u00B0"}</Text>
+                  <View style={styles.dailyBarTrack}>
+                    <LinearGradient
+                      colors={["#6db4d8", "#f0c34e", "#df6a3c"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={{
+                        position: "absolute",
+                        left: `${leftPct}%`,
+                        width: `${widthPct}%`,
+                        height: "100%",
+                        borderRadius: 3,
+                      }}
+                    />
+                    {d.now != null ? (
+                      <View
+                        style={[
+                          styles.dailyNowDot,
+                          { left: `${nowPct}%` },
+                        ]}
+                      />
+                    ) : null}
+                  </View>
+                  <Text style={styles.dailyHi}>{d.hi}{"\u00B0"}</Text>
+                </View>
+              );
+            })}
+          </View>
 
           {/* Mini radar map */}
           <RadarMiniMap
@@ -304,31 +431,128 @@ export default function HomeScreen() {
           />
 
           {/* Advanced Mode: Stats grid & Twilight sun path */}
-          {isAdv && (
+          {isAdv ? (
             <>
-              <SectionHeader title="CONDITIONS" />
-              <StatsGrid
-                uv={uv}
-                windMph={windMph}
-                windDeg={windDeg}
-                windCompass={windCompass}
-                humidity={humidity}
-                dew={dew}
-                visibility={visibility}
-                pressure={pressure}
-              />
+              <View style={styles.sectionWrap}>
+                <SectionLabel>CONDITIONS</SectionLabel>
+              </View>
+              <View style={styles.statGrid}>
+                {/* 1. UV Index */}
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>UV INDEX</Text>
+                  <Text style={styles.statValue}>{Math.round(uv)}</Text>
+                  <Text style={[styles.statSubText, { color: uvInfo.color }]}>
+                    {uvInfo.label}
+                  </Text>
+                  <View style={styles.widgetWrapper}>
+                    <UVBar value={uv} />
+                  </View>
+                </View>
+
+                {/* 2. Wind compass */}
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>WIND</Text>
+                  <View style={styles.statValueRow}>
+                    <Text style={styles.statValue}>{windMph}</Text>
+                    <Text style={styles.statUnit}>mph</Text>
+                  </View>
+                  <Text style={styles.statSubText}>{windCompass}</Text>
+                  <View style={styles.widgetWrapper}>
+                    <WindDial dir={windDeg} />
+                  </View>
+                </View>
+
+                {/* 3. Humidity */}
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>HUMIDITY</Text>
+                  <View style={styles.statValueRow}>
+                    <Text style={styles.statValue}>{humidity}</Text>
+                    <Text style={styles.statUnit}>%</Text>
+                  </View>
+                  <Text style={styles.statSubText}>Dew pt {dew}°</Text>
+                  <View style={styles.widgetWrapper}>
+                    <FillRing value={humidity / 100} color={theme.colors.rain} />
+                  </View>
+                </View>
+
+                {/* 4. Visibility */}
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>VISIBILITY</Text>
+                  <View style={styles.statValueRow}>
+                    <Text style={styles.statValue}>{Math.round(visibility)}</Text>
+                    <Text style={styles.statUnit}>mi</Text>
+                  </View>
+                  <Text style={styles.statSubText}>
+                    {visibility >= 9 ? "Clear view" : "Hazy"}
+                  </Text>
+                  <View style={styles.widgetWrapper}>
+                    <VisBars value={visibility} />
+                  </View>
+                </View>
+
+                {/* 5. Pressure */}
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>PRESSURE</Text>
+                  <View style={styles.statValueRow}>
+                    <Text style={styles.statValue}>{pressure}</Text>
+                    <Text style={styles.statUnit}>hPa</Text>
+                  </View>
+                  <Text style={styles.statSubText}>
+                    {pressure < 1010 ? "Low press." : "Normal"}
+                  </Text>
+                  <View style={styles.widgetWrapper}>
+                    <PressureGauge value={pressure} />
+                  </View>
+                </View>
+
+                {/* 6. Dew point */}
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>DEW POINT</Text>
+                  <View style={styles.statValueRow}>
+                    <Text style={styles.statValue}>{dew}</Text>
+                    <Text style={styles.statUnit}>°</Text>
+                  </View>
+                  <Text style={styles.statSubText}>
+                    {dew > 60 ? "Humid air" : "Comfortable"}
+                  </Text>
+                  <View style={styles.widgetWrapper}>
+                    <FillRing value={Math.max(0, Math.min(1, (dew - 20) / 60))} color={theme.colors.hot} />
+                  </View>
+                </View>
+              </View>
 
               {/* Sunrise/Sunset widgets grid row */}
-              <SunriseSunsetRow sunriseText={sunriseText} sunsetText={sunsetText} />
+              <View style={styles.sunriseSunsetGrid}>
+                <View style={[styles.statCard, styles.rowLayoutCard]}>
+                  <Text style={styles.widgetIconText}>🌅</Text>
+                  <View>
+                    <Text style={styles.rowLayoutLabel}>SUNRISE</Text>
+                    <Text style={styles.rowLayoutVal}>
+                      {sunrise.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase()}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.statCard, styles.rowLayoutCard]}>
+                  <Text style={styles.widgetIconText}>🌇</Text>
+                  <View>
+                    <Text style={styles.rowLayoutLabel}>SUNSET</Text>
+                    <Text style={styles.rowLayoutVal}>
+                      {sunset.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase()}
+                    </Text>
+                  </View>
+                </View>
+              </View>
 
               {/* Sun Arc */}
-              <SunArcCard
-                sunriseText={sunriseText}
-                sunsetText={sunsetText}
-                progress={dayProgress}
-              />
+              <View style={[styles.card, styles.sunArcCard]}>
+                <SunArc
+                  sunrise={sunrise.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase()}
+                  sunset={sunset.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase()}
+                  progress={dayProgress}
+                />
+              </View>
             </>
-          )}
+          ) : null}
 
           <View style={{ height: 100 }} />
         </ScrollView>
@@ -337,10 +561,85 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+// ───────── helpers
+
+const CONDITION_LABELS: Record<ReturnType<typeof getCumulusCondition>, string> = {
+  clearDay: "Sunny",
+  clearNight: "Clear",
+  cloudy: "Cloudy",
+  rain: "Rain",
+  storm: "Thunderstorms",
+  snow: "Snow",
+  fog: "Foggy",
+};
+
+function findStartHourIndex(hours: string[]): number {
+  const now = Date.now();
+  for (let i = 0; i < hours.length; i++) {
+    if (new Date(hours[i]).getTime() >= now - 30 * 60_000) return i;
+  }
+  return 0;
+}
+
+function formatHour(d: Date, i: number): string {
+  if (i === 0) return "NOW";
+  const h = d.getHours();
+  if (h === 0) return "12a";
+  if (h === 12) return "12p";
+  return h < 12 ? `${h}a` : `${h - 12}p`;
+}
+
+function buildNowcastHeadline(
+  minutely: OpenMeteoMinutely | undefined
+): { headline: string; sub: string } | null {
+  if (!minutely || !minutely.precipitation || minutely.precipitation.length === 0) return null;
+  const now = Date.now();
+  const startIdx = minutely.time.findIndex((t) => new Date(t).getTime() >= now - 7.5 * 60_000);
+  if (startIdx < 0) return null;
+  const slice = minutely.precipitation.slice(startIdx, startIdx + 8);
+  const firstWet = slice.findIndex((p) => p > 0.01);
+  if (firstWet < 0) return null;
+  const minutes = firstWet * 15;
+  const continuedWet = slice.slice(firstWet).findIndex((p) => p < 0.005);
+  const lastsMin = (continuedWet < 0 ? slice.length - firstWet : continuedWet) * 15;
+  const total = slice.slice(firstWet).reduce((s, p) => s + Math.max(0, p), 0);
+  const heavy = slice.slice(firstWet).some((p) => p > 0.3);
+  const kind = heavy ? "Heavy rain" : "Rain";
+  return {
+    headline: minutes === 0 ? `${kind} now` : `${kind} starts in ${minutes} min`,
+    sub: `Lasts ~${lastsMin} min \u00B7 ${total.toFixed(2)}" total`,
+  };
+}
+
+type OpenMeteoMinutely = NonNullable<
+  ReturnType<typeof useForecast> extends { data?: infer T }
+    ? T extends { minutely_15?: infer M }
+      ? M
+      : never
+    : never
+>;
+
+function createStyles(theme: WeatherClearTheme) {
+  const cumulus = {
+    background: theme.colors.canvas,
+    accent: theme.colors.accent,
+    alert: theme.colors.destructive,
+    rain: theme.colors.rain,
+    ink: theme.colors.text,
+    inkDim: theme.colors.textSecondary,
+    inkMuted: theme.colors.textMuted,
+    inkFaint: theme.colors.textFaint,
+  };
+  const cumulusFonts = {
+    display: theme.typography.display,
+    ui: theme.typography.ui,
+  };
+
+  return StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
   scroll: { paddingBottom: 120 },
+  stateContainer: { flex: 1, backgroundColor: theme.colors.canvas },
   errorContainer: { flex: 1, backgroundColor: cumulus.background },
   loadingContainer: { flex: 1, backgroundColor: cumulus.background },
   loading: {
@@ -367,12 +666,431 @@ const styles = StyleSheet.create({
     fontFamily: cumulusFonts.ui,
   },
   retryBtn: {
-    backgroundColor: "#eae4d8",
+    backgroundColor: theme.colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#e3dccf",
+    borderColor: theme.colors.divider,
     paddingVertical: 12,
     paddingHorizontal: 28,
     borderRadius: 14,
   },
   retryText: { color: cumulus.ink, fontSize: 15, fontWeight: "600", fontFamily: cumulusFonts.ui },
-});
+
+  // Top Bar Location + Toggle
+  topBar: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  locationContainer: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: "68%",
+    flexDirection: "column",
+  },
+  staleNotice: {
+    paddingHorizontal: 24,
+    paddingTop: 4,
+    color: theme.colors.warning,
+    fontFamily: theme.typography.uiSemibold,
+    fontSize: 11,
+  },
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  locationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: cumulus.accent,
+    marginRight: 8,
+  },
+  locationLabelText: {
+    fontFamily: cumulusFonts.ui,
+    fontSize: 11,
+    fontWeight: "700",
+    color: cumulus.inkMuted,
+    letterSpacing: 1.6,
+  },
+  locationNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  locationNameText: {
+    flexShrink: 1,
+    fontFamily: cumulusFonts.display,
+    fontSize: 29,
+    fontWeight: "500",
+    color: cumulus.ink,
+    letterSpacing: -0.2,
+  },
+  expandChevron: {
+    fontSize: 16,
+    color: theme.colors.textFaint,
+    marginLeft: 4,
+    marginTop: 4,
+  },
+
+  toggleContainer: {
+    flexDirection: "row",
+    backgroundColor: theme.colors.surfaceMuted,
+    borderRadius: 11,
+    padding: 3,
+    alignItems: "center",
+  },
+  toggleBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+  },
+  toggleBtnActive: {
+    backgroundColor: cumulus.accent,
+  },
+  toggleBtnText: {
+    fontFamily: cumulusFonts.ui,
+    fontSize: 10,
+    fontWeight: "700",
+    color: cumulus.inkMuted,
+  },
+  toggleBtnTextActive: {
+    color: "#ffffff",
+  },
+
+  // Hero
+  hero: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 16,
+    position: "relative",
+    minHeight: 168,
+  },
+  heroIcon: { position: "absolute", right: 24, top: 4, opacity: 0.95 },
+  heroCondition: {
+    color: cumulus.inkDim,
+    fontSize: 19,
+    fontFamily: cumulusFonts.display,
+    fontStyle: "italic",
+  },
+  heroTempRow: { flexDirection: "row", alignItems: "flex-start", marginTop: 8 },
+  heroTemp: {
+    color: cumulus.ink,
+    fontSize: 104,
+    lineHeight: 104,
+    fontWeight: "300",
+    fontFamily: cumulusFonts.display,
+    letterSpacing: -3,
+  },
+  heroDeg: {
+    color: cumulus.ink,
+    fontSize: 48,
+    fontWeight: "300",
+    fontFamily: cumulusFonts.display,
+    marginTop: 4,
+    opacity: 0.85,
+  },
+  heroMeta: {
+    color: cumulus.inkMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 14,
+    fontFamily: cumulusFonts.ui,
+  },
+
+  // Nowcast
+  nowcastBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    boxShadow: theme.dark
+      ? "0 4px 12px rgba(0,0,0,0.28)"
+      : "0 4px 12px rgba(60,50,40,0.08)",
+  },
+  nowcastIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: theme.colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  nowcastHeadline: { color: cumulus.ink, fontSize: 14, fontWeight: "600", fontFamily: cumulusFonts.ui },
+  nowcastSub: { color: cumulus.inkDim, fontSize: 12, marginTop: 1, fontFamily: cumulusFonts.ui },
+
+  // Alerts card
+  alertCard: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: theme.dark
+      ? "rgba(228,125,125,0.16)"
+      : "rgba(223,106,106,0.12)",
+    borderWidth: 1,
+    borderColor: theme.dark
+      ? "rgba(228,125,125,0.36)"
+      : "rgba(223,106,106,0.3)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  alertIndicatorDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: cumulus.alert },
+  alertTitle: { color: cumulus.alert, fontSize: 14, fontWeight: "700", fontFamily: cumulusFonts.ui },
+  alertSub: { color: cumulus.inkDim, fontSize: 12, marginTop: 1, fontFamily: cumulusFonts.ui },
+  chevron: { color: cumulus.inkMuted, fontSize: 20, fontWeight: "400" },
+
+  // Section Header
+  sectionWrap: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 8,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 10,
+  },
+  sectionTitle: {
+    color: cumulus.inkMuted,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.6,
+    fontFamily: cumulusFonts.ui,
+  },
+  sectionRight: {
+    color: cumulus.inkDim,
+    fontSize: 11,
+    fontWeight: "700",
+    fontFamily: cumulusFonts.display,
+  },
+
+  // Hourly strip
+  hourlyStrip: { paddingHorizontal: 16, gap: 8 },
+  hourlyCell: {
+    minWidth: 54,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: theme.colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  hourlyCellNow: {
+    backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.divider,
+  },
+  hourlyTime: {
+    color: cumulus.inkMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    fontFamily: cumulusFonts.ui,
+  },
+  hourlyTimeNow: { color: cumulus.accent },
+  hourlyTemp: {
+    color: cumulus.ink,
+    fontSize: 17,
+    fontWeight: "500",
+    fontFamily: cumulusFonts.display,
+  },
+
+  // Card
+  card: {
+    marginHorizontal: 16,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 20,
+    padding: 16,
+    boxShadow: theme.dark
+      ? "0 3px 10px rgba(0,0,0,0.24)"
+      : "0 3px 10px rgba(60,50,40,0.05)",
+  },
+
+  // Precip chart
+  precipChart: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    height: 44,
+    gap: 3,
+  },
+  precipBarSlot: { flex: 1, justifyContent: "flex-end" },
+  precipBar: {
+    width: "100%",
+    borderRadius: 3,
+    backgroundColor: cumulus.rain,
+  },
+  precipAxis: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  axisLabel: {
+    color: cumulus.inkFaint,
+    fontSize: 9,
+    fontWeight: "700",
+    fontFamily: cumulusFonts.ui,
+  },
+
+  // Daily row
+  dailyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 11,
+  },
+  dailyRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.divider,
+  },
+  dailyDay: {
+    color: cumulus.ink,
+    fontSize: 14,
+    fontWeight: "600",
+    fontFamily: cumulusFonts.ui,
+    width: 44,
+  },
+  dailyDayToday: { fontWeight: "700" },
+  dailyLo: {
+    color: cumulus.inkMuted,
+    fontSize: 13,
+    width: 28,
+    textAlign: "right",
+    fontFamily: cumulusFonts.ui,
+  },
+  dailyHi: {
+    color: cumulus.ink,
+    fontSize: 13,
+    fontWeight: "600",
+    width: 28,
+    textAlign: "right",
+    fontFamily: cumulusFonts.ui,
+  },
+  dailyBarTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.colors.divider,
+    position: "relative",
+  },
+  dailyNowDot: {
+    position: "absolute",
+    top: -3,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 3,
+    borderColor: cumulus.accent,
+    marginLeft: -6,
+  },
+
+  // Stats Grid
+  statGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginHorizontal: 16,
+    gap: 9,
+  },
+  statCard: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 12,
+    minHeight: 110,
+    position: "relative",
+  },
+  statLabel: {
+    color: cumulus.inkMuted,
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    fontFamily: cumulusFonts.ui,
+  },
+  statValue: {
+    color: cumulus.ink,
+    fontSize: 22,
+    fontFamily: cumulusFonts.display,
+    fontWeight: "500",
+    marginTop: 4,
+  },
+  statValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginTop: 4,
+    gap: 2,
+  },
+  statUnit: {
+    color: cumulus.inkMuted,
+    fontSize: 10,
+    fontFamily: cumulusFonts.ui,
+    fontWeight: "500",
+  },
+  statSubText: {
+    color: cumulus.inkMuted,
+    fontSize: 10,
+    fontWeight: "500",
+    fontFamily: cumulusFonts.ui,
+    marginTop: 1,
+  },
+  widgetWrapper: {
+    position: "absolute",
+    right: 12,
+    bottom: 12,
+  },
+
+  // Sunrise sunset cells
+  sunriseSunsetGrid: {
+    flexDirection: "row",
+    marginHorizontal: 16,
+    marginTop: 9,
+    gap: 9,
+  },
+  rowLayoutCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 52,
+    paddingVertical: 10,
+  },
+  widgetIconText: {
+    fontSize: 24,
+  },
+  rowLayoutLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: cumulus.inkMuted,
+    letterSpacing: 0.6,
+    fontFamily: cumulusFonts.ui,
+  },
+  rowLayoutVal: {
+    fontSize: 18,
+    fontFamily: cumulusFonts.display,
+    fontWeight: "500",
+    color: cumulus.ink,
+    marginTop: 2,
+  },
+
+  // Sun Arc Card
+  sunArcCard: {
+    marginTop: 12,
+    paddingVertical: 14,
+  },
+  });
+}

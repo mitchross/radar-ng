@@ -29,13 +29,11 @@ import { MapStylePicker } from "../../components/map/MapStylePicker";
 import { EyedropperPin, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
 import { useLocation } from "../../hooks/useLocation";
-import { usePlaybackTicker } from "../../hooks/usePlayback";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 
 export default function RadarScreen() {
   useManifest();
   useLocation();
-  usePlaybackTicker();
   const router = useRouter();
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);
@@ -126,6 +124,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     width: 36,
     height: 36,
+    minWidth: 44,
+    minHeight: 44,
     borderRadius: 18,
     backgroundColor: "rgba(10,10,20,0.78)",
     borderWidth: 1,

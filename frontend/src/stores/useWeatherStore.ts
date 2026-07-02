@@ -3,6 +3,7 @@ import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, MapProjection, P
 import type { LocationMode, SelectedPlace } from "../types/location";
 import { DEFAULTS, RADAR, SELF_HOSTED } from "../lib/constants";
 import { getString, setString } from "../lib/storage";
+import type { AppearanceMode } from "../theme/weatherClearTheme";
 
 interface WeatherState {
   frames: RadarFrame[];
@@ -28,10 +29,7 @@ interface WeatherState {
   extrasVisible: boolean;
   serverUrl: string;
   viewMode: "simple" | "advanced";
-  // Active timeline zoom window (frame indices) — owned by the timeline UI,
-  // consumed by the radar carousel so hidden slots prefetch the frames that
-  // playback will actually visit (including the loop wrap). null = full range.
-  playbackWindow: { start: number; end: number } | null;
+  appearanceMode: AppearanceMode;
 
   setFrames: (frames: RadarFrame[]) => void;
   setCurrentFrameIndex: (index: number) => void;
@@ -54,7 +52,7 @@ interface WeatherState {
   toggleOverlay: (layer: LayerType) => void;
   setServerUrl: (url: string) => void;
   setViewMode: (mode: "simple" | "advanced") => void;
-  setPlaybackWindow: (window: { start: number; end: number } | null) => void;
+  setAppearanceMode: (mode: AppearanceMode) => void;
   nextFrame: () => void;
 }
 
@@ -76,6 +74,10 @@ function parseSelectedPlace(value: string): SelectedPlace | null {
     }
   } catch {}
   return null;
+}
+
+function parseAppearanceMode(value: string): AppearanceMode {
+  return value === "light" || value === "dark" ? value : "system";
 }
 
 const DEFAULT_PLACE: SelectedPlace = {
@@ -116,7 +118,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   extrasVisible: getString("extrasVisible", "0") === "1",
   serverUrl: getString("serverUrl", SELF_HOSTED.DEFAULT_URL),
   viewMode: (getString("viewMode", "simple") as "simple" | "advanced"),
-  playbackWindow: null,
+  appearanceMode: parseAppearanceMode(getString("appearanceMode", "system")),
 
   setFrames: (frames) => set({ frames }),
   setCurrentFrameIndex: (index) => set({ currentFrameIndex: index }),
@@ -178,20 +180,10 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     setString("viewMode", mode);
     set({ viewMode: mode });
   },
-  setPlaybackWindow: (window) => set((s) => {
-    // Timeline re-derives the window on every manifest poll; skip the set
-    // when nothing changed so carousel subscribers don't re-render.
-    if (
-      (window === null && s.playbackWindow === null) ||
-      (window !== null &&
-        s.playbackWindow !== null &&
-        window.start === s.playbackWindow.start &&
-        window.end === s.playbackWindow.end)
-    ) {
-      return s;
-    }
-    return { ...s, playbackWindow: window };
-  }),
+  setAppearanceMode: (mode) => {
+    setString("appearanceMode", mode);
+    set({ appearanceMode: mode });
+  },
   nextFrame: () => {
     const { frames, currentFrameIndex } = get();
     if (frames.length === 0) return;

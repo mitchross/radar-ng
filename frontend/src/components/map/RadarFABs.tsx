@@ -4,7 +4,7 @@
  * icons + checkmark + layer-tinted background.
  */
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, View, TouchableOpacity, StyleSheet, Text, Pressable } from "react-native";
+import { Animated, Easing, View, StyleSheet, Text, Pressable } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { pickNowFrameIndex } from "../../hooks/useManifest";
@@ -76,41 +76,69 @@ export function RadarFABs({
   return (
     <>
       <View style={styles.rail}>
-        <GlassBtn active={layerOpen} onPress={() => setLayerOpen((v) => !v)}>
+        <GlassBtn
+          active={layerOpen}
+          onPress={() => setLayerOpen((v) => !v)}
+          accessibilityLabel="Choose radar layer"
+        >
           <LayersIcon />
         </GlassBtn>
-        <GlassBtn active={extrasVisible} onPress={toggleExtras}>
+        <GlassBtn
+          active={extrasVisible}
+          onPress={toggleExtras}
+          accessibilityLabel="Toggle storm and lightning overlays"
+        >
           <BoltIcon />
         </GlassBtn>
-        <GlassBtn active={inspectorActive} onPress={onToggleInspector}>
+        <GlassBtn
+          active={inspectorActive}
+          onPress={onToggleInspector}
+          accessibilityLabel={
+            inspectorActive ? "Clear pinned inspection" : "Inspect a point on the map"
+          }
+        >
           <CrosshairIcon />
         </GlassBtn>
-        <GlassBtn onPress={onOpenStylePicker}>
+        <GlassBtn onPress={onOpenStylePicker} accessibilityLabel="Choose map style">
           <MapStyleIcon />
         </GlassBtn>
-        <GlassBtn onPress={onRefresh}>
+        <GlassBtn
+          onPress={onRefresh}
+          accessibilityLabel={refreshing ? "Refreshing radar" : "Refresh radar"}
+          disabled={refreshing}
+        >
           <RefreshIcon spinning={refreshing} />
         </GlassBtn>
       </View>
 
-      {layerOpen && (
+      {layerOpen ? (
         <>
-          <Pressable style={styles.scrim} onPress={() => setLayerOpen(false)} />
+          <Pressable
+            style={styles.scrim}
+            onPress={() => setLayerOpen(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close radar layer picker"
+          />
           <View style={[styles.panel, { backgroundColor: popoverBg }]}>
             {options.map((opt) => {
               const isActive = activeLayer === opt.id;
               return (
-                <TouchableOpacity
+                <Pressable
                   key={opt.id}
                   onPress={() => {
                     setActiveLayer(opt.id);
                     setLayerOpen(false);
                   }}
-                  style={styles.panelRow}
-                  activeOpacity={0.6}
+                  style={({ pressed }) => [
+                    styles.panelRow,
+                    pressed ? styles.panelRowPressed : null,
+                  ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: isActive }}
+                  accessibilityLabel={`${opt.name} radar layer`}
                 >
                   <View style={styles.checkCol}>
-                    {isActive && <CheckIcon />}
+                    {isActive ? <CheckIcon /> : null}
                   </View>
                   <View style={styles.iconCol}>
                     <LayerOptionIcon kind={opt.icon} />
@@ -118,12 +146,12 @@ export function RadarFABs({
                   <Text style={[styles.panelRowTitle, isActive && styles.panelRowTitleActive]}>
                     {opt.name}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
               );
             })}
           </View>
         </>
-      )}
+      ) : null}
     </>
   );
 }
@@ -132,19 +160,31 @@ function GlassBtn({
   children,
   onPress,
   active,
+  accessibilityLabel,
+  disabled = false,
 }: {
   children: React.ReactNode;
   onPress?: () => void;
   active?: boolean;
+  accessibilityLabel: string;
+  disabled?: boolean;
 }) {
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
-      activeOpacity={0.8}
-      style={[styles.btn, active && styles.btnActive]}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.btn,
+        active ? styles.btnActive : null,
+        pressed ? styles.btnPressed : null,
+        disabled ? styles.btnDisabled : null,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected: Boolean(active), disabled }}
     >
       {children}
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -363,6 +403,8 @@ const styles = StyleSheet.create({
     backgroundColor: cumulus.accent,
     borderColor: cumulus.accent,
   },
+  btnPressed: { transform: [{ scale: 0.96 }], opacity: 0.82 },
+  btnDisabled: { opacity: 0.62 },
   iconBox: { width: 20, height: 20, alignItems: "center", justifyContent: "center" },
 
   scrim: {
@@ -396,7 +438,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 6,
     gap: 10,
+    minHeight: 44,
   },
+  panelRowPressed: { backgroundColor: "rgba(255,255,255,0.28)", borderRadius: 12 },
   checkCol: { width: 16, alignItems: "center" },
   iconCol: { width: 22, alignItems: "center" },
   panelRowTitle: { color: "#1a2030", fontSize: 16, fontWeight: "400", flex: 1 },

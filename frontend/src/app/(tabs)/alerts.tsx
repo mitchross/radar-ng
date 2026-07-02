@@ -2,76 +2,100 @@
  * Cumulus Alerts tab — Redesigned for Editorial Light.
  * NWS active alerts list with Simple/Advanced gating.
  */
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, RefreshControl } from "react-native";
+import { useMemo } from "react";
+import { ScrollView, View, Text, StyleSheet, Pressable, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useLocation } from "../../hooks/useLocation";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { cumulus, cumulusFonts, CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
+import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
+import { getAlertsScreenState } from "../../lib/weatherPresentation";
+import { ScreenState } from "../../components/ui/WeatherClearUI";
+import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
+import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { NWSAlert } from "../../types/weather";
-
-const SEVERITY_COLOR: Record<NWSAlert["properties"]["severity"], string> = {
-  Extreme: cumulus.alert,
-  Severe: cumulus.accent,
-  Moderate: "#f0c34e",
-  Minor: cumulus.rain,
-  Unknown: "rgba(33, 31, 27, 0.4)",
-};
-
-const SEVERITY_GLOW: Record<NWSAlert["properties"]["severity"], string> = {
-  Extreme: "rgba(223, 106, 106, 0.2)",
-  Severe: "rgba(194, 96, 58, 0.15)",
-  Moderate: "rgba(240, 195, 78, 0.15)",
-  Minor: "rgba(77, 127, 180, 0.15)",
-  Unknown: "rgba(33, 31, 27, 0.05)",
-};
 
 export default function AlertsScreen() {
   useLocation();
   const router = useRouter();
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const viewMode = useWeatherStore((s) => s.viewMode);
-  const { data, isLoading, refetch, isFetching } = useAlerts();
+  const { data, isLoading, isError, refetch, isFetching } = useAlerts();
   const alerts = data?.features ?? [];
   const isAdv = viewMode === "advanced";
+  const presentation = getAlertsScreenState({ data, isLoading, isError });
+  const gradient = theme.dark
+    ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
+    : CONDITION_GRADIENTS.storm;
 
   return (
-    <LinearGradient colors={CONDITION_GRADIENTS.storm} style={styles.container}>
+    <LinearGradient
+      accessibilityLabel="Weather alerts"
+      colors={gradient}
+      style={styles.container}
+    >
       <SafeAreaView style={styles.flex} edges={["top"]}>
         <View style={styles.header}>
           <View>
             <Text style={styles.kicker}>ACTIVE ALERTS</Text>
             <Text style={styles.title}>
-              {alerts.length > 0 ? `${alerts.length} active` : "All clear"}
+              {presentation.kind === "error"
+                ? "Unavailable"
+                : alerts.length > 0
+                  ? `${alerts.length} active`
+                  : "All clear"}
             </Text>
           </View>
-          <TouchableOpacity onPress={() => refetch()} style={styles.refresh} activeOpacity={0.7}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Refresh weather alerts"
+            onPress={() => refetch()}
+            style={styles.refresh}
+          >
             <Text style={styles.refreshText}>↻</Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
 
         <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={isFetching}
               onRefresh={refetch}
-              tintColor={cumulus.ink}
-              colors={[cumulus.accent]}
+              tintColor={theme.colors.text}
+              colors={[theme.colors.accent]}
             />
           }
         >
-          {isLoading && <Text style={styles.muted}>Loading…</Text>}
-          {!isLoading && alerts.length === 0 && <EmptyState isAdv={isAdv} />}
-          {alerts.map((alert) => (
+          {presentation.kind === "loading" ? (
+            <ScreenState
+              kind="loading"
+              title="Loading alerts"
+              message="Checking the National Weather Service."
+            />
+          ) : null}
+          {presentation.kind === "error" ? (
+            <ScreenState
+              kind="error"
+              title="Alerts unavailable"
+              message="The National Weather Service could not be reached."
+              actionLabel="Try again"
+              onAction={() => refetch()}
+            />
+          ) : null}
+          {presentation.kind === "empty" ? <EmptyState isAdv={isAdv} /> : null}
+          {presentation.kind === "content" ? alerts.map((alert) => (
             <AlertCard
               key={alert.id}
               alert={alert}
               onPress={() => router.push(`/alert/${encodeURIComponent(alert.id)}` as any)}
             />
-          ))}
+          )) : null}
           <View style={{ height: 120 }} />
         </ScrollView>
       </SafeAreaView>
@@ -80,8 +104,9 @@ export default function AlertsScreen() {
 }
 
 function AlertCard({ alert, onPress }: { alert: NWSAlert; onPress: () => void }) {
-  const color = SEVERITY_COLOR[alert.properties.severity];
-  const glow = SEVERITY_GLOW[alert.properties.severity];
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const color = severityColor(alert.properties.severity, theme);
   const expires = new Date(alert.properties.expires);
   const expiresLabel = expires.toLocaleString([], {
     month: "short",
@@ -90,16 +115,14 @@ function AlertCard({ alert, onPress }: { alert: NWSAlert; onPress: () => void })
     minute: "2-digit",
   });
   return (
-    <TouchableOpacity
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${alert.properties.severity} ${alert.properties.event}. ${alert.properties.areaDesc}. Until ${expiresLabel}`}
       onPress={onPress}
-      activeOpacity={0.85}
       style={[
         styles.card,
         {
-          shadowColor: glow,
-          shadowOpacity: 0.4,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: 4 },
+          boxShadow: `0 4px 12px ${color}22`,
         },
       ]}
     >
@@ -113,19 +136,21 @@ function AlertCard({ alert, onPress }: { alert: NWSAlert; onPress: () => void })
           <Text style={styles.urgency}>{alert.properties.urgency.toUpperCase()}</Text>
         </View>
         <Text style={styles.event} numberOfLines={2}>{alert.properties.event}</Text>
-        {alert.properties.headline && (
+        {alert.properties.headline ? (
           <Text style={styles.headline} numberOfLines={3}>{alert.properties.headline}</Text>
-        )}
+        ) : null}
         <View style={styles.metaRow}>
           <Text style={styles.area} numberOfLines={1}>{alert.properties.areaDesc}</Text>
           <Text style={styles.expires}>•  Until {expiresLabel}</Text>
         </View>
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 function EmptyState({ isAdv }: { isAdv: boolean }) {
+  const { theme } = useWeatherClearTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={styles.emptyContainer}>
       <View style={styles.empty}>
@@ -141,7 +166,7 @@ function EmptyState({ isAdv }: { isAdv: boolean }) {
         </Text>
       </View>
 
-      {isAdv && (
+      {isAdv ? (
         <View style={styles.metadataCard}>
           <View style={styles.metadataRow}>
             <Text style={styles.metadataLabel}>Source</Text>
@@ -156,12 +181,37 @@ function EmptyState({ isAdv }: { isAdv: boolean }) {
             <Text style={styles.metadataValue}>2 min ago</Text>
           </View>
         </View>
-      )}
+      ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function severityColor(
+  severity: NWSAlert["properties"]["severity"],
+  theme: WeatherClearTheme,
+): string {
+  return {
+    Extreme: theme.colors.destructive,
+    Severe: theme.colors.accent,
+    Moderate: theme.colors.warning,
+    Minor: theme.colors.rain,
+    Unknown: theme.colors.textMuted,
+  }[severity];
+}
+
+function createStyles(theme: WeatherClearTheme) {
+  const cumulus = {
+    ink: theme.colors.text,
+    inkDim: theme.colors.textSecondary,
+    inkMuted: theme.colors.textMuted,
+  };
+  const cumulusFonts = {
+    display: theme.typography.display,
+    ui: theme.typography.ui,
+    mono: theme.typography.mono,
+  };
+
+  return StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
   header: {
@@ -188,12 +238,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   refresh: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: 12,
-    backgroundColor: "#eae4d8",
+    backgroundColor: theme.colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#e3dccf",
+    borderColor: theme.colors.divider,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -204,9 +254,9 @@ const styles = StyleSheet.create({
 
   card: {
     flexDirection: "row",
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
     borderRadius: 20,
     overflow: "hidden",
     marginBottom: 10,
@@ -255,14 +305,10 @@ const styles = StyleSheet.create({
     width: 62,
     height: 62,
     borderRadius: 31,
-    backgroundColor: "#2e9e63",
+    backgroundColor: theme.colors.success,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#2e9e63",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 3,
+    boxShadow: `0 4px 10px ${theme.colors.success}55`,
   },
   checkMarkText: {
     color: "#ffffff",
@@ -288,17 +334,15 @@ const styles = StyleSheet.create({
   metadataCard: {
     marginTop: 34,
     marginHorizontal: 16,
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#eee6d8",
+    borderColor: theme.colors.border,
     borderRadius: 20,
     paddingVertical: 4,
     paddingHorizontal: 16,
-    shadowColor: "rgba(60,50,40,0.04)",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 1,
+    boxShadow: theme.dark
+      ? "0 3px 10px rgba(0,0,0,0.24)"
+      : "0 3px 10px rgba(60,50,40,0.05)",
   },
   metadataRow: {
     flexDirection: "row",
@@ -320,6 +364,7 @@ const styles = StyleSheet.create({
   },
   rowBorder: {
     borderTopWidth: 1,
-    borderTopColor: "#f1ebdd",
+    borderTopColor: theme.colors.divider,
   },
-});
+  });
+}
