@@ -7,8 +7,7 @@ the radar-ng backend. The worker process registers every workflow + activity
 on a single task queue (`radar-ng`) and runs in the `radar-ng` namespace of
 the Talos cluster as a `TemporalWorkerDeployment` CR.
 
-See [`docs/superpowers/specs/2026-04-30-temporal-radar-ng-design.md`](../docs/superpowers/specs/2026-04-30-temporal-radar-ng-design.md)
-for the full architectural spec.
+See [`ARCHITECTURE.md`](../ARCHITECTURE.md) for the orchestration design.
 
 ## Layout
 

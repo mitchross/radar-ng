@@ -84,8 +84,6 @@ Why Temporal instead of CronJobs — the concrete list:
 
 **Mobile → Temporal.** The app never talks to Temporal directly. Push-token registration and storm watches POST to `/v1/*` (Caddy → FastAPI, `backend/api/api/routes_workflows.py`), and FastAPI starts `RegisterPushToken` / `WatchStorm` workflows via the `temporalio` client.
 
-More pattern notes, keyed to real fixes in this repo: [docs/2026-06-10-repo-review.md](docs/2026-06-10-repo-review.md) §4.
-
 ---
 
 ## The app
