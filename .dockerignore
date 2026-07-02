@@ -33,6 +33,8 @@ deploy/
 # Large local data that must never enter an image (basemap extracts, etc.).
 backend/pmtiles-data/
 **/*.pmtiles
+# ...except the archive the basemap image bakes in (build-basemap.yml, context: .)
+!backend/pmtiles-data/basemap.pmtiles
 
 # OS cruft.
 .DS_Store
