@@ -39,6 +39,7 @@ Commercial radar apps rate-limit you, slap ads on the freezing-rain warning, and
 | **Run the whole stack on my own hardware** (Docker Compose, ~10 min) | **[docs/self-hosting.md](docs/self-hosting.md)** |
 | Build + run the mobile app | [docs/running-the-app.md](docs/running-the-app.md) |
 | Deploy on Kubernetes (probes, PVCs, HPA) | [docs/kubernetes.md](docs/kubernetes.md) |
+| Configure every env var (and the `BASEMAP_PMTILES_URL` gotcha) | [docs/configuration.md](docs/configuration.md) |
 | Make it faster / cheaper / fresher | [docs/tuning.md](docs/tuning.md) |
 | Sideload CarPlay + Apple Watch | [docs/carplay-watch-setup.md](docs/carplay-watch-setup.md) |
 

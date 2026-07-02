@@ -147,6 +147,7 @@ For device builds, CarPlay, and Apple Watch, see
 | Topic | Doc |
 |---|---|
 | How it all fits together | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Every config value (env vars) | [docs/configuration.md](docs/configuration.md) |
 | Self-hosting (compose) in depth | [docs/self-hosting.md](docs/self-hosting.md) |
 | Kubernetes specifics | [docs/kubernetes.md](docs/kubernetes.md) |
 | Making it faster / cheaper / fresher | [docs/tuning.md](docs/tuning.md) |
