@@ -1,7 +1,31 @@
-# Shared Python base image for every ingestor.
-# Not a long-running service — pinned behind the "build-only" profile.
-# Build first:
-#   docker compose -f deploy/docker-compose.yml --profile build-only build base
+# radar-ng single-node quick-start.
+#
+# Temporal-era topology: ONE worker image runs every ingest/nowcast/cleanup
+# workflow on task queue `radar-ng` (schedules are self-seeded — see the
+# `worker` service note), plus a second small worker pool for open-meteo
+# model syncs on task queue `radar-ng-open-meteo`.
+#
+# Usage:
+#   cd deploy
+#   cp .env.example .env             # then at minimum set NWS_USER_AGENT
+#                                    # and BASEMAP_PMTILES_URL (see below)
+#   docker compose run --rm basemap-bootstrap   # one-shot, ~1-2 GB download
+#   docker compose up -d --build
+#
+#   curl http://localhost:8080/api/livez
+#   curl http://localhost:8080/api/manifest.json | jq '.layers | keys'
+#
+# Optional Temporal Web UI (http://localhost:8233):
+#   docker compose --profile ui up -d
+#
+# NOTE ON BUILD CONTEXT: the worker images build from the repo root and
+# there is no .dockerignore, so anything large sitting in the repo (e.g. a
+# previously downloaded backend/pmtiles-data/basemap.pmtiles, or
+# frontend/node_modules) is shipped to the docker daemon as context.
+# Delete/park those first if the build step looks stuck on
+# "transferring context".
+
+name: radar-ng
 
 x-logging: &default-logging
   driver: json-file
@@ -10,196 +34,247 @@ x-logging: &default-logging
     max-file: "3"
 
 services:
-  base:
-    image: registry.vanillax.me/radar-ng-base:latest
-    build:
-      context: ../backend
-      dockerfile: base/Dockerfile
-    command: ["true"]
-    profiles: ["build-only"]
+  # --- Temporal (workflow engine) -----------------------------------------
+  temporal-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - temporal-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      retries: 20
+    logging: *default-logging
+    restart: unless-stopped
 
-  ingest-mrms:
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-postgres
+      - DEFAULT_NAMESPACE=default
+      - DEFAULT_NAMESPACE_RETENTION=1d
+    # Exposed so you can poke it with the `temporal` CLI from the host:
+    #   temporal --address localhost:7233 workflow list
+    ports:
+      - "${TEMPORAL_PORT:-7233}:7233"
+    healthcheck:
+      # auto-setup ships the `temporal` CLI; frontend answers gRPC health
+      # only after namespace setup + shard warmup, which is exactly the
+      # gate the workers need.
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "127.0.0.1:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    logging: *default-logging
+    restart: unless-stopped
+
+  # Optional Web UI — enable with `--profile ui`. Host port 8233 because
+  # tile-server owns 8080.
+  temporal-ui:
+    image: temporalio/ui:2.31.2
+    profiles: ["ui"]
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "${TEMPORAL_UI_PORT:-8233}:8080"
+    logging: *default-logging
+    restart: unless-stopped
+
+  # --- Workers -------------------------------------------------------------
+  # Main worker: registers ALL workflows + activities (MRMS, HRRR, lightning,
+  # tropical, nowcast, tile-cleanup, alerts, storm-watch) on task queue
+  # `radar-ng`. On every boot it SELF-SEEDS the Temporal Schedules
+  # (temporal/schedules/seed.py) — no cron/systemd needed; ingest starts
+  # by itself ~2 min after `up`. Set SKIP_SCHEDULE_SEED=1 to suppress.
+  worker:
     build:
-      context: ../backend
-      dockerfile: ingest-mrms/Dockerfile
-    image: registry.vanillax.me/radar-ng-ingest-mrms:latest
+      context: ..                     # repo root: Dockerfile COPYs backend/ + temporal/
+      dockerfile: temporal/Dockerfile
+    image: radar-ng-temporal-worker:local
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=${TEMPORAL_ADDRESS:-temporal:7233}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
+      - SKIP_SCHEDULE_SEED=${SKIP_SCHEDULE_SEED:-0}
+      - TILE_DIR=/data/tiles
+      - GRID_DIR=/data/grids
+      - STATE_DIR=/data/state
+      # ingest tunables — lab-sized defaults (prod runs 3/4/2/2, see
+      # deploy/k8s/configmap-temporal-config.yaml)
+      - PALETTES=${PALETTES:-classic,muted,vivid}
+      - BACKLOG_PER_CYCLE=${BACKLOG_PER_CYCLE:-2}
+      - TEMPORAL_MAX_CONCURRENT_ACTIVITIES=${TEMPORAL_MAX_CONCURRENT_ACTIVITIES:-2}
+      - TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS=${TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS:-1}
+      - MRMS_RENDER_WORKERS=${MRMS_RENDER_WORKERS:-2}
+      - FORECAST_HOURS=${FORECAST_HOURS:-18}
+      - EXTENDED_FORECAST_HOURS=${EXTENDED_FORECAST_HOURS:-48}
+      # nowcast
+      - NOWCAST_HORIZON_MIN=${NOWCAST_HORIZON_MIN:-60}
+      - NOWCAST_STEP_MIN=${NOWCAST_STEP_MIN:-5}
+      - NOWCAST_INPUT_FRAMES=${NOWCAST_INPUT_FRAMES:-4}
+      # storm-watch + NWS alerts. NWS requires a contact in the User-Agent —
+      # set NWS_USER_AGENT in .env before going live.
+      - NWS_USER_AGENT=${NWS_USER_AGENT:-(radar-ng, you@example.com)}
+      - NWS_ALERTS_URL=${NWS_ALERTS_URL:-https://api.weather.gov/alerts/active?status=actual}
+      - TROPICAL_FEED_URL=${TROPICAL_FEED_URL:-https://www.nhc.noaa.gov/CurrentStorms.json}
+      - WATCH_RADIUS_KM=${WATCH_RADIUS_KM:-20}
+      - INTENSIFY_DBZ_DELTA=${INTENSIFY_DBZ_DELTA:-10}
+      - DISSIPATE_DBZ_DELTA=${DISSIPATE_DBZ_DELTA:-10}
+      - HAIL_DBZ_THRESHOLD=${HAIL_DBZ_THRESHOLD:-60}
+      # lightning
+      - LIGHTNING_RETENTION_MIN=${LIGHTNING_RETENTION_MIN:-15}
+      - LIGHTNING_FLUSH_S=${LIGHTNING_FLUSH_S:-2.0}
+      # push notifications are a no-op unless you wire APNS/FCM creds
+      - PUSH_DISABLED=${PUSH_DISABLED:-1}
     volumes:
       - tiles:/data/tiles
-      - state:/data/state
       - grids:/data/grids
-    environment:
-      - TILE_DIR=/data/tiles
-      - STATE_DIR=/data/state
-      - GRID_DIR=/data/grids
-      - PALETTES=classic,vivid,muted
-      - POLL_INTERVAL=120
-      - LOG_LEVEL=INFO
-    logging: *default-logging
-    restart: unless-stopped
-
-  ingest-hrrr:
-    build:
-      context: ../backend
-      dockerfile: ingest-hrrr/Dockerfile
-    image: registry.vanillax.me/radar-ng-ingest-hrrr:latest
-    volumes:
-      - tiles:/data/tiles
       - state:/data/state
-      - grids:/data/grids
-    environment:
-      - TILE_DIR=/data/tiles
-      - STATE_DIR=/data/state
-      - GRID_DIR=/data/grids
-      - PALETTES=classic,vivid,muted
-      - POLL_INTERVAL=3600
-      - FORECAST_HOURS=18
-      - EXTENDED_FORECAST_HOURS=48
-      - LOG_LEVEL=INFO
     logging: *default-logging
     restart: unless-stopped
 
-  # Lightning — streams Blitzortung realtime strikes, maintains a 15-min
-  # rolling GeoJSON buffer served by tile-server at /api/lightning.
-  ingest-lightning:
+  # Second worker pool: FROM ghcr.io/open-meteo/open-meteo with Python +
+  # temporalio layered on top. Polls task queue `radar-ng-open-meteo` and
+  # subprocess-execs the openmeteo-api binary to sync GFS/HRRR model data
+  # into the volume the `open-meteo` API serves from (the compose analogue
+  # of the k8s sidecar sharing the RWO PVC).
+  open-meteo-worker:
     build:
-      context: ../backend
-      dockerfile: ingest-lightning/Dockerfile
-    image: registry.vanillax.me/radar-ng-ingest-lightning:latest
-    volumes:
-      - state:/data/state
+      context: ..                     # repo root: COPYs backend/open_meteo_sync + temporal/
+      dockerfile: temporal/open_meteo_worker.Dockerfile
+    image: radar-ng-open-meteo-worker:local
+    depends_on:
+      temporal:
+        condition: service_healthy
     environment:
-      - STATE_DIR=/data/state
-      - LIGHTNING_RETENTION_MIN=15
+      - TEMPORAL_ADDRESS=${TEMPORAL_ADDRESS:-temporal:7233}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
+      - TEMPORAL_TASK_QUEUE=radar-ng-open-meteo
+      - OPENMETEO_BIN=/app/openmeteo-api
+      - OPENMETEO_DATA_DIR=/app/data
+    volumes:
+      - openmeteo-data:/app/data
     logging: *default-logging
     restart: unless-stopped
 
-  # Tropical — pulls NHC active storm data (position, track, cone) every 5 min.
-  ingest-tropical:
-    build:
-      context: ../backend
-      dockerfile: ingest-tropical/Dockerfile
-    image: registry.vanillax.me/radar-ng-ingest-tropical:latest
-    volumes:
-      - state:/data/state
-    environment:
-      - STATE_DIR=/data/state
-      - POLL_INTERVAL=300
-    logging: *default-logging
-    restart: unless-stopped
-
-  # Nowcast — pysteps S-PROG extrapolation of the last N MRMS frames.
-  # Reads /data/grids/radar/*.bin (dumped by ingest-mrms), outputs to
-  # /data/tiles/nowcast/{palette}/{timestamp}/{z}/{x}/{y}.png.
-  nowcast:
-    build:
-      context: ../backend
-      dockerfile: nowcast/Dockerfile
-    image: registry.vanillax.me/radar-ng-nowcast:latest
-    volumes:
-      - tiles:/data/tiles
-      - grids:/data/grids:ro
-      - state:/data/state
-    environment:
-      - TILE_DIR=/data/tiles
-      - GRID_DIR=/data/grids
-      - STATE_DIR=/data/state
-      - PALETTES=classic,vivid,muted
-      - POLL_INTERVAL=120
-      - NOWCAST_HORIZON_MIN=60
-      - NOWCAST_STEP_MIN=5
-      - NOWCAST_INPUT_FRAMES=4
-    logging: *default-logging
-    restart: unless-stopped
-
-  # Self-hosted Open-Meteo. First run requires `sync` to populate models.
-  # See https://github.com/open-meteo/open-meteo for full variable docs.
+  # --- Forecast API ---------------------------------------------------------
+  # Self-hosted Open-Meteo. Starts empty; the open-meteo-sync-gfs (6h) and
+  # open-meteo-sync-hrrr (1h) Temporal schedules fill /app/data. Until the
+  # first sync completes, /api/forecast responses will be null/empty.
   open-meteo:
     image: ghcr.io/open-meteo/open-meteo:latest
-    volumes:
-      - open-meteo-data:/app/data
     command: ["serve", "--bind", "0.0.0.0:8080"]
+    volumes:
+      - openmeteo-data:/app/data
+    healthcheck:
+      # "port answers" check — a bare / is fine; -f is deliberately omitted
+      # because an empty-data instance can 404 while still being healthy.
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     logging: *default-logging
     restart: unless-stopped
 
-  # One-shot (profile-gated) GFS sync — pulls GFS 0.25° model data from
-  # Open-Meteo's AWS open-data bucket. Run periodically:
-  #   docker compose -f deploy/docker-compose.yml --profile sync run --rm open-meteo-sync
-  open-meteo-sync:
-    image: ghcr.io/open-meteo/open-meteo:latest
-    volumes:
-      - open-meteo-data:/app/data
-    profiles: ["sync"]
-    command:
-      - sync
-      - ncep_gfs025
-      - temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure,uv_index
-      - --past-days
-      - "2"
-    restart: "no"
-
-  # Same but for HRRR CONUS. Second sync profile so each model runs independently.
-  #   docker compose -f deploy/docker-compose.yml --profile sync run --rm open-meteo-sync-hrrr
-  open-meteo-sync-hrrr:
-    image: ghcr.io/open-meteo/open-meteo:latest
-    volumes:
-      - open-meteo-data:/app/data
-    profiles: ["sync"]
-    command:
-      - sync
-      - ncep_hrrr_conus
-      - temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure
-      - --past-days
-      - "1"
-    restart: "no"
-
-  # Self-hosted Protomaps basemap. A planet (or regional) PMTiles file must
-  # be present in../backend/pmtiles-data/basemap.pmtiles. See backend/basemap/README.md.
+  # --- Basemap ---------------------------------------------------------------
+  # Protomaps go-pmtiles serving basemap.pmtiles from the shared volume.
+  # The ~1-2 GB archive is NOT in the repo and NOT baked into an image here
+  # (prod bakes/PVCs it) — run the one-shot bootstrap below first. Until the
+  # file exists, /basemap/tiles/* returns empty tiles but the container is
+  # otherwise fine. MUST be named `basemap`: the tile-server Caddyfile
+  # hard-codes `reverse_proxy basemap:8081`.
   basemap:
     image: protomaps/go-pmtiles:latest
-    volumes:
-      - ../backend/pmtiles-data:/data:ro
     command: ["serve", "/data", "--port", "8081", "--cors", "*"]
+    volumes:
+      - basemap-data:/data:ro
     logging: *default-logging
     restart: unless-stopped
 
+  # One-shot basemap download. `pmtiles extract` does HTTP range reads, so
+  # only your bbox (~1-2 GB for CONUS) is downloaded, not the ~120 GB planet.
+  #   docker compose run --rm basemap-bootstrap
+  # build.protomaps.com serves date-stamped daily builds (YYYYMMDD.pmtiles)
+  # with ~6-day retention and NO `latest` alias — set BASEMAP_PMTILES_URL in
+  # .env to a recent date (see .env.example) or this will 404.
+  basemap-bootstrap:
+    image: protomaps/go-pmtiles:latest
+    profiles: ["bootstrap"]
+    command:
+      - extract
+      - ${BASEMAP_PMTILES_URL:-https://build.protomaps.com/20260630.pmtiles}
+      - /data/basemap.pmtiles
+      - --bbox=${BASEMAP_BBOX:--125,24,-66,50}
+    volumes:
+      - basemap-data:/data
+    restart: "no"
+
+  # --- Public API -------------------------------------------------------------
+  # Caddy (:8080) fronting FastAPI (:8000). Serves /tiles/* from the volume,
+  # proxies /basemap/tiles/* to basemap, /api/* + /v1/* to FastAPI.
   tile-server:
     build:
-      context: ../backend
-      dockerfile: tile-server/Dockerfile
-    image: registry.vanillax.me/radar-ng-tile-server:latest
+      context: ../backend             # Dockerfile COPYs api/api, shared/, basemap/styles
+      dockerfile: api/Dockerfile
+    image: radar-ng-tile-server:local
+    depends_on:
+      - basemap
+      - open-meteo
     ports:
-      - "8080:8080"
+      - "${TILE_SERVER_PORT:-8080}:8080"
+    environment:
+      - TILE_DIR=/data/tiles
+      - GRID_DIR=/data/grids
+      - STATE_DIR=/data/state
+      - OPEN_METEO_BASE=${OPEN_METEO_BASE:-http://open-meteo:8080/v1/forecast}
+      - MRMS_MAX_AGE_S=${MRMS_MAX_AGE_S:-600}
+      - FORECAST_TTL_S=${FORECAST_TTL_S:-300}
+      # Image bakes a k8s default (temporal-frontend.temporal:7233) — MUST be
+      # overridden here or /v1 push-token/watch/workflow routes 503.
+      - TEMPORAL_ADDRESS=${TEMPORAL_ADDRESS:-temporal:7233}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
     volumes:
       - tiles:/data/tiles:ro
       - grids:/data/grids:ro
       - state:/data/state:ro
-    environment:
-      - TILE_DIR=/data/tiles
-      - GRID_DIR=/data/grids
-      - STATE_DIR=/data/state
-      - OPEN_METEO_BASE=http://open-meteo:8080/v1/forecast
-      - MRMS_MAX_AGE_S=600
-    logging: *default-logging
-    restart: unless-stopped
-
-  tile-cleanup:
-    image: alpine:3.19
-    volumes:
-      - tiles:/data/tiles
-      - ../backend/tile_cleanup/cleanup.sh:/cleanup.sh:ro
-    entrypoint: /bin/sh
-    command: ["-c", "while true; do /bin/sh /cleanup.sh; sleep 1800; done"]
-    environment:
-      - TILE_DIR=/data/tiles
+    healthcheck:
+      # Image has python but no curl/wget; go through Caddy so the check
+      # covers the full Caddy -> FastAPI path.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/livez', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     logging: *default-logging
     restart: unless-stopped
 
 volumes:
   tiles:
     driver: local
-  state:
-    driver: local
   grids:
     driver: local
-  open-meteo-data:
+  state:
+    driver: local
+  openmeteo-data:
+    driver: local
+  basemap-data:
+    driver: local
+  temporal-pg-data:
     driver: local

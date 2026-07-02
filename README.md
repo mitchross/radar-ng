@@ -2,7 +2,7 @@
 
 > Hyper-local weather radar with a self-hosted tile pipeline. CARROT-Weather UI energy, NWS-grade data, runs on your homelab.
 
-[![status](https://img.shields.io/badge/api-radar--ng--api.vanillax.me-blue)](https://radar-ng-api.vanillax.me/api/health) [![expo](https://img.shields.io/badge/expo-SDK%2055-000)](https://expo.dev) [![python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/) [![talos](https://img.shields.io/badge/talos-v1.13-326CE5)](https://talos.dev) [![argo](https://img.shields.io/badge/argocd-3.x-EF7B4D)](https://argo-cd.readthedocs.io/) [![otel](https://img.shields.io/badge/otel-traces%20%2B%20logs%20%2B%20metrics-425CC7)](https://opentelemetry.io)
+[![status](https://img.shields.io/badge/api-radar--ng--api.vanillax.me-blue)](https://radar-ng-api.vanillax.me/api/health) [![expo](https://img.shields.io/badge/expo-SDK%2056-000)](https://expo.dev) [![python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/) [![talos](https://img.shields.io/badge/talos-v1.13-326CE5)](https://talos.dev) [![argo](https://img.shields.io/badge/argocd-3.x-EF7B4D)](https://argo-cd.readthedocs.io/) [![otel](https://img.shields.io/badge/otel-traces%20%2B%20logs%20%2B%20metrics-425CC7)](https://opentelemetry.io)
 
 ![hero](docs/screenshots/hero.png)
 
@@ -21,6 +21,20 @@ Commercial radar apps rate-limit you, slap ads on the freezing-rain warning, and
 | Layer count | 8+ (radar · composite · temp · wind · CAPE · precip type · rain · cloud · lightning · tropical · nowcast) | 1–3 |
 | Cost at scale | $0 (you pay power) | Tier-gated |
 | Trace one tap end-to-end | yes — Tempo + Loki | no |
+
+---
+
+## Getting started
+
+| I want to… | read |
+|---|---|
+| **Run the whole stack on my own hardware** (Docker Compose, ~10 min) | **[docs/self-hosting.md](docs/self-hosting.md)** |
+| Build + run the mobile app | [docs/running-the-app.md](docs/running-the-app.md) |
+| Deploy on Kubernetes (probes, PVCs, HPA) | [docs/kubernetes.md](docs/kubernetes.md) |
+| Make it faster / cheaper / fresher | [docs/tuning.md](docs/tuning.md) |
+| Sideload CarPlay + Apple Watch | [docs/carplay-watch-setup.md](docs/carplay-watch-setup.md) |
+
+The short version: `docker compose up -d` in `deploy/`, one ~1–2 GB basemap bootstrap, point the app at `http://your-server:8080`. First radar frame ~2 minutes later. All data sources are free — no API keys, no accounts.
 
 ---
 
@@ -64,7 +78,7 @@ flowchart TB
         GW["Cloudflare → gateway-external<br/>radar-ng-api.vanillax.me"]
     end
 
-    subgraph Client["📱 clients · Expo SDK 55"]
+    subgraph Client["📱 clients · Expo SDK 56"]
         APP["Phone app<br/>iOS · Android"]
         WATCH["Apple Watch"]
         CAR["CarPlay"]
@@ -141,7 +155,7 @@ sequenceDiagram
     API-->>APP: { layers, timestamps, palettes }
     APP->>API: GET /tiles/radar/classic/{ts}/{z}/{x}/{y}.png
     API-->>APP: 256×256 PNG (Caddy gzip · BILINEAR)
-    Note over APP: MapLibre RasterSource<br/>sliding window of 7 frames<br/>rasterFadeDuration: 120 ms
+    Note over APP: MapLibre RasterSource<br/>5-slot frame carousel<br/>rasterFadeDuration: 120 ms
 ```
 
 Hot-path numbers (post Phase-2 perf work):
@@ -178,7 +192,7 @@ flowchart LR
 
     subgraph Map["🗺 maplibre composition"]
         WM["WeatherMap<br/><sub>+ zoom buttons</sub>"]
-        RO["RadarOverlay<br/><sub>sliding window of 7 frames</sub>"]
+        RO["RadarOverlay<br/><sub>5-slot frame carousel</sub>"]
         WLO["WeatherLayerOverlay"]
         AP["AlertPolygon"]
         SC["StormCellsOverlay"]
@@ -217,7 +231,7 @@ flowchart LR
 - All server data flows `react-query → zustand → component`
 - MMKV persists user prefs (server URL, theme, palette, opacity, extras-visible)
 - OTel client (`frontend/src/lib/telemetry.ts`) ships traces + logs to `otel.vanillax.me/v1/traces` and `/v1/logs` — see [Observability](#observability)
-- Sliding window of 7 frames mounted at all times in `RadarOverlay` so timeline scrubbing doesn't unmount/refetch
+- 5 raster sources mounted at all times in `RadarOverlay` (constant child count — load-bearing on iOS) so timeline scrubbing doesn't unmount/refetch
 
 ---
 
@@ -422,7 +436,7 @@ Each new layer reuses the same `ingest-mrms` image with a different `MRMS_PREFIX
 | `/api/lightning?since=…` | GET | Blitzortung strikes | 30 s |
 | `/api/tropical` | GET | active NHC systems | 5 min |
 | `/api/metrics` | GET | Prometheus counters + gauges | none |
-| `/tiles/{layer}/{palette}/{ts}/{z}/{x}/{y}.png` | GET | static tile (Caddy) | 120 s |
+| `/tiles/{layer}/{palette}/{ts}/{z}/{x}/{y}.png` | GET | static tile (Caddy) | radar: 24 h immutable · forecast: 120 s |
 | `/basemap/styles/*` | GET | Protomaps style JSON | 1 h |
 | `/basemap/tiles/{z}/{x}/{y}.mvt` | GET | vector basemap | 1 d |
 
@@ -436,6 +450,8 @@ If `mrms_age_s` exceeds `MRMS_MAX_AGE_S` (default 600 s) the status flips to `de
 ---
 
 ## Operations — Talos + Argo
+
+This section documents the **author's** cluster. For running radar-ng on your own Kubernetes, see [docs/kubernetes.md](docs/kubernetes.md).
 
 ```mermaid
 flowchart LR
@@ -472,7 +488,7 @@ flowchart LR
 
 ## Self-hosting
 
-### Hardware sizing
+Full guide: **[docs/self-hosting.md](docs/self-hosting.md)** (Docker Compose golden path) · [docs/kubernetes.md](docs/kubernetes.md) (bring-your-own-cluster) · [docs/tuning.md](docs/tuning.md) (every knob, with directions).
 
 | profile | hosts | min | recommended |
 |---|---|---|---|
@@ -481,89 +497,31 @@ flowchart LR
 
 NOAA pull ≈ 50–100 MB/h. Steady-state disk ≈ 5 GB; spikes to ~10 GB during HRRR runs.
 
-### Quick start (docker-compose)
-
 ```bash
-git clone https://gitea.vanillax.me/vanillax/radar-ng.git
-cd radar-ng/deploy
-docker compose up -d
+cd deploy && cp .env.example .env             # set NWS_USER_AGENT + BASEMAP_PMTILES_URL
+docker compose run --rm basemap-bootstrap     # one-time ~1–2 GB CONUS extract
+docker compose up -d --build
 
 # wait ~2 min for first MRMS frame
 curl http://localhost:8080/api/health
-curl http://localhost:8080/api/manifest.json | jq '.layers | keys'
+curl -s http://localhost:8080/api/manifest.json | jq '.layers | keys'
 ```
 
-### Kubernetes (Talos + ArgoCD)
-
-```bash
-kubectl apply -k my-apps/development/radar-ng
-```
-
-Includes `ServiceMonitor`, `HorizontalPodAutoscaler` (tile-server 2→6), `PodDisruptionBudget`, and the Grafana dashboard in `monitoring/prometheus-stack/radar-ng-dashboard.yaml`.
-
-### Resource shapes (production)
-
-| service | requests | limits |
-|---|---|---|
-| ingest-mrms | 1 cpu · 1 Gi | **6 cpu · 6 Gi** (parallel palette render) |
-| ingest-radar-composite | same as mrms | same |
-| ingest-hrrr | 0.5 cpu · 1 Gi | 4 cpu · 4 Gi |
-| nowcast | 0.5 cpu · 1 Gi | 4 cpu · 4 Gi |
-| ingest-lightning / tropical | 50 m · 32 Mi | 200 m · 128 Mi |
-| tile-server | 0.2 cpu · 256 Mi | 2 cpu · 1 Gi (HPA 2-6) |
-| open-meteo | 0.2 cpu · 512 Mi | 2 cpu · 2 Gi |
+Orchestration is Temporal end-to-end: the `worker` container seeds all Schedules idempotently on boot — no cron, no CronJobs, no manual step.
 
 ---
 
 ## Building the app
 
-### Prerequisites
-
-| tool | version | notes |
-|---|---|---|
-| [Bun](https://bun.sh) | 1.1+ | replaces npm/yarn |
-| Xcode | 26+ | iOS deployment target 26.0 |
-| CocoaPods | 1.15+ | `gem install cocoapods` |
-| Android Studio | API 35 | required for native modules |
-| JDK | 17 | Gradle requirement |
-| Watchman | latest | Metro file watching on macOS |
-
-### Run
-
-The Expo project lives in `frontend/`. All `bun` commands run from there.
+Full guide: **[docs/running-the-app.md](docs/running-the-app.md)**. TL;DR — the Expo project lives in `frontend/`, uses bun, and needs a dev build (native modules; Expo Go won't work):
 
 ```bash
 cd frontend
 bun install
-bun start            # Metro bundler
-bun run ios          # iOS simulator (macOS only)
-bun run android      # Android emulator/device
+bun run android      # or: bun run ios (macOS only)
 ```
 
-### iOS gotchas
-
-- Boot a simulator first: `xcrun simctl list devices booted`
-- Grant location: `xcrun simctl privacy booted grant location com.vanillax.radar-ng`
-- Don't hand-edit `frontend/ios/` — regenerated by `expo prebuild`
-- CarPlay config plugin (`frontend/plugins/withCarPlayScene.js`) declares both phone + CarPlay scenes — keep both
-- Native source-of-truth for CarPlay/Watch lives in `frontend/targets/{carplay,watch}/`; the plugin copies it into `ios/` on prebuild
-
-### Android gotchas
-
-- Use Android Studio's emulator with API 35
-- Reach the host backend via `10.0.2.2` (the emulator loopback magic)
-- Predictive back gesture is disabled (bottom-sheet conflict)
-
-### Connecting to your backend
-
-In the app: **Settings → Data Source → Self-Hosted → `http://<lan-ip>:8080`**.
-
-| platform | server URL |
-|---|---|
-| iOS simulator (macOS host) | `http://localhost:8080` |
-| Android emulator | `http://10.0.2.2:8080` |
-| Physical device on LAN | `http://<your-LAN-IP>:8080` |
-| Public | `https://radar-ng-api.vanillax.me` |
+Then **Settings → Data Source → Self-Hosted → `http://<lan-ip>:8080`** (Android emulator: `http://10.0.2.2:8080`, iOS simulator: `http://localhost:8080`). CarPlay + Apple Watch sideload lives in [docs/carplay-watch-setup.md](docs/carplay-watch-setup.md).
 
 ---
 
@@ -579,7 +537,7 @@ radar-ng/
 │  │  ├─ components/             map · timeline · home · inspector · alerts
 │  │  │  ├─ home/RadarMiniMap.tsx       home-tab radar preview
 │  │  │  ├─ map/WeatherMap.tsx          MapLibre wrapper + zoom buttons
-│  │  │  ├─ map/RadarOverlay.tsx        sliding-window 7-frame raster
+│  │  │  ├─ map/RadarOverlay.tsx        5-slot raster frame carousel
 │  │  │  ├─ map/RadarFABs.tsx           layer picker · ⚡ extras · pin · style
 │  │  │  ├─ map/LayerLegendCard.tsx     Now/Soon/Later tag + color scale
 │  │  │  └─ timeline/TimelineBar.tsx    merged past·now·future scrubber
@@ -620,10 +578,11 @@ radar-ng/
 │  ├─ Dockerfile · open_meteo_worker.Dockerfile
 │  └─ requirements.txt
 ├─ deploy/                   🚢 deployment manifests
-│  ├─ docker-compose.yml         lab single-node
+│  ├─ docker-compose.yml         the self-hosting golden path (docs/self-hosting.md)
+│  ├─ .env.example               compose configuration template
 │  ├─ temporal-dev.yml           local Temporal dev cluster
-│  └─ k8s/                       Kustomize manifests for Talos
-├─ docs/                     specs · design briefs · plans
+│  └─ k8s/                       reference manifests for Kubernetes (docs/kubernetes.md)
+├─ docs/                     guides (self-hosting · kubernetes · running-the-app · tuning) · specs · plans
 └─ .gitea/workflows/         CI: per-service build-* + retag-from-latest
 ```
 
@@ -640,8 +599,8 @@ radar-ng/
 ```mermaid
 flowchart LR
     subgraph FE["📱 frontend"]
-        EX[Expo SDK 55]
-        RN[React Native 0.83]
+        EX[Expo SDK 56]
+        RN[React Native 0.85]
         R[React 19.2]
         ML[MapLibre Native]
         SK[Shopify Skia]
@@ -683,14 +642,14 @@ flowchart LR
 
 ## Performance notes
 
-Phase-2 fixes that landed:
+The knob-by-knob operator's guide is [docs/tuning.md](docs/tuning.md); this is the history of what landed. Phase-2 fixes:
 
 - **Palette render parallelized** with `ThreadPoolExecutor(3)` — PIL releases the GIL during PNG encode; three palettes finish in roughly the time of one.
 - **`PNG optimize=False, compress_level=1`** — tiles are short-lived and Caddy gzips on the wire; the extra zlib pass halved throughput for ~5 % size win.
 - **`Image.BILINEAR` resize** on tile render — crisper edges than NEAREST.
 - **Backlog catch-up** — `BACKLOG_PER_CYCLE=3`, newest-first, state committed per frame.
 - **Resource bumps** — ingest-mrms now 6 cpu / 6 Gi; OOMKilled count went from 7/day to 0.
-- **Sliding-window radar overlay** — 7 frames mounted at once on the client (3 each side of current); scrubbing/playing the timeline no longer unmounts → re-fetches → renders.
+- **Radar frame carousel** — 5 raster sources mounted at once on the client, playback flips opacity between them; scrubbing/playing the timeline no longer unmounts → re-fetches → renders.
 - **`rasterFadeDuration: 120 ms` + `rasterResampling: linear`** — smooth frame transitions, smooth display-side scaling.
 - **Per-frame state commits** — eliminated the bug where the backlog of unprocessed keys was being marked done without rendering.
 
