@@ -63,6 +63,12 @@ services:
       - POSTGRES_SEEDS=temporal-postgres
       - DEFAULT_NAMESPACE=default
       - DEFAULT_NAMESPACE_RETENTION=1d
+      # auto-setup binds the frontend to the container's own IP, not loopback.
+      # Force all-interfaces so the healthcheck below (127.0.0.1:7233) can
+      # reach it — otherwise the check gets "connection refused", temporal is
+      # flagged unhealthy, and the workers (depends_on: service_healthy) never
+      # start even though the server is serving fine.
+      - BIND_ON_IP=0.0.0.0
     # Exposed so you can poke it with the `temporal` CLI from the host:
     #   temporal --address localhost:7233 workflow list
     ports:
@@ -178,7 +184,11 @@ services:
   # open-meteo-sync-hrrr (1h) Temporal schedules fill /app/data. Until the
   # first sync completes, /api/forecast responses will be null/empty.
   open-meteo:
-    image: ghcr.io/open-meteo/open-meteo:latest
+    # Pinned to match the open-meteo-worker image tag: upstream :latest has
+    # shipped broken builds (e.g. 1.5.3 missing libparquet-glib -> the serve
+    # binary crash-loops with exit 127). Keep this in lockstep with the tag in
+    # temporal/open_meteo_worker.Dockerfile.
+    image: ghcr.io/open-meteo/open-meteo:1.5.2
     command: ["serve", "--bind", "0.0.0.0:8080"]
     volumes:
       - openmeteo-data:/app/data
