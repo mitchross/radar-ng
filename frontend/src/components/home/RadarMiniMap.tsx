@@ -6,16 +6,14 @@
  * and the home page is already cross-platform safe. A 256×256 z=6 tile
  * covers ~1000 km — enough to show "is it raining near me" without a map.
  *
- * Live data source: tile-server manifest gives latest radar timestamp,
- * we compute slippy XY from user lat/lon and fetch one PNG. Refreshes on
- * a 60s interval matching the rest of the app's cadence.
+ * Live data source: the shared app-wide manifest query gives the latest
+ * radar timestamp; we compute slippy XY from user lat/lon and fetch one PNG.
  */
 import { useMemo } from "react";
 import { View, Text, StyleSheet, Image, Pressable } from "react-native";
-import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { fetchSelfHostedManifest } from "../../lib/api";
+import { useManifestQuery } from "../../hooks/useManifest";
 import { DEFAULTS } from "../../lib/constants";
 import { cumulus } from "../../lib/cumulusTheme";
 
@@ -41,12 +39,9 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
   const lat = useWeatherStore((s) => s.latitude) ?? DEFAULTS.LATITUDE;
   const lon = useWeatherStore((s) => s.longitude) ?? DEFAULTS.LONGITUDE;
 
-  const { data: manifest } = useQuery({
-    queryKey: ["manifest", serverUrl, "mini"],
-    queryFn: () => fetchSelfHostedManifest(serverUrl),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
+  // Shares the app-wide manifest query (one flight, MMKV-backed) instead of
+  // running a second poll of the same endpoint.
+  const { data: manifest } = useManifestQuery(serverUrl);
 
   const tile = useMemo(() => lonLatToTile(lon, lat, MINI_ZOOM), [lat, lon]);
 

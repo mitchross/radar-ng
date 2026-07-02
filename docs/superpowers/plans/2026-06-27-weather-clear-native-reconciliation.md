@@ -41,7 +41,7 @@
 - `frontend/src/components/layers/LayerPicker.tsx` — themed layer picker.
 - `frontend/src/components/map/LayerLegendCard.tsx`, `frontend/src/components/map/LayerLocationMarker.tsx`, `frontend/src/components/map/MapStylePicker.tsx`, `frontend/src/components/map/RadarFABs.tsx`, `frontend/src/components/map/WeatherMap.tsx` — themed radar chrome and accessible controls.
 - `frontend/src/components/palette/PaletteSelector.tsx` — themed palette selection.
-- `frontend/src/components/timeline/CurrentForecastToggle.tsx`, `frontend/src/components/timeline/PlayButton.tsx`, `frontend/src/components/timeline/TimeSlider.tsx`, `frontend/src/components/timeline/TimelineBar.tsx` — themed timeline and control semantics.
+- `frontend/src/components/timeline/CurrentForecastToggle.tsx`, `frontend/src/components/timeline/TimelineBar.tsx` — themed timeline and control semantics. **Note (2026-07-01): `PlayButton.tsx` and `TimeSlider.tsx` were deleted as dead code during the de-jank pass — skip every reference to them in this plan. Playback now lives in `frontend/src/hooks/usePlayback.ts`; TimelineBar's per-tick UI is in its `FrameDateLabel`/`FrameSlider` leaf components.**
 - `frontend/src/lib/cumulusTheme.ts` — retain weather-domain helpers while removing responsibility for screen surface colors.
 - `frontend/screenshots/01-home.png` through `05-settings.png` — verified post-reconciliation Android captures.
 

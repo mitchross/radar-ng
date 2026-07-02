@@ -2,18 +2,21 @@
  * Cumulus radar timeline — Apple-Weather-inspired "forecast pill".
  * Violet play button + layer/date header + 1h/12h segmented zoom + segmented
  * track (past / nowcast / HRRR / long-range) + NOW marker + draggable thumb.
- * Playback advances every 420ms within the active zoom window.
+ *
+ * Playback itself lives in hooks/usePlayback.ts (called from the radar
+ * screen). Per-tick state (`currentFrameIndex`) is only subscribed to by
+ * two leaf components — FrameDateLabel and FrameSlider — so the rest of
+ * this card doesn't re-render 2×/second during playback.
  */
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import Slider from "@react-native-community/slider";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
 import type { LayerType } from "../../types/weather";
 
 const NOWCAST_MIN = 60;
 const HRRR_MIN = 360;
-const PLAYBACK_MS = 420;
 
 const LAYER_TITLE: Record<LayerType, string> = {
   radar: "Radar",
@@ -31,17 +34,13 @@ type Zoom = "1h" | "12h";
 
 export function TimelineBar() {
   const frames = useWeatherStore((s) => s.frames);
-  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
   const isPlaying = useWeatherStore((s) => s.isPlaying);
   const togglePlaying = useWeatherStore((s) => s.togglePlaying);
-  const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
+  const setPlaybackWindow = useWeatherStore((s) => s.setPlaybackWindow);
 
   const [zoom, setZoom] = useState<Zoom>("1h");
-
-  const idxRef = useRef(currentFrameIndex);
-  useEffect(() => { idxRef.current = currentFrameIndex; }, [currentFrameIndex]);
 
   const nowSec = useMemo(() => Math.floor(Date.now() / 1000), []);
 
@@ -58,9 +57,19 @@ export function TimelineBar() {
     return { startIdx: s, endIdx: e };
   }, [frames, zoom, nowSec]);
 
-  // Snap current frame into zoom window when switching
+  // Publish the zoom window so the radar carousel prefetches the frames
+  // playback will actually visit (including the loop wrap). Cleared on
+  // unmount so a stale window never constrains another screen.
+  useEffect(() => {
+    setPlaybackWindow({ start: startIdx, end: endIdx });
+  }, [startIdx, endIdx, setPlaybackWindow]);
+  useEffect(() => () => setPlaybackWindow(null), [setPlaybackWindow]);
+
+  // Snap current frame into zoom window when switching. Reads the index via
+  // getState() so this component doesn't re-render on every playback tick.
   useEffect(() => {
     if (frames.length === 0) return;
+    const currentFrameIndex = useWeatherStore.getState().currentFrameIndex;
     if (currentFrameIndex < startIdx || currentFrameIndex > endIdx) {
       const nowIdx = findClosestIdx(frames, nowSec);
       setCurrentFrameIndex(Math.max(startIdx, Math.min(endIdx, nowIdx)));
@@ -68,28 +77,30 @@ export function TimelineBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, startIdx, endIdx, frames.length]);
 
-  // 420ms playback tick within zoom window
-  useEffect(() => {
-    if (!isPlaying || frames.length === 0 || endIdx <= startIdx) return;
-    const id = setInterval(() => {
-      const next = idxRef.current + 1 > endIdx ? startIdx : idxRef.current + 1;
-      setCurrentFrameIndex(next);
-    }, PLAYBACK_MS);
-    return () => clearInterval(id);
-  }, [isPlaying, startIdx, endIdx, frames.length, setCurrentFrameIndex]);
+  // Loading shell instead of nothing — prevents the whole card popping into
+  // existence once the manifest arrives.
+  if (frames.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.card}>
+          <View style={styles.headerRow}>
+            <View style={[styles.playBtn, styles.playBtnDisabled]}>
+              <View style={styles.playIcon} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.layerTitle} numberOfLines={1}>
+                {LAYER_TITLE[activeLayer] ?? "Radar"}
+              </Text>
+              <Text style={styles.dateLabel} numberOfLines={1}>Loading frames…</Text>
+            </View>
+          </View>
+          <View style={styles.trackContainer} />
+        </View>
+      </View>
+    );
+  }
 
-  if (frames.length === 0) return null;
-
-  const currentFrame = frames[currentFrameIndex];
-  const offsetMin = currentFrame ? Math.round((currentFrame.time - nowSec) / 60) : 0;
   const layerTitle = LAYER_TITLE[activeLayer] ?? "Radar";
-  const frameDate = new Date((currentFrame?.time ?? nowSec) * 1000);
-  const dateLabel = frameDate.toLocaleDateString([], {
-    weekday: "long",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-
   const winLen = Math.max(1, endIdx - startIdx);
   const frameToPct = (i: number) => ((i - startIdx) / winLen) * 100;
   const nowIdx = findClosestIdx(frames, nowSec);
@@ -98,8 +109,6 @@ export function TimelineBar() {
   const nowPct = clampPct(frameToPct(nowIdx));
   const nowcastPct = clampPct(frameToPct(nowcastEndIdx));
   const hrrrPct = clampPct(frameToPct(hrrrEndIdx));
-
-  const mode = offsetMin === 0 ? "Now" : offsetMin > 0 ? "Forecast" : "Past";
 
   return (
     <View style={styles.container}>
@@ -116,12 +125,7 @@ export function TimelineBar() {
             )}
           </TouchableOpacity>
 
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.layerTitle} numberOfLines={1}>
-              {layerTitle} · {mode}
-            </Text>
-            <Text style={styles.dateLabel} numberOfLines={1}>{dateLabel}</Text>
-          </View>
+          <FrameDateLabel layerTitle={layerTitle} nowSec={nowSec} />
 
           <View style={styles.segmented}>
             {(["1h", "12h"] as const).map((z) => (
@@ -177,20 +181,7 @@ export function TimelineBar() {
           {nowPct > 0 && nowPct < 100 && (
             <View style={[styles.nowMarker, { left: `${nowPct}%` }]} />
           )}
-          <Slider
-            style={styles.slider}
-            minimumValue={startIdx}
-            maximumValue={endIdx}
-            step={1}
-            value={currentFrameIndex}
-            onValueChange={(v) => {
-              setIsPlaying(false);
-              setCurrentFrameIndex(Math.round(v));
-            }}
-            minimumTrackTintColor="transparent"
-            maximumTrackTintColor="transparent"
-            thumbTintColor="#ffffff"
-          />
+          <FrameSlider startIdx={startIdx} endIdx={endIdx} />
         </View>
 
         <View style={styles.axisRow}>
@@ -211,6 +202,58 @@ export function TimelineBar() {
         </View>
       </View>
     </View>
+  );
+}
+
+/**
+ * Per-tick leaves — the ONLY components that subscribe to
+ * `currentFrameIndex`, so a playback tick re-renders two small text nodes
+ * and a slider thumb instead of the whole timeline card.
+ */
+function FrameDateLabel({ layerTitle, nowSec }: { layerTitle: string; nowSec: number }) {
+  const frames = useWeatherStore((s) => s.frames);
+  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
+
+  const currentFrame = frames[currentFrameIndex];
+  const offsetMin = currentFrame ? Math.round((currentFrame.time - nowSec) / 60) : 0;
+  const frameDate = new Date((currentFrame?.time ?? nowSec) * 1000);
+  const dateLabel = frameDate.toLocaleDateString([], {
+    weekday: "long",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const mode = offsetMin === 0 ? "Now" : offsetMin > 0 ? "Forecast" : "Past";
+
+  return (
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <Text style={styles.layerTitle} numberOfLines={1}>
+        {layerTitle} · {mode}
+      </Text>
+      <Text style={styles.dateLabel} numberOfLines={1}>{dateLabel}</Text>
+    </View>
+  );
+}
+
+function FrameSlider({ startIdx, endIdx }: { startIdx: number; endIdx: number }) {
+  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
+  const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
+  const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
+
+  return (
+    <Slider
+      style={styles.slider}
+      minimumValue={startIdx}
+      maximumValue={endIdx}
+      step={1}
+      value={currentFrameIndex}
+      onValueChange={(v) => {
+        setIsPlaying(false);
+        setCurrentFrameIndex(Math.round(v));
+      }}
+      minimumTrackTintColor="transparent"
+      maximumTrackTintColor="transparent"
+      thumbTintColor="#ffffff"
+    />
   );
 }
 
@@ -270,6 +313,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "transparent",
     marginLeft: 2,
   },
+  playBtnDisabled: { opacity: 0.4 },
   pauseIcon: { flexDirection: "row", gap: 3 },
   pauseBar: { width: 3, height: 11, backgroundColor: "#0b1220", borderRadius: 1 },
 

@@ -175,22 +175,24 @@ export function WindParticlesOverlay({
     tick.value += 1;
   }, true);
 
-  // Inline the loop into each derived value. Calling buildPath across the
-  // worklet boundary was dropping calls (the outer () => buildPath(...) arrow
-  // is auto-wrapped as a worklet but buildPath itself wasn't being treated
-  // as one, leading to empty paths).
-  const pathSlow = useDerivedValue(() => {
+  // ONE pass over all particles per frame, bucketing segments into four
+  // speed-banded paths. The loop is inlined in the derived value — calling a
+  // helper across the worklet boundary was dropping calls (the outer arrow
+  // is auto-wrapped as a worklet but the helper wasn't, yielding empty
+  // paths). The per-band <Path> props below are trivial `.value.x` selectors.
+  const paths = useDerivedValue(() => {
     "worklet";
     void tick.value;
-    const p = Skia.Path.Make();
-    if (!field) return p;
+    const slow = Skia.Path.Make();
+    const med = Skia.Path.Make();
+    const fast = Skia.Path.Make();
+    const extreme = Skia.Path.Make();
+    if (!field) return { slow, med, fast, extreme };
     const scale = (256 * Math.pow(2, camera.zoom.value)) / (2 * Math.PI);
     const cx = width / 2;
     const cy = height / 2;
     const centerProj = projectLngLat(camera.lon.value, camera.lat.value, scale);
     for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const s = particles.speeds[i];
-      if (s >= 15) continue;
       const dLon = particles.lons[i] - particles.prevLons[i];
       const dLat = particles.lats[i] - particles.prevLats[i];
       const tailLon = particles.lons[i] - dLon * TRAIL_FRAMES;
@@ -202,98 +204,18 @@ export function WindParticlesOverlay({
       const x2 = cx + (p2.x - centerProj.x);
       const y2 = cy + (p2.y - centerProj.y);
       if (x2 < -20 || x2 > width + 20 || y2 < -20 || y2 > height + 20) continue;
+      const s = particles.speeds[i];
+      const p = s < 15 ? slow : s < 30 ? med : s < 50 ? fast : extreme;
       p.moveTo(x1, y1);
       p.lineTo(x2, y2);
     }
-    return p;
+    return { slow, med, fast, extreme };
   });
 
-  const pathMed = useDerivedValue(() => {
-    "worklet";
-    void tick.value;
-    const p = Skia.Path.Make();
-    if (!field) return p;
-    const scale = (256 * Math.pow(2, camera.zoom.value)) / (2 * Math.PI);
-    const cx = width / 2;
-    const cy = height / 2;
-    const centerProj = projectLngLat(camera.lon.value, camera.lat.value, scale);
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const s = particles.speeds[i];
-      if (s < 15 || s >= 30) continue;
-      const dLon = particles.lons[i] - particles.prevLons[i];
-      const dLat = particles.lats[i] - particles.prevLats[i];
-      const tailLon = particles.lons[i] - dLon * TRAIL_FRAMES;
-      const tailLat = particles.lats[i] - dLat * TRAIL_FRAMES;
-      const p1 = projectLngLat(tailLon, tailLat, scale);
-      const p2 = projectLngLat(particles.lons[i], particles.lats[i], scale);
-      const x1 = cx + (p1.x - centerProj.x);
-      const y1 = cy + (p1.y - centerProj.y);
-      const x2 = cx + (p2.x - centerProj.x);
-      const y2 = cy + (p2.y - centerProj.y);
-      if (x2 < -20 || x2 > width + 20 || y2 < -20 || y2 > height + 20) continue;
-      p.moveTo(x1, y1);
-      p.lineTo(x2, y2);
-    }
-    return p;
-  });
-
-  const pathFast = useDerivedValue(() => {
-    "worklet";
-    void tick.value;
-    const p = Skia.Path.Make();
-    if (!field) return p;
-    const scale = (256 * Math.pow(2, camera.zoom.value)) / (2 * Math.PI);
-    const cx = width / 2;
-    const cy = height / 2;
-    const centerProj = projectLngLat(camera.lon.value, camera.lat.value, scale);
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const s = particles.speeds[i];
-      if (s < 30 || s >= 50) continue;
-      const dLon = particles.lons[i] - particles.prevLons[i];
-      const dLat = particles.lats[i] - particles.prevLats[i];
-      const tailLon = particles.lons[i] - dLon * TRAIL_FRAMES;
-      const tailLat = particles.lats[i] - dLat * TRAIL_FRAMES;
-      const p1 = projectLngLat(tailLon, tailLat, scale);
-      const p2 = projectLngLat(particles.lons[i], particles.lats[i], scale);
-      const x1 = cx + (p1.x - centerProj.x);
-      const y1 = cy + (p1.y - centerProj.y);
-      const x2 = cx + (p2.x - centerProj.x);
-      const y2 = cy + (p2.y - centerProj.y);
-      if (x2 < -20 || x2 > width + 20 || y2 < -20 || y2 > height + 20) continue;
-      p.moveTo(x1, y1);
-      p.lineTo(x2, y2);
-    }
-    return p;
-  });
-
-  const pathExtreme = useDerivedValue(() => {
-    "worklet";
-    void tick.value;
-    const p = Skia.Path.Make();
-    if (!field) return p;
-    const scale = (256 * Math.pow(2, camera.zoom.value)) / (2 * Math.PI);
-    const cx = width / 2;
-    const cy = height / 2;
-    const centerProj = projectLngLat(camera.lon.value, camera.lat.value, scale);
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const s = particles.speeds[i];
-      if (s < 50) continue;
-      const dLon = particles.lons[i] - particles.prevLons[i];
-      const dLat = particles.lats[i] - particles.prevLats[i];
-      const tailLon = particles.lons[i] - dLon * TRAIL_FRAMES;
-      const tailLat = particles.lats[i] - dLat * TRAIL_FRAMES;
-      const p1 = projectLngLat(tailLon, tailLat, scale);
-      const p2 = projectLngLat(particles.lons[i], particles.lats[i], scale);
-      const x1 = cx + (p1.x - centerProj.x);
-      const y1 = cy + (p1.y - centerProj.y);
-      const x2 = cx + (p2.x - centerProj.x);
-      const y2 = cy + (p2.y - centerProj.y);
-      if (x2 < -20 || x2 > width + 20 || y2 < -20 || y2 > height + 20) continue;
-      p.moveTo(x1, y1);
-      p.lineTo(x2, y2);
-    }
-    return p;
-  });
+  const pathSlow = useDerivedValue(() => paths.value.slow);
+  const pathMed = useDerivedValue(() => paths.value.med);
+  const pathFast = useDerivedValue(() => paths.value.fast);
+  const pathExtreme = useDerivedValue(() => paths.value.extreme);
 
   if (!enabled || !field) return null;
 

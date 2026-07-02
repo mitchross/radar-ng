@@ -6,10 +6,13 @@ import {
   type PressEvent,
   type ViewStateChangeEvent,
 } from "@maplibre/maplibre-react-native";
-import { Children, isValidElement, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View, type NativeSyntheticEvent } from "react-native";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Children, isValidElement, useEffect, useMemo, useRef } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, type NativeSyntheticEvent } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS, resolveMapStyleUrl } from "../../lib/constants";
+import { getString, setString } from "../../lib/storage";
+import { markFrameRendered } from "../../lib/playbackMetrics";
 import { trace } from "../../lib/telemetry";
 
 const ZOOM_MIN = 1;
@@ -29,73 +32,86 @@ interface WeatherMapProps {
  */
 function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark" | "satellite") {
   const styleUrl = resolveMapStyleUrl(serverUrl, mapStyle);
-  const [patched, setPatched] = useState<string | null>(null);
+  const storageKey = `mapStyle:${serverUrl}:${mapStyle}`;
 
-  useEffect(() => {
-    // Satellite already points at an absolute URL — no patching needed.
-    if (mapStyle === "satellite") {
-      setPatched(styleUrl);
-      return;
-    }
-    let cancelled = false;
+  const query = useQuery({
+    queryKey: ["mapStyle", serverUrl, mapStyle],
+    queryFn: async () => {
+      // Satellite already points at an absolute URL — no patching needed.
+      if (mapStyle === "satellite") return styleUrl;
 
-    async function attempt(): Promise<string> {
-      const r = await fetch(styleUrl);
-      const json = (await r.json()) as {
-        sources?: Record<string, { tiles?: string[]; url?: string }>;
-      };
-      const sources = json.sources ?? {};
-      for (const src of Object.values(sources)) {
-        if (Array.isArray(src.tiles)) {
-          src.tiles = src.tiles.map((t) => (t.startsWith("http") ? t : `${serverUrl}${t}`));
-        }
-        if (typeof src.url === "string" && !src.url.startsWith("http")) {
-          src.url = `${serverUrl}${src.url}`;
-        }
-      }
-      return JSON.stringify(json);
-    }
-
-    trace(
-      "map.fetchStyle",
-      async (span) => {
-        // Cold-start race: on Android, the JS fetch can fire before the
-        // emulator's network stack is fully up, throwing a DNS error
-        // immediately. Retry with backoff so the basemap doesn't fall
-        // back to MapLibre's native loader (which does NOT rewrite the
-        // relative `/basemap/tiles/{z}/{x}/{y}.mvt` paths in the
-        // Protomaps style → solid black map).
-        const delays = [400, 800, 1600];
-        let lastErr: unknown;
-        for (let i = 0; i < delays.length + 1; i++) {
-          if (cancelled) return;
-          try {
-            const result = await attempt();
-            span.setAttribute("map.fetchStyle.attempts", i + 1);
-            if (!cancelled) setPatched(result);
-            return;
-          } catch (err) {
-            lastErr = err;
-            if (i < delays.length) {
-              await new Promise((res) => setTimeout(res, delays[i]));
-            }
+      async function attempt(): Promise<string> {
+        const r = await fetch(styleUrl);
+        const json = (await r.json()) as {
+          sources?: Record<string, { tiles?: string[]; url?: string }>;
+        };
+        const sources = json.sources ?? {};
+        for (const src of Object.values(sources)) {
+          if (Array.isArray(src.tiles)) {
+            src.tiles = src.tiles.map((t) => (t.startsWith("http") ? t : `${serverUrl}${t}`));
+          }
+          if (typeof src.url === "string" && !src.url.startsWith("http")) {
+            src.url = `${serverUrl}${src.url}`;
           }
         }
-        throw lastErr;
-      },
-      { "map.style": mapStyle },
-    ).catch(() => {
-      // All retries failed → hand MapLibre the raw URL. It still won't
-      // rewrite relative tile paths, but at least the user sees the
-      // attribution + zoom controls instead of nothing.
-      if (!cancelled) setPatched(styleUrl);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [serverUrl, mapStyle, styleUrl]);
+        return JSON.stringify(json);
+      }
 
-  return patched;
+      try {
+        return await trace(
+          "map.fetchStyle",
+          async (span) => {
+            // Cold-start race: on Android, the JS fetch can fire before the
+            // emulator's network stack is fully up, throwing a DNS error
+            // immediately. Retry with backoff so the basemap doesn't fall
+            // back to MapLibre's native loader (which does NOT rewrite the
+            // relative `/basemap/tiles/{z}/{x}/{y}.mvt` paths in the
+            // Protomaps style → solid black map).
+            const delays = [400, 800, 1600];
+            let lastErr: unknown;
+            for (let i = 0; i < delays.length + 1; i++) {
+              try {
+                const result = await attempt();
+                span.setAttribute("map.fetchStyle.attempts", i + 1);
+                // Persist so the next cold start renders the map instantly
+                // instead of blanking on the style round-trip.
+                setString(storageKey, result);
+                return result;
+              } catch (err) {
+                lastErr = err;
+                if (i < delays.length) {
+                  await new Promise((res) => setTimeout(res, delays[i]));
+                }
+              }
+            }
+            throw lastErr;
+          },
+          { "map.style": mapStyle },
+        );
+      } catch {
+        // All retries failed → hand MapLibre the raw URL. It still won't
+        // rewrite relative tile paths, but at least the user sees the
+        // attribution + zoom controls instead of nothing. (Not persisted —
+        // a later successful fetch should replace it.)
+        return styleUrl;
+      }
+    },
+    // MMKV-cached copy renders immediately; initialDataUpdatedAt: 0 marks it
+    // stale so a fresh copy is still fetched in the background.
+    initialData: () => {
+      const cached = getString(storageKey, "");
+      return cached !== "" ? cached : undefined;
+    },
+    initialDataUpdatedAt: 0,
+    staleTime: 60 * 60 * 1000,
+    gcTime: Infinity,
+    // Style SWITCH keeps rendering the previous style until the new JSON
+    // resolves — MapLibre then applies it via native setStyle (React-added
+    // sources are re-added automatically), so the map never unmounts.
+    placeholderData: keepPreviousData,
+  });
+
+  return query.data ?? null;
 }
 
 export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMapProps) {
@@ -134,7 +150,15 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
     zoomRef.current = initialZoom;
   }, [centerCoord, initialZoom]);
 
-  if (!patchedStyle) return null;
+  // True cold start with nothing cached (first run / MMKV cleared): show a
+  // placeholder instead of nothing so the radar screen doesn't flash empty.
+  if (!patchedStyle) {
+    return (
+      <View style={[styles.map, styles.placeholder]}>
+        <ActivityIndicator size="small" color="rgba(255,255,255,0.7)" />
+      </View>
+    );
+  }
 
   const handleLongPress = (event: NativeSyntheticEvent<PressEvent>) => {
     const [lon, lat] = event.nativeEvent.lngLat;
@@ -165,6 +189,9 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
         onLongPress={handleLongPress}
         onRegionIsChanging={handleRegionChange}
         onRegionDidChange={handleRegionChange}
+        // Cheap no-op unless a playback tick is pending — feeds the
+        // tick→render latency metric (see lib/playbackMetrics.ts).
+        onDidFinishRenderingFrame={markFrameRendered}
       >
         <Camera
           ref={cameraRef}
@@ -203,6 +230,11 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
 const styles = StyleSheet.create({
   map: {
     flex: 1,
+  },
+  placeholder: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0a0e1a",
   },
   zoomWrap: {
     position: "absolute",
