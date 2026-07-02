@@ -9,6 +9,7 @@ import Slider from "@react-native-community/slider";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
+import { findClosestIdx } from "../../lib/frameIndex";
 import type { LayerType } from "../../types/weather";
 
 const NOWCAST_MIN = 60;
@@ -244,17 +245,6 @@ function DashedRow({ color }: { color: string }) {
       ))}
     </View>
   );
-}
-
-function findClosestIdx(frames: { time: number }[], target: number): number {
-  let best = 0;
-  let bestDiff = Infinity;
-  for (let i = 0; i < frames.length; i++) {
-    const d = Math.abs(frames[i].time - target);
-    if (d < bestDiff) { bestDiff = d; best = i; }
-  }
-  if (target > frames[frames.length - 1].time) return frames.length - 1;
-  return best;
 }
 
 function clampPct(p: number) { return Math.max(0, Math.min(100, p)); }
