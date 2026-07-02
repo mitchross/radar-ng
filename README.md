@@ -4,7 +4,13 @@
 
 [![status](https://img.shields.io/badge/api-radar--ng--api.vanillax.me-blue)](https://radar-ng-api.vanillax.me/api/health) [![expo](https://img.shields.io/badge/expo-SDK%2056-000)](https://expo.dev) [![python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/) [![talos](https://img.shields.io/badge/talos-v1.13-326CE5)](https://talos.dev) [![argo](https://img.shields.io/badge/argocd-3.x-EF7B4D)](https://argo-cd.readthedocs.io/) [![otel](https://img.shields.io/badge/otel-traces%20%2B%20logs%20%2B%20metrics-425CC7)](https://opentelemetry.io)
 
-![hero](docs/screenshots/hero.png)
+<p align="center">
+  <img src="docs/screenshots/home.png" width="19%" alt="Home — current conditions, hourly + 7-day forecast" />
+  <img src="docs/screenshots/nowcast.png" width="19%" alt="Nowcast — minute-by-minute precip" />
+  <img src="docs/screenshots/radar.png" width="19%" alt="Radar — live NOAA tiles + playback timeline" />
+  <img src="docs/screenshots/alerts.png" width="19%" alt="Alerts — active NWS warnings" />
+  <img src="docs/screenshots/settings.png" width="19%" alt="Settings — location, appearance, radar palettes" />
+</p>
 
 **How it all works → [ARCHITECTURE.md](ARCHITECTURE.md)** — every component, the per-frame pipeline, Temporal orchestration, the frame carousel, and the caching story, with diagrams.
 
