@@ -1,0 +1,38 @@
+# Docker build context excludes.
+#
+# The worker images build from the REPO ROOT (deploy/docker-compose.yml:
+# `worker` and `open-meteo-worker` set `context: ..`). Without this file the
+# entire repo is shipped to the Docker daemon as build context on every build
+# — most painfully frontend/node_modules (~2 GB after `bun install`), which
+# manifests as a build that hangs on "transferring context".
+#
+# Both worker Dockerfiles (temporal/Dockerfile, temporal/open_meteo_worker.Dockerfile)
+# only COPY backend/ and temporal/, so everything below is pure bloat and safe
+# to exclude.
+
+# Frontend — never referenced by any backend/worker image.
+frontend/
+
+# Docs, deploy manifests, and tooling dirs.
+docs/
+deploy/
+.github/
+.gitea/
+.claude/
+.pi/
+.vscode/
+.git/
+
+# Python caches and local virtualenvs.
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.venv/
+**/.pytest_cache/
+
+# Large local data that must never enter an image (basemap extracts, etc.).
+backend/pmtiles-data/
+**/*.pmtiles
+
+# OS cruft.
+.DS_Store
