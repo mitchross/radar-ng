@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1560" height="760" viewBox="0 0 1560 760">
+  <defs>
+    <marker id="arrHot" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#c2603a"/>
+    </marker>
+    <marker id="arrSec" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8c857a"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1560" height="760" fill="#f6f2ea"/>
+
+  <text x="48" y="72" font-family="Georgia, 'Times New Roman', serif" font-size="22" fill="#211f1b">Request flow — opening the radar tab</text>
+  <text x="48" y="94" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#5d574d">tap to pixels, with every cache tier along the way — terracotta is the tile hot path</text>
+
+  <!-- ============ LANES ============ -->
+  <!-- lane labels + rails -->
+  <text x="48" y="160" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#3a7bd5">PHONE</text>
+  <line x1="48" y1="172" x2="1512" y2="172" stroke="#3a7bd5" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+
+  <text x="48" y="356" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#8c857a">EDGE · CLOUDFLARE / GATEWAY</text>
+  <line x1="48" y1="368" x2="1512" y2="368" stroke="#8c857a" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+
+  <text x="48" y="480" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#2e8b6f">TILE-SERVER · CADDY + FASTAPI</text>
+  <line x1="48" y1="492" x2="1512" y2="492" stroke="#2e8b6f" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+
+  <text x="48" y="622" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#b97a4a">TILES PVC</text>
+  <line x1="48" y1="634" x2="1512" y2="634" stroke="#b97a4a" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+
+  <!-- ============ PHONE LANE CARDS ============ -->
+  <rect x="48" y="188" width="250" height="120" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="48" y="190" width="3" height="116" rx="1.5" fill="#3a7bd5"/>
+  <text x="64" y="212" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">1 · Radar tab opens</text>
+  <text x="64" y="232" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">map style + last manifest render</text>
+  <text x="64" y="248" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">instantly from MMKV cache</text>
+  <rect x="64" y="262" width="196" height="20" rx="10" fill="#3a7bd5" fill-opacity="0.1"/>
+  <text x="74" y="276" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#3a7bd5">cache: MMKV · works offline</text>
+
+  <rect x="360" y="188" width="270" height="120" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="360" y="190" width="3" height="116" rx="1.5" fill="#3a7bd5"/>
+  <text x="376" y="212" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">2 · Manifest refresh</text>
+  <text x="376" y="232" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">GET /api/manifest.json — merged</text>
+  <text x="376" y="248" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">timeline: MRMS + nowcast + HRRR</text>
+  <rect x="376" y="262" width="216" height="20" rx="10" fill="#3a7bd5" fill-opacity="0.1"/>
+  <text x="386" y="276" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#3a7bd5">poll 30 s · one query, all consumers</text>
+
+  <rect x="692" y="188" width="290" height="120" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="692" y="190" width="3" height="116" rx="1.5" fill="#3a7bd5"/>
+  <text x="708" y="212" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">3 · Carousel prefetch</text>
+  <text x="708" y="232" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">5 raster sources mounted: current frame</text>
+  <text x="708" y="248" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">visible, next 4 fetching at opacity 0</text>
+  <rect x="708" y="262" width="240" height="20" rx="10" fill="#3a7bd5" fill-opacity="0.1"/>
+  <text x="718" y="276" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#3a7bd5">cache: MapLibre native tile cache (SQLite)</text>
+
+  <rect x="1044" y="188" width="290" height="120" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1044" y="190" width="3" height="116" rx="1.5" fill="#3a7bd5"/>
+  <text x="1060" y="212" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">4 · Playback — 420 ms ticks</text>
+  <text x="1060" y="232" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">visible/hidden swap is a paint-only</text>
+  <text x="1060" y="248" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">opacity change — no remount, no refetch</text>
+  <rect x="1060" y="262" width="252" height="20" rx="10" fill="#3a7bd5" fill-opacity="0.1"/>
+  <text x="1070" y="276" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#3a7bd5">one hidden slot remounts/tick · ~1.7 s headroom</text>
+
+  <!-- ============ EDGE LANE ============ -->
+  <rect x="360" y="384" width="270" height="72" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="360" y="386" width="3" height="68" rx="1.5" fill="#8c857a"/>
+  <text x="376" y="408" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">TLS + routing</text>
+  <text x="376" y="426" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">api requests pass through</text>
+  <text x="376" y="444" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">manifest not edge-cached (15 s TTL)</text>
+
+  <rect x="692" y="384" width="290" height="72" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="692" y="386" width="3" height="68" rx="1.5" fill="#8c857a"/>
+  <text x="708" y="408" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Edge tile cache</text>
+  <text x="708" y="426" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">honors Cache-Control — repeat viewers</text>
+  <text x="708" y="444" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">never reach the homelab for radar tiles</text>
+
+  <!-- ============ TILE-SERVER LANE ============ -->
+  <rect x="360" y="508" width="270" height="94" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="360" y="510" width="3" height="90" rx="1.5" fill="#2e8b6f"/>
+  <text x="376" y="532" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">FastAPI — manifest</text>
+  <text x="376" y="552" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">builds layer/timestamp index</text>
+  <rect x="376" y="566" width="180" height="20" rx="10" fill="#2e8b6f" fill-opacity="0.1"/>
+  <text x="386" y="580" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#2e8b6f">cache: 15 s in-process</text>
+
+  <rect x="692" y="508" width="290" height="94" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="692" y="510" width="3" height="90" rx="1.5" fill="#2e8b6f"/>
+  <text x="708" y="532" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Caddy — static tiles</text>
+  <text x="708" y="552" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">/tiles/{layer}/{palette}/{ts}/{z}/{x}/{y}.png</text>
+  <rect x="708" y="566" width="252" height="20" rx="10" fill="#2e8b6f" fill-opacity="0.1"/>
+  <text x="718" y="580" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#2e8b6f">radar: 24 h immutable · forecast layers: 120 s</text>
+
+  <!-- why the split card -->
+  <rect x="1044" y="508" width="448" height="94" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1044" y="510" width="3" height="90" rx="1.5" fill="#2e8b6f"/>
+  <text x="1060" y="532" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Why two cache tiers?</text>
+  <text x="1060" y="552" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Observed radar frames are written once per timestamp — safe to cache hard.</text>
+  <text x="1060" y="570" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Nowcast/HRRR REWRITE the same valid-time path on every model run —</text>
+  <text x="1060" y="588" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">a long TTL would pin stale predictions on screens.</text>
+
+  <!-- ============ PVC LANE ============ -->
+  <rect x="692" y="650" width="290" height="62" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="692" y="652" width="3" height="58" rx="1.5" fill="#b97a4a"/>
+  <text x="708" y="674" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">sendfile from the pyramid</text>
+  <text x="708" y="694" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">read-only mount · gzip precompressed</text>
+
+  <!-- ============ VERTICAL FLOWS ============ -->
+  <!-- manifest path (secondary) -->
+  <line x1="495" y1="308" x2="495" y2="380" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+  <line x1="495" y1="456" x2="495" y2="504" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+  <line x1="510" y1="504" x2="510" y2="456" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+  <line x1="510" y1="380" x2="510" y2="308" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+
+  <!-- tile path (hot) -->
+  <line x1="830" y1="308" x2="830" y2="380" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+  <line x1="830" y1="456" x2="830" y2="504" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+  <line x1="830" y1="602" x2="830" y2="646" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+  <line x1="848" y1="646" x2="848" y2="602" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+  <line x1="848" y1="504" x2="848" y2="456" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+  <line x1="848" y1="380" x2="848" y2="308" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+
+  <!-- edge cache-hit shortcut -->
+  <path d="M 900 380 C 940 340, 980 330, 1040 312" fill="none" stroke="#c2603a" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrHot)"/>
+  <rect x="912" y="330" width="120" height="18" rx="8" fill="#ffffff" stroke="#eee6d8"/>
+  <text x="920" y="343" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">edge cache hit → skip</text>
+
+  <!-- step 1 → 2 -->
+  <line x1="298" y1="248" x2="356" y2="248" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+  <line x1="630" y1="248" x2="688" y2="248" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+  <line x1="982" y1="248" x2="1040" y2="248" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+
+  <text x="48" y="736" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Offline: steps 2–4 degrade gracefully — the MMKV manifest renders the last-known radar, and MapLibre's tile cache replays recently viewed frames with zero network.</text>
+</svg>

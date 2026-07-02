@@ -1,0 +1,235 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1560" height="980" viewBox="0 0 1560 980">
+  <defs>
+    <marker id="arrHot" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#c2603a"/>
+    </marker>
+    <marker id="arrSec" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8c857a"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1560" height="980" fill="#f6f2ea"/>
+
+  <!-- title block -->
+  <text x="48" y="72" font-family="Georgia, 'Times New Roman', serif" font-size="22" fill="#211f1b">System architecture — radar-ng</text>
+  <text x="48" y="94" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#5d574d">free NOAA data · Temporal-orchestrated Python pipeline · static tile serving · Expo app — the hot radar path is drawn in terracotta</text>
+
+  <!-- legend -->
+  <circle cx="1020" cy="62" r="4" fill="#5d574d"/>
+  <text x="1030" y="66" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">external data</text>
+  <circle cx="1110" cy="62" r="4" fill="#8a5cc2"/>
+  <text x="1120" y="66" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">orchestration</text>
+  <circle cx="1210" cy="62" r="4" fill="#b97a4a"/>
+  <text x="1220" y="66" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">storage</text>
+  <circle cx="1285" cy="62" r="4" fill="#2e8b6f"/>
+  <text x="1295" y="66" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">serving</text>
+  <circle cx="1360" cy="62" r="4" fill="#3a7bd5"/>
+  <text x="1370" y="66" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">clients</text>
+
+  <!-- ================= ZONE 1 : EXTERNAL DATA ================= -->
+  <rect x="48" y="120" width="256" height="700" rx="16" fill="#5d574d" fill-opacity="0.06" stroke="#5d574d" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="68" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#5d574d">PUBLIC DATA · FREE · NO AUTH</text>
+
+  <rect x="68" y="164" width="216" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="68" y="166" width="3" height="70" rx="1.5" fill="#5d574d"/>
+  <text x="84" y="188" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">NOAA MRMS S3</text>
+  <text x="84" y="206" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">2-min radar · CONUS ~1 km</text>
+  <text x="84" y="224" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">base + composite reflectivity</text>
+
+  <rect x="68" y="254" width="216" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="68" y="256" width="3" height="70" rx="1.5" fill="#5d574d"/>
+  <text x="84" y="278" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">NOAA HRRR S3</text>
+  <text x="84" y="296" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">hourly runs · +18/48 h forecast</text>
+  <text x="84" y="314" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">reflectivity · temp · wind · CAPE …</text>
+
+  <rect x="68" y="344" width="216" height="56" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="68" y="346" width="3" height="52" rx="1.5" fill="#5d574d"/>
+  <text x="84" y="366" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">NOAA GFS</text>
+  <text x="84" y="384" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">global model · every 6 h</text>
+
+  <rect x="68" y="416" width="216" height="56" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="68" y="418" width="3" height="52" rx="1.5" fill="#5d574d"/>
+  <text x="84" y="438" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Blitzortung WS</text>
+  <text x="84" y="456" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">live lightning strikes</text>
+
+  <rect x="68" y="488" width="216" height="56" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="68" y="490" width="3" height="52" rx="1.5" fill="#5d574d"/>
+  <text x="84" y="510" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">NHC GIS</text>
+  <text x="84" y="528" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">tropical systems · 6 h</text>
+
+  <rect x="68" y="560" width="216" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="68" y="562" width="3" height="70" rx="1.5" fill="#5d574d"/>
+  <text x="84" y="584" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">NWS API</text>
+  <text x="84" y="602" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">active alerts</text>
+  <text x="84" y="620" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">polled by worker + app directly</text>
+
+  <!-- ================= ZONE 2 : TEMPORAL PIPELINE ================= -->
+  <rect x="336" y="120" width="392" height="700" rx="16" fill="#8a5cc2" fill-opacity="0.06" stroke="#8a5cc2" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="356" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#8a5cc2">TEMPORAL PIPELINE · temporal/ + backend/</text>
+
+  <rect x="356" y="164" width="352" height="88" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="356" y="166" width="3" height="84" rx="1.5" fill="#8a5cc2"/>
+  <text x="372" y="188" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Temporal server + Schedules</text>
+  <text x="372" y="206" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">MRMS 2 m · nowcast 2 m · alerts 5 m · HRRR 15 m · cleanup 1 h</text>
+  <text x="372" y="224" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">OverlapPolicy.SKIP — a slow run drops newer triggers</text>
+  <text x="372" y="239" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">schedules self-seed on worker boot</text>
+
+  <rect x="356" y="268" width="352" height="380" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="356" y="270" width="3" height="376" rx="1.5" fill="#8a5cc2"/>
+  <text x="372" y="292" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Worker — workflows orchestrate,</text>
+  <text x="372" y="310" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">activities do the I/O</text>
+
+  <rect x="372" y="326" width="320" height="50" rx="8" fill="#8a5cc2" fill-opacity="0.07"/>
+  <text x="384" y="346" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#211f1b">ingest-mrms</text>
+  <text x="384" y="363" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">GRIB2 → grid → 3 palettes × z4–8 PNG tiles</text>
+
+  <rect x="372" y="384" width="320" height="50" rx="8" fill="#8a5cc2" fill-opacity="0.07"/>
+  <text x="384" y="404" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#211f1b">ingest-hrrr</text>
+  <text x="384" y="421" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">per-hour fan-out · Semaphore(8) · failure-isolated</text>
+
+  <rect x="372" y="442" width="320" height="50" rx="8" fill="#8a5cc2" fill-opacity="0.07"/>
+  <text x="384" y="462" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#211f1b">nowcast — pysteps S-PROG</text>
+  <text x="384" y="479" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">optical-flow extrapolation · +60 min · 5-min steps</text>
+
+  <rect x="372" y="500" width="320" height="50" rx="8" fill="#8a5cc2" fill-opacity="0.07"/>
+  <text x="384" y="520" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#211f1b">lightning · tropical · poll-alerts</text>
+  <text x="384" y="537" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">GeoJSON state files + storm-watch signals</text>
+
+  <rect x="372" y="558" width="320" height="50" rx="8" fill="#8a5cc2" fill-opacity="0.07"/>
+  <text x="384" y="578" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#211f1b">tile-cleanup + open-meteo-sync</text>
+  <text x="384" y="595" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">retention sweeps · GFS/HRRR sync (own worker pool)</text>
+
+  <text x="372" y="632" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">PINNED worker versioning · heartbeats · graceful drain</text>
+
+  <rect x="356" y="664" width="352" height="132" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="356" y="666" width="3" height="128" rx="1.5" fill="#8a5cc2"/>
+  <text x="372" y="688" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Atomic publish</text>
+  <text x="372" y="708" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">tiles render into a .tmp dir, then os.rename into place —</text>
+  <text x="372" y="726" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">the manifest never advertises a half-written frame.</text>
+  <text x="372" y="748" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">nowcast swaps its whole manifest layer per run</text>
+  <text x="372" y="764" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">(replace semantics — stale predictions never linger)</text>
+
+  <!-- ================= ZONE 3 : STORAGE ================= -->
+  <rect x="760" y="120" width="240" height="700" rx="16" fill="#b97a4a" fill-opacity="0.06" stroke="#b97a4a" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="780" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#b97a4a">STORAGE · NFS PVCs</text>
+
+  <rect x="780" y="164" width="200" height="92" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="780" y="166" width="3" height="88" rx="1.5" fill="#b97a4a"/>
+  <text x="796" y="188" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">tiles</text>
+  <text x="796" y="206" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">~10 GB steady state</text>
+  <text x="796" y="224" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">/{layer}/{palette}/{ts}/z/x/y.png</text>
+  <text x="796" y="240" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">retention 1–12 h by layer</text>
+
+  <rect x="780" y="272" width="200" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="780" y="274" width="3" height="70" rx="1.5" fill="#b97a4a"/>
+  <text x="796" y="296" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">grids</text>
+  <text x="796" y="314" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">raw float32 grids</text>
+  <text x="796" y="332" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">point inspection + nowcast input</text>
+
+  <rect x="780" y="362" width="200" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="780" y="364" width="3" height="70" rx="1.5" fill="#b97a4a"/>
+  <text x="796" y="386" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">state</text>
+  <text x="796" y="404" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">manifest · ProcessedSet</text>
+  <text x="796" y="422" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">lightning/storms/tropical JSON</text>
+
+  <rect x="780" y="452" width="200" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="780" y="454" width="3" height="70" rx="1.5" fill="#b97a4a"/>
+  <text x="796" y="476" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">openmeteo</text>
+  <text x="796" y="494" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">model data cache</text>
+  <text x="796" y="512" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">GFS 6 h · HRRR 1 h sync</text>
+
+  <text x="780" y="560" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">disposable cache — everything here</text>
+  <text x="780" y="576" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">regenerates from NOAA within hours</text>
+
+  <!-- ================= ZONE 4 : SERVING ================= -->
+  <rect x="1032" y="120" width="256" height="700" rx="16" fill="#2e8b6f" fill-opacity="0.06" stroke="#2e8b6f" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="1052" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#2e8b6f">SERVING · backend/api</text>
+
+  <rect x="1052" y="164" width="216" height="128" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1052" y="166" width="3" height="124" rx="1.5" fill="#2e8b6f"/>
+  <text x="1068" y="188" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">tile-server</text>
+  <text x="1068" y="206" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Caddy — static /tiles/*</text>
+  <text x="1068" y="222" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">FastAPI — /api/* · /v1/*</text>
+  <text x="1068" y="242" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">radar tiles: 24 h immutable</text>
+  <text x="1068" y="258" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">forecast tiles: 120 s · manifest 15 s</text>
+  <text x="1068" y="274" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">HPA scaled · /api/livez probe</text>
+
+  <rect x="1052" y="308" width="216" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1052" y="310" width="3" height="70" rx="1.5" fill="#2e8b6f"/>
+  <text x="1068" y="332" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap</text>
+  <text x="1068" y="350" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Protomaps · go-pmtiles</text>
+  <text x="1068" y="368" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">vector tiles · 1 d cache</text>
+
+  <rect x="1052" y="398" width="216" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1052" y="400" width="3" height="70" rx="1.5" fill="#2e8b6f"/>
+  <text x="1068" y="422" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">open-meteo</text>
+  <text x="1068" y="440" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">self-hosted forecast API</text>
+  <text x="1068" y="458" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">proxied at /api/forecast · 5 min TTL</text>
+
+  <rect x="1052" y="488" width="216" height="92" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1052" y="490" width="3" height="88" rx="1.5" fill="#2e8b6f"/>
+  <text x="1068" y="512" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">/v1 workflow routes</text>
+  <text x="1068" y="530" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">push-tokens · storm watches</text>
+  <text x="1068" y="550" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">the only mobile → Temporal path</text>
+  <text x="1068" y="566" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">(app never speaks gRPC)</text>
+
+  <!-- ================= ZONE 5 : EDGE + CLIENTS ================= -->
+  <rect x="1320" y="120" width="192" height="700" rx="16" fill="#3a7bd5" fill-opacity="0.06" stroke="#3a7bd5" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="1340" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#3a7bd5">EDGE + CLIENTS</text>
+
+  <rect x="1340" y="164" width="152" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1340" y="166" width="3" height="70" rx="1.5" fill="#3a7bd5"/>
+  <text x="1356" y="188" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Edge</text>
+  <text x="1356" y="206" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Cloudflare →</text>
+  <text x="1356" y="222" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Gateway API</text>
+
+  <rect x="1340" y="254" width="152" height="92" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1340" y="256" width="3" height="88" rx="1.5" fill="#3a7bd5"/>
+  <text x="1356" y="278" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Phone app</text>
+  <text x="1356" y="296" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">iOS · Android</text>
+  <text x="1356" y="314" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Expo SDK 56 · MapLibre</text>
+  <text x="1356" y="330" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">5-slot frame carousel</text>
+
+  <rect x="1340" y="362" width="152" height="56" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1340" y="364" width="3" height="52" rx="1.5" fill="#3a7bd5"/>
+  <text x="1356" y="384" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Watch</text>
+  <text x="1356" y="402" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">watchOS target</text>
+
+  <rect x="1340" y="434" width="152" height="56" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1340" y="436" width="3" height="52" rx="1.5" fill="#3a7bd5"/>
+  <text x="1356" y="456" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">CarPlay</text>
+  <text x="1356" y="474" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">scene target</text>
+
+  <!-- ================= ARROWS ================= -->
+  <!-- hot path: MRMS -> worker -->
+  <line x1="284" y1="201" x2="356" y2="240" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+  <!-- HRRR/GFS/etc -> worker (secondary) -->
+  <line x1="284" y1="291" x2="356" y2="310" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+  <line x1="284" y1="444" x2="356" y2="460" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+  <line x1="284" y1="588" x2="356" y2="560" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+
+  <!-- worker -> storage (hot) -->
+  <line x1="708" y1="356" x2="780" y2="300" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+  <line x1="708" y1="420" x2="780" y2="400" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+  <rect x="712" y="318" width="62" height="18" rx="8" fill="#ffffff" stroke="#eee6d8"/>
+  <text x="720" y="331" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">writes</text>
+
+  <!-- storage -> serving (hot) -->
+  <line x1="980" y1="210" x2="1052" y2="220" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+  <rect x="984" y="184" width="66" height="18" rx="8" fill="#ffffff" stroke="#eee6d8"/>
+  <text x="992" y="197" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">ro mount</text>
+
+  <!-- serving -> edge (hot) -->
+  <line x1="1268" y1="210" x2="1340" y2="201" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+
+  <!-- edge -> phone (hot) -->
+  <line x1="1416" y1="238" x2="1416" y2="254" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+
+  <!-- NWS -> phone direct (dashed secondary, routed under all zones) -->
+  <path d="M 176 634 L 176 856 L 1532 856 L 1532 300 L 1496 300" fill="none" stroke="#8c857a" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrSec)"/>
+  <rect x="760" y="846" width="132" height="19" rx="8" fill="#ffffff" stroke="#eee6d8"/>
+  <text x="768" y="860" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">alerts fetched directly</text>
+
+  <!-- footer -->
+  <text x="48" y="944" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Hot path (terracotta): NOAA MRMS → ingest → tiles PVC → tile-server → edge → phone, under 3 minutes from scan to screen. Full walkthrough: ARCHITECTURE.md</text>
+</svg>

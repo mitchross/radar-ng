@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1560" height="640" viewBox="0 0 1560 640">
+  <defs>
+    <marker id="arrHot" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#c2603a"/>
+    </marker>
+    <marker id="arrSec" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8c857a"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1560" height="640" fill="#f6f2ea"/>
+
+  <text x="48" y="72" font-family="Georgia, 'Times New Roman', serif" font-size="22" fill="#211f1b">Life of a radar frame</text>
+  <text x="48" y="94" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#5d574d">what happens when NOAA drops a new MRMS scan on S3 — every 2 minutes, around the clock</text>
+
+  <!-- ============ PIPELINE ROW ============ -->
+  <!-- step 1 -->
+  <rect x="48" y="140" width="224" height="130" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="48" y="142" width="3" height="126" rx="1.5" fill="#5d574d"/>
+  <text x="64" y="166" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">1 · Scan lands on S3</text>
+  <text x="64" y="186" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Temporal schedule fires (2 min,</text>
+  <text x="64" y="202" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">OverlapPolicy.SKIP), workflow</text>
+  <text x="64" y="218" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">lists unprocessed keys</text>
+  <rect x="64" y="234" width="76" height="20" rx="10" fill="#5d574d" fill-opacity="0.1"/>
+  <text x="74" y="248" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">~200 ms list</text>
+
+  <line x1="272" y1="205" x2="308" y2="205" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+
+  <!-- step 2 -->
+  <rect x="312" y="140" width="224" height="130" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="312" y="142" width="3" height="126" rx="1.5" fill="#8a5cc2"/>
+  <text x="328" y="166" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">2 · Download + decode</text>
+  <text x="328" y="186" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">~8 MB GRIB2 → pygrib →</text>
+  <text x="328" y="202" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">float32 lat×lon grid, saved to</text>
+  <text x="328" y="218" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">grids PVC for inspect + nowcast</text>
+  <rect x="328" y="234" width="70" height="20" rx="10" fill="#8a5cc2" fill-opacity="0.1"/>
+  <text x="338" y="248" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8a5cc2">~1 s + 800 ms</text>
+
+  <line x1="536" y1="205" x2="572" y2="205" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+
+  <!-- step 3 -->
+  <rect x="576" y="140" width="252" height="130" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="576" y="142" width="3" height="126" rx="1.5" fill="#8a5cc2"/>
+  <text x="592" y="166" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">3 · Palette render × 3</text>
+  <text x="592" y="186" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">classic · vivid · muted rendered in</text>
+  <text x="592" y="202" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">parallel — ~12,600 PNG tiles across</text>
+  <text x="592" y="218" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">zooms 4–8 (transparent tiles skipped)</text>
+  <rect x="592" y="234" width="120" height="20" rx="10" fill="#8a5cc2" fill-opacity="0.1"/>
+  <text x="602" y="248" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8a5cc2">~2 min (was 22 serial)</text>
+
+  <line x1="828" y1="205" x2="864" y2="205" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+
+  <!-- step 4 -->
+  <rect x="868" y="140" width="238" height="130" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="868" y="142" width="3" height="126" rx="1.5" fill="#b97a4a"/>
+  <text x="884" y="166" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">4 · Atomic publish</text>
+  <text x="884" y="186" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">tiles render into {ts}.tmp/, then</text>
+  <text x="884" y="202" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">os.rename into place — readers</text>
+  <text x="884" y="218" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">never see a partial pyramid</text>
+  <rect x="884" y="234" width="140" height="20" rx="10" fill="#b97a4a" fill-opacity="0.12"/>
+  <text x="894" y="248" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#b97a4a">then manifest.add(ts)</text>
+
+  <line x1="1106" y1="205" x2="1142" y2="205" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+
+  <!-- step 5 -->
+  <rect x="1146" y="140" width="238" height="130" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1146" y="142" width="3" height="126" rx="1.5" fill="#2e8b6f"/>
+  <text x="1162" y="166" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">5 · Served + cached</text>
+  <text x="1162" y="186" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Caddy file-serves the pyramid;</text>
+  <text x="1162" y="202" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">observed radar is immutable so</text>
+  <text x="1162" y="218" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">it caches for a full day</text>
+  <rect x="1162" y="234" width="152" height="20" rx="10" fill="#2e8b6f" fill-opacity="0.1"/>
+  <text x="1172" y="248" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#2e8b6f">radar 24 h · forecast 120 s</text>
+
+  <!-- total chip -->
+  <rect x="1404" y="168" width="108" height="74" rx="12" fill="#c2603a" fill-opacity="0.09" stroke="#c2603a" stroke-opacity="0.35" stroke-width="1.5"/>
+  <text x="1420" y="196" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#c2603a">TOTAL</text>
+  <text x="1420" y="222" font-family="Georgia, 'Times New Roman', serif" font-size="24" fill="#c2603a">≈ 2 min</text>
+  <line x1="1384" y1="205" x2="1400" y2="205" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+
+  <!-- ============ CLIENT ROW ============ -->
+  <rect x="48" y="330" width="1464" height="200" rx="16" fill="#3a7bd5" fill-opacity="0.06" stroke="#3a7bd5" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="68" y="356" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#3a7bd5">MEANWHILE, ON THE PHONE</text>
+
+  <rect x="68" y="374" width="330" height="132" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="68" y="376" width="3" height="128" rx="1.5" fill="#3a7bd5"/>
+  <text x="84" y="398" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Manifest poll — every 30 s</text>
+  <text x="84" y="418" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">GET /api/manifest.json (15 s server cache)</text>
+  <text x="84" y="436" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">new timestamp appears ≤ 45 s after publish</text>
+  <text x="84" y="458" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">last good manifest persisted to MMKV —</text>
+  <text x="84" y="474" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">cold start + offline render instantly</text>
+
+  <line x1="398" y1="440" x2="434" y2="440" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+
+  <rect x="438" y="374" width="360" height="132" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="438" y="376" width="3" height="128" rx="1.5" fill="#3a7bd5"/>
+  <text x="454" y="398" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">One merged timeline</text>
+  <text x="454" y="418" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">past MRMS (observed) + nowcast (0…+60 min)</text>
+  <text x="454" y="436" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">+ HRRR (+1…+48 h), sorted and deduped</text>
+  <text x="454" y="458" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">each frame is tagged with its source so the</text>
+  <text x="454" y="474" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">overlay fetches the right tile subtree</text>
+
+  <line x1="798" y1="440" x2="834" y2="440" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+
+  <rect x="838" y="374" width="400" height="132" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="838" y="376" width="3" height="128" rx="1.5" fill="#3a7bd5"/>
+  <text x="854" y="398" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">5-slot frame carousel</text>
+  <text x="854" y="418" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">playback swaps raster opacity between pre-mounted</text>
+  <text x="854" y="436" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">sources; each 420 ms tick remounts ONE hidden slot</text>
+  <text x="854" y="458" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">a frame has ~1.7 s to fetch tiles before it's shown —</text>
+  <text x="854" y="474" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">no teardown of the visible layer, no refetch churn</text>
+
+  <rect x="1278" y="374" width="214" height="132" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1278" y="376" width="3" height="128" rx="1.5" fill="#3a7bd5"/>
+  <text x="1294" y="398" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Result</text>
+  <text x="1294" y="418" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">scan → screen in</text>
+  <text x="1294" y="436" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">under 3 minutes,</text>
+  <text x="1294" y="454" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">smooth playback</text>
+  <line x1="1238" y1="440" x2="1274" y2="440" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+
+  <text x="48" y="584" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Failure isolation: a frame that exhausts retries is caught per-key and left unmarked for the next run — it never cancels its siblings. HRRR forecast hours get the same treatment.</text>
+</svg>

@@ -1,0 +1,170 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1560" height="820" viewBox="0 0 1560 820">
+  <defs>
+    <marker id="arrHot" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#c2603a"/>
+    </marker>
+    <marker id="arrSec" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8c857a"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1560" height="820" fill="#f6f2ea"/>
+
+  <text x="48" y="72" font-family="Georgia, 'Times New Roman', serif" font-size="22" fill="#211f1b">Self-hosting topology — docker compose</text>
+  <text x="48" y="94" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#5d574d">deploy/docker-compose.yml — one box, one exposed port. Dashed cards are opt-in profiles. Full guide: docs/self-hosting.md</text>
+
+  <!-- ============ ZONE: CONTROL PLANE ============ -->
+  <rect x="48" y="120" width="440" height="330" rx="16" fill="#8a5cc2" fill-opacity="0.06" stroke="#8a5cc2" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="68" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#8a5cc2">CONTROL PLANE</text>
+
+  <rect x="68" y="164" width="190" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="68" y="166" width="3" height="70" rx="1.5" fill="#8a5cc2"/>
+  <text x="84" y="188" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">temporal-postgres</text>
+  <text x="84" y="206" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">postgres:16-alpine</text>
+  <text x="84" y="224" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Temporal's own state only</text>
+
+  <rect x="278" y="164" width="190" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="278" y="166" width="3" height="70" rx="1.5" fill="#8a5cc2"/>
+  <text x="294" y="188" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">temporal</text>
+  <text x="294" y="206" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">temporalio/auto-setup</text>
+  <text x="294" y="224" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">gRPC :7233 · healthchecked</text>
+
+  <line x1="258" y1="201" x2="274" y2="201" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+
+  <rect x="278" y="254" width="190" height="74" rx="12" fill="#ffffff" stroke="#8a5cc2" stroke-opacity="0.5" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="294" y="278" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">temporal-ui</text>
+  <text x="294" y="296" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">web console · :8233</text>
+  <rect x="294" y="306" width="88" height="18" rx="9" fill="#8a5cc2" fill-opacity="0.12"/>
+  <text x="302" y="319" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8a5cc2">--profile ui</text>
+
+  <rect x="68" y="344" width="400" height="88" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="68" y="346" width="3" height="84" rx="1.5" fill="#8a5cc2"/>
+  <text x="84" y="368" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">worker</text>
+  <text x="84" y="386" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">builds from temporal/Dockerfile · runs every ingest activity</text>
+  <text x="84" y="404" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">self-seeds all schedules on boot — no cron to configure</text>
+  <text x="84" y="420" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">writes tiles · grids · state volumes</text>
+
+  <!-- ============ ZONE: FORECAST ============ -->
+  <rect x="48" y="474" width="440" height="200" rx="16" fill="#2e8b6f" fill-opacity="0.06" stroke="#2e8b6f" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="68" y="500" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#2e8b6f">FORECAST</text>
+
+  <rect x="68" y="518" width="190" height="130" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="68" y="520" width="3" height="126" rx="1.5" fill="#2e8b6f"/>
+  <text x="84" y="542" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">open-meteo</text>
+  <text x="84" y="560" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">forecast API server</text>
+  <text x="84" y="580" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">ghcr.io/open-meteo</text>
+  <text x="84" y="596" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">null until first model</text>
+  <text x="84" y="612" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">sync completes (≤ 6 h)</text>
+
+  <rect x="278" y="518" width="190" height="130" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="278" y="520" width="3" height="126" rx="1.5" fill="#2e8b6f"/>
+  <text x="294" y="542" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">open-meteo-worker</text>
+  <text x="294" y="560" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">isolated worker pool</text>
+  <text x="294" y="580" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">syncs GFS every 6 h,</text>
+  <text x="294" y="596" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">HRRR hourly, into the</text>
+  <text x="294" y="612" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">shared openmeteo volume</text>
+
+  <line x1="278" y1="583" x2="262" y2="583" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+
+  <!-- ============ ZONE: SERVING ============ -->
+  <rect x="520" y="120" width="470" height="554" rx="16" fill="#2e8b6f" fill-opacity="0.06" stroke="#2e8b6f" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="540" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#2e8b6f">SERVING</text>
+
+  <rect x="540" y="164" width="430" height="150" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="540" y="166" width="3" height="146" rx="1.5" fill="#2e8b6f"/>
+  <text x="556" y="188" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">tile-server — the front door</text>
+  <text x="556" y="208" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Caddy (static /tiles, /basemap proxy) + FastAPI (/api, /v1)</text>
+  <text x="556" y="226" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">reads the volumes read-only · healthcheck GET /api/livez</text>
+  <rect x="556" y="242" width="180" height="24" rx="12" fill="#c2603a" fill-opacity="0.1" stroke="#c2603a" stroke-opacity="0.35"/>
+  <text x="568" y="259" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#c2603a">:8080 — only exposed port</text>
+  <text x="556" y="290" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">verify: curl localhost:8080/api/health · first radar frame ~2 min after boot</text>
+
+  <rect x="540" y="330" width="430" height="96" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="540" y="332" width="3" height="92" rx="1.5" fill="#2e8b6f"/>
+  <text x="556" y="354" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap</text>
+  <text x="556" y="372" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">protomaps/go-pmtiles serving basemap.pmtiles</text>
+  <text x="556" y="390" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">name is load-bearing — the Caddyfile proxies to basemap:8081</text>
+  <text x="556" y="406" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">blank map = archive missing → run the bootstrap once</text>
+
+  <rect x="540" y="442" width="430" height="110" rx="12" fill="#ffffff" stroke="#2e8b6f" stroke-opacity="0.5" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="556" y="466" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap-bootstrap — one shot</text>
+  <text x="556" y="486" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">pmtiles extract $BASEMAP_PMTILES_URL --bbox=CONUS</text>
+  <text x="556" y="504" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">range-reads ~1–2 GB of the 120 GB planet build</text>
+  <rect x="556" y="516" width="150" height="18" rx="9" fill="#2e8b6f" fill-opacity="0.12"/>
+  <text x="564" y="529" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#2e8b6f">docker compose run --rm</text>
+
+  <text x="540" y="600" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">boot order: postgres → temporal (healthy) → workers · everything</text>
+  <text x="540" y="616" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">else restarts until its dependencies answer — no manual sequencing</text>
+
+  <!-- ============ ZONE: VOLUMES ============ -->
+  <rect x="1022" y="120" width="220" height="554" rx="16" fill="#b97a4a" fill-opacity="0.06" stroke="#b97a4a" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="1042" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#b97a4a">NAMED VOLUMES</text>
+
+  <rect x="1042" y="164" width="180" height="52" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1042" y="166" width="3" height="48" rx="1.5" fill="#b97a4a"/>
+  <text x="1058" y="186" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">tiles</text>
+  <text x="1058" y="204" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">~10 GB · worker rw, api ro</text>
+
+  <rect x="1042" y="228" width="180" height="52" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1042" y="230" width="3" height="48" rx="1.5" fill="#b97a4a"/>
+  <text x="1058" y="250" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">grids</text>
+  <text x="1058" y="268" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">raw float32 grids</text>
+
+  <rect x="1042" y="292" width="180" height="52" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1042" y="294" width="3" height="48" rx="1.5" fill="#b97a4a"/>
+  <text x="1058" y="314" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">state</text>
+  <text x="1058" y="332" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">manifest · processed sets</text>
+
+  <rect x="1042" y="356" width="180" height="52" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1042" y="358" width="3" height="48" rx="1.5" fill="#b97a4a"/>
+  <text x="1058" y="378" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">openmeteo-data</text>
+  <text x="1058" y="396" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">shared api ↔ sync worker</text>
+
+  <rect x="1042" y="420" width="180" height="52" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1042" y="422" width="3" height="48" rx="1.5" fill="#b97a4a"/>
+  <text x="1058" y="442" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap-data</text>
+  <text x="1058" y="460" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">~1–2 GB pmtiles archive</text>
+
+  <rect x="1042" y="484" width="180" height="52" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1042" y="486" width="3" height="48" rx="1.5" fill="#b97a4a"/>
+  <text x="1058" y="506" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">temporal-pg-data</text>
+  <text x="1058" y="524" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">workflow histories</text>
+
+  <text x="1042" y="576" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">all weather data is disposable</text>
+  <text x="1042" y="592" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">cache — regenerates from NOAA</text>
+
+  <!-- ============ ZONE: CLIENT ============ -->
+  <rect x="1274" y="120" width="238" height="554" rx="16" fill="#3a7bd5" fill-opacity="0.06" stroke="#3a7bd5" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="1294" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#3a7bd5">YOUR PHONE</text>
+
+  <rect x="1294" y="164" width="198" height="168" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
+  <rect x="1294" y="166" width="3" height="164" rx="1.5" fill="#3a7bd5"/>
+  <text x="1310" y="188" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">radar-ng app</text>
+  <text x="1310" y="208" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Settings → Data Source</text>
+  <text x="1310" y="226" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">→ Self-Hosted</text>
+  <text x="1310" y="252" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">simulator: localhost:8080</text>
+  <text x="1310" y="268" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">android emu: 10.0.2.2:8080</text>
+  <text x="1310" y="284" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">device: &lt;lan-ip&gt;:8080</text>
+  <text x="1310" y="308" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">public exposure: see the</text>
+  <text x="1310" y="324" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">/v1 warning in the guide</text>
+
+  <!-- arrows -->
+  <line x1="468" y1="388" x2="536" y2="290" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+  <rect x="472" y="322" width="60" height="18" rx="8" fill="#ffffff" stroke="#eee6d8"/>
+  <text x="480" y="335" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">volumes</text>
+
+  <line x1="258" y1="583" x2="380" y2="583" stroke="#8c857a" stroke-width="0" />
+  <line x1="468" y1="583" x2="536" y2="420" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+  <rect x="440" y="490" width="94" height="19" rx="8" fill="#ffffff" stroke="#eee6d8"/>
+  <text x="448" y="504" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">forecast proxy</text>
+
+  <line x1="970" y1="240" x2="1038" y2="240" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
+
+  <path d="M 1390 164 L 1390 106 L 755 106 L 755 160" fill="none" stroke="#c2603a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrHot)"/>
+  <rect x="1010" y="97" width="112" height="19" rx="8" fill="#ffffff" stroke="#eee6d8"/>
+  <text x="1018" y="111" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">http://host:8080</text>
+
+  <!-- footer -->
+  <text x="48" y="726" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Quick start: cp deploy/.env.example deploy/.env (set NWS_USER_AGENT + BASEMAP_PMTILES_URL) → docker compose run --rm basemap-bootstrap → docker compose up -d --build</text>
+  <text x="48" y="744" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Hardware: lab 4 cores · 4 GB · 20 GB SSD — prod 16 cores · 16 GB · 100 GB. NOAA egress ~50–100 MB/h. Kubernetes path: docs/kubernetes.md</text>
+</svg>
