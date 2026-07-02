@@ -6,6 +6,8 @@
 
 ![hero](docs/screenshots/hero.png)
 
+**How it all works → [ARCHITECTURE.md](ARCHITECTURE.md)** — every component, the per-frame pipeline, Temporal orchestration, the frame carousel, and the caching story, with diagrams.
+
 ---
 
 ## Why this exists
@@ -40,78 +42,11 @@ The short version: `docker compose up -d` in `deploy/`, one ~1–2 GB basemap bo
 
 ## System architecture
 
-```mermaid
-flowchart TB
-    subgraph Sources["☁️ public data — all free, no auth"]
-        MRMS[("NOAA MRMS S3<br/>2-min radar · CONUS")]
-        HRRR[("NOAA HRRR S3<br/>hourly · 18-h forecast")]
-        GFS[("NOAA GFS<br/>global · 6 h")]
-        NLDN[("Blitzortung WS<br/>lightning")]
-        NHC[("NHC GIS<br/>tropical")]
-        NWS[("NWS API<br/>active alerts")]
-    end
+<img src="docs/diagrams/system-architecture.svg" width="100%">
 
-    subgraph Ingest["⚙️ ingest layer · Python 3.12"]
-        IM["ingest-mrms<br/><sub>MergedBaseReflectivityQC_00.50</sub>"]
-        IRC["ingest-radar-composite<br/><sub>MergedReflectivityQComposite</sub>"]
-        IH["ingest-hrrr<br/><sub>5 forecast variables</sub>"]
-        IL["ingest-lightning"]
-        IT["ingest-tropical"]
-        NOW["nowcast<br/><sub>pysteps S-PROG</sub>"]
-        OMS["open-meteo-sync<br/><sub>cron · GFS/HRRR</sub>"]
-    end
+**Full system: NOAA sources → Temporal → ingest → PVC storage → tile-server → edge → clients.**
 
-    subgraph Storage["💾 longhorn PVCs"]
-        TILES[("tiles · 50 Gi")]
-        GRIDS[("grids · 20 Gi")]
-        STATE[("state · 5 Gi")]
-        OMD[("openmeteo · 30 Gi")]
-    end
-
-    subgraph Serving["🚀 serving"]
-        TS["tile-server<br/><sub>Caddy + FastAPI · HPA 2-6</sub>"]
-        BM["basemap<br/><sub>Protomaps · go-pmtiles</sub>"]
-        OM["open-meteo<br/><sub>self-hosted forecast API</sub>"]
-    end
-
-    subgraph Edge["🌐 edge"]
-        GW["Cloudflare → gateway-external<br/>radar-ng-api.vanillax.me"]
-    end
-
-    subgraph Client["📱 clients · Expo SDK 56"]
-        APP["Phone app<br/>iOS · Android"]
-        WATCH["Apple Watch"]
-        CAR["CarPlay"]
-    end
-
-    MRMS --> IM & IRC
-    HRRR --> IH
-    GFS --> OMS
-    NLDN --> IL
-    NHC --> IT
-
-    IM --> TILES & GRIDS
-    IRC --> TILES
-    IH --> TILES & GRIDS
-    IL --> STATE
-    IT --> STATE
-    OMS --> OMD
-    GRIDS --> NOW --> TILES
-    OMD --> OM
-
-    TILES --> TS
-    GRIDS --> TS
-    STATE --> TS
-    OM --> TS
-    BM --> TS
-
-    TS --> GW
-    GW --> APP
-    NWS -.direct.-> APP
-    APP --> WATCH & CAR
-```
-
-**Orchestration:** every box in the ingest layer runs as a Temporal activity, scheduled by Temporal Schedules (no cron). Workflows + worker live in `temporal/`; activity implementations live alongside each service in `backend/`. Mobile → `backend/api/` → `temporalio.client.Client` → workflow start. See `docs/superpowers/specs/2026-04-30-temporal-radar-ng-design.md` for the full design.
+**Orchestration:** every box in the ingest layer runs as a Temporal activity, scheduled by Temporal Schedules (no cron). Workflows + worker live in `temporal/`; activity implementations live alongside each service in `backend/`. Mobile → `backend/api/` → `temporalio.client.Client` → workflow start. The full story — schedules, retry budgets, failure isolation — is in [ARCHITECTURE.md](ARCHITECTURE.md#orchestration).
 
 Every box runs on a Talos Linux cluster managed by ArgoCD. Manifests live in [`talos-argocd-proxmox/my-apps/development/radar-ng/`](https://github.com/mitchross/talos-argocd-proxmox/tree/main/my-apps/development/radar-ng).
 
@@ -121,42 +56,9 @@ Every box runs on a Talos Linux cluster managed by ArgoCD. Manifests live in [`t
 
 What happens when NOAA drops a new MRMS scan on S3:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant S3 as NOAA MRMS S3
-    participant ING as ingest-mrms
-    participant POOL as ThreadPool(3)
-    participant FS as tiles PVC
-    participant API as tile-server
-    participant APP as Mobile app
+<img src="docs/diagrams/data-pipeline.svg" width="100%">
 
-    loop every 120 s
-        ING->>S3: ListObjects ?prefix=…QC_00.50
-        S3-->>ING: 12 keys (3 unprocessed)
-        Note over ING: BACKLOG_PER_CYCLE=3<br/>newest-first
-        ING->>S3: GET latest.grib2.gz (~8 MB)
-        S3-->>ING: GRIB2 payload
-        Note over ING: pygrib decode<br/>→ float32 lat×lon grid
-        ING->>FS: write raw grid (.bin)<br/>storm-cell JSON
-
-        par classic palette
-            POOL->>FS: 4 200 PNGs · z4–z9
-        and vivid palette
-            POOL->>FS: 4 200 PNGs · z4–z9
-        and muted palette
-            POOL->>FS: 4 200 PNGs · z4–z9
-        end
-
-        Note over ING: state.add(key)<br/>commit per frame
-    end
-
-    APP->>API: GET /api/manifest.json
-    API-->>APP: { layers, timestamps, palettes }
-    APP->>API: GET /tiles/radar/classic/{ts}/{z}/{x}/{y}.png
-    API-->>APP: 256×256 PNG (Caddy gzip · BILINEAR)
-    Note over APP: MapLibre RasterSource<br/>5-slot frame carousel<br/>rasterFadeDuration: 120 ms
-```
+**Per-frame lifecycle: 2-min MRMS cadence, 3-palette parallel render, atomic publish.** Prose walkthrough: [ARCHITECTURE.md → Life of a radar frame](ARCHITECTURE.md#life-of-a-radar-frame).
 
 Hot-path numbers (post Phase-2 perf work):
 
@@ -173,58 +75,9 @@ Hot-path numbers (post Phase-2 perf work):
 
 ## Frontend architecture
 
-```mermaid
-flowchart LR
-    subgraph Net["🌐 react-query"]
-        Manifest["useManifest()"]
-        Forecast["useForecast()"]
-        Alerts["useAlerts()"]
-        Wind["useWindField()"]
-        Storms["useStormCells()"]
-        Light["useLightning()"]
-        Trop["useTropical()"]
-    end
+<img src="docs/diagrams/frontend-architecture.svg" width="100%">
 
-    subgraph Store["🧠 zustand + mmkv"]
-        WS["useWeatherStore<br/><sub>frames · index · layer<br/>palette · opacity · serverUrl<br/>timelineMode · extrasVisible</sub>"]
-        MMKV[("MMKV<br/>persisted prefs")]
-    end
-
-    subgraph Map["🗺 maplibre composition"]
-        WM["WeatherMap<br/><sub>+ zoom buttons</sub>"]
-        RO["RadarOverlay<br/><sub>5-slot frame carousel</sub>"]
-        WLO["WeatherLayerOverlay"]
-        AP["AlertPolygon"]
-        SC["StormCellsOverlay"]
-        LO["LightningOverlay"]
-        WP["WindParticlesOverlay<br/><sub>Skia worklet</sub>"]
-    end
-
-    subgraph Chrome["📐 chrome"]
-        TL["TimelineBar<br/><sub>past · now · future merged</sub>"]
-        FAB["RadarFABs<br/><sub>Layers · ⚡ · Pin · Style</sub>"]
-        LL["LayerLegendCard<br/><sub>Now / Soon / Later</sub>"]
-        MINI["RadarMiniMap<br/><sub>home tab</sub>"]
-    end
-
-    subgraph OTel["📊 telemetry"]
-        T["telemetry.ts<br/><sub>OTLP/HTTP exporter</sub>"]
-    end
-
-    Manifest --> WS & T
-    Forecast --> WS
-    Alerts --> WS
-    Wind --> WP
-    Storms --> SC
-    Light --> LO
-    Trop --> TL
-    WS <--> MMKV
-
-    WS --> RO & WLO & TL & FAB & LL & MINI
-    WM --- RO & WLO & AP & SC & LO
-
-    T -.OTLP.-> Otel(("otel.vanillax.me"))
-```
+**Hooks → zustand → MapLibre composition, including the 5-slot frame carousel.** Why the carousel exists (and the iOS crash it dodges): [ARCHITECTURE.md → The app](ARCHITECTURE.md#the-app).
 
 **Stack rules**
 
@@ -239,30 +92,12 @@ flowchart LR
 
 You can trace a single tap on the radar tab end-to-end through the mobile span → backend span → ingest log line, all keyed by a shared trace ID.
 
-```mermaid
-flowchart TB
-    APP["📱 mobile app<br/>telemetry.ts"]
-    POD["⚙️ backend pods<br/>shared/logger.py JSON"]
-    KUBE["🛞 kubelet stdout"]
-
-    AGENT["otel-agent (DaemonSet)<br/><sub>opentelemetry/otel-agent-collector</sub>"]
-    GW["otel-gateway × 2<br/><sub>opentelemetry/otel-gateway-collector</sub>"]
-
-    LOKI[("Loki<br/><sub>k8s_namespace_name<br/>k8s_pod_name<br/>service_name</sub>")]
-    TEMPO[("Tempo<br/><sub>traces by trace_id</sub>")]
-    PROM[("Prometheus<br/><sub>radar_ng_* metrics</sub>")]
-    GRAF["Grafana<br/><sub>grafana.vanillax.me</sub>"]
-
-    APP -.OTLP/HTTP.-> GW
-    POD --> KUBE --> AGENT --> GW
-    GW --> LOKI
-    GW --> TEMPO
-    POD -.ServiceMonitor scrape.-> PROM
-
-    LOKI --> GRAF
-    TEMPO --> GRAF
-    PROM --> GRAF
-```
+| signal | path |
+|---|---|
+| mobile traces + logs | `telemetry.ts` → OTLP/HTTP → otel-gateway ×2 → Tempo / Loki |
+| backend logs | `shared/logger.py` JSON → kubelet stdout → otel-agent DaemonSet → otel-gateway → Loki (OTel semconv labels) |
+| backend metrics | tile-server `/api/metrics` → ServiceMonitor scrape → Prometheus |
+| dashboards | Grafana (grafana.vanillax.me) reads all three |
 
 ### What's deployed
 
@@ -373,21 +208,12 @@ Click a span → "Logs for this span" → Loki shows backend lines correlated by
 
 ## Data sources
 
-```mermaid
-flowchart LR
-    subgraph free["free tier · no server"]
-        IEM[IEM NEXRAD<br/><sub>5-min radar tiles</sub>]
-        OMP[Open-Meteo public<br/><sub>10 k req/day</sub>]
-        NWP[NWS public API<br/><sub>active alerts</sub>]
-    end
-    subgraph self["self-hosted tier · this repo"]
-        SH[radar-ng-api<br/><sub>your tile server</sub>]
-    end
-    free --> APP["📱 phone"]
-    self --> APP
-    style free fill:#2a2a2a,stroke:#888
-    style self fill:#1a4d3a,stroke:#52c47a
-```
+The app runs against two interchangeable tiers:
+
+| tier | what serves it | layers |
+|---|---|---|
+| **free** (no server needed) | IEM NEXRAD 5-min radar tiles · Open-Meteo public API (10 k req/day) · NWS public alerts API | radar, forecast, alerts |
+| **self-hosted** (this repo) | your radar-ng tile server | everything in the matrix below |
 
 Switch in **Settings → Data Source**. Both can run side-by-side; the manifest fetch determines which layers are available.
 
@@ -452,24 +278,6 @@ If `mrms_age_s` exceeds `MRMS_MAX_AGE_S` (default 600 s) the status flips to `de
 ## Operations — Talos + Argo
 
 This section documents the **author's** cluster. For running radar-ng on your own Kubernetes, see [docs/kubernetes.md](docs/kubernetes.md).
-
-```mermaid
-flowchart LR
-    DEV["🧑 dev"]
-    GH["github.com/mitchross/<br/>talos-argocd-proxmox"]
-    GITEA["gitea.vanillax.me/<br/>vanillax/radar-ng"]
-    CI["Gitea Actions runner<br/><sub>act_runner-nogpu</sub>"]
-    REG["registry.vanillax.me"]
-    ARGO["ArgoCD<br/><sub>argo.vanillax.me</sub>"]
-    K8S["Talos cluster<br/><sub>radar-ng namespace</sub>"]
-
-    DEV -- code --> GITEA
-    DEV -- manifests --> GH
-    GITEA -- push --> CI --> REG
-    GH -- webhook --> ARGO
-    ARGO -- sync --> K8S
-    REG -- imagePull --> K8S
-```
 
 **Two repos:**
 - `radar-ng` (this repo, Gitea) — `frontend/` Expo app · `backend/` Python services · `temporal/` workflows + worker · `deploy/` compose & k8s · `.gitea/` CI
@@ -596,47 +404,13 @@ radar-ng/
 
 ## Tech stack at a glance
 
-```mermaid
-flowchart LR
-    subgraph FE["📱 frontend"]
-        EX[Expo SDK 56]
-        RN[React Native 0.85]
-        R[React 19.2]
-        ML[MapLibre Native]
-        SK[Shopify Skia]
-        Z[Zustand 5]
-        TQ[TanStack Query 5]
-        OT[OpenTelemetry SDK]
-    end
-    subgraph BE["⚙️ backend"]
-        PY[Python 3.12]
-        PG[pygrib]
-        NP[numpy]
-        PIL[Pillow]
-        FA[FastAPI]
-        CD[Caddy 2]
-    end
-    subgraph INF["☁️ infra"]
-        TLOS[Talos Linux]
-        K8S[Kubernetes 1.35]
-        AC[ArgoCD]
-        LH[Longhorn]
-        GW[Gateway API]
-        CF[Cloudflare]
-    end
-    subgraph OBS["📊 observability"]
-        OTE[OTel Operator + Gateway]
-        TM[Tempo]
-        LK[Loki]
-        PR[Prometheus]
-        GR[Grafana]
-    end
-
-    style FE fill:#1e3a5f,stroke:#4a90e2,color:#fff
-    style BE fill:#1a4d3a,stroke:#52c47a,color:#fff
-    style INF fill:#3a1e4d,stroke:#a456d4,color:#fff
-    style OBS fill:#4a3a1e,stroke:#d4a52e,color:#fff
-```
+| layer | stack |
+|---|---|
+| 📱 frontend | Expo SDK 56 · React Native 0.85 · React 19.2 · MapLibre Native · Shopify Skia · Zustand 5 · TanStack Query 5 · OpenTelemetry SDK |
+| ⚙️ backend | Python 3.12 · pygrib · numpy · Pillow · FastAPI · Caddy 2 |
+| 🎼 orchestration | Temporal (Schedules · workflows · versioned workers) |
+| ☁️ infra | Talos Linux · Kubernetes 1.35 · ArgoCD · Longhorn · Gateway API · Cloudflare |
+| 📊 observability | OTel Operator + Gateway · Tempo · Loki · Prometheus · Grafana |
 
 ---
 

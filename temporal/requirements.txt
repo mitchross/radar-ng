@@ -1,4 +1,4 @@
-temporalio>=1.9.0
+temporalio>=1.22,<2  # worker-deployment versioning GA in 1.22; keep under 2.x
 opentelemetry-api>=1.29.0
 opentelemetry-sdk>=1.29.0
 opentelemetry-exporter-otlp-proto-grpc>=1.29.0

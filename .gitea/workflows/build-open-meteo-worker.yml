@@ -50,6 +50,9 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
+          # No BuildKit provenance/SBOM manifests — nothing consumes them and the
+          # OCI index shape confuses digest tooling on the private registry.
+          provenance: false
           context: .
           file: temporal/open_meteo_worker.Dockerfile
           push: true
