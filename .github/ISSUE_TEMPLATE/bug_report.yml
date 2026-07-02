@@ -1,0 +1,50 @@
+name: Bug report
+description: Something in the pipeline, API, or app isn't working
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for the report! Please fill in what you can.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Mobile app (frontend)
+        - Tile server / API
+        - Ingest / rendering (Temporal worker)
+        - Forecast / open-meteo
+        - Deployment (compose / k8s)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Deployment (compose/k8s), image tags, app platform (iOS/Android), and anything relevant.
+      placeholder: |
+        - Deploy: docker compose / k8s
+        - Image tag(s): v1.x.x
+        - App: iOS 18 / Android 15 / Expo Go
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / output
+      description: Paste `/api/health`, `/api/manifest`, or pod/container logs if applicable.
+      render: shell

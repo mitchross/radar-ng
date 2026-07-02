@@ -1,0 +1,61 @@
+name: ghcr · open-meteo-worker
+
+# Public GHCR mirror of the secondary (open_meteo_sync) worker image. The
+# Gitea workflow still publishes the private copy to registry.vanillax.me.
+# See .github/workflows/ghcr-tile-server.yml for the auth / visibility notes.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'temporal/open_meteo_worker.py'
+      - 'temporal/open_meteo_worker.Dockerfile'
+      - 'temporal/requirements.txt'
+      - 'backend/open_meteo_sync/**'
+      - 'backend/shared/logger.py'
+      - '.github/workflows/ghcr-open-meteo-worker.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional explicit version tag to publish (e.g. v1.2.3)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/radar-ng-open-meteo-worker
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event.inputs.version != '' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          provenance: false
+          context: .
+          file: temporal/open_meteo_worker.Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
