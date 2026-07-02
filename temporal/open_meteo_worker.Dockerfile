@@ -10,7 +10,12 @@
 # This worker polls task_queue=radar-ng-open-meteo. The workflow schedules
 # `open_meteo_sync` on that dedicated queue so the generic worker cannot take it.
 
-FROM ghcr.io/open-meteo/open-meteo:latest
+# Pinned: this worker subprocess-execs /app/openmeteo-api from the base
+# image, so a broken upstream :latest breaks the sync activity silently at
+# build time (1.5.3 shipped missing libparquet-glib — 2026-07-02 outage).
+# Renovate bumps this tag; keep it in lockstep with deployment-open-meteo's
+# serve image in the gitops repo.
+FROM ghcr.io/open-meteo/open-meteo:1.5.2
 
 USER root
 

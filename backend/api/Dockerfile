@@ -5,7 +5,12 @@ FROM caddy:2.10.2 AS caddy
 
 FROM python:3.12-slim
 
-COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
+# The official image sets cap_net_bind_service=ep on the binary and COPY
+# preserves xattrs — under the pod's `capabilities: drop [ALL]` that makes
+# exec fail with EPERM. `install` strips xattrs; we listen on :8080 so the
+# capability is unnecessary anyway.
+COPY --from=caddy /usr/bin/caddy /tmp/caddy-dist
+RUN install -m 0755 /tmp/caddy-dist /usr/bin/caddy && rm /tmp/caddy-dist
 
 WORKDIR /app
 
