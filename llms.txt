@@ -1,0 +1,36 @@
+# radar-ng
+
+> Hyper-local weather radar with a self-hosted tile pipeline: a CARROT-Weather-style Expo mobile app backed by a Python + Temporal ingest/render pipeline on Kubernetes. Pure NOAA data (MRMS / HRRR / NWS / lightning), sub-2-minute radar refresh, rendered on hardware you own — no third-party aggregators, no API keys, no accounts.
+
+radar-ng is a monorepo:
+- `backend/` — Python 3.12 ingest + tile-rendering Temporal activities (MRMS radar, HRRR forecast, lightning, tropical, nowcast, open-meteo sync).
+- `temporal/` — Temporal workflows + workers that orchestrate the pipeline (scheduled via Temporal Schedules, no cron).
+- `frontend/` — Expo SDK 56 / TypeScript universal app (the "Weather Clear" light UI).
+- `deploy/` — Docker Compose golden path + reference Kubernetes manifests.
+
+First-party container images publish to `ghcr.io/mitchross/radar-ng-{tile-server,temporal-worker,open-meteo-worker}`. The live Kubernetes manifests live in a separate gitops repo, `mitchross/talos-argocd-proxmox` (Talos + ArgoCD). The tile-server is Caddy (static tile serving + cache headers + routing) in front of FastAPI/uvicorn.
+
+## Docs
+- [README](https://github.com/mitchross/radar-ng/blob/master/README.md): overview, why it exists, endpoint reference, architecture diagrams.
+- [Getting started](https://github.com/mitchross/radar-ng/blob/master/GETTING_STARTED.md): clone → run the stack (Compose or your own k8s cluster) → run the app.
+- [Architecture](https://github.com/mitchross/radar-ng/blob/master/ARCHITECTURE.md): every component, the per-frame pipeline, Temporal orchestration, frame carousel, caching.
+- [Configuration](https://github.com/mitchross/radar-ng/blob/master/docs/configuration.md): every environment variable, plus the `BASEMAP_PMTILES_URL` gotcha and the k8s self-healing basemap.
+- [Self-hosting (Docker Compose)](https://github.com/mitchross/radar-ng/blob/master/docs/self-hosting.md): the ~10-minute golden path.
+- [Kubernetes](https://github.com/mitchross/radar-ng/blob/master/docs/kubernetes.md): bring-your-own-cluster — Temporal, storage, probes, PVCs, HPA.
+- [Tuning](https://github.com/mitchross/radar-ng/blob/master/docs/tuning.md): make it faster / cheaper / fresher, knob by knob.
+- [Running the app](https://github.com/mitchross/radar-ng/blob/master/docs/running-the-app.md): Expo build, device, CarPlay, Apple Watch.
+- [Releasing](https://github.com/mitchross/radar-ng/blob/master/docs/releasing.md): image tags and release flow.
+- [Contributing](https://github.com/mitchross/radar-ng/blob/master/CONTRIBUTING.md): dev setup, verification, conventions.
+
+## Data sources
+All free, public, no keys:
+- NOAA MRMS — base reflectivity radar (`noaa-mrms-pds` on S3), ~2-minute cadence.
+- NOAA HRRR — high-resolution forecast model (`noaa-hrrr-bdp-pds` on S3).
+- NWS — active weather alerts (`api.weather.gov/alerts/active`).
+- NHC — tropical cyclones (`nhc.noaa.gov/CurrentStorms.json`).
+- Blitzortung — community lightning strike network.
+- Open-Meteo — self-hosted forecast service (point/minutely/daily).
+- Protomaps — vector basemap tiles (`build.protomaps.com`, date-stamped daily builds).
+
+## Optional
+- [talos-argocd-proxmox](https://github.com/mitchross/talos-argocd-proxmox): the gitops repo with the live k8s manifests, ServiceMonitor, and Grafana dashboards for radar-ng.
