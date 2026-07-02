@@ -110,8 +110,14 @@ def _build_manifest() -> dict:
     return read_manifest_file(STATE_DIR)
 
 
+# Endpoint concurrency rule: everything that touches the NFS-backed PVCs is a
+# plain `def` so FastAPI runs it in the threadpool — a hung NFS mount (the
+# documented TrueNAS failure mode) then parks worker threads instead of
+# freezing the event loop. Only /api/forecast (pure httpx) and /api/livez
+# stay `async def`; livez in particular MUST remain on the event loop so the
+# k8s probe keeps answering while disk-bound requests are stuck.
 @app.get("/api/manifest.json")
-async def get_manifest() -> JSONResponse:
+def get_manifest() -> JSONResponse:
     _metrics["manifest_requests_total"] += 1
     now = time.time()
     cached_body = _manifest_cache.get("body")
@@ -165,7 +171,7 @@ async def get_forecast(lat: float, lon: float) -> JSONResponse:
 
 
 @app.get("/api/inspect/{layer}/{timestamp}/{lat}/{lon}")
-async def inspect_point(layer: str, timestamp: str, lat: float, lon: float) -> JSONResponse:
+def inspect_point(layer: str, timestamp: str, lat: float, lon: float) -> JSONResponse:
     """Bilinear-interpolate a single point from a stored Float32 grid.
 
     Ingestors dump downsampled grids to GRID_DIR/{layer}/{timestamp}.bin with
@@ -255,7 +261,7 @@ async def inspect_point(layer: str, timestamp: str, lat: float, lon: float) -> J
 
 
 @app.get("/api/wind-field/{timestamp}")
-async def wind_field(timestamp: str) -> JSONResponse:
+def wind_field(timestamp: str) -> JSONResponse:
     """Return packed U/V wind components for a timestamp, decimated + scaled.
 
     Reads the paired Float32 grids (wind_u + wind_v) dumped by ingest-hrrr,
@@ -357,7 +363,7 @@ async def wind_field(timestamp: str) -> JSONResponse:
 
 
 @app.get("/api/lightning")
-async def lightning() -> JSONResponse:
+def lightning() -> JSONResponse:
     """Return the rolling 15-min GeoJSON FeatureCollection of lightning strikes.
 
     The ingest-lightning container streams from Blitzortung and writes this
@@ -381,7 +387,7 @@ async def lightning() -> JSONResponse:
 
 
 @app.get("/api/storms")
-async def storms() -> JSONResponse:
+def storms() -> JSONResponse:
     """Return the latest storm-cell GeoJSON from ingest-mrms.
 
     Each feature is a point at a storm cell's centroid with properties:
@@ -397,7 +403,7 @@ async def storms() -> JSONResponse:
 
 
 @app.get("/api/tropical")
-async def tropical() -> JSONResponse:
+def tropical() -> JSONResponse:
     """Return the active tropical cyclone GeoJSON from ingest-tropical.
 
     Expect a merged FeatureCollection with one feature per storm (current
@@ -423,12 +429,17 @@ async def livez() -> JSONResponse:
     radar DATA, a condition shared by every replica — wiring it to
     liveness/readiness would restart or drain the whole fleet at once the
     moment NOAA has a slow day.
+
+    Must stay `async def` and must never touch the filesystem: the
+    disk-bound endpoints run in the threadpool, so this stays responsive
+    on the event loop even while every worker thread is parked on a hung
+    NFS mount.
     """
     return JSONResponse({"status": "ok"})
 
 
 @app.get("/api/health")
-async def health() -> JSONResponse:
+def health() -> JSONResponse:
     """Returns 'ok' when MRMS tiles are fresh, 'degraded' when stale."""
     radar_dir = Path(TILE_DIR) / "radar"
     newest = _newest_mtime(radar_dir)
@@ -465,7 +476,7 @@ async def health() -> JSONResponse:
 
 
 @app.get("/api/basemap/style/{name}")
-async def get_basemap_style(name: str, request: Request) -> JSONResponse:
+def get_basemap_style(name: str, request: Request) -> JSONResponse:
     """Return a MapLibre style JSON with absolute tile URLs baked in.
 
     MapLibre Native requires absolute URLs in `sources.*.tiles`. The shipped
@@ -504,7 +515,7 @@ async def get_basemap_style(name: str, request: Request) -> JSONResponse:
 
 
 @app.get("/api/metrics", response_class=PlainTextResponse)
-async def metrics() -> PlainTextResponse:
+def metrics() -> PlainTextResponse:
     """Prometheus text-format metrics."""
     lines: list[str] = []
     tile_base = Path(TILE_DIR)
