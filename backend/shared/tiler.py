@@ -1,6 +1,8 @@
 """Shared tile renderer: numpy array → PNG tiles in XYZ slippy map format."""
 
 import math
+import os
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -208,4 +210,44 @@ def render_tiles(
                 img.save(str(tile_path), "PNG", optimize=False, compress_level=1)
                 count += 1
 
+    return count
+
+
+def render_tiles_atomic(
+    rgba: np.ndarray,
+    lats: np.ndarray,
+    lons: np.ndarray,
+    output_dir: str,
+    zoom_levels: list[int],
+    **kwargs,
+) -> int:
+    """render_tiles, but the pyramid appears atomically at `output_dir`.
+
+    Renders into a sibling `<name>.tmp` directory and renames it into place
+    once complete. A crash mid-render leaves only a `.tmp` dir (the cleanup
+    sweep removes stale ones) — a reader can never observe a partial
+    pyramid, and a manifest entry never points at a half-written frame.
+
+    If `output_dir` already exists (forecast layers re-render the same
+    valid-time path on every model run) it is replaced.
+    """
+    final = Path(output_dir)
+    tmp = final.parent / f"{final.name}.tmp"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        count = render_tiles(
+            rgba=rgba, lats=lats, lons=lons,
+            output_dir=str(tmp), zoom_levels=zoom_levels, **kwargs,
+        )
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    if count == 0:
+        # Fully transparent frame → nothing was written, no dir to publish.
+        shutil.rmtree(tmp, ignore_errors=True)
+        return 0
+    if final.exists():
+        shutil.rmtree(final, ignore_errors=True)
+    os.rename(tmp, final)
     return count

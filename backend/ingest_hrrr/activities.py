@@ -28,7 +28,7 @@ from backend.shared.logger import get_logger
 from backend.shared.manifest import update_manifest_file
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
-from backend.shared.tiler import apply_categorical_color_table, apply_color_table, render_tiles
+from backend.shared.tiler import apply_categorical_color_table, apply_color_table, render_tiles_atomic
 
 
 HRRR_BASE = "https://noaa-hrrr-bdp-pds.s3.amazonaws.com"
@@ -376,7 +376,7 @@ def _write_palette_tiles(tile_base: Path, layer: str, palette: str, ts: str, rgb
         lons = np.flipud(lons)
         source_y = source_y[::-1]
     out_dir = str(tile_base / layer / palette / ts)
-    render_tiles(
+    render_tiles_atomic(
         rgba=rgba,
         lats=lats,
         lons=lons,

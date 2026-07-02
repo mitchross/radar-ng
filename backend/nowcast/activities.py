@@ -24,7 +24,7 @@ from backend.shared.logger import get_logger
 from backend.shared.manifest import replace_layer_manifest
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
-from backend.shared.tiler import apply_color_table, render_tiles
+from backend.shared.tiler import apply_color_table, render_tiles_atomic
 
 
 GRID_DIR = Path(os.environ.get("GRID_DIR", "/data/grids"))
@@ -149,7 +149,7 @@ def _render_frame(tile_base: Path, palette_tables: dict[str, dict], ts: str, dat
             continue
         rgba = apply_color_table(data, entry)
         out_dir = str(tile_base / "nowcast" / pname / ts)
-        render_tiles(rgba=rgba, lats=lats, lons=lons, output_dir=out_dir, zoom_levels=ZOOM_LEVELS)
+        render_tiles_atomic(rgba=rgba, lats=lats, lons=lons, output_dir=out_dir, zoom_levels=ZOOM_LEVELS)
         rendered.append(pname)
     return rendered
 

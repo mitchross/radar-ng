@@ -1,12 +1,11 @@
+# Pinned Caddy — copying the binary from the official image makes builds
+# reproducible (the caddyserver.com download API always serves latest).
+# Renovate picks up this tag like any other image reference.
+FROM caddy:2.10.2 AS caddy
+
 FROM python:3.12-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl \
-    && curl -o /usr/bin/caddy -L "https://caddyserver.com/api/download?os=linux&arch=amd64" \
-    && chmod +x /usr/bin/caddy \
-    && apt-get purge -y curl \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
 
 WORKDIR /app
 

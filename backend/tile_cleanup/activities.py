@@ -67,6 +67,19 @@ def _sweep_layer(layer: str, retention_min: int) -> int:
             candidates.extend(p for p in entry.iterdir() if p.is_dir())
     removed = 0
     for ts_dir in candidates:
+        # Orphaned atomic-render staging dirs ("{ts}.tmp", see
+        # render_tiles_atomic): a live render is seconds old; anything past
+        # an hour is a crash leftover. Swept by mtime — the name's embedded
+        # timestamp is the frame's valid time, which for forecast layers can
+        # legitimately be in the future.
+        if ts_dir.name.endswith(".tmp"):
+            try:
+                if ts_dir.stat().st_mtime < time.time() - 3600:
+                    shutil.rmtree(ts_dir, ignore_errors=True)
+                    removed += 1
+            except OSError:
+                pass
+            continue
         try:
             dt = datetime.fromisoformat(ts_dir.name)
         except ValueError:

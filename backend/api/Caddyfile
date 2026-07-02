@@ -1,11 +1,20 @@
 :8080 {
-    # Radar/forecast tiles
+    # Radar/forecast tiles.
+    # Observed MRMS frames (radar, radar-composite) are written exactly once
+    # per timestamp dir, so they can be cached hard — this is what lets the
+    # app's playback loop replay past frames without re-fetching every tile
+    # each cycle. Forecast layers (nowcast, radar-hrrr, temperature, ...)
+    # rewrite the SAME valid-time path on every model run, so a long TTL
+    # would pin stale predictions; keep those short-lived.
     handle /tiles/* {
         root * /data
         file_server {
             precompressed gzip
         }
-        header Cache-Control "public, max-age=120"
+        @observed path /tiles/radar/* /tiles/radar-composite/*
+        @mutable not path /tiles/radar/* /tiles/radar-composite/*
+        header @observed Cache-Control "public, max-age=86400, immutable"
+        header @mutable Cache-Control "public, max-age=120"
         header Access-Control-Allow-Origin "*"
     }
 

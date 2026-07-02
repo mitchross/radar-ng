@@ -32,7 +32,7 @@ from backend.shared.manifest import update_manifest_file
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
 from backend.shared.storms import write_storms_json
-from backend.shared.tiler import apply_color_table, render_tiles
+from backend.shared.tiler import apply_color_table, render_tiles_atomic
 
 
 MRMS_BASE = "https://noaa-mrms-pds.s3.amazonaws.com"
@@ -206,7 +206,7 @@ def _render_palette(
     if flip:
         rgba = np.flipud(rgba)
     out_dir = str(tile_base / layer_name / pname / timestamp)
-    return render_tiles(rgba=rgba, lats=lats_arr, lons=lons_arr, output_dir=out_dir, zoom_levels=ZOOM_LEVELS)
+    return render_tiles_atomic(rgba=rgba, lats=lats_arr, lons=lons_arr, output_dir=out_dir, zoom_levels=ZOOM_LEVELS)
 
 
 def _state_path(layer_name: str) -> Path:
