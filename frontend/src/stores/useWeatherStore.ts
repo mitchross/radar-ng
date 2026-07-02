@@ -80,8 +80,17 @@ function parseAppearanceMode(value: string): AppearanceMode {
   return value === "light" || value === "dark" ? value : "system";
 }
 
+const DEFAULT_PLACE: SelectedPlace = {
+  id: 4994358,
+  name: "Grand Rapids",
+  latitude: DEFAULTS.LATITUDE,
+  longitude: DEFAULTS.LONGITUDE,
+  admin1: "Michigan",
+  country: "United States",
+};
+
 const initialLocationMode = parseLocationMode(getString("locationMode", "device"));
-const initialSelectedPlace = parseSelectedPlace(getString("selectedPlace", ""));
+const initialSelectedPlace = parseSelectedPlace(getString("selectedPlace", "")) ?? DEFAULT_PLACE;
 const initialResolvedLocationMode: LocationMode =
   initialLocationMode === "city" && initialSelectedPlace ? "city" : "device";
 
@@ -90,8 +99,8 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   currentFrameIndex: -1,
   isPlaying: false,
   playbackSpeed: DEFAULTS.PLAYBACK_FPS,
-  latitude: initialResolvedLocationMode === "city" && initialSelectedPlace ? initialSelectedPlace.latitude : null,
-  longitude: initialResolvedLocationMode === "city" && initialSelectedPlace ? initialSelectedPlace.longitude : null,
+  latitude: initialResolvedLocationMode === "city" && initialSelectedPlace ? initialSelectedPlace.latitude : DEFAULTS.LATITUDE,
+  longitude: initialResolvedLocationMode === "city" && initialSelectedPlace ? initialSelectedPlace.longitude : DEFAULTS.LONGITUDE,
   locationMode: initialResolvedLocationMode,
   selectedPlace: initialSelectedPlace,
   devicePlace: null,

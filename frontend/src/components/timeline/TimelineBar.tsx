@@ -78,6 +78,23 @@ export function TimelineBar() {
     return () => clearInterval(id);
   }, [isPlaying, startIdx, endIdx, frames.length, setCurrentFrameIndex]);
 
+  // Segment boundaries depend only on the frame stream + zoom window, not on the
+  // playback index — memoize so the 420ms tick doesn't re-run three O(n) frame
+  // scans (over the full merged forecast stream) on every single frame. Must
+  // stay above the early return below to satisfy rules-of-hooks.
+  const { nowPct, nowcastPct, hrrrPct } = useMemo(() => {
+    const winLen = Math.max(1, endIdx - startIdx);
+    const toPct = (i: number) => ((i - startIdx) / winLen) * 100;
+    const nowIdx = findClosestIdx(frames, nowSec);
+    const nowcastEndIdx = findClosestIdx(frames, nowSec + NOWCAST_MIN * 60);
+    const hrrrEndIdx = findClosestIdx(frames, nowSec + HRRR_MIN * 60);
+    return {
+      nowPct: clampPct(toPct(nowIdx)),
+      nowcastPct: clampPct(toPct(nowcastEndIdx)),
+      hrrrPct: clampPct(toPct(hrrrEndIdx)),
+    };
+  }, [frames, nowSec, startIdx, endIdx]);
+
   if (frames.length === 0) return null;
 
   const currentFrame = frames[currentFrameIndex];
@@ -89,15 +106,6 @@ export function TimelineBar() {
     hour: "numeric",
     minute: "2-digit",
   });
-
-  const winLen = Math.max(1, endIdx - startIdx);
-  const frameToPct = (i: number) => ((i - startIdx) / winLen) * 100;
-  const nowIdx = findClosestIdx(frames, nowSec);
-  const nowcastEndIdx = findClosestIdx(frames, nowSec + NOWCAST_MIN * 60);
-  const hrrrEndIdx = findClosestIdx(frames, nowSec + HRRR_MIN * 60);
-  const nowPct = clampPct(frameToPct(nowIdx));
-  const nowcastPct = clampPct(frameToPct(nowcastEndIdx));
-  const hrrrPct = clampPct(frameToPct(hrrrEndIdx));
 
   const mode = offsetMin === 0 ? "Now" : offsetMin > 0 ? "Forecast" : "Past";
 

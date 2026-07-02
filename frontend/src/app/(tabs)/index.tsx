@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../../hooks/useForecast";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useLocation } from "../../hooks/useLocation";
-import { activeLocationLabel } from "../../lib/locationLabel";
+import { activeLocationLabel, activeLocationName } from "../../lib/locationLabel";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import {
   CONDITION_GRADIENTS,
@@ -126,6 +126,7 @@ export default function HomeScreen() {
 
   const conditionLabel = CONDITION_LABELS[condition];
   const locationLabel = activeLocationLabel(locationMode, selectedPlace, devicePlace);
+  const locationName = activeLocationName(locationMode, selectedPlace, devicePlace);
 
   // Nowcast banner logic
   const nowcastHeadline = buildNowcastHeadline(forecast.minutely_15);
@@ -157,7 +158,12 @@ export default function HomeScreen() {
   const daily = forecast.daily.time.map((t, i) => {
     const isToday = t === todayLocal;
     return {
-      day: isToday ? "Today" : new Date(t).toLocaleDateString([], { weekday: "short" }),
+      // `t` is a date-only string ("2026-07-03"); `new Date(t)` parses it as UTC
+      // midnight, which renders as the previous day in US timezones. Append a
+      // local time component so the weekday label matches local calendar days.
+      day: isToday
+        ? "Today"
+        : new Date(`${t}T00:00:00`).toLocaleDateString([], { weekday: "short" }),
       icon: getIconKind(forecast.daily.weather_code[i], false),
       hi: Math.round(forecast.daily.temperature_2m_max[i]),
       lo: Math.round(forecast.daily.temperature_2m_min[i]),
@@ -221,7 +227,7 @@ export default function HomeScreen() {
                   numberOfLines={1}
                   style={styles.locationNameText}
                 >
-                  {locationLabel}
+                  {locationName}
                 </Text>
                 <Text style={styles.expandChevron}>{"\u25BE"}</Text>
               </View>

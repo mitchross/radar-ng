@@ -14,3 +14,13 @@ export function activeLocationLabel(
   if (mode === "device" && devicePlace) return formatPlaceLabel(devicePlace);
   return "My Location";
 }
+
+export function activeLocationName(
+  mode: "device" | "city",
+  place: SelectedPlace | null,
+  devicePlace: SelectedPlace | null,
+): string {
+  if (mode === "city" && place) return place.name;
+  if (mode === "device" && devicePlace) return devicePlace.name;
+  return "My Location";
+}

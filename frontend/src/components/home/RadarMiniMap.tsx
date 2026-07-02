@@ -21,7 +21,9 @@ import { DEFAULTS } from "../../lib/constants";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 
-const MINI_ZOOM = 6;
+// City/metro level — matches DEFAULTS.ZOOM. z=6 (~1000 km/tile) framed the
+// whole continent; z=8 (~250 km/tile) actually shows the user's metro.
+const MINI_ZOOM = 8;
 
 function lonLatToTile(lon: number, lat: number, z: number): { x: number; y: number } {
   const n = 2 ** z;

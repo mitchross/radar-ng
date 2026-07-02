@@ -36,4 +36,22 @@
 
 ## Verification status
 
-This document records the pre-change state. Final results, resolved findings, dark-theme validation, Android build evidence, and the iOS simulator limitation will be appended after implementation.
+This document records the pre-change state. Final results are recorded below.
+
+### Final results (post-implementation)
+
+- **TypeScript**: passing (`tsc --noEmit` clean). The baseline `StatWidgets.tsx:73` invalid-transform failure is resolved.
+- **Jest**: 10 suites, 54 tests passing (baseline: 6 suites, 26 tests). Added coverage for the Weather Clear theme, presentation contracts, the store, and location labels.
+- **Lint**: passing (`expo lint`).
+
+### Resolved findings
+
+- Screen colors now flow from `weatherClearTheme` / `WeatherClearThemeProvider` rather than static module constants, so native system appearance propagates (root cause 1). Appearance preference is now selectable in Settings, independent of map style.
+- Newsreader/Spline Sans reference typography is wired through the theme (root cause 2).
+- Shared screen chrome (radar FABs, timeline bar, map style picker) is reconciled to the 44-point target and consolidated (root cause 3).
+- Editorial screen headers use the compact `activeLocationName` (city name only) while Settings and accessibility labels retain the full `activeLocationLabel`.
+- A default place (Grand Rapids) seeds the store so latitude/longitude are never null on first launch, removing the 0°/blank-data first-run state.
+
+### Known limitation
+
+- iOS simulator validation is unavailable on this Linux host; visual validation was performed on the Android emulator (1080 × 2400, 420 dpi). Dark-theme rendering is covered by `weatherClearTheme.test.ts` and the theme provider.

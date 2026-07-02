@@ -9,7 +9,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../hooks/useForecast";
 import { useLocation } from "../hooks/useLocation";
-import { activeLocationLabel } from "../lib/locationLabel";
+import { activeLocationName } from "../lib/locationLabel";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { CONDITION_GRADIENTS, getCumulusCondition, isNightAt } from "../lib/cumulusTheme";
 import {
@@ -124,7 +124,7 @@ export default function NowcastScreen() {
   const totalIn = totalMm / 25.4;
 
   const confidence = estimateConfidence(forecast);
-  const location = activeLocationLabel(locationMode, selectedPlace, devicePlace);
+  const location = activeLocationName(locationMode, selectedPlace, devicePlace);
   const isAdv = viewMode === "advanced";
 
   return (
