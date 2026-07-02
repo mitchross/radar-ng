@@ -20,6 +20,7 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ActivityError
 
 with workflow.unsafe.imports_passed_through():
     from backend.ingest_hrrr.activities import (
@@ -94,16 +95,46 @@ class IngestHrrrWorkflow:
 
         async def process_hour(fhr: int) -> ForecastHourResult:
             async with sem:
-                return await workflow.execute_activity(
-                    hrrr_process_forecast_hour, args=[find.run_id, fhr],
-                    start_to_close_timeout=timedelta(minutes=20),
-                    heartbeat_timeout=timedelta(seconds=180),
-                    retry_policy=_FORECAST_RETRY,
-                )
+                try:
+                    return await workflow.execute_activity(
+                        hrrr_process_forecast_hour, args=[find.run_id, fhr],
+                        start_to_close_timeout=timedelta(minutes=20),
+                        # Total budget across retries + queue wait. Without it,
+                        # 3 × 20-min attempts can pin one run while the SKIP
+                        # overlap policy drops every newer trigger — same
+                        # failure mode fixed in ingest_mrms.
+                        schedule_to_close_timeout=timedelta(minutes=30),
+                        heartbeat_timeout=timedelta(seconds=180),
+                        retry_policy=_FORECAST_RETRY,
+                    )
+                except ActivityError:
+                    # One sick forecast hour must not fail the run and cancel
+                    # its siblings mid-render (asyncio.gather propagates the
+                    # first error). The gap self-heals: the next HRRR run
+                    # (≤1 h away) supersedes this valid time anyway.
+                    workflow.logger.warning(
+                        "HRRR f%02d failed after retries for run %s — continuing without it",
+                        fhr, find.run_id,
+                    )
+                    return ForecastHourResult(fhr=fhr)
 
         results = await asyncio.gather(*(process_hour(fhr) for fhr in range(1, horizon + 1)))
         results = sorted(results, key=lambda r: r.fhr)
         layers_per_hour = [r.rendered_layers for r in results]
+        succeeded = sum(1 for r in results if r.rendered_layers)
+
+        if succeeded == 0:
+            # Every hour failed — genuinely broken run (bad grib, full disk).
+            # Leave it unmarked so the next schedule cycle retries from scratch.
+            workflow.logger.error("HRRR run %s: all %d hours failed; not marking processed", find.run_id, horizon)
+            cleanup = await self._cleanup()
+            return IngestHrrrResult(
+                run_id=find.run_id,
+                skipped_already_processed=False,
+                forecast_hours_processed=0,
+                cleanup=cleanup,
+                layers_per_hour=layers_per_hour,
+            )
 
         await workflow.execute_activity(
             hrrr_mark_processed, find.run_id,
@@ -115,7 +146,7 @@ class IngestHrrrWorkflow:
         return IngestHrrrResult(
             run_id=find.run_id,
             skipped_already_processed=False,
-            forecast_hours_processed=horizon,
+            forecast_hours_processed=succeeded,
             cleanup=cleanup,
             layers_per_hour=layers_per_hour,
         )
