@@ -54,6 +54,7 @@ component breakdown, the per-frame pipeline, and the caching story are in
 | [docs/self-hosting.md](docs/self-hosting.md) | Docker Compose golden path |
 | [docs/kubernetes.md](docs/kubernetes.md) | Bring-your-own-cluster (Temporal, storage, probes) |
 | [docs/tuning.md](docs/tuning.md) | Faster / cheaper / fresher, knob by knob |
+| [docs/debug-harness.md](docs/debug-harness.md) | Inspect a live stack: freshness, latency, Temporal, disk |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How it all fits together |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, verification, conventions |
 
