@@ -35,6 +35,11 @@ class NowcastWorkflow:
         return await workflow.execute_activity(
             nowcast_run,
             start_to_close_timeout=timedelta(minutes=15),
+            # Total budget across retries + queue wait. Without it, 2 attempts
+            # x 15 min could pin this run for ~30 min while OverlapPolicy.SKIP
+            # drops every 2-min trigger — fresher grids supersede this run
+            # anyway, so give up and let the next fire start clean.
+            schedule_to_close_timeout=timedelta(minutes=20),
             # 300s (was 120s): a single leadtime's tile-pyramid render can
             # exceed 120s on NFS, tripping the heartbeat and cancelling the run
             # mid-render so the nowcast layer never publishes. 300s tolerates a

@@ -19,9 +19,11 @@ from temporalio.worker import Worker, WorkerDeploymentConfig, WorkerDeploymentVe
 
 from backend.api.api.storm_watch_activities import (
     compare_radar_frames,
+    delete_push_token,
     detect_storm_change,
     fan_out_push_to_user,
     fetch_nws_active_alerts,
+    mark_alerts_seen,
     persist_push_token,
     signal_matching_storm_watches,
 )
@@ -80,10 +82,12 @@ ALL_ACTIVITIES = [
     tile_cleanup_sweep,
     # storm-watch + alerts + push
     persist_push_token,
+    delete_push_token,
     compare_radar_frames,
     detect_storm_change,
     fan_out_push_to_user,
     fetch_nws_active_alerts,
+    mark_alerts_seen,
     signal_matching_storm_watches,
     send_push_notification,
 ]
