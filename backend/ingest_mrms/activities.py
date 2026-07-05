@@ -365,15 +365,23 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
     else:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    if failed_palettes:
-        # Fail the activity so Temporal retries and the workflow leaves the
-        # frame unmarked. Returning rendered=True here used to (a) advertise a
-        # timestamp with missing/empty pyramids in the manifest — every client
-        # fetch 404s — and (b) mark the frame processed so it was never
-        # retried. The realistic causes (ENOSPC, PIL failure) hit all palettes
-        # at once, so a partial-palette success is not worth salvaging.
+    if failed_palettes and not rendered_palettes:
+        # Every palette failed (ENOSPC, PIL breakage): fail the activity so
+        # Temporal retries and the workflow leaves the frame unmarked.
+        # Returning rendered=True here used to (a) advertise a timestamp with
+        # no pyramids in the manifest — every client fetch 404s — and (b)
+        # mark the frame processed so it was never retried.
         raise RuntimeError(
             f"palette render failed for {inp.layer_name}/{timestamp}: {failed_palettes}"
+        )
+    if failed_palettes:
+        # Partial failure: publish the survivors and keep the layer alive. A
+        # deterministic single-palette bug (bad color-table entry) must not
+        # stall the whole radar layer by failing every frame's activity —
+        # radar liveness beats palette completeness.
+        log.error(
+            "partial_palette_failure",
+            extra={"layer": inp.layer_name, "timestamp": timestamp, "failed": failed_palettes},
         )
 
     duration = time.time() - started

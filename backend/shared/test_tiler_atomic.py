@@ -64,6 +64,35 @@ def test_atomic_render_transparent_frame_publishes_nothing():
         assert not list(out.parent.glob(f"{out.name}*.tmp"))
 
 
+def test_atomic_render_reclaims_stale_staging_siblings():
+    import os
+    import time
+
+    from backend.shared.tiler import render_tiles_atomic
+
+    rgba, lats, lons = _grid()
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "radar" / "classic" / "2026-07-01T12:20:00+00:00"
+        out.parent.mkdir(parents=True)
+        # Orphans from a crashed render: one nonce-style, one legacy fixed-name.
+        stale_nonce = out.parent / f"{out.name}.123-456.tmp"
+        stale_legacy = out.parent / f"{out.name}.tmp"
+        fresh = out.parent / f"{out.name}.789-012.tmp"
+        for d in (stale_nonce, stale_legacy, fresh):
+            d.mkdir()
+        old = time.time() - 3600
+        os.utime(stale_nonce, (old, old))
+        os.utime(stale_legacy, (old, old))
+
+        count = render_tiles_atomic(
+            rgba=rgba, lats=lats, lons=lons, output_dir=str(out), zoom_levels=[4],
+        )
+        assert count > 0
+        assert not stale_nonce.exists()
+        assert not stale_legacy.exists()
+        assert fresh.exists()  # young sibling = possibly a live concurrent render
+
+
 def test_atomic_render_cleans_tmp_on_failure(monkeypatch):
     from backend.shared import tiler
 

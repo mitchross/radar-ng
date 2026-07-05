@@ -18,6 +18,7 @@ Pipeline (at-least-once):
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import timedelta
 
@@ -70,16 +71,13 @@ class PollAlertsWorkflow:
         # silently flip code paths on replay.
         normalized: list[tuple[str, dict]] = [(a.alert_id, a.geometry or {}) for a in fetched.new_alerts]
 
-        signaled = 0
-        handled_ids: list[str] = []
-        failed = 0
-        for alert_id, geometry in normalized:
-            if not geometry:
-                # Zoneless alerts can never match a watch polygon — the
-                # activity would return matched=0 immediately. Nothing to
-                # deliver, so they count as handled.
-                handled_ids.append(alert_id)
-                continue
+        # Zoneless alerts can never match a watch polygon — the activity
+        # would return matched=0 immediately. Nothing to deliver, so they
+        # count as handled without an activity execution.
+        handled_ids: list[str] = [aid for aid, geo in normalized if not geo]
+        to_signal = [(aid, geo) for aid, geo in normalized if geo]
+
+        async def signal_one(alert_id: str, geometry: dict) -> tuple[str, int] | None:
             try:
                 res: SignalWatchesResult = await workflow.execute_activity(
                     signal_matching_storm_watches,
@@ -88,18 +86,31 @@ class PollAlertsWorkflow:
                     retry_policy=_RETRY,
                 )
             except ActivityError:
-                # Leave this alert out of handled_ids: it stays unseen and the
-                # next poll (≤5 min) retries it. Without this isolation, one
-                # bad alert dropped every alert after it in the batch.
+                # This alert stays out of handled_ids: it remains unseen and
+                # the next poll (≤5 min) retries it. Without this isolation,
+                # one bad alert dropped every alert after it in the batch.
                 workflow.logger.warning("signaling failed for alert %s; will retry next poll", alert_id)
+                return None
+            return (alert_id, res.matched)
+
+        # Fan out concurrently: alerts are independent, and sequential
+        # signaling made an outbreak batch (100+ new alerts) — or a few
+        # alerts grinding through the full retry ladder — outlast the 5-min
+        # schedule window while SKIP dropped the next polls. Wall time is now
+        # the slowest single alert; worker slots bound actual concurrency.
+        results = await asyncio.gather(*(signal_one(aid, geo) for aid, geo in to_signal))
+        signaled = 0
+        failed = 0
+        for r in results:
+            if r is None:
                 failed += 1
                 continue
-            signaled += res.matched
-            handled_ids.append(alert_id)
+            handled_ids.append(r[0])
+            signaled += r[1]
 
         await workflow.execute_activity(
             mark_alerts_seen,
-            MarkAlertsSeenInput(handled_ids=handled_ids, active_ids=fetched.active_ids),
+            MarkAlertsSeenInput(handled_ids=handled_ids),
             start_to_close_timeout=timedelta(seconds=30),
             retry_policy=_RETRY,
         )

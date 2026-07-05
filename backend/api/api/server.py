@@ -102,15 +102,6 @@ def _read_nowcast_status() -> dict | None:
     return body if isinstance(body, dict) else None
 
 
-def _is_layer_dirname(name: str) -> bool:
-    # Layer names in this app match [a-z][a-z0-9_-]*. Excludes filesystem
-    # artifacts like ext4's `lost+found` (root:0 mode 700, unreadable by the
-    # non-root container user → would raise PermissionError on iterdir()).
-    return bool(name) and name[0].isalpha() and all(
-        c.isalnum() or c in ("-", "_") for c in name
-    )
-
-
 def _build_manifest() -> dict:
     """Read the pre-rendered manifest body from STATE_DIR/manifest.json."""
     return read_manifest_file(STATE_DIR)
@@ -532,32 +523,16 @@ def metrics() -> PlainTextResponse:
     """Prometheus text-format metrics."""
     lines: list[str] = []
     tile_base = Path(TILE_DIR)
-    layer_counts: dict[str, int] = {}
-    if tile_base.exists():
-        for layer_dir in tile_base.iterdir():
-            # Skip filesystem artifacts like ext4's lost+found — the PVC root
-            # isn't a pure layer-only directory.
-            if not layer_dir.is_dir() or not _is_layer_dirname(layer_dir.name):
-                continue
-            # Layout is {layer}/{palette}/{timestamp} (legacy: {layer}/{ts}).
-            # Counting the layer's immediate children counted PALETTES — a
-            # constant — so any "frames dropping" alert on this gauge was
-            # blind. Count distinct timestamps across palettes instead.
-            stamps: set[str] = set()
-            try:
-                for child in layer_dir.iterdir():
-                    if not child.is_dir() or child.name.endswith(".tmp"):
-                        continue
-                    if child.name[:1].isdigit():  # legacy timestamp dir
-                        stamps.add(child.name)
-                    else:  # palette dir
-                        stamps.update(
-                            p.name for p in child.iterdir()
-                            if p.is_dir() and not p.name.endswith(".tmp")
-                        )
-            except OSError:
-                continue
-            layer_counts[layer_dir.name] = len(stamps)
+    # Frame counts come from the manifest — the same one-small-file read the
+    # manifest endpoint exists for — not a tile-PVC walk per scrape. The old
+    # disk count tallied the layer's immediate children, i.e. PALETTES (a
+    # constant), so any "frames dropping" alert on this gauge was blind.
+    # Manifest counts are what clients can actually see; disk-vs-manifest
+    # drift detection lives in the debug harness (`disk` command).
+    layer_counts: dict[str, int] = {
+        name: len(layer.get("timestamps", []))
+        for name, layer in _build_manifest().get("layers", {}).items()
+    }
 
     for k, v in _metrics.items():
         lines.append(f"# TYPE radar_ng_{k} counter")

@@ -45,7 +45,10 @@ class IngestLightningWorkflow:
             # pin this workflow ~2.5 h while the hourly schedule SKIPs, and
             # the stream occupies a worker activity slot the whole time. A
             # retry only makes sense if the first attempt died early — past
-            # 55 min, let the next hourly fire start a fresh stream.
+            # 55 min, let the next hourly fire start a fresh stream. Killing
+            # a late-starting healthy attempt at the ceiling costs almost
+            # nothing: the activity flushes strikes to lightning.json every
+            # ~2 s while streaming, so only the final seconds are lost.
             schedule_to_close_timeout=timedelta(minutes=55),
             heartbeat_timeout=timedelta(seconds=90),
             retry_policy=_RETRY,

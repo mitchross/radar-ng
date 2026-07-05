@@ -245,6 +245,20 @@ ceilings on nowcast/open-meteo/lightning (part of **H5**; the slot-count /
 task-queue split is still open), **H3** (bounded forecast cache), **M8**
 (tile-timestamps gauge counts frames, not palettes), **H8** (open-meteo
 worker installs pinned requirements.txt), and **H10** (worker `fsGroup`).
+
+A second adversarial review pass over those fixes then hardened them: push
+fan-out failure no longer kills a storm watch; a single bad palette publishes
+survivors instead of stalling the layer; the atomic-replace publish converges
+under concurrent zombie-vs-retry writers and reclaims stale staging dirs
+itself; tile-error `no-store` moved to Caddy's error chain (no per-request
+stat, no stat-then-open race); push-token workflow IDs hash the full token
+(FCM prefix collisions) and register is idempotent under concurrent retries;
+alert signaling fans out in parallel and the active-id set rides a state-file
+snapshot instead of workflow history; nowcast derives its timestep from the
+grids actually fed to pysteps. Known accepted limitations: manifest palettes
+are a layer-level union (a palette that skipped one transparent frame is
+still advertised for it — harmless now that misses are `no-store`), and
+register/delete for the same token within the same instant are unordered.
 Everything else above remains open.
 
 ## Suggested fix order

@@ -11,23 +11,10 @@
         file_server {
             precompressed gzip
         }
-        # Cache headers only when the tile actually exists — the `header`
-        # directive runs before file_server, so without the `file` matcher a
-        # 404 goes out carrying max-age=86400+immutable and a client (or any
-        # cache on the path) pins the miss: an observed frame requested
-        # slightly early would never render on that client for a day.
-        @observed {
-            path /tiles/radar/* /tiles/radar-composite/*
-            file
-        }
-        @mutable {
-            not path /tiles/radar/* /tiles/radar-composite/*
-            file
-        }
-        @missing not file
+        @observed path /tiles/radar/* /tiles/radar-composite/*
+        @mutable not path /tiles/radar/* /tiles/radar-composite/*
         header @observed Cache-Control "public, max-age=86400, immutable"
         header @mutable Cache-Control "public, max-age=120"
-        header @missing Cache-Control "no-store"
         header Access-Control-Allow-Origin "*"
     }
 
@@ -64,6 +51,19 @@
     handle /v1/* {
         reverse_proxy 127.0.0.1:8000
         header Access-Control-Allow-Origin "*"
+    }
+
+    # Errors must never carry a cacheable Cache-Control. The header
+    # directives above run BEFORE file_server, so a tile 404 would otherwise
+    # ship with max-age=86400+immutable and the client (or any cache on the
+    # path) pins the miss — an observed frame requested slightly early would
+    # never render on that client for a day. Overriding in the error chain
+    # (rather than a `file` matcher on the header directives) costs no extra
+    # stat per request and also covers the stat-then-open race while a frame
+    # is being atomically replaced.
+    handle_errors {
+        header Cache-Control "no-store"
+        respond "{err.status_code} {err.status_text}" {err.status_code}
     }
 
     log {

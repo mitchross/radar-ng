@@ -87,14 +87,17 @@ def check_disk() -> list[Check]:
 
         for layer, palettes in disk_layers.items():
             counts = {p: len(s) for p, s in palettes.items()}
-            # Palettes of one layer are rendered from the same grid in the same
-            # activity — a lopsided count means partial palette failures.
+            # Palettes of one layer render from the same grid in the same
+            # activity — a lopsided count usually means partial palette
+            # failures, though palettes with different minimum thresholds
+            # legitimately skip fully-transparent frames the others keep.
             lopsided = len(set(counts.values())) > 1
             checks.append(Check(
                 f"disk.tiles.{layer}",
                 WARN if lopsided else OK,
                 f"frames per palette: {counts}"
-                + (" — uneven counts mean some palette renders failed" if lopsided else ""),
+                + (" — uneven counts: palette render failures, or palettes with"
+                   " different transparency thresholds" if lopsided else ""),
                 {"counts": counts},
             ))
 

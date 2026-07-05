@@ -201,6 +201,14 @@ async def fan_out_push_to_user(inp: FanOutPushInput) -> FanOutPushResult:
 
 
 _ALERT_STATE_PATH = STATE_DIR / "alerts_seen.json"
+# Snapshot of every currently-active alert id, written by fetch and read by
+# mark_alerts_seen for expiry pruning. Handed off via the state volume, not
+# workflow history: NWS holds 1000+ active alerts with ~100-char URN ids
+# during an outbreak, and round-tripping that through history twice per
+# 5-minute poll writes tens of MB/day into Temporal's DB for nothing.
+# Safe because the poll schedule uses OverlapPolicy.SKIP — runs never
+# overlap, so the snapshot mark reads is always its own run's fetch.
+_ACTIVE_SNAPSHOT_PATH = STATE_DIR / "alerts_active_snapshot.json"
 
 
 @dataclass
@@ -214,9 +222,6 @@ class FetchAlertsResult:
     alert_count: int
     new_alert_ids: list[str] = field(default_factory=list)
     new_alerts: list[AlertForSignal] = field(default_factory=list)
-    # Every currently-active id — the workflow hands this back to
-    # mark_alerts_seen so expiry pruning can happen after signaling.
-    active_ids: list[str] = field(default_factory=list)
 
 
 def _load_seen() -> set[str]:
@@ -288,20 +293,46 @@ async def fetch_nws_active_alerts() -> FetchAlertsResult:
             if aid not in seen:
                 new_ids.append(aid)
                 new_alerts.append(alert)
+        try:
+            _write_active_snapshot(active)
+        except OSError as exc:
+            # Non-fatal: mark_alerts_seen falls back to no-prune when the
+            # snapshot is missing/stale, which only delays expiry trimming.
+            log.warning("active_snapshot_write_failed", extra={"err": str(exc)})
         return FetchAlertsResult(
             alert_count=len(features),
             new_alert_ids=new_ids,
             new_alerts=new_alerts,
-            active_ids=sorted(active),
         )
 
     return await asyncio.to_thread(_go)
 
 
+def _write_active_snapshot(active: set[str]) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=".alerts-active.", suffix=".tmp", dir=str(STATE_DIR))
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(sorted(active), fh)
+        os.replace(tmp_name, _ACTIVE_SNAPSHOT_PATH)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+
+def _load_active_snapshot() -> set[str] | None:
+    try:
+        body = json.loads(_ACTIVE_SNAPSHOT_PATH.read_text())
+        return {str(x) for x in body} if isinstance(body, list) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 @dataclass
 class MarkAlertsSeenInput:
     handled_ids: list[str] = field(default_factory=list)
-    active_ids: list[str] = field(default_factory=list)
 
 
 @activity.defn(name="mark_alerts_seen")
@@ -312,13 +343,19 @@ async def mark_alerts_seen(inp: MarkAlertsSeenInput) -> None:
     run (or that had no geometry to match); alerts whose signal activity
     exhausted its retries are deliberately left out, so the next 5-min poll
     re-diffs them as new and retries. Idempotent — safe under activity retry.
+    The active set comes from the snapshot fetch wrote this run; if it is
+    unavailable we skip expiry pruning rather than forgetting seen alerts.
     """
     def _go() -> None:
         seen = _load_seen()
-        active = set(inp.active_ids)
+        handled = set(inp.handled_ids)
+        active = _load_active_snapshot()
+        if active is None:
+            _save_seen(seen | handled, set())
+            return
         # Ids that stayed active keep their seen bit; handled ids gain one;
         # everything else in the old file has expired and only fills the cap.
-        _save_seen((seen & active) | set(inp.handled_ids), seen - active)
+        _save_seen((seen & active) | handled, seen - active)
 
     await asyncio.to_thread(_go)
 

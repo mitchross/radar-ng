@@ -241,6 +241,7 @@ def render_tiles_atomic(
     final = Path(output_dir)
     nonce = f"{os.getpid()}-{time.monotonic_ns()}"
     tmp = final.parent / f"{final.name}.{nonce}.tmp"
+    _reclaim_stale_siblings(final)
     try:
         count = render_tiles(
             rgba=rgba, lats=lats, lons=lons,
@@ -253,18 +254,58 @@ def render_tiles_atomic(
         # Fully transparent frame → nothing was written, no dir to publish.
         shutil.rmtree(tmp, ignore_errors=True)
         return 0
+
+    # Publish. POSIX rename won't replace a non-empty dir, so replacement is
+    # two renames: move the live pyramid aside, promote the new one, delete
+    # the old. The reader-visible gap is the instant between the renames.
+    # Two writers CAN race here (a cancelled attempt's uncancellable render
+    # thread finishing alongside its retry): every failure path below
+    # converges on "exactly one complete pyramid at `final`, ours or theirs,
+    # and no staging dirs left behind" — both writers rendered the same frame
+    # from the same grid, so keeping either result is correct.
+    old: Path | None = None
     if final.exists():
-        # POSIX rename won't replace a non-empty dir, so swap in two renames:
-        # move the live pyramid aside, promote the new one, delete the old.
-        # The reader-visible gap is the instant between the two renames.
         old = final.parent / f"{final.name}.{nonce}.old.tmp"
-        os.rename(final, old)
         try:
-            os.rename(tmp, final)
-        except BaseException:
-            os.rename(old, final)  # restore the previous pyramid
-            raise
-        shutil.rmtree(old, ignore_errors=True)
-    else:
+            os.rename(final, old)
+        except FileNotFoundError:
+            old = None  # concurrent writer moved it aside first
+    try:
         os.rename(tmp, final)
+    except OSError:
+        shutil.rmtree(tmp, ignore_errors=True)
+        if not final.exists() and old is not None:
+            # Promotion failed for a reason other than losing the race
+            # (final is absent) — put the previous pyramid back.
+            os.rename(old, final)
+            old = None
+    if old is not None:
+        shutil.rmtree(old, ignore_errors=True)
     return count
+
+
+# A staging dir this old is an orphan from a crashed or cancelled render —
+# live renders finish in minutes. Reclaiming here (in addition to the hourly
+# cleanup sweep) restores the self-healing the old fixed `<name>.tmp` naming
+# had: repeated crash loops on one frame reuse the space instead of leaking
+# one multi-thousand-PNG pyramid per attempt until the sweep runs.
+_STALE_STAGING_AGE_S = 30 * 60
+
+
+def _reclaim_stale_siblings(final: Path) -> None:
+    if not final.parent.is_dir():
+        return
+    now = time.time()
+    for sibling in final.parent.glob(f"{final.name}.*.tmp"):
+        try:
+            if now - sibling.stat().st_mtime > _STALE_STAGING_AGE_S:
+                shutil.rmtree(sibling, ignore_errors=True)
+        except OSError:
+            continue
+    # Legacy fixed-name staging dirs from the pre-nonce naming scheme.
+    legacy = final.parent / f"{final.name}.tmp"
+    try:
+        if legacy.is_dir() and now - legacy.stat().st_mtime > _STALE_STAGING_AGE_S:
+            shutil.rmtree(legacy, ignore_errors=True)
+    except OSError:
+        pass

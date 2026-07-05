@@ -86,17 +86,22 @@ def _persistence_fallback(frames: list[np.ndarray], n_leadtimes: int) -> np.ndar
     return out
 
 
-def _input_interval_min(metas: list[Path]) -> float:
-    """Actual cadence of the input grids, from their timestamp filenames.
+def _input_interval_min(used_stamps: list[str]) -> float:
+    """Actual cadence of the grids FED TO pysteps, from their timestamps.
 
     pysteps extrapolates in units of the INPUT time step — MRMS grids arrive
     every ~2 min, not every STEP_MIN. Labeling step i as +(i+1)*STEP_MIN while
     extrapolating i input-steps made every published leadtime ~2.5x too far
     out: storms played back at ~40% of their real speed and the "+60 min"
     frame was really a +24 min extrapolation.
+
+    Measured over the grids that survived load/shape filtering (not the raw
+    meta listing): a dropped frame widens the effective final step, and using
+    the on-disk cadence would mislabel exactly like the bug this fixes. The
+    last gap is what the extrapolation step inherits under S-PROG's AR fit.
     """
     try:
-        stamps = [datetime.fromisoformat(p.name.replace(".meta.json", "")) for p in metas[-2:]]
+        stamps = [datetime.fromisoformat(s) for s in used_stamps[-2:]]
         interval = (stamps[1] - stamps[0]).total_seconds() / 60.0
     except (ValueError, IndexError):
         return 2.0
@@ -183,19 +188,22 @@ async def nowcast_run() -> NowcastResult:
     requires a running asyncio loop, which is not the case from threads."""
     started = time.time()
 
-    def _setup() -> tuple[bool, str | None, list[np.ndarray], dict, float]:
+    def _setup() -> tuple[bool, str | None, str | None, list[np.ndarray], dict, float]:
         TILE_DIR.mkdir(parents=True, exist_ok=True)
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         metas = _list_recent_grids()
         if len(metas) < 2:
             log.info("waiting_for_grids", extra={"count": len(metas)})
-            return (False, None, [], {}, 2.0)
+            return (False, None, None, [], {}, 2.0)
+        # ProcessedSet keys on the newest LISTED grid (so a torn newest grid
+        # doesn't rerun forever), but leadtime labels anchor on the newest
+        # grid actually FED to pysteps — extrapolation starts from that frame.
         latest_iso = metas[-1].name.replace(".meta.json", "")
-        interval_min = _input_interval_min(metas)
         state = ProcessedSet(STATE_DIR / "nowcast.json", max_entries=100)
         if latest_iso in state:
-            return (False, latest_iso, [], {}, interval_min)
+            return (False, latest_iso, None, [], {}, 2.0)
         grids: list[np.ndarray] = []
+        stamps: list[str] = []
         meta_used: dict = {}
         for p in metas:
             loaded = _load_grid(p)
@@ -203,17 +211,19 @@ async def nowcast_run() -> NowcastResult:
                 continue
             arr, _, _, meta = loaded
             grids.append(arr)
+            stamps.append(p.name.replace(".meta.json", ""))
             meta_used = meta
         if len(grids) < 2:
-            return (False, latest_iso, [], {}, interval_min)
+            return (False, latest_iso, None, [], {}, 2.0)
         target_shape = grids[-1].shape
+        stamps = [s for g, s in zip(grids, stamps) if g.shape == target_shape]
         grids = [g for g in grids if g.shape == target_shape]
         if len(grids) < 2:
-            return (False, latest_iso, [], {}, interval_min)
-        return (True, latest_iso, grids, meta_used, interval_min)
+            return (False, latest_iso, None, [], {}, 2.0)
+        return (True, latest_iso, stamps[-1], grids, meta_used, _input_interval_min(stamps))
 
-    ok, latest_iso, grids, meta_used, interval_min = await asyncio.to_thread(_setup)
-    if not ok:
+    ok, latest_iso, anchor_iso, grids, meta_used, interval_min = await asyncio.to_thread(_setup)
+    if not ok or anchor_iso is None:
         return NowcastResult(ran=False, anchor_ts=latest_iso)
 
     # Published leadtimes stay on the STEP_MIN grid (12 frames for a 60-min
@@ -234,7 +244,7 @@ async def nowcast_run() -> NowcastResult:
         return NowcastResult(ran=False, anchor_ts=latest_iso)
 
     try:
-        latest_dt = datetime.fromisoformat(latest_iso)
+        anchor_dt = datetime.fromisoformat(anchor_iso)
     except ValueError:
         return NowcastResult(ran=False, anchor_ts=latest_iso)
 
@@ -258,7 +268,7 @@ async def nowcast_run() -> NowcastResult:
     rendered_timestamps: list[str] = []
 
     for i in range(n_lead):
-        valid = latest_dt + timedelta(minutes=lead_minutes[i])
+        valid = anchor_dt + timedelta(minutes=lead_minutes[i])
         ts = valid.isoformat()
         frame = forecast[i]
         frame = np.where(frame < 5, -9999.0, frame)

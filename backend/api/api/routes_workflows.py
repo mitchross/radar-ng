@@ -7,6 +7,7 @@ directly (auth, port exposure, RN gRPC pain — see design spec §4).
 
 from __future__ import annotations
 
+import hashlib
 import os
 from typing import Any, Literal, NoReturn
 
@@ -72,17 +73,29 @@ def _state_value(state: Any, key: str, default: Any = None) -> Any:
 # ---------- push tokens ----------
 
 
+def _token_wfid(prefix: str, token: str) -> str:
+    # Hash rather than truncate: FCM tokens share long structural prefixes
+    # (same app instance, rotated tokens), so `token[:32]` collided two
+    # distinct tokens onto one workflow ID — and a swallowed
+    # WorkflowAlreadyStartedError then silently dropped the second operation.
+    return f"{prefix}:{hashlib.sha256(token.encode()).hexdigest()[:32]}"
+
+
 @router.post("/push-tokens", response_model=WorkflowStartedResponse)
 async def register_push_token(body: RegisterPushTokenBody) -> WorkflowStartedResponse:
     client = await get_client()
+    wfid = _token_wfid("register-push", body.token)
     try:
         handle = await client.start_workflow(
             "RegisterPushTokenWorkflow",
             {"user_id": body.user_id, "token": body.token, "platform": body.platform},
-            id=f"register-push:{body.token[:32]}",
+            id=wfid,
             task_queue=TASK_QUEUE,
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
         )
+    except WorkflowAlreadyStartedError:
+        # Same token registering concurrently (app retry) — idempotent.
+        return WorkflowStartedResponse(workflow_id=wfid, run_id="")
     except RPCError as e:
         await _temporal_unreachable(e)
     return WorkflowStartedResponse(workflow_id=handle.id, run_id=handle.first_execution_run_id or "")
@@ -94,7 +107,10 @@ async def delete_push_token(token: str) -> None:
     # mounts STATE_DIR read-only, so writing push_tokens.sqlite here always
     # failed with a read-only-database 500 — and the old direct call was
     # sync sqlite on the event loop, which a hung NFS mount could park,
-    # freezing /api/livez (the k8s probe) with it.
+    # freezing /api/livez (the k8s probe) with it. The 204 therefore means
+    # "deletion accepted", not "row gone" — a register racing a delete for
+    # the same token within the same second is unordered (same as the old
+    # code's register-retry race).
     if len(token) > 512:
         raise HTTPException(422, "token too long")
     client = await get_client()
@@ -102,12 +118,12 @@ async def delete_push_token(token: str) -> None:
         await client.start_workflow(
             "DeletePushTokenWorkflow",
             token,
-            id=f"delete-push:{token[:32]}",
+            id=_token_wfid("delete-push", token),
             task_queue=TASK_QUEUE,
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
         )
     except WorkflowAlreadyStartedError:
-        pass  # same token already being deleted — idempotent
+        pass  # this exact token already being deleted (hashed id) — idempotent
     except RPCError as e:
         await _temporal_unreachable(e)
 
