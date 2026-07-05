@@ -56,6 +56,12 @@ if os.environ.get("DISABLE_WORKFLOW_ROUTES") != "1":
     app.include_router(workflows_router)
 
 _forecast_cache: dict[str, tuple[float, dict]] = {}
+# Hard cap on cached cells. The key space is every 0.1° cell on Earth
+# (~6.5M) x tens-of-kB responses, and this endpoint is unauthenticated —
+# without a bound, a coordinate sweep grows the dict until the OOM killer
+# takes down /api/* and /v1/* for everyone. 1024 cells ≈ every metro a
+# realistic user base queries, at worst a few hundred MB.
+_FORECAST_CACHE_MAX = int(os.environ.get("FORECAST_CACHE_MAX_ENTRIES", "1024"))
 # Manifest in-memory cache. The source of truth is STATE_DIR/manifest.json,
 # maintained by ingest/cleanup activities, so a cold API hit only reads one
 # small JSON file instead of crawling the tile PVC.
@@ -137,9 +143,12 @@ async def get_forecast(lat: float, lon: float) -> JSONResponse:
     cache_key = f"{grid_lat},{grid_lon}"
 
     cached = _forecast_cache.get(cache_key)
-    if cached and time.time() - cached[0] < FORECAST_TTL:
-        _metrics["forecast_cache_hits_total"] += 1
-        return _cached(cached[1], max_age=300)
+    if cached:
+        if time.time() - cached[0] < FORECAST_TTL:
+            _metrics["forecast_cache_hits_total"] += 1
+            return _cached(cached[1], max_age=300)
+        # Expired — remove now instead of letting dead entries accumulate.
+        _forecast_cache.pop(cache_key, None)
 
     params = {
         "latitude": str(grid_lat),
@@ -167,6 +176,10 @@ async def get_forecast(lat: float, lon: float) -> JSONResponse:
         )
 
     _forecast_cache[cache_key] = (time.time(), data)
+    # FIFO eviction (dicts iterate in insertion order) — cheap and good
+    # enough at TTL=15min; real hot cells are re-inserted on expiry anyway.
+    while len(_forecast_cache) > _FORECAST_CACHE_MAX:
+        _forecast_cache.pop(next(iter(_forecast_cache)), None)
     return _cached(data, max_age=300)
 
 
@@ -526,9 +539,25 @@ def metrics() -> PlainTextResponse:
             # isn't a pure layer-only directory.
             if not layer_dir.is_dir() or not _is_layer_dirname(layer_dir.name):
                 continue
-            layer_counts[layer_dir.name] = sum(
-                1 for p in layer_dir.iterdir() if p.is_dir()
-            )
+            # Layout is {layer}/{palette}/{timestamp} (legacy: {layer}/{ts}).
+            # Counting the layer's immediate children counted PALETTES — a
+            # constant — so any "frames dropping" alert on this gauge was
+            # blind. Count distinct timestamps across palettes instead.
+            stamps: set[str] = set()
+            try:
+                for child in layer_dir.iterdir():
+                    if not child.is_dir() or child.name.endswith(".tmp"):
+                        continue
+                    if child.name[:1].isdigit():  # legacy timestamp dir
+                        stamps.add(child.name)
+                    else:  # palette dir
+                        stamps.update(
+                            p.name for p in child.iterdir()
+                            if p.is_dir() and not p.name.endswith(".tmp")
+                        )
+            except OSError:
+                continue
+            layer_counts[layer_dir.name] = len(stamps)
 
     for k, v in _metrics.items():
         lines.append(f"# TYPE radar_ng_{k} counter")

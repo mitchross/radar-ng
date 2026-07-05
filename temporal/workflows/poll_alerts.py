@@ -4,10 +4,16 @@ Replaces the mobile-only NWS poll: by running it server-side we can push
 severe alerts to phones that are backgrounded or asleep. Schedule fires
 every 5 minutes, OverlapPolicy.SKIP.
 
-Pipeline:
+Pipeline (at-least-once):
   1. fetch_nws_active_alerts — diff vs last seen, return new alert geometry
+     (read-only: it does NOT commit the seen set)
   2. for each new alert: signal_matching_storm_watches → fans out
-     `alertMatchSignal` to matching running WatchStormWorkflow instances
+     `alertMatchSignal` to matching running WatchStormWorkflow instances;
+     a per-alert failure is isolated so the rest of the batch still delivers
+  3. mark_alerts_seen — commit only the alerts that were handled; failed
+     ones stay unseen and are retried by the next poll (duplicate signals
+     are possible after a partial failure — for severe weather that is the
+     right trade against a silently dropped alert)
 """
 
 from __future__ import annotations
@@ -17,13 +23,16 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ActivityError
 
 with workflow.unsafe.imports_passed_through():
     from backend.api.api.storm_watch_activities import (
         FetchAlertsResult,
+        MarkAlertsSeenInput,
         SignalWatchesInput,
         SignalWatchesResult,
         fetch_nws_active_alerts,
+        mark_alerts_seen,
         signal_matching_storm_watches,
     )
 
@@ -41,6 +50,7 @@ class PollAlertsResult:
     total: int
     new: int
     signaled_watches: int = 0
+    failed_alerts: int = 0
     new_ids: list[str] = field(default_factory=list)
 
 
@@ -61,23 +71,43 @@ class PollAlertsWorkflow:
         normalized: list[tuple[str, dict]] = [(a.alert_id, a.geometry or {}) for a in fetched.new_alerts]
 
         signaled = 0
+        handled_ids: list[str] = []
+        failed = 0
         for alert_id, geometry in normalized:
             if not geometry:
                 # Zoneless alerts can never match a watch polygon — the
-                # activity would return matched=0 immediately. Skipping here
-                # saves an activity execution per alert.
+                # activity would return matched=0 immediately. Nothing to
+                # deliver, so they count as handled.
+                handled_ids.append(alert_id)
                 continue
-            res: SignalWatchesResult = await workflow.execute_activity(
-                signal_matching_storm_watches,
-                SignalWatchesInput(alert_id=alert_id, geometry=geometry),
-                start_to_close_timeout=timedelta(seconds=60),
-                retry_policy=_RETRY,
-            )
+            try:
+                res: SignalWatchesResult = await workflow.execute_activity(
+                    signal_matching_storm_watches,
+                    SignalWatchesInput(alert_id=alert_id, geometry=geometry),
+                    start_to_close_timeout=timedelta(seconds=60),
+                    retry_policy=_RETRY,
+                )
+            except ActivityError:
+                # Leave this alert out of handled_ids: it stays unseen and the
+                # next poll (≤5 min) retries it. Without this isolation, one
+                # bad alert dropped every alert after it in the batch.
+                workflow.logger.warning("signaling failed for alert %s; will retry next poll", alert_id)
+                failed += 1
+                continue
             signaled += res.matched
+            handled_ids.append(alert_id)
+
+        await workflow.execute_activity(
+            mark_alerts_seen,
+            MarkAlertsSeenInput(handled_ids=handled_ids, active_ids=fetched.active_ids),
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=_RETRY,
+        )
 
         return PollAlertsResult(
             total=fetched.alert_count,
             new=len(fetched.new_alert_ids),
             signaled_watches=signaled,
+            failed_alerts=failed,
             new_ids=fetched.new_alert_ids,
         )

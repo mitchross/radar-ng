@@ -11,10 +11,23 @@
         file_server {
             precompressed gzip
         }
-        @observed path /tiles/radar/* /tiles/radar-composite/*
-        @mutable not path /tiles/radar/* /tiles/radar-composite/*
+        # Cache headers only when the tile actually exists — the `header`
+        # directive runs before file_server, so without the `file` matcher a
+        # 404 goes out carrying max-age=86400+immutable and a client (or any
+        # cache on the path) pins the miss: an observed frame requested
+        # slightly early would never render on that client for a day.
+        @observed {
+            path /tiles/radar/* /tiles/radar-composite/*
+            file
+        }
+        @mutable {
+            not path /tiles/radar/* /tiles/radar-composite/*
+            file
+        }
+        @missing not file
         header @observed Cache-Control "public, max-age=86400, immutable"
         header @mutable Cache-Control "public, max-age=120"
+        header @missing Cache-Control "no-store"
         header Access-Control-Allow-Origin "*"
     }
 

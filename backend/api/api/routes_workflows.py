@@ -17,7 +17,6 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
 from backend.api.api.temporal_client import get_client, reset_client
-from backend.shared.push_tokens import delete_by_token
 
 
 TASK_QUEUE = os.environ.get("TEMPORAL_TASK_QUEUE", "radar-ng")
@@ -91,7 +90,26 @@ async def register_push_token(body: RegisterPushTokenBody) -> WorkflowStartedRes
 
 @router.delete("/push-tokens/{token}", status_code=204)
 async def delete_push_token(token: str) -> None:
-    delete_by_token(token)
+    # Deletion goes through the worker like registration does: the API pod
+    # mounts STATE_DIR read-only, so writing push_tokens.sqlite here always
+    # failed with a read-only-database 500 — and the old direct call was
+    # sync sqlite on the event loop, which a hung NFS mount could park,
+    # freezing /api/livez (the k8s probe) with it.
+    if len(token) > 512:
+        raise HTTPException(422, "token too long")
+    client = await get_client()
+    try:
+        await client.start_workflow(
+            "DeletePushTokenWorkflow",
+            token,
+            id=f"delete-push:{token[:32]}",
+            task_queue=TASK_QUEUE,
+            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+        )
+    except WorkflowAlreadyStartedError:
+        pass  # same token already being deleted — idempotent
+    except RPCError as e:
+        await _temporal_unreachable(e)
 
 
 # ---------- watches ----------

@@ -229,12 +229,23 @@ into configmap/code fallbacks.
 
 ## What got fixed in this pass
 
-Nothing — this branch adds the review + the debug harness only
-(`tools/debug_harness/`, `docs/debug-harness.md`). The harness was pointed at
-the failure modes above deliberately: manifest/disk drift (C1), forecast
-horizon collapse (C2's symptom), cache-header contract (H1), schedule
-pause/stall/failure visibility (H5/H6), leaked tmp dirs (H7), and cold-client
-playback budget (the carousel-that-isn't).
+The debug harness (`tools/debug_harness/`, `docs/debug-harness.md`) plus the
+top of the fix order below: **C5** (at-least-once alert delivery — seen-set
+committed after signaling, per-alert failure isolation, push fan-out fails on
+total failure), **C1** (tile counts gate manifest adds in MRMS/HRRR/nowcast;
+all-palette failure now fails the activity instead of publishing a ghost
+frame), **H1** (Caddy serves `no-store` on tile 404s; `render_tiles_atomic`
+replaces via rename-aside with unique per-attempt staging dirs), **C2**
+(nowcast passes fractional pysteps timesteps derived from the real input
+cadence, so leadtime labels match the extrapolation), **H2** (push-token
+delete goes through a `DeletePushTokenWorkflow` on the worker — the API pod's
+state mount stays read-only and the event loop stays clean), **H6** (schedule
+reseed preserves paused state + note), the missing `schedule_to_close`
+ceilings on nowcast/open-meteo/lightning (part of **H5**; the slot-count /
+task-queue split is still open), **H3** (bounded forecast cache), **M8**
+(tile-timestamps gauge counts frames, not palettes), **H8** (open-meteo
+worker installs pinned requirements.txt), and **H10** (worker `fsGroup`).
+Everything else above remains open.
 
 ## Suggested fix order
 

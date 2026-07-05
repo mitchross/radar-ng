@@ -41,6 +41,12 @@ class IngestLightningWorkflow:
         return await workflow.execute_activity(
             lightning_consume_stream, RUN_DURATION_S,
             start_to_close_timeout=timedelta(seconds=RUN_DURATION_S + 60),
+            # Total budget across retries: without it, 3 x ~51-min attempts
+            # pin this workflow ~2.5 h while the hourly schedule SKIPs, and
+            # the stream occupies a worker activity slot the whole time. A
+            # retry only makes sense if the first attempt died early — past
+            # 55 min, let the next hourly fire start a fresh stream.
+            schedule_to_close_timeout=timedelta(minutes=55),
             heartbeat_timeout=timedelta(seconds=90),
             retry_policy=_RETRY,
         )

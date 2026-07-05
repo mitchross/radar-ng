@@ -45,6 +45,12 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
+        # Without fsGroup a freshly provisioned PVC is root:root 755 and the
+        # first ingest write dies with PermissionError — the pipeline is down
+        # until someone chowns the volumes by hand. (Matches the open-meteo
+        # worker deployment, which already sets this for the same reason.)
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
       containers:

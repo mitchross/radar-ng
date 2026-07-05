@@ -26,7 +26,7 @@ def test_atomic_render_publishes_final_dir_without_tmp_leftover():
         )
         assert count > 0
         assert out.is_dir()
-        assert not (out.parent / f"{out.name}.tmp").exists()
+        assert not list(out.parent.glob(f"{out.name}*.tmp"))
         assert list(out.glob("*/*/*.png"))
 
 
@@ -44,6 +44,8 @@ def test_atomic_render_replaces_existing_dir():
         )
         assert count > 0
         assert not stale.exists()
+        # Rename-aside replace must not leave the old pyramid behind.
+        assert not list(out.parent.glob(f"{out.name}*.tmp"))
 
 
 def test_atomic_render_transparent_frame_publishes_nothing():
@@ -59,7 +61,7 @@ def test_atomic_render_transparent_frame_publishes_nothing():
         )
         assert count == 0
         assert not out.exists()
-        assert not (out.parent / f"{out.name}.tmp").exists()
+        assert not list(out.parent.glob(f"{out.name}*.tmp"))
 
 
 def test_atomic_render_cleans_tmp_on_failure(monkeypatch):
@@ -84,4 +86,4 @@ def test_atomic_render_cleans_tmp_on_failure(monkeypatch):
         except RuntimeError:
             pass
         assert not out.exists()
-        assert not (out.parent / f"{out.name}.tmp").exists()
+        assert not list(out.parent.glob(f"{out.name}*.tmp"))

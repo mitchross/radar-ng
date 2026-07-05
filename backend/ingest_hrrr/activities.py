@@ -363,7 +363,7 @@ def _safe_grid_dump(layer: str, ts: str, data: np.ndarray, grid: ExtractedGrid, 
         log.warning("grid_dump_failed", extra={"layer": layer, "err": str(exc)})
 
 
-def _write_palette_tiles(tile_base: Path, layer: str, palette: str, ts: str, rgba: np.ndarray, grid: ExtractedGrid) -> None:
+def _write_palette_tiles(tile_base: Path, layer: str, palette: str, ts: str, rgba: np.ndarray, grid: ExtractedGrid) -> int:
     lats = grid.lats
     lons = grid.lons
     source_y = grid.source_y
@@ -376,7 +376,7 @@ def _write_palette_tiles(tile_base: Path, layer: str, palette: str, ts: str, rgb
         lons = np.flipud(lons)
         source_y = source_y[::-1]
     out_dir = str(tile_base / layer / palette / ts)
-    render_tiles_atomic(
+    return render_tiles_atomic(
         rgba=rgba,
         lats=lats,
         lons=lons,
@@ -404,8 +404,11 @@ def _render_per_palette(
             rgba = apply_categorical_color_table(data, entry["categories"], categories_map)
         else:
             rgba = apply_color_table(data, entry)
-        _write_palette_tiles(tile_base, layer, pname, ts, rgba, grid)
-        rendered.append(pname)
+        # Only advertise palettes that actually produced tiles — a
+        # fully-transparent field writes no dir, and a manifest entry
+        # pointing at it would 404 every fetch.
+        if _write_palette_tiles(tile_base, layer, pname, ts, rgba, grid) > 0:
+            rendered.append(pname)
     return rendered
 
 

@@ -3,6 +3,7 @@
 import math
 import os
 import shutil
+import time
 from pathlib import Path
 
 import numpy as np
@@ -223,18 +224,23 @@ def render_tiles_atomic(
 ) -> int:
     """render_tiles, but the pyramid appears atomically at `output_dir`.
 
-    Renders into a sibling `<name>.tmp` directory and renames it into place
-    once complete. A crash mid-render leaves only a `.tmp` dir (the cleanup
-    sweep removes stale ones) — a reader can never observe a partial
-    pyramid, and a manifest entry never points at a half-written frame.
+    Renders into a unique sibling `<name>.<pid>-<nonce>.tmp` directory and
+    renames it into place once complete. A crash mid-render leaves only a
+    `.tmp` dir (the cleanup sweep removes stale ones) — a reader can never
+    observe a partial pyramid, and a manifest entry never points at a
+    half-written frame. The staging name is unique per call: a retry of a
+    cancelled activity can overlap the original's still-running render
+    thread (to_thread work is uncancellable), and a shared staging path let
+    the two writers interleave into one published pyramid.
 
     If `output_dir` already exists (forecast layers re-render the same
-    valid-time path on every model run) it is replaced.
+    valid-time path on every model run) it is replaced via rename-aside —
+    NOT rmtree-then-rename, whose readers-see-404s window lasts the whole
+    rmtree and, combined with cached 404s, could blank a frame for clients.
     """
     final = Path(output_dir)
-    tmp = final.parent / f"{final.name}.tmp"
-    if tmp.exists():
-        shutil.rmtree(tmp, ignore_errors=True)
+    nonce = f"{os.getpid()}-{time.monotonic_ns()}"
+    tmp = final.parent / f"{final.name}.{nonce}.tmp"
     try:
         count = render_tiles(
             rgba=rgba, lats=lats, lons=lons,
@@ -248,6 +254,17 @@ def render_tiles_atomic(
         shutil.rmtree(tmp, ignore_errors=True)
         return 0
     if final.exists():
-        shutil.rmtree(final, ignore_errors=True)
-    os.rename(tmp, final)
+        # POSIX rename won't replace a non-empty dir, so swap in two renames:
+        # move the live pyramid aside, promote the new one, delete the old.
+        # The reader-visible gap is the instant between the two renames.
+        old = final.parent / f"{final.name}.{nonce}.old.tmp"
+        os.rename(final, old)
+        try:
+            os.rename(tmp, final)
+        except BaseException:
+            os.rename(old, final)  # restore the previous pyramid
+            raise
+        shutil.rmtree(old, ignore_errors=True)
+    else:
+        os.rename(tmp, final)
     return count

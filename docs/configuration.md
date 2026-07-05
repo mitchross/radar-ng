@@ -111,7 +111,8 @@ docker compose run --rm basemap-bootstrap
 |---|---|---|
 | `OPEN_METEO_BASE` | `http://open-meteo:8080/v1/forecast` | Forecast upstream; default is the bundled self-hosted Open-Meteo. |
 | `MRMS_MAX_AGE_S` | `600` | Radar age (s) past which `/api/health` reports `degraded`. |
-| `FORECAST_TTL_S` | `300` | In-process forecast response cache TTL (s). |
+| `FORECAST_TTL_S` | `900` | In-process forecast response cache TTL (s). Compose sets `300`. |
+| `FORECAST_CACHE_MAX_ENTRIES` | `1024` | Max cached forecast cells (0.1° snapped); oldest evicted beyond this. |
 
 ---
 

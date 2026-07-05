@@ -34,10 +34,14 @@ ENV PATH="/opt/temporal-worker-venv/bin:$PATH"
 WORKDIR /workspace
 
 COPY temporal/requirements.txt /workspace/temporal/requirements.txt
+# Install from the shared requirements file so this worker's temporalio
+# stays in lockstep with the main worker's (incl. the <2 major-version cap).
+# NOTE: the previous inline form (`pip install temporalio>=1.9.0`) was
+# unquoted, so the shell parsed `>=1.9.0` as an output redirection and
+# installed UNPINNED latest — a temporalio 2.x release would have broken
+# this image on the next build.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install \
-      temporalio>=1.9.0 \
-      loguru>=0.7.2
+    pip install -r /workspace/temporal/requirements.txt
 
 # Copy only what the activity actually imports — this image must NOT pull
 # in pygrib/pysteps/etc. The whole point of the separate pool is to keep

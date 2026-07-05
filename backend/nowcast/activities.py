@@ -86,6 +86,24 @@ def _persistence_fallback(frames: list[np.ndarray], n_leadtimes: int) -> np.ndar
     return out
 
 
+def _input_interval_min(metas: list[Path]) -> float:
+    """Actual cadence of the input grids, from their timestamp filenames.
+
+    pysteps extrapolates in units of the INPUT time step — MRMS grids arrive
+    every ~2 min, not every STEP_MIN. Labeling step i as +(i+1)*STEP_MIN while
+    extrapolating i input-steps made every published leadtime ~2.5x too far
+    out: storms played back at ~40% of their real speed and the "+60 min"
+    frame was really a +24 min extrapolation.
+    """
+    try:
+        stamps = [datetime.fromisoformat(p.name.replace(".meta.json", "")) for p in metas[-2:]]
+        interval = (stamps[1] - stamps[0]).total_seconds() / 60.0
+    except (ValueError, IndexError):
+        return 2.0
+    # Guard against duplicate/garbled stamps producing zero or absurd steps.
+    return interval if 0.5 <= interval <= 15.0 else 2.0
+
+
 def _write_nowcast_status(status: str, *, reason: str | None = None, detail: str | None = None) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     body = {
@@ -107,7 +125,10 @@ def _write_nowcast_status(status: str, *, reason: str | None = None, detail: str
             pass
 
 
-def _run_nowcast(frames: list[np.ndarray], n_leadtimes: int) -> np.ndarray | None:
+def _run_nowcast(frames: list[np.ndarray], timesteps: list[float]) -> np.ndarray | None:
+    """`timesteps` are forecast times in units of the INPUT time step (pysteps
+    convention), e.g. 2-min inputs and 5-min output spacing → [2.5, 5.0, …].
+    Returns len(timesteps) frames."""
     try:
         from pysteps import motion, nowcasts  # type: ignore
     except (ImportError, AttributeError, ModuleNotFoundError) as exc:
@@ -115,7 +136,7 @@ def _run_nowcast(frames: list[np.ndarray], n_leadtimes: int) -> np.ndarray | Non
         # numpy-vs-cv2 incompatibilities on Python 3.12.
         log.warning("pysteps_unavailable", extra={"err": str(exc)})
         _write_nowcast_status("degraded", reason="pysteps_unavailable", detail=str(exc))
-        return _persistence_fallback(frames, n_leadtimes)
+        return _persistence_fallback(frames, len(timesteps))
 
     stack = np.stack(frames, axis=0).astype(np.float32)
     stack = np.where(stack < -100, np.nan, stack)
@@ -124,13 +145,13 @@ def _run_nowcast(frames: list[np.ndarray], n_leadtimes: int) -> np.ndarray | Non
         uv = oflow(stack)
         nowcaster = nowcasts.get_method("sprog")
         try:
-            forecast = nowcaster(stack[-3:, :, :], uv, n_leadtimes, n_cascade_levels=6, precip_thr=5.0)
+            forecast = nowcaster(stack[-3:, :, :], uv, timesteps, n_cascade_levels=6, precip_thr=5.0)
         except TypeError:
-            forecast = nowcaster(stack[-3:, :, :], uv, n_leadtimes, n_cascade_levels=6, R_thr=5.0)
+            forecast = nowcaster(stack[-3:, :, :], uv, timesteps, n_cascade_levels=6, R_thr=5.0)
     except Exception as exc:  # noqa: BLE001
         log.warning("pysteps_failed", extra={"err": str(exc)})
         _write_nowcast_status("degraded", reason="pysteps_failed", detail=str(exc))
-        return _persistence_fallback(frames, n_leadtimes)
+        return _persistence_fallback(frames, len(timesteps))
     forecast = np.where(np.isnan(forecast), -9999.0, forecast)
     _write_nowcast_status("ok")
     return forecast
@@ -149,8 +170,10 @@ def _render_frame(tile_base: Path, palette_tables: dict[str, dict], ts: str, dat
             continue
         rgba = apply_color_table(data, entry)
         out_dir = str(tile_base / "nowcast" / pname / ts)
-        render_tiles_atomic(rgba=rgba, lats=lats, lons=lons, output_dir=out_dir, zoom_levels=ZOOM_LEVELS)
-        rendered.append(pname)
+        # Zero tiles = fully-transparent leadtime; render_tiles_atomic wrote
+        # no dir, so advertising it in the manifest would 404 every fetch.
+        if render_tiles_atomic(rgba=rgba, lats=lats, lons=lons, output_dir=out_dir, zoom_levels=ZOOM_LEVELS) > 0:
+            rendered.append(pname)
     return rendered
 
 
@@ -160,17 +183,18 @@ async def nowcast_run() -> NowcastResult:
     requires a running asyncio loop, which is not the case from threads."""
     started = time.time()
 
-    def _setup() -> tuple[bool, str | None, list[np.ndarray], dict]:
+    def _setup() -> tuple[bool, str | None, list[np.ndarray], dict, float]:
         TILE_DIR.mkdir(parents=True, exist_ok=True)
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         metas = _list_recent_grids()
         if len(metas) < 2:
             log.info("waiting_for_grids", extra={"count": len(metas)})
-            return (False, None, [], {})
+            return (False, None, [], {}, 2.0)
         latest_iso = metas[-1].name.replace(".meta.json", "")
+        interval_min = _input_interval_min(metas)
         state = ProcessedSet(STATE_DIR / "nowcast.json", max_entries=100)
         if latest_iso in state:
-            return (False, latest_iso, [], {})
+            return (False, latest_iso, [], {}, interval_min)
         grids: list[np.ndarray] = []
         meta_used: dict = {}
         for p in metas:
@@ -181,23 +205,28 @@ async def nowcast_run() -> NowcastResult:
             grids.append(arr)
             meta_used = meta
         if len(grids) < 2:
-            return (False, latest_iso, [], {})
+            return (False, latest_iso, [], {}, interval_min)
         target_shape = grids[-1].shape
         grids = [g for g in grids if g.shape == target_shape]
         if len(grids) < 2:
-            return (False, latest_iso, [], {})
-        return (True, latest_iso, grids, meta_used)
+            return (False, latest_iso, [], {}, interval_min)
+        return (True, latest_iso, grids, meta_used, interval_min)
 
-    ok, latest_iso, grids, meta_used = await asyncio.to_thread(_setup)
+    ok, latest_iso, grids, meta_used, interval_min = await asyncio.to_thread(_setup)
     if not ok:
         return NowcastResult(ran=False, anchor_ts=latest_iso)
 
-    n_lead = HORIZON_MIN // STEP_MIN
+    # Published leadtimes stay on the STEP_MIN grid (12 frames for a 60-min
+    # horizon); pysteps is asked for exactly those instants in units of the
+    # real input cadence, so a +5-min label is a +5-min extrapolation.
+    lead_minutes = [STEP_MIN * (i + 1) for i in range(HORIZON_MIN // STEP_MIN)]
+    timesteps = [m / interval_min for m in lead_minutes]
+    n_lead = len(lead_minutes)
     activity.heartbeat({"phase": "pysteps", "input_frames": len(grids), "leadtimes": n_lead})
     forecast = await run_sync_with_heartbeat(
         _run_nowcast,
         grids,
-        n_lead,
+        timesteps,
         heartbeat_every=30,
         heartbeat_details=lambda: {"phase": "pysteps", "input_frames": len(grids), "leadtimes": n_lead},
     )
@@ -229,7 +258,7 @@ async def nowcast_run() -> NowcastResult:
     rendered_timestamps: list[str] = []
 
     for i in range(n_lead):
-        valid = latest_dt + timedelta(minutes=(i + 1) * STEP_MIN)
+        valid = latest_dt + timedelta(minutes=lead_minutes[i])
         ts = valid.isoformat()
         frame = forecast[i]
         frame = np.where(frame < 5, -9999.0, frame)

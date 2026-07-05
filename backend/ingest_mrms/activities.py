@@ -313,7 +313,7 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
 
     activity.heartbeat({"phase": "render", "timestamp": timestamp, "palettes": list(palette_tables.keys())})
 
-    def _render_all() -> list[str]:
+    def _render_all() -> tuple[list[str], list[str]]:
         # Switched from ThreadPoolExecutor to ProcessPoolExecutor: the
         # render hot path (apply_color_table → numpy boolean masks → PIL
         # resize → PNG encode) is CPU-bound Python with intermittent GIL
@@ -328,6 +328,7 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
         # array, but ProcessPoolExecutor uses spawn-or-fork per platform
         # and we don't need to fight that — pickling is fine here.
         rendered: list[str] = []
+        failed: list[str] = []
         max_workers = max(1, min(len(palette_tables), MRMS_RENDER_WORKERS))
         with ProcessPoolExecutor(max_workers=max_workers) as pool:
             futures = {
@@ -337,14 +338,19 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
             for fut in futures:
                 pname = futures[fut]
                 try:
-                    fut.result()
-                    rendered.append(pname)
+                    # A zero count is a fully-transparent frame:
+                    # render_tiles_atomic wrote no dir, so advertising the
+                    # palette would 404 every tile — skip it, but it is not
+                    # an error.
+                    if fut.result() > 0:
+                        rendered.append(pname)
                 except Exception as exc:  # noqa: BLE001
+                    failed.append(pname)
                     log.error("palette_render_failed", extra={"palette": pname, "err": str(exc)})
-        return rendered
+        return rendered, failed
 
     try:
-        rendered_palettes = await run_sync_with_heartbeat(
+        rendered_palettes, failed_palettes = await run_sync_with_heartbeat(
             _render_all,
             heartbeat_every=30,
             heartbeat_details=lambda: {
@@ -358,9 +364,27 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
         raise
     else:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    if failed_palettes:
+        # Fail the activity so Temporal retries and the workflow leaves the
+        # frame unmarked. Returning rendered=True here used to (a) advertise a
+        # timestamp with missing/empty pyramids in the manifest — every client
+        # fetch 404s — and (b) mark the frame processed so it was never
+        # retried. The realistic causes (ENOSPC, PIL failure) hit all palettes
+        # at once, so a partial-palette success is not worth salvaging.
+        raise RuntimeError(
+            f"palette render failed for {inp.layer_name}/{timestamp}: {failed_palettes}"
+        )
+
     duration = time.time() - started
-    update_manifest_file(inp.layer_name, timestamp, palettes=rendered_palettes, action="add")
-    log.info("frame_done", extra={"layer": inp.layer_name, "timestamp": timestamp, "duration_s": round(duration, 1)})
+    if rendered_palettes:
+        update_manifest_file(inp.layer_name, timestamp, palettes=rendered_palettes, action="add")
+        log.info("frame_done", extra={"layer": inp.layer_name, "timestamp": timestamp, "duration_s": round(duration, 1)})
+    else:
+        # Fully transparent frame (no echo anywhere in coverage): nothing was
+        # written, so there is nothing to advertise — but the frame IS
+        # processed; re-rendering it would produce the same nothing.
+        log.info("frame_transparent", extra={"layer": inp.layer_name, "timestamp": timestamp})
 
     return ProcessFrameResult(
         key=inp.key,
