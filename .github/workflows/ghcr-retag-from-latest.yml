@@ -1,0 +1,64 @@
+name: ghcr · retag from latest
+
+# One-button rescue when a per-service CI run fails but `:latest` for that
+# service is still the code we want. Pulls each service's `:latest`, computes
+# the next semver from the registry's existing v* tags, retags `:latest` as
+# that next version, and pushes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: 'Comma-separated services to retag (default: basemap, tile-server, temporal-worker, open-meteo-worker)'
+        required: false
+        default: 'basemap,tile-server,temporal-worker,open-meteo-worker'
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull, retag, push
+        run: |
+          set -euo pipefail
+          REGISTRY="ghcr.io/${{ github.repository_owner }}"
+          IFS=',' read -ra SVCS <<< "${{ inputs.services }}"
+          for raw in "${SVCS[@]}"; do
+            svc="$(echo "$raw" | xargs)"
+            img="radar-ng-${svc}"
+            echo "── ${img} ─────────────────────────────"
+            
+            # Fetch tags from GHCR
+            TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${{ github.repository_owner }}/${img}:pull" | jq -r .token)
+            LATEST=$(curl -s -H "Authorization: Bearer $TOKEN" "https://ghcr.io/v2/${{ github.repository_owner }}/${img}/tags/list" \
+              | jq -r '.tags[]?' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V | tail -1 || true)
+              
+            if [ -z "${LATEST:-}" ]; then
+              if [ "$svc" = "tile-server" ]; then NEXT="v1.1.10";
+              elif [ "$svc" = "basemap" ]; then NEXT="v1.1.5";
+              elif [ "$svc" = "temporal-worker" ]; then NEXT="v1.1.16";
+              elif [ "$svc" = "open-meteo-worker" ]; then NEXT="v1.1.5";
+              else NEXT="v1.0.0"; fi
+            else
+              S=${LATEST#v}; MAJ=${S%%.*}; R=${S#*.}; MIN=${R%%.*}; PAT=${R#*.}
+              NEXT="v${MAJ}.${MIN}.$((PAT + 1))"
+            fi
+            
+            echo "  current: ${LATEST:-none}  →  promoting :latest as :${NEXT}"
+            docker pull -q "${REGISTRY}/${img}:latest"
+            docker tag "${REGISTRY}/${img}:latest" "${REGISTRY}/${img}:${NEXT}"
+            docker push -q "${REGISTRY}/${img}:${NEXT}"
+          done
+          echo
+          echo "✅ Done. Bump gitops manifests to the new tags and push."

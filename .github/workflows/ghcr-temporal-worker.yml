@@ -1,9 +1,6 @@
 name: ghcr · temporal-worker
 
-# Public GHCR mirror of the main Temporal worker image. The Gitea workflow
-# still publishes the private copy to registry.vanillax.me. See
-# .github/workflows/ghcr-tile-server.yml for the auth / visibility notes.
-#
+# Public GHCR mirror of the main Temporal worker image.
 # The temporal Dockerfile COPYs all of backend/ into the image, so any
 # backend change (not just temporal/) must rebuild it.
 
@@ -30,9 +27,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Compute next semver from registry
+        id: ver
+        run: |
+          set -euo pipefail
+          IMAGE="radar-ng-temporal-worker"
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            NEXT="${{ github.event.inputs.version }}"
+          else
+            TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${{ github.repository_owner }}/${IMAGE}:pull" | jq -r .token)
+            LATEST=$(curl -s -H "Authorization: Bearer $TOKEN" "https://ghcr.io/v2/${{ github.repository_owner }}/${IMAGE}/tags/list" \
+              | jq -r '.tags[]?' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -1 \
+              || true)
+            if [ -z "${LATEST:-}" ]; then
+              NEXT="v1.1.16"
+            else
+              STRIPPED=${LATEST#v}
+              MAJOR=${STRIPPED%%.*}
+              REST=${STRIPPED#*.}
+              MINOR=${REST%%.*}
+              PATCH=${REST#*.}
+              NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+            fi
+          fi
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Calculated version: $NEXT"
+
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -46,7 +73,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
-            type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event.inputs.version != '' }}
+            type=raw,value=${{ steps.ver.outputs.version }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -59,3 +86,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
