@@ -35,10 +35,12 @@ struct CurrentCard: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("\(Int(current.temperature_2m.rounded()))°")
                 .font(.system(size: 52, weight: .thin, design: .rounded))
-            Text(WeatherCodes.label(current.weather_code))
+            Text(current.weather_code.map { WeatherCodes.label($0) } ?? "—")
                 .font(.footnote).foregroundStyle(.secondary)
             HStack(spacing: 10) {
-                Label("\(Int(current.wind_speed_10m.rounded())) mph", systemImage: "wind")
+                if let wind = current.wind_speed_10m {
+                    Label("\(Int(wind.rounded())) mph", systemImage: "wind")
+                }
                 Label("\(Int(current.relative_humidity_2m.rounded()))%", systemImage: "humidity")
             }
             .font(.caption2).foregroundStyle(.secondary)
@@ -84,7 +86,8 @@ struct HourlyRow: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, triple in
                     VStack(spacing: 2) {
                         Text(shortHour(triple.0)).font(.caption2).foregroundStyle(.secondary)
-                        Image(systemName: WeatherCodes.sfSymbol(triple.1.1)).font(.footnote)
+                        Image(systemName: triple.1.1.map { WeatherCodes.sfSymbol($0) } ?? "questionmark")
+                            .font(.footnote)
                         Text("\(Int(triple.1.0.rounded()))°").font(.caption2)
                     }
                     .frame(width: 34)
@@ -110,7 +113,8 @@ struct DailyList: View {
             ForEach(0..<min(daily.time.count, 5), id: \.self) { i in
                 HStack {
                     Text(dayOfWeek(daily.time[i])).font(.caption2).frame(width: 40, alignment: .leading)
-                    Image(systemName: WeatherCodes.sfSymbol(daily.weather_code[i])).font(.footnote)
+                    Image(systemName: daily.weather_code[i].map { WeatherCodes.sfSymbol($0) } ?? "questionmark")
+                        .font(.footnote)
                     Spacer()
                     Text("\(Int(daily.temperature_2m_min[i].rounded()))° / \(Int(daily.temperature_2m_max[i].rounded()))°")
                         .font(.caption2).foregroundStyle(.secondary)

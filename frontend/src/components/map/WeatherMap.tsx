@@ -27,7 +27,7 @@ interface WeatherMapProps {
  * always resolve root-relative paths against the fetched style URL, so
  * serving the patched JSON inline is the reliable path.
  */
-function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark" | "satellite") {
+export function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark" | "satellite") {
   const styleUrl = resolveMapStyleUrl(serverUrl, mapStyle);
   const [patched, setPatched] = useState<string | null>(null);
 

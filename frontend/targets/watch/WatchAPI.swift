@@ -29,22 +29,22 @@ struct Forecast: Decodable {
     struct Current: Decodable {
         let time: String
         let temperature_2m: Double
-        let apparent_temperature: Double
-        let weather_code: Int
-        let wind_speed_10m: Double
+        let apparent_temperature: Double?
+        let weather_code: Int?
+        let wind_speed_10m: Double?
         let relative_humidity_2m: Double
     }
     struct Hourly: Decodable {
         let time: [String]
         let temperature_2m: [Double]
-        let weather_code: [Int]
-        let precipitation_probability: [Int]
+        let weather_code: [Int?]
+        let precipitation_probability: [Int?]
     }
     struct Daily: Decodable {
         let time: [String]
         let temperature_2m_max: [Double]
         let temperature_2m_min: [Double]
-        let weather_code: [Int]
+        let weather_code: [Int?]
     }
     struct Minutely: Decodable {
         let time: [String]

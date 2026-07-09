@@ -1,0 +1,13 @@
+<svg width="720" height="720" viewBox="0 0 720 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M360 95C506.355 95 625 213.645 625 360C625 506.355 506.355 625 360 625C213.645 625 95 506.355 95 360C95 213.645 213.645 95 360 95Z" stroke="white" stroke-opacity="0.92" stroke-width="34"/>
+  <path d="M360 182C458.307 182 538 261.693 538 360C538 458.307 458.307 538 360 538C261.693 538 182 458.307 182 360C182 261.693 261.693 182 360 182Z" stroke="white" stroke-opacity="0.44" stroke-width="18"/>
+  <path d="M360 268C410.81 268 452 309.19 452 360C452 410.81 410.81 452 360 452C309.19 452 268 410.81 268 360C268 309.19 309.19 268 360 268Z" stroke="white" stroke-opacity="0.32" stroke-width="14"/>
+  <path d="M360 360L595 234C619.765 280.18 628.26 333.625 619.067 385.268L360 360Z" fill="#6EE7F9" fill-opacity="0.44"/>
+  <path d="M360 360L587 214" stroke="#E7FFFF" stroke-width="18" stroke-linecap="round"/>
+  <path d="M360 104V210" stroke="white" stroke-opacity="0.38" stroke-width="16" stroke-linecap="round"/>
+  <path d="M360 510V616" stroke="white" stroke-opacity="0.38" stroke-width="16" stroke-linecap="round"/>
+  <path d="M104 360H210" stroke="white" stroke-opacity="0.38" stroke-width="16" stroke-linecap="round"/>
+  <path d="M510 360H616" stroke="white" stroke-opacity="0.38" stroke-width="16" stroke-linecap="round"/>
+  <path d="M360 317C383.748 317 403 336.252 403 360C403 383.748 383.748 403 360 403C336.252 403 317 383.748 317 360C317 336.252 336.252 317 360 317Z" fill="#08151D" stroke="white" stroke-width="22"/>
+  <path d="M360 341C370.493 341 379 349.507 379 360C379 370.493 370.493 379 360 379C349.507 379 341 370.493 341 360C341 349.507 349.507 341 360 341Z" fill="#F06B5E"/>
+</svg>

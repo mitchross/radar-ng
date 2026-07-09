@@ -1,42 +1,29 @@
 /**
- * Home-screen mini-radar — single static tile centered on user location.
- *
- * Why a static <Image> and not a MapLibre view: MapLibre Native is a heavy
- * dependency to drag onto a tab that's also rendered server-side / on web,
- * and the home page is already cross-platform safe. A 256×256 z=6 tile
- * covers ~1000 km — enough to show "is it raining near me" without a map.
+ * Home-screen mini-radar — compact, non-interactive MapLibre preview.
  *
  * Live data source: tile-server manifest gives latest radar timestamp,
- * we compute slippy XY from user lat/lon and fetch one PNG. Refreshes on
- * a 60s interval matching the rest of the app's cadence.
+ * then the same basemap + raster overlay stack as the dedicated Radar tab
+ * renders a card-sized view centered on the user's location.
  */
 import { useMemo } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
-import { Image } from "expo-image";
+import { Camera, Layer, Map, RasterSource } from "@maplibre/maplibre-react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { fetchSelfHostedManifest } from "../../lib/api";
 import { DEFAULTS } from "../../lib/constants";
+import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
+import { pickNowFrameIndex } from "../../hooks/useManifest";
+import { usePatchedMapStyle } from "../map/WeatherMap";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
+import type { LayerType, RadarFrame } from "../../types/weather";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 
-// City/metro level — matches DEFAULTS.ZOOM. z=6 (~1000 km/tile) framed the
-// whole continent; z=8 (~250 km/tile) actually shows the user's metro.
+// City/metro level — matches the dedicated map's default zoom.
 const MINI_ZOOM = 8;
-
-function lonLatToTile(lon: number, lat: number, z: number): { x: number; y: number } {
-  const n = 2 ** z;
-  const x = Math.floor(((lon + 180) / 360) * n);
-  const latRad = (lat * Math.PI) / 180;
-  const y = Math.floor(
-    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n,
-  );
-  return {
-    x: Math.max(0, Math.min(n - 1, x)),
-    y: Math.max(0, Math.min(n - 1, y)),
-  };
-}
+const MINI_SOURCE_MIN_ZOOM = 4;
+const MINI_SOURCE_MAX_ZOOM = 8;
 
 export function RadarMiniMap({ headline }: { headline?: string }) {
   const router = useRouter();
@@ -46,6 +33,7 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
   const activePalette = useWeatherStore((s) => s.activePalette);
   const lat = useWeatherStore((s) => s.latitude) ?? DEFAULTS.LATITUDE;
   const lon = useWeatherStore((s) => s.longitude) ?? DEFAULTS.LONGITUDE;
+  const patchedStyle = usePatchedMapStyle(serverUrl, "light");
 
   const { data: manifest } = useQuery({
     queryKey: ["manifest", serverUrl, "mini"],
@@ -54,40 +42,68 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
     staleTime: 30_000,
   });
 
-  const tile = useMemo(() => lonLatToTile(lon, lat, MINI_ZOOM), [lat, lon]);
-
-  // Prefer the QC'd radar layer if the backend exposes it; fall back to the
-  // legacy `radar` key. Composite gets used too if present (better visual).
-  const layerKey = manifest?.layers?.["radar-composite"]
-    ? "radar-composite"
-    : "radar";
+  // Match the dedicated Radar tab's observed MRMS source first. Composite is
+  // only a compatibility fallback for clusters that still publish it.
+  const layerKey = manifest?.layers?.radar
+    ? "radar"
+    : manifest?.layers?.["radar-composite"]
+      ? "radar-composite"
+      : "radar";
   const layer = manifest?.layers?.[layerKey];
-  const latest = layer?.timestamps?.[layer.timestamps.length - 1];
-  const radarUrl = latest
-    ? `${serverUrl}/tiles/${layerKey}/${activePalette}/${encodeURIComponent(latest)}/${MINI_ZOOM}/${tile.x}/${tile.y}.png`
-    : null;
+  const frames = useMemo<RadarFrame[]>(() => (
+    layer?.timestamps.map((ts) => ({
+      time: Math.floor(new Date(ts).getTime() / 1000),
+      path: ts,
+      source: "radar",
+    })) ?? []
+  ), [layer?.timestamps]);
+  const nowFrameIndex = pickNowFrameIndex(frames);
+  const nowFrame = nowFrameIndex >= 0 ? frames[nowFrameIndex] : null;
+  const radarUrl = nowFrame ? buildSelfHostedTileUrl(serverUrl, layerKey as LayerType, nowFrame.path, activePalette) : null;
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open full radar. ${headline ?? (latest ? "Live radar available" : "Radar loading")}`}
-      style={styles.wrap}
-      onPress={() => router.push("/radar")}
-    >
-      {/* Dark gradient background. We don't pull a basemap tile here
-          because OSM's tile-usage policy forbids embedded mobile-app
-          consumption (returns "Access blocked" image), and this is a
-          tap-target preview anyway — the full map opens on press. */}
-      <View style={styles.basemapTint} pointerEvents="none" />
-
-      {/* radar overlay */}
-      {radarUrl ? (
-        <Image
-          source={{ uri: radarUrl }}
-          style={styles.radar}
-          contentFit="cover"
-        />
-      ) : null}
+    <View style={styles.wrap}>
+      <View style={styles.mapWrap} pointerEvents="none">
+        {patchedStyle ? (
+          <Map
+            style={styles.map}
+            mapStyle={patchedStyle}
+            logo={false}
+            attribution={false}
+            dragPan={false}
+            touchZoom={false}
+            doubleTapZoom={false}
+            doubleTapHoldZoom={false}
+            touchRotate={false}
+            touchPitch={false}
+            preferredFramesPerSecond={30}
+          >
+            <Camera center={[lon, lat]} zoom={MINI_ZOOM} minZoom={MINI_ZOOM} maxZoom={MINI_ZOOM} />
+            {radarUrl ? (
+              <RasterSource
+                id="home-radar-source"
+                key={`${activePalette}-${layerKey}-${nowFrame?.path ?? "none"}`}
+                tiles={[radarUrl]}
+                tileSize={256}
+                minzoom={MINI_SOURCE_MIN_ZOOM}
+                maxzoom={MINI_SOURCE_MAX_ZOOM}
+              >
+                <Layer
+                  type="raster"
+                  id="home-radar-layer"
+                  paint={{
+                    "raster-opacity": 0.42,
+                    "raster-fade-duration": 0,
+                  }}
+                />
+              </RasterSource>
+            ) : null}
+          </Map>
+        ) : (
+          <View style={styles.basemapTint} />
+        )}
+        <View style={styles.mapVignette} />
+      </View>
 
       {/* user-location pin */}
       <View style={styles.pinWrap} pointerEvents="none">
@@ -106,14 +122,20 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
         <View style={{ flex: 1 }}>
           <Text style={styles.footerLabel}>RADAR</Text>
           <Text style={styles.footerTitle} numberOfLines={1}>
-            {headline ?? (latest ? "Tap to open full radar" : "Loading…")}
+            {headline ?? (nowFrame ? "Tap to open full radar" : "Loading…")}
           </Text>
         </View>
         <View style={styles.chevronBox}>
           <Text style={styles.chevron}>{"›"}</Text>
         </View>
       </View>
-    </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open full radar. ${headline ?? (nowFrame ? "Live radar available" : "Radar loading")}`}
+        style={styles.hitArea}
+        onPress={() => router.push("/radar")}
+      />
+    </View>
   );
 }
 
@@ -129,11 +151,27 @@ function createStyles(theme: WeatherClearTheme) {
     overflow: "hidden",
     backgroundColor: "#0d1428",
   },
+  hitArea: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 10,
+  },
+  mapWrap: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "#e8ece5",
+  },
+  map: {
+    flex: 1,
+  },
   basemapTint: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "#0d1428",
+    backgroundColor: "#e8ece5",
   },
-  radar: { ...StyleSheet.absoluteFill, opacity: 0.85 },
+  mapVignette: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
   pinWrap: {
     position: "absolute",
     left: "50%",

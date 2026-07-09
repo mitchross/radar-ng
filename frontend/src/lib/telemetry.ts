@@ -64,10 +64,11 @@ tracerProvider.register();
 const loggerProvider = new LoggerProvider({
   resource,
   processors: [
-    new BatchLogRecordProcessor(
-      new OTLPLogExporter({ url: `${OTLP_BASE}/v1/logs` }),
-      { maxExportBatchSize: 32, scheduledDelayMillis: 5000 },
-    ),
+    new BatchLogRecordProcessor({
+      exporter: new OTLPLogExporter({ url: `${OTLP_BASE}/v1/logs` }),
+      maxExportBatchSize: 32,
+      scheduledDelayMillis: 5000,
+    }),
   ],
 });
 logs.setGlobalLoggerProvider(loggerProvider);
