@@ -22,6 +22,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from backend.shared.manifest import read_manifest_file
+from backend.shared.storm_prefetch import build_storm_prefetch_plan
 
 TILE_DIR = os.environ.get("TILE_DIR", "/data/tiles")
 GRID_DIR = os.environ.get("GRID_DIR", "/data/grids")
@@ -400,6 +401,80 @@ def storms() -> JSONResponse:
         return _cached(json.loads(path.read_text()), max_age=30)
     except (OSError, json.JSONDecodeError) as exc:
         return _cached({"type": "FeatureCollection", "features": [], "error": str(exc)}, max_age=30)
+
+
+@app.get("/api/storm-prefetch")
+def storm_prefetch(
+    request: Request,
+    lat: float,
+    lon: float,
+    zoom: int = 6,
+    palette: str = "classic",
+) -> JSONResponse:
+    """Return a location-aware, three-bbox MapLibre tile prefetch plan."""
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise HTTPException(422, "lat/lon out of range")
+    if not (4 <= zoom <= 8):
+        raise HTTPException(422, "zoom must be between 4 and 8")
+    if palette not in {"classic", "vivid", "muted"}:
+        raise HTTPException(422, "unsupported palette")
+
+    path = Path(STATE_DIR) / "storms.json"
+    try:
+        body = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        body = {"type": "FeatureCollection", "features": []}
+    plan = build_storm_prefetch_plan(
+        storms=body,
+        state_dir=STATE_DIR,
+        tile_dir=TILE_DIR,
+        base_url=str(request.base_url).rstrip("/"),
+        lat=lat,
+        lon=lon,
+        zoom=zoom,
+        palette=palette,
+    )
+    return _cached(plan, max_age=30)
+
+
+@app.get("/api/storm-prefetch/style.json")
+def storm_prefetch_style(
+    request: Request,
+    layer: str,
+    palette: str,
+    timestamp: str,
+    zoom: int,
+) -> JSONResponse:
+    """Minimal raster style consumed by MapLibre's native offline loader."""
+    if layer not in {"radar", "nowcast"} or palette not in {"classic", "vivid", "muted"}:
+        raise HTTPException(422, "unsupported layer or palette")
+    max_zoom = 8 if layer == "radar" else 7
+    if not (4 <= zoom <= max_zoom):
+        raise HTTPException(422, "zoom outside layer coverage")
+    safe_timestamp = "".join(ch for ch in timestamp if ch.isalnum() or ch in ":-_+.T")
+    if safe_timestamp != timestamp:
+        raise HTTPException(422, "invalid timestamp")
+    base_url = str(request.base_url).rstrip("/")
+    tile_template = f"{base_url}/tiles/{layer}/{palette}/{timestamp}/{{z}}/{{x}}/{{y}}.png"
+    return _cached({
+        "version": 8,
+        "name": "radar-ng storm prefetch",
+        "sources": {
+            "storm-prefetch": {
+                "type": "raster",
+                "tiles": [tile_template],
+                "tileSize": 256,
+                "minzoom": zoom,
+                "maxzoom": zoom,
+            }
+        },
+        "layers": [{
+            "id": "storm-prefetch",
+            "type": "raster",
+            "source": "storm-prefetch",
+            "paint": {"raster-fade-duration": 0},
+        }],
+    }, max_age=30)
 
 
 @app.get("/api/tropical")

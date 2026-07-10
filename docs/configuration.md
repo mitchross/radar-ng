@@ -81,6 +81,13 @@ docker compose run --rm basemap-bootstrap
 | `TEMPORAL_MAX_CONCURRENT_ACTIVITIES` | `2` | Concurrent activities in the worker (prod: 4). |
 | `TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS` | `1` | Concurrent activity task polls (prod: 2). |
 | `MRMS_RENDER_WORKERS` | `2` | Parallel palette-render processes per MRMS frame. |
+| `STORM_THRESHOLD_DBZ` | `40` | Reflectivity threshold used to form tracked storm cells. |
+| `STORM_MIN_PIXELS` | `5` | Minimum connected MRMS pixels in a storm cell. |
+| `STORM_MAX_CELLS` | `500` | Strongest storm cells retained per frame. |
+| `STORM_MAX_TRACK_SPEED_KMH` | `160` | Association and extrapolation speed ceiling. |
+| `STORM_MIN_TRACK_RADIUS_KM` | `20` | Minimum consecutive-frame cell matching radius. |
+| `STORM_PREFETCH_PADDING_KM` | `12` | Padding around each predicted storm bbox. |
+| `STORM_PREFETCH_MAX_DISTANCE_KM` | `500` | Do not prefetch when the nearest storm is farther from the user. |
 | `FORECAST_HOURS` | `18` | HRRR forecast hours rendered per model run. |
 | `EXTENDED_FORECAST_HOURS` | `48` | Extended sub-hourly HRRR hours. |
 

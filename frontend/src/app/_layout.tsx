@@ -20,6 +20,7 @@ import {
   WeatherClearThemeProvider,
   useWeatherClearTheme,
 } from "../theme/WeatherClearThemeProvider";
+import { useStormTilePrefetch } from "../hooks/useStormTilePrefetch";
 
 // Root-level error boundary: without it, a single throw anywhere in the tree
 // (a Skia worklet edge case, a MapLibre native error surfacing in JS) takes
@@ -67,6 +68,9 @@ export default function RootLayout() {
 
 function ThemedApp() {
   const { resolvedAppearance, theme } = useWeatherClearTheme();
+  // Start warming the three predicted storm regions while the user is still
+  // on the home screen, before MapLibre mounts on the radar tab.
+  useStormTilePrefetch();
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.canvas }]}>
       <StatusBar style={resolvedAppearance === "dark" ? "light" : "dark"} />

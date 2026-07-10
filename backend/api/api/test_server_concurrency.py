@@ -19,6 +19,8 @@ FS_BOUND = [
     "wind_field",
     "lightning",
     "storms",
+    "storm_prefetch",
+    "storm_prefetch_style",
     "tropical",
     "health",
     "get_basemap_style",

@@ -1,4 +1,10 @@
-import { fetchForecast, fetchAlerts, fetchSelfHostedManifest, checkServerHealth } from "../../src/lib/api";
+import {
+  fetchForecast,
+  fetchAlerts,
+  fetchSelfHostedManifest,
+  fetchStormPrefetchPlan,
+  checkServerHealth,
+} from "../../src/lib/api";
 
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
@@ -59,6 +65,30 @@ describe("fetchSelfHostedManifest", () => {
     const result = await fetchSelfHostedManifest("http://localhost:8080");
     expect(result).toEqual(manifest);
     expect(mockFetch).toHaveBeenCalledWith("http://localhost:8080/api/manifest.json");
+  });
+});
+
+describe("fetchStormPrefetchPlan", () => {
+  it("passes location, zoom, and palette to the tile server", async () => {
+    const plan = { plan_id: null, storm_cell_id: null, bboxes: [], tile_urls: [] };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(plan),
+    });
+
+    const result = await fetchStormPrefetchPlan(
+      "https://radar.example",
+      42.96,
+      -85.67,
+      "vivid",
+      6,
+    );
+
+    expect(result).toEqual(plan);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://radar.example/api/storm-prefetch?lat=42.96&lon=-85.67&zoom=6&palette=vivid",
+    );
   });
 });
 

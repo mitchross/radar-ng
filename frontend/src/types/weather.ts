@@ -101,6 +101,30 @@ export interface SelfHostedManifest {
   updated_at: string;
 }
 
+export interface StormPrefetchBBox {
+  lead_minutes: 0 | 5 | 10;
+  bbox: [number, number, number, number];
+  layer: "radar" | "nowcast" | null;
+  timestamp: string | null;
+  zoom: number;
+  style_url: string | null;
+  tile_urls: string[];
+}
+
+export interface StormPrefetchPlan {
+  plan_id: string | null;
+  storm_cell_id: number | null;
+  generated_at?: number;
+  tracking_vector?: {
+    east_kmh: number;
+    north_kmh: number;
+    speed_kmh: number;
+    bearing_deg: number;
+  };
+  bboxes: StormPrefetchBBox[];
+  tile_urls: string[];
+}
+
 // --- Layers ---
 
 export type LayerType =

@@ -304,10 +304,14 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
             write_grid(inp.layer_name, timestamp, grid_data, lats_arr, lons_arr, unit="dBZ")
         except Exception as exc:  # noqa: BLE001
             log.warning("grid_dump_failed", extra={"err": str(exc)})
-        try:
-            write_storms_json(Path(STATE_DIR), grid_data, lats_arr, lons_arr, timestamp)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("storm_detect_failed", extra={"err": str(exc)})
+        # Only base reflectivity owns storms.json. The composite schedule runs
+        # independently and otherwise races this file with different cells and
+        # timestamps, making motion vectors jump between products.
+        if inp.layer_name == "radar":
+            try:
+                write_storms_json(Path(STATE_DIR), grid_data, lats_arr, lons_arr, timestamp)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("storm_detect_failed", extra={"err": str(exc)})
 
     await asyncio.to_thread(_grids)
 

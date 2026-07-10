@@ -4,6 +4,7 @@ import type {
   OpenMeteoResponse,
   NWSAlertCollection,
   SelfHostedManifest,
+  StormPrefetchPlan,
 } from "../types/weather";
 
 /** Forecast — always proxied through the tile-server → open-meteo container. */
@@ -51,6 +52,29 @@ export async function fetchSelfHostedManifest(
     span.setAttribute("http.status_code", res.status);
     if (!res.ok) throw new Error(`Tile server error: ${res.status}`);
     return res.json();
+  });
+}
+
+export async function fetchStormPrefetchPlan(
+  serverUrl: string,
+  lat: number,
+  lon: number,
+  palette: string,
+  zoom = 6,
+): Promise<StormPrefetchPlan> {
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lon),
+    zoom: String(zoom),
+    palette,
+  });
+  return trace("api.fetchStormPrefetchPlan", async (span) => {
+    const res = await fetch(`${serverUrl}/api/storm-prefetch?${params}`);
+    span.setAttribute("http.status_code", res.status);
+    if (!res.ok) throw new Error(`Storm prefetch error: ${res.status}`);
+    const plan = (await res.json()) as StormPrefetchPlan;
+    span.setAttribute("radar.storm_prefetch.tiles", plan.tile_urls.length);
+    return plan;
   });
 }
 
