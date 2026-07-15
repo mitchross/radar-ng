@@ -1,6 +1,16 @@
 import SwiftUI
 
 struct ContentView: View {
+    var body: some View {
+        TabView {
+            RadarMapView()
+            ForecastPage()
+        }
+        .tabViewStyle(.verticalPage)
+    }
+}
+
+struct ForecastPage: View {
     @EnvironmentObject var store: WatchStore
 
     var body: some View {
