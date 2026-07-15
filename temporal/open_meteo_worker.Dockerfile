@@ -40,7 +40,7 @@ WORKDIR /workspace
 
 COPY temporal/requirements.txt /workspace/temporal/requirements.txt
 # Install from the shared requirements file so this worker's temporalio
-# stays in lockstep with the main worker's (incl. the <2 major-version cap).
+# stays in lockstep with the main worker's reviewed Rust Core release.
 # NOTE: the previous inline form (`pip install temporalio>=1.9.0`) was
 # unquoted, so the shell parsed `>=1.9.0` as an output redirection and
 # installed UNPINNED latest — a temporalio 2.x release would have broken
