@@ -1,6 +1,6 @@
 numpy>=1.26,<2
 Pillow>=10.0
-pygrib>=2.1
+pygrib>=2.1.8
 httpx>=0.27
 mercantile>=1.2
 scipy>=1.12
