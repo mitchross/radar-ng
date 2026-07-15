@@ -21,7 +21,7 @@ import httpx
 from temporalio import activity
 
 from backend.shared.logger import get_logger
-from backend.shared.push_tokens import list_for_user, upsert
+from backend.shared.push_tokens import delete_by_token, list_for_user, upsert
 from backend.shared.storm_watch import (
     FrameDiff,
     FrameSample,
@@ -57,6 +57,14 @@ class PushTokenInput:
 @activity.defn(name="persist_push_token")
 async def persist_push_token(inp: PushTokenInput) -> None:
     await asyncio.to_thread(upsert, inp.user_id, inp.token, inp.platform)
+
+
+@activity.defn(name="delete_push_token")
+async def delete_push_token(token: str) -> int:
+    """Runs on the worker, which is the only pod with a writable STATE_DIR —
+    the tile-server mounts state read-only, so deleting from the API process
+    directly always failed with a read-only-database 500."""
+    return await asyncio.to_thread(delete_by_token, token)
 
 
 # ---------- storm-watch ----------
@@ -168,6 +176,7 @@ async def fan_out_push_to_user(inp: FanOutPushInput) -> FanOutPushResult:
 
     tokens = await asyncio.to_thread(list_for_user, inp.user_id)
     sent = 0
+    last_err: Exception | None = None
     for t in tokens:
         try:
             await send_push_notification(
@@ -176,7 +185,15 @@ async def fan_out_push_to_user(inp: FanOutPushInput) -> FanOutPushResult:
             )
             sent += 1
         except Exception as exc:  # noqa: BLE001
+            last_err = exc
             log.warning("push_failed_for_token", extra={"err": str(exc), "platform": t.platform})
+    if tokens and sent == 0 and last_err is not None:
+        # Every send failed (APNS/FCM outage, bad credentials) — fail the
+        # activity so Temporal's retry policy gets a chance, instead of
+        # reporting success and silently dropping the notification. Partial
+        # failure still returns: retrying would double-send to the tokens
+        # that succeeded, and collapse_id only dedupes per-platform.
+        raise RuntimeError(f"all {len(tokens)} push sends failed for user; last error: {last_err}")
     return FanOutPushResult(sent=sent)
 
 
@@ -184,6 +201,14 @@ async def fan_out_push_to_user(inp: FanOutPushInput) -> FanOutPushResult:
 
 
 _ALERT_STATE_PATH = STATE_DIR / "alerts_seen.json"
+# Snapshot of every currently-active alert id, written by fetch and read by
+# mark_alerts_seen for expiry pruning. Handed off via the state volume, not
+# workflow history: NWS holds 1000+ active alerts with ~100-char URN ids
+# during an outbreak, and round-tripping that through history twice per
+# 5-minute poll writes tens of MB/day into Temporal's DB for nothing.
+# Safe because the poll schedule uses OverlapPolicy.SKIP — runs never
+# overlap, so the snapshot mark reads is always its own run's fetch.
+_ACTIVE_SNAPSHOT_PATH = STATE_DIR / "alerts_active_snapshot.json"
 
 
 @dataclass
@@ -240,6 +265,15 @@ def _alert_from_feature(feature: dict[str, Any]) -> AlertForSignal | None:
 
 @activity.defn(name="fetch_nws_active_alerts")
 async def fetch_nws_active_alerts() -> FetchAlertsResult:
+    """Fetch + diff only — deliberately does NOT commit alerts_seen.json.
+
+    Marking happens in `mark_alerts_seen` AFTER the workflow has signaled
+    watches. Committing here made delivery at-most-once: a signal failure
+    (or a worker death between the save and the activity completion being
+    recorded) permanently dropped every remaining alert in the batch — and
+    this is the severe-weather push path, where a duplicate notification
+    beats a missing one.
+    """
     def _go() -> FetchAlertsResult:
         with httpx.Client(headers={"User-Agent": NWS_USER_AGENT}) as client:
             r = client.get(NWS_ALERTS_URL, timeout=20)
@@ -249,20 +283,81 @@ async def fetch_nws_active_alerts() -> FetchAlertsResult:
         seen = _load_seen()
         new_ids: list[str] = []
         new_alerts: list[AlertForSignal] = []
-        seen_after: set[str] = set()
+        active: set[str] = set()
         for f in features:
             alert = _alert_from_feature(f)
             if alert is None:
                 continue
             aid = alert.alert_id
-            seen_after.add(aid)
+            active.add(aid)
             if aid not in seen:
                 new_ids.append(aid)
                 new_alerts.append(alert)
-        _save_seen(seen_after, seen - seen_after)
-        return FetchAlertsResult(alert_count=len(features), new_alert_ids=new_ids, new_alerts=new_alerts)
+        try:
+            _write_active_snapshot(active)
+        except OSError as exc:
+            # Non-fatal: mark_alerts_seen falls back to no-prune when the
+            # snapshot is missing/stale, which only delays expiry trimming.
+            log.warning("active_snapshot_write_failed", extra={"err": str(exc)})
+        return FetchAlertsResult(
+            alert_count=len(features),
+            new_alert_ids=new_ids,
+            new_alerts=new_alerts,
+        )
 
     return await asyncio.to_thread(_go)
+
+
+def _write_active_snapshot(active: set[str]) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=".alerts-active.", suffix=".tmp", dir=str(STATE_DIR))
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(sorted(active), fh)
+        os.replace(tmp_name, _ACTIVE_SNAPSHOT_PATH)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+
+def _load_active_snapshot() -> set[str] | None:
+    try:
+        body = json.loads(_ACTIVE_SNAPSHOT_PATH.read_text())
+        return {str(x) for x in body} if isinstance(body, list) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+@dataclass
+class MarkAlertsSeenInput:
+    handled_ids: list[str] = field(default_factory=list)
+
+
+@activity.defn(name="mark_alerts_seen")
+async def mark_alerts_seen(inp: MarkAlertsSeenInput) -> None:
+    """Commit handled alert ids to alerts_seen.json.
+
+    `handled_ids` are alerts whose watches were successfully signaled this
+    run (or that had no geometry to match); alerts whose signal activity
+    exhausted its retries are deliberately left out, so the next 5-min poll
+    re-diffs them as new and retries. Idempotent — safe under activity retry.
+    The active set comes from the snapshot fetch wrote this run; if it is
+    unavailable we skip expiry pruning rather than forgetting seen alerts.
+    """
+    def _go() -> None:
+        seen = _load_seen()
+        handled = set(inp.handled_ids)
+        active = _load_active_snapshot()
+        if active is None:
+            _save_seen(seen | handled, set())
+            return
+        # Ids that stayed active keep their seen bit; handled ids gain one;
+        # everything else in the old file has expired and only fills the cap.
+        _save_seen((seen & active) | handled, seen - active)
+
+    await asyncio.to_thread(_go)
 
 
 @dataclass

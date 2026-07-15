@@ -17,6 +17,7 @@ workflow with different inputs, replacing both the legacy
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import os
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -32,6 +33,7 @@ from temporalio.client import (
     SchedulePolicy,
     ScheduleSpec,
     ScheduleUpdate,
+    ScheduleUpdateInput,
 )
 from temporalio.service import RPCError, RPCStatusCode
 
@@ -170,7 +172,17 @@ async def seed(client: Client) -> None:
             print(f"[seed] created schedule {s.schedule_id}")
         except ScheduleAlreadyRunningError:
             handle = client.get_schedule_handle(s.schedule_id)
-            await handle.update(lambda _: ScheduleUpdate(schedule=spec))
+
+            def _update(inp: ScheduleUpdateInput, desired: Schedule = spec) -> ScheduleUpdate:
+                # Preserve the live state (paused flag + note): replacing the
+                # whole Schedule with the desired spec silently UN-paused
+                # schedules on every worker restart/deploy — pausing radar
+                # ingest during an incident didn't survive the next rollout.
+                return ScheduleUpdate(
+                    schedule=dataclasses.replace(desired, state=inp.description.schedule.state)
+                )
+
+            await handle.update(_update)
             print(f"[seed] updated schedule {s.schedule_id}")
 
 

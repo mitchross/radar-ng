@@ -26,10 +26,11 @@ from temporalio.service import RPCError
 
 from backend.api.api.temporal_client import get_client, reset_client
 from backend.shared.push_tokens import delete_for_user, upsert
-from temporal.task_queues import ALERTS_TASK_QUEUE
 
 
-TASK_QUEUE = os.environ.get("TEMPORAL_ALERTS_TASK_QUEUE", ALERTS_TASK_QUEUE)
+# Keep the standalone tile-server image decoupled from the worker source tree:
+# its Dockerfile intentionally copies backend/ only, not temporal/.
+TASK_QUEUE = os.environ.get("TEMPORAL_ALERTS_TASK_QUEUE", "radar-ng-alerts")
 SIGNING_KEY = os.environ.get(
     "WORKFLOW_AUTH_SIGNING_KEY", os.environ.get("WORKFLOW_API_SIGNING_KEY", "")
 ).encode()

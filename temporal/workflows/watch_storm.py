@@ -19,6 +19,7 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ActivityError
 
 with workflow.unsafe.imports_passed_through():
     from backend.api.api.storm_watch_activities import (
@@ -167,8 +168,7 @@ class WatchStormWorkflow:
 
     async def _push_change(self, inp: WatchStormInput, det: DetectChangeResult) -> None:
         collapse = f"{workflow.info().workflow_id}:{self._state.last_frame_ts}:{det.kind}"
-        result: FanOutPushResult = await workflow.execute_activity(
-            fan_out_push_to_user,
+        result = await self._fan_out(
             FanOutPushInput(
                 user_id=inp.user_id,
                 title=self._title_for(det.kind),
@@ -176,17 +176,14 @@ class WatchStormWorkflow:
                 collapse_id=collapse,
                 extra={"storm_cell_id": inp.storm_cell_id, "kind": det.kind or ""},
             ),
-            start_to_close_timeout=timedelta(seconds=60),
-            retry_policy=_PUSH_RETRY,
         )
         self._state.last_change_kind = det.kind
         self._state.last_notified_at = workflow.now().timestamp()
-        self._state.push_count += result.sent
+        self._state.push_count += result.sent if result else 0
 
     async def _push_alert(self, inp: WatchStormInput, alert_id: str) -> None:
         collapse = f"{workflow.info().workflow_id}:alert:{alert_id}"
-        result: FanOutPushResult = await workflow.execute_activity(
-            fan_out_push_to_user,
+        result = await self._fan_out(
             FanOutPushInput(
                 user_id=inp.user_id,
                 title="Severe weather alert near your storm",
@@ -194,12 +191,28 @@ class WatchStormWorkflow:
                 collapse_id=collapse,
                 extra={"storm_cell_id": inp.storm_cell_id, "alert_id": alert_id, "kind": "alert"},
             ),
-            start_to_close_timeout=timedelta(seconds=60),
-            retry_policy=_PUSH_RETRY,
         )
         self._state.last_change_kind = "alert"
         self._state.last_notified_at = workflow.now().timestamp()
-        self._state.push_count += result.sent
+        self._state.push_count += result.sent if result else 0
+
+    async def _fan_out(self, push: FanOutPushInput) -> FanOutPushResult | None:
+        """Push failure must never kill the watch: fan_out_push_to_user raises
+        when EVERY send fails (so transient APNS/FCM outages get the retry
+        policy), but past the retry budget — e.g. every token for this user is
+        permanently stale — the watch itself keeps polling. The user may
+        re-register a token tomorrow; an hours-to-days entity workflow dying
+        over one undeliverable notification is the wrong trade."""
+        try:
+            return await workflow.execute_activity(
+                fan_out_push_to_user,
+                push,
+                start_to_close_timeout=timedelta(seconds=60),
+                retry_policy=_PUSH_RETRY,
+            )
+        except ActivityError:
+            workflow.logger.warning("push fan-out failed after retries; watch continues")
+            return None
 
     @staticmethod
     def _title_for(kind: str | None) -> str:

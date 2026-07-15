@@ -47,6 +47,19 @@
         reverse_proxy 127.0.0.1:8000
     }
 
+    # Errors must never carry a cacheable Cache-Control. The header
+    # directives above run BEFORE file_server, so a tile 404 would otherwise
+    # ship with max-age=86400+immutable and the client (or any cache on the
+    # path) pins the miss — an observed frame requested slightly early would
+    # never render on that client for a day. Overriding in the error chain
+    # (rather than a `file` matcher on the header directives) costs no extra
+    # stat per request and also covers the stat-then-open race while a frame
+    # is being atomically replaced.
+    handle_errors {
+        header Cache-Control "no-store"
+        respond "{err.status_code} {err.status_text}" {err.status_code}
+    }
+
     log {
         output stdout
         format console

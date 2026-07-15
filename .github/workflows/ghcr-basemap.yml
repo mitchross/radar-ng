@@ -1,16 +1,22 @@
-name: ghcr · temporal-worker
+name: ghcr · basemap
 
-# Public GHCR mirror of the main Temporal worker image.
-# The temporal Dockerfile COPYs all of backend/ into the image, so any
-# backend change (not just temporal/) must rebuild it.
+# basemap is a special case:
+#   - The CONUS PMTiles archive (backend/pmtiles-data/basemap.pmtiles, ~1.8GB)
+#     is .gitignore'd because it's too large for git, so a fresh `actions/checkout`
+#     never has it. Before docker-build we extract /data/basemap.pmtiles from
+#     the existing radar-ng-basemap:latest image — the registry is the source
+#     of truth for the archive.
+#   - First-ever build (no :latest in registry) must be primed by seeding it.
+#   - context is the repo root (.) not backend/, because the Dockerfile
+#     COPYs backend/pmtiles-data/basemap.pmtiles into the image
 
 on:
   push:
     branches: [master]
     paths:
-      - 'temporal/**'
-      - 'backend/**'
-      - '.github/workflows/ghcr-temporal-worker.yml'
+      - 'backend/basemap/**'
+      - 'backend/pmtiles-data/**'
+      - '.github/workflows/ghcr-basemap.yml'
   workflow_dispatch:
     inputs:
       version:
@@ -31,7 +37,7 @@ jobs:
         id: ver
         run: |
           set -euo pipefail
-          IMAGE="radar-ng-temporal-worker"
+          IMAGE="radar-ng-basemap"
           if [ -n "${{ github.event.inputs.version }}" ]; then
             NEXT="${{ github.event.inputs.version }}"
           else
@@ -43,7 +49,7 @@ jobs:
               | tail -1 \
               || true)
             if [ -z "${LATEST:-}" ]; then
-              NEXT="v1.1.16"
+              NEXT="v1.1.5"
             else
               STRIPPED=${LATEST#v}
               MAJOR=${STRIPPED%%.*}
@@ -65,11 +71,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Hydrate PMTiles archive from current basemap:latest
+        run: |
+          set -euo pipefail
+          REF="ghcr.io/${{ github.repository_owner }}/radar-ng-basemap:latest"
+          mkdir -p backend/pmtiles-data
+          docker pull "$REF"
+          cid=$(docker create "$REF")
+          trap 'docker rm "$cid" >/dev/null' EXIT
+          docker cp "$cid:/data/basemap.pmtiles" backend/pmtiles-data/basemap.pmtiles
+          ls -lh backend/pmtiles-data/basemap.pmtiles
+
       - name: Image metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/radar-ng-temporal-worker
+          images: ghcr.io/${{ github.repository_owner }}/radar-ng-basemap
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
@@ -80,7 +97,7 @@ jobs:
         with:
           provenance: false
           context: .
-          file: temporal/Dockerfile
+          file: backend/basemap/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
