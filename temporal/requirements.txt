@@ -1,7 +1,7 @@
 # The Python wheel bundles Temporal Rust Core. Keep this exact so rebuilt
 # images retain the reviewed Core commit; dependency automation proposes bumps.
 temporalio==1.30.0
-opentelemetry-api>=1.29.0
+opentelemetry-api>=1.43.0
 opentelemetry-sdk>=1.29.0
 opentelemetry-exporter-otlp-proto-grpc>=1.29.0
 loguru>=0.7.2
