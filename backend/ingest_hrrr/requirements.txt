@@ -2,5 +2,5 @@ numpy>=1.26
 Pillow>=10.0
 pygrib>=2.1
 httpx>=0.27
-scipy>=1.12
+scipy>=1.18.0
 pyproj>=3.6.0

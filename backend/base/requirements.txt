@@ -3,5 +3,5 @@ Pillow>=10.0
 pygrib>=2.1
 httpx>=0.27
 mercantile>=1.2
-scipy>=1.12
+scipy>=1.18.0
 pyproj>=3.6.0

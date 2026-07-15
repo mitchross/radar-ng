@@ -1,5 +1,5 @@
 numpy>=1.26,<2
-scipy>=1.12
+scipy>=1.18.0
 opencv-python-headless>=4.10,<5
 # 1.21+ fixes 'No module named distutils' on Python 3.12 (distutils
 # removed from stdlib). 1.14 silently fell back to no-pysteps mode and
