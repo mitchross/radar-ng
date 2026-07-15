@@ -7,12 +7,37 @@
 import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useTropical } from "../../hooks/useTropical";
 
-export function TropicalOverlay() {
+export interface TropicalStormDetails {
+  stormId: string;
+  name: string;
+  classification?: string;
+  windMph?: number;
+  pressureMb?: number;
+  updatedAt?: string;
+}
+
+export function TropicalOverlay({
+  onSelect,
+}: {
+  onSelect?: (storm: TropicalStormDetails) => void;
+}) {
   const { data } = useTropical();
   if (!data || data.features.length === 0) return null;
 
   return (
-    <GeoJSONSource id="tropical-src" data={data as GeoJSON.FeatureCollection}>
+    <GeoJSONSource
+      id="tropical-src"
+      data={data as GeoJSON.FeatureCollection}
+      hitbox={{ top: 28, right: 28, bottom: 28, left: 28 }}
+      onPress={(event) => {
+        event.stopPropagation();
+        const position = event.nativeEvent.features.find(
+          (feature) => feature.properties?.kind === "position",
+        );
+        const storm = position ? stormDetails(position.properties) : null;
+        if (storm) onSelect?.(storm);
+      }}
+    >
       {/* Cone (under everything else) */}
       <Layer
         type="fill"
@@ -49,6 +74,55 @@ export function TropicalOverlay() {
           "circle-opacity": 0.95,
         }}
       />
+      {/* A bare red dot looks like an unexplained map artifact. Name the
+          active NHC storm and include its classification beside the fix. */}
+      <Layer
+        type="symbol"
+        id="tropical-position-label"
+        filter={["==", ["get", "kind"], "position"] as never}
+        layout={{
+          "text-field": [
+            "concat",
+            ["get", "name"],
+            " · ",
+            ["coalesce", ["get", "classification"], "Storm"],
+          ] as never,
+          "text-size": 12,
+          "text-font": ["Noto Sans Regular"],
+          "text-offset": [0, 1.6],
+          "text-anchor": "top",
+          "text-allow-overlap": true,
+        }}
+        paint={{
+          "text-color": "#9F1422",
+          "text-halo-color": "#FFFFFF",
+          "text-halo-width": 1.5,
+        }}
+      />
     </GeoJSONSource>
   );
+}
+
+function stormDetails(properties: GeoJSON.GeoJsonProperties): TropicalStormDetails | null {
+  if (!properties) return null;
+  const name = stringValue(properties.name);
+  const stormId = stringValue(properties.storm_id);
+  if (!name || !stormId) return null;
+  return {
+    name,
+    stormId,
+    classification: stringValue(properties.classification),
+    windMph: numberValue(properties.wind_mph),
+    pressureMb: numberValue(properties.pressure_mb),
+    updatedAt: stringValue(properties.updated_at),
+  };
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }

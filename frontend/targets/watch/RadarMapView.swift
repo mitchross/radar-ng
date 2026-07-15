@@ -1,21 +1,21 @@
 import SwiftUI
 import CoreLocation
 
-/// Live NEXRAD radar over a dark basemap, centered on the user.
+/// Live self-hosted MRMS radar over a dark basemap, centered on the user.
 /// watchOS has no MKTileOverlay, so slippy-map tiles are composited by hand:
 /// a 3x3 grid of base tiles with radar tiles layered on top, offset so the
 /// user's location sits at screen center.
 struct RadarMapView: View {
     @EnvironmentObject var store: WatchStore
     @State private var zoom: Double = 7
-    @State private var cacheKey = Int(Date().timeIntervalSince1970)
 
     private let fallback = CLLocationCoordinate2D(latitude: 42.9634, longitude: -85.6681)
     private let tileSize: CGFloat = 256
 
     var body: some View {
         let coord = store.location ?? fallback
-        let z = Int(zoom.rounded())
+        let maxZoom = store.radarFrame?.maxZoom ?? 7
+        let z = min(Int(zoom.rounded()), maxZoom)
         let n = 1 << z
         let xf = Double(n) * (coord.longitude + 180) / 360
         let latRad = coord.latitude * .pi / 180
@@ -37,9 +37,11 @@ struct RadarMapView: View {
                             )
                             TileImage(url: Self.baseURL(z: z, x: wx, y: ty))
                                 .position(pos)
-                            TileImage(url: Self.radarURL(z: z, x: wx, y: ty, cacheKey: cacheKey))
-                                .opacity(0.8)
-                                .position(pos)
+                            if let url = store.radarFrame?.tileURL(z: z, x: wx, y: ty) {
+                                TileImage(url: url)
+                                    .opacity(0.82)
+                                    .position(pos)
+                            }
                         }
                     }
                 }
@@ -51,9 +53,38 @@ struct RadarMapView: View {
         }
         .ignoresSafeArea()
         .focusable()
-        .digitalCrownRotation($zoom, from: 4, through: 10, by: 1, sensitivity: .low)
+        .digitalCrownRotation($zoom, from: 4, through: Double(store.radarFrame?.maxZoom ?? 7), by: 1, sensitivity: .low)
+        .overlay(alignment: .top) { radarStatus }
         .overlay(alignment: .bottom) { controls }
-        .onTapGesture(count: 2) { cacheKey = Int(Date().timeIntervalSince1970) }
+        .onChange(of: store.radarFrame?.maxZoom) { _, maxZoom in
+            zoom = min(zoom, Double(maxZoom ?? 7))
+        }
+    }
+
+    @ViewBuilder
+    private var radarStatus: some View {
+        if let frame = store.radarFrame {
+            Label(Self.ageLabel(frame.timestamp), systemImage: "dot.radiowaves.left.and.right")
+                .font(.system(size: 9, weight: .semibold))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.top, 3)
+        } else if store.isRadarLoading {
+            ProgressView()
+                .controlSize(.mini)
+                .padding(6)
+                .background(.ultraThinMaterial, in: Circle())
+                .padding(.top, 3)
+        } else {
+            Text(store.radarErrorMessage ?? "Radar unavailable")
+                .font(.system(size: 9, weight: .semibold))
+                .lineLimit(1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.top, 3)
+        }
     }
 
     private var controls: some View {
@@ -67,8 +98,12 @@ struct RadarMapView: View {
 
             Spacer()
 
-            Button { cacheKey = Int(Date().timeIntervalSince1970) } label: {
-                Image(systemName: "arrow.clockwise").font(.caption2.bold())
+            Button { Task { await store.refreshRadar() } } label: {
+                if store.isRadarLoading {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "arrow.clockwise").font(.caption2.bold())
+                }
             }
             .buttonStyle(.plain)
             .frame(width: 28, height: 28)
@@ -76,7 +111,7 @@ struct RadarMapView: View {
 
             Spacer()
 
-            Button { zoom = min(10, zoom + 1) } label: {
+            Button { zoom = min(Double(store.radarFrame?.maxZoom ?? 7), zoom + 1) } label: {
                 Image(systemName: "plus").font(.caption2.bold())
             }
             .buttonStyle(.plain)
@@ -92,10 +127,10 @@ struct RadarMapView: View {
         return URL(string: "https://\(sub).basemaps.cartocdn.com/dark_all/\(z)/\(x)/\(y)@2x.png")!
     }
 
-    /// Same IEM NEXRAD source the CarPlay overlay uses; note the TMS y-flip.
-    private static func radarURL(z: Int, x: Int, y: Int, cacheKey: Int) -> URL {
-        let tmsY = (1 << z) - 1 - y
-        return URL(string: "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-0/\(z)/\(x)/\(tmsY).png?c=\(cacheKey)")!
+    private static func ageLabel(_ timestamp: String) -> String {
+        guard let date = ISO8601DateFormatter().date(from: timestamp) else { return "Live radar" }
+        let minutes = max(0, Int(Date().timeIntervalSince(date) / 60))
+        return minutes < 1 ? "Radar now" : "Radar \(minutes)m ago"
     }
 }
 

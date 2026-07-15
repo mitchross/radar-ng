@@ -34,7 +34,7 @@ export async function fetchAlerts(
     "api.fetchAlerts",
     async (span) => {
       const res = await fetch(`${API.NWS_ALERTS}?point=${lat},${lon}`, {
-        headers: { "User-Agent": "radar-ng/1.0 (self-hosted-weather-radar)" },
+        headers: { "User-Agent": "radar-ng/1.1 (self-hosted-weather-radar)" },
       });
       span.setAttribute("http.status_code", res.status);
       if (!res.ok) throw new Error(`NWS API error: ${res.status}`);

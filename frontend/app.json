@@ -2,7 +2,7 @@
   "expo": {
     "name": "radar-ng",
     "slug": "radar-ng",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "radarng",
@@ -13,6 +13,7 @@
     ],
     "ios": {
       "bundleIdentifier": "com.vanillax.radar-ng",
+      "buildNumber": "2",
       "appleTeamId": "FVU6RGL532",
       "icon": "./assets/expo.icon",
       "infoPlist": {
@@ -31,7 +32,8 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
       ],
-      "package": "com.vanillax.radarng"
+      "package": "com.vanillax.radarng",
+      "versionCode": 2
     },
     "plugins": [
       "expo-router",

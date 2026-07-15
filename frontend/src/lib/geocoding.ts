@@ -17,7 +17,7 @@ export async function reverseGeocode(
     {
       headers: {
         // Nominatim requires a User-Agent
-        "User-Agent": "radar-ng/1.0",
+        "User-Agent": "radar-ng/1.1",
       },
     },
   );

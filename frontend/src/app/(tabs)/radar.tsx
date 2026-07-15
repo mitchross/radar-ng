@@ -17,7 +17,11 @@ import { RadarOverlay } from "../../components/map/RadarOverlay";
 import { WeatherLayerOverlay } from "../../components/map/WeatherLayerOverlay";
 import { AlertPolygon } from "../../components/map/AlertPolygon";
 import { LightningOverlay } from "../../components/map/LightningOverlay";
-import { TropicalOverlay } from "../../components/map/TropicalOverlay";
+import {
+  TropicalOverlay,
+  type TropicalStormDetails,
+} from "../../components/map/TropicalOverlay";
+import { TropicalDetailSheet } from "../../components/map/TropicalDetailSheet";
 import { StormCellsOverlay } from "../../components/map/StormCellsOverlay";
 import { WindParticlesOverlay, useSharedCamera } from "../../components/map/WindParticlesOverlay";
 import { DEFAULTS } from "../../lib/constants";
@@ -41,6 +45,7 @@ export default function RadarScreen() {
   const extrasVisible = useWeatherStore((s) => s.extrasVisible);
 
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
+  const [selectedTropical, setSelectedTropical] = useState<TropicalStormDetails | null>(null);
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
 
   const camera = useSharedCamera(DEFAULTS.LONGITUDE, DEFAULTS.LATITUDE, DEFAULTS.ZOOM);
@@ -64,7 +69,7 @@ export default function RadarScreen() {
         {activeLayer === "precip-accum" && <WeatherLayerOverlay layerId="precip-accum" opacity={radarOpacity} />}
         {activeLayer === "cloud" && <WeatherLayerOverlay layerId="cloud" opacity={0.65} />}
         <AlertPolygon />
-        <TropicalOverlay />
+        <TropicalOverlay onSelect={setSelectedTropical} />
         {/* Storm-cell + lightning dots are noisy for casual users.
             Gated behind extrasVisible (off by default). */}
         {extrasVisible && <StormCellsOverlay />}
@@ -105,6 +110,10 @@ export default function RadarScreen() {
 
       {/* Timeline — past observed + nowcast + HRRR forecast in one stream */}
       <TimelineBar />
+      <TropicalDetailSheet
+        storm={selectedTropical}
+        onClose={() => setSelectedTropical(null)}
+      />
     </View>
   );
 }
