@@ -1,4 +1,4 @@
-numpy>=1.26,<2
+numpy>=2.5.1,<3
 scipy>=1.12
 opencv-python-headless>=4.10,<5
 # 1.21+ fixes 'No module named distutils' on Python 3.12 (distutils
