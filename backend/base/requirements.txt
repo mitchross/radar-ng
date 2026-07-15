@@ -1,7 +1,7 @@
 numpy>=1.26,<2
 Pillow>=10.0
 pygrib>=2.1
-httpx>=0.27
+httpx>=0.28.1
 mercantile>=1.2
 scipy>=1.12
 pyproj>=3.6.0
