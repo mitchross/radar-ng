@@ -36,14 +36,20 @@ describe("useWeatherStore", () => {
   });
 
   it("setFrames updates frames", () => {
-    const frames = [{ time: 1000, path: "/a" }, { time: 2000, path: "/b" }];
+    const frames = [
+      { time: 1000, timestamp: "1970-01-01T00:16:40Z", path: "/a" },
+      { time: 2000, timestamp: "1970-01-01T00:33:20Z", path: "/b" },
+    ];
     useWeatherStore.getState().setFrames(frames);
     expect(useWeatherStore.getState().frames).toEqual(frames);
   });
 
   it("nextFrame wraps around to 0", () => {
     useWeatherStore.setState({
-      frames: [{ time: 1, path: "/a" }, { time: 2, path: "/b" }],
+      frames: [
+        { time: 1, timestamp: "1970-01-01T00:00:01Z", path: "/a" },
+        { time: 2, timestamp: "1970-01-01T00:00:02Z", path: "/b" },
+      ],
       currentFrameIndex: 1,
     });
     useWeatherStore.getState().nextFrame();

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchSelfHostedManifest } from "../lib/api";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { DEFAULTS } from "../lib/constants";
+import { storage } from "../lib/storage";
 import type { RadarFrame, SelfHostedManifest } from "../types/weather";
 
 /**
@@ -23,10 +24,22 @@ function buildSelfHostedFrames(
   const toFrames = (layerKey: string, source?: RadarFrame["source"]): RadarFrame[] => {
     const entry = manifest.layers[layerKey];
     if (!entry) return [];
-    return entry.timestamps.map((ts) => ({
-      time: Math.floor(new Date(ts).getTime() / 1000),
-      path: ts,
+    const manifestFrames: NonNullable<typeof entry.frames> = entry.frames ?? entry.timestamps.map((timestamp) => ({
+      timestamp,
+      path: timestamp,
+    }));
+    return manifestFrames.map((frame) => ({
+      time: Math.floor(new Date(frame.timestamp).getTime() / 1000),
+      timestamp: frame.timestamp,
+      path: frame.path,
       ...(source ? { source } : {}),
+      ...(frame.kind ? { kind: frame.kind } : {}),
+      ...(frame.issued_at ? { issuedAt: frame.issued_at } : {}),
+      ...(frame.lead_minutes !== undefined ? { leadMinutes: frame.lead_minutes } : {}),
+      ...(frame.spatial_resolution_km !== undefined
+        ? { spatialResolutionKm: frame.spatial_resolution_km }
+        : {}),
+      ...(frame.max_zoom !== undefined ? { maxZoom: frame.max_zoom } : {}),
     }));
   };
 
@@ -90,9 +103,27 @@ export function useManifest() {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const timelineMode = useWeatherStore((s) => s.timelineMode);
 
+  const cacheKey = "manifest-cache-v2";
   const query = useQuery({
     queryKey: ["manifest", serverUrl],
-    queryFn: () => fetchSelfHostedManifest(serverUrl),
+    queryFn: async () => {
+      const manifest = await fetchSelfHostedManifest(serverUrl);
+      storage.set(cacheKey, JSON.stringify({ serverUrl, manifest }));
+      return manifest;
+    },
+    initialData: () => {
+      const cached = storage.getString(cacheKey);
+      if (!cached) return undefined;
+      try {
+        const parsed = JSON.parse(cached) as {
+          serverUrl?: string;
+          manifest?: SelfHostedManifest;
+        };
+        return parsed.serverUrl === serverUrl ? parsed.manifest : undefined;
+      } catch {
+        return undefined;
+      }
+    },
     refetchInterval: DEFAULTS.MANIFEST_REFETCH_MS,
   });
 
@@ -102,7 +133,7 @@ export function useManifest() {
   );
 
   useEffect(() => {
-    if (frames.length > 0) setFrames(frames);
+    setFrames(frames);
   }, [frames, setFrames]);
 
   // Snap to "Now" when the index is uninitialised or out of bounds. Split from

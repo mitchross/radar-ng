@@ -14,8 +14,8 @@ import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
 // tile, which softens detail but keeps the overlay aligned. Restore to 9
 // when render perf catches up at the source.
 const SOURCE_MAX_ZOOM: Record<string, number> = {
-  radar: 8,
-  "radar-hrrr": 8,
+  radar: 7,
+  "radar-hrrr": 6,
   nowcast: 6,
 };
 
@@ -49,7 +49,7 @@ export function RadarOverlay() {
   // per-frame `source` tells us which tile subtree to hit.
   const layerForUrl = frame.source ?? activeLayer;
   const tileUrl = buildSelfHostedTileUrl(serverUrl, layerForUrl, frame.path, activePalette);
-  const maxZoom = SOURCE_MAX_ZOOM[layerForUrl] ?? 9;
+  const maxZoom = frame.maxZoom ?? SOURCE_MAX_ZOOM[layerForUrl] ?? 7;
 
   return (
     <RasterSource

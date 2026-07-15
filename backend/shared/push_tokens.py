@@ -73,6 +73,15 @@ def delete_by_token(token: str) -> int:
         return cur.rowcount
 
 
+def delete_for_user(user_id: str, token: str) -> int:
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM push_tokens WHERE user_id = ? AND token = ?",
+            (user_id, token),
+        )
+        return cur.rowcount
+
+
 def list_for_user(user_id: str) -> list[PushToken]:
     with _connect() as conn:
         rows = conn.execute(

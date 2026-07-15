@@ -15,7 +15,11 @@ def test_update_manifest_file_adds_and_removes_timestamp(tmp_path):
         "2026-05-20T12:05:00+00:00",
     ]
     assert manifest["layers"]["radar"]["latest"] == "2026-05-20T12:05:00+00:00"
-    assert manifest["layers"]["radar"]["palettes"] == ["classic", "vivid"]
+    # Layer-level palettes are the safe intersection across every frame; each
+    # frame retains its exact palette availability.
+    assert manifest["layers"]["radar"]["palettes"] == []
+    assert manifest["layers"]["radar"]["frames"][0]["palettes"] == ["classic"]
+    assert manifest["layers"]["radar"]["frames"][1]["palettes"] == ["vivid"]
 
     update_manifest_file("radar", "2026-05-20T12:05:00+00:00", action="remove", state_dir=tmp_path)
 

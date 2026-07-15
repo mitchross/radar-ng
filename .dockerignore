@@ -1,0 +1,13 @@
+.git
+.gitea
+.github
+.pytest_cache
+.venv
+docs
+frontend
+load
+radarng 2026-07-10 21-26-16
+**/.DS_Store
+**/__pycache__
+**/*.pyc
+**/.pytest_cache

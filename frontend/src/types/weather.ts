@@ -2,12 +2,19 @@ export interface RadarFrame {
   time: number; // Unix epoch seconds
   /** ISO timestamp string used as the tile-server path segment. */
   path: string;
+  /** Valid time stays separate because immutable model paths include run_id. */
+  timestamp: string;
   /**
    * Optional source layer — only set on merged radar timelines so the
    * overlay knows which subtree to pull from (past=radar, nowcast=nowcast,
    * future=radar-hrrr). Omitted on single-source timelines.
    */
   source?: "radar" | "nowcast" | "radar-hrrr";
+  kind?: "observation" | "nowcast" | "model_guidance";
+  issuedAt?: string;
+  leadMinutes?: number;
+  spatialResolutionKm?: number;
+  maxZoom?: number;
 }
 
 // --- Open-Meteo API ---
@@ -96,7 +103,25 @@ export type TimelineMode = "current" | "forecast";
 // --- Self-Hosted Tile Server ---
 
 export interface SelfHostedManifest {
-  layers: Record<string, { timestamps: string[] }>;
+  schema_version?: number;
+  layers: Record<string, {
+    timestamps: string[];
+    frames?: {
+      timestamp: string;
+      path: string;
+      source?: string;
+      kind?: "observation" | "nowcast" | "model_guidance";
+      issued_at?: string;
+      lead_minutes?: number;
+      spatial_resolution_km?: number;
+      max_zoom?: number;
+      palettes?: string[];
+    }[];
+    latest?: string;
+    title?: string;
+    kind?: string;
+    complete?: boolean;
+  }>;
   tile_url_template: string;
   updated_at: string;
 }

@@ -8,13 +8,12 @@ export const API = {
 } as const;
 
 // Basemap styles live in the tile-server image at /srv/basemap/styles/.
-// Satellite falls back to a public Esri-style JSON — the others are served
-// locally via Caddy.
+// Style documents are served by the self-hosted API. The satellite document
+// references Esri's public no-key imagery tiles and carries attribution.
 export const MAP_STYLES_SELFHOSTED = {
   light: "/basemap/styles/positron.json",
   dark: "/basemap/styles/dark-matter.json",
-  satellite:
-    "https://raw.githubusercontent.com/go-spatial/tegola/master/cmd/internal/register/testdata/style.json",
+  satellite: "/basemap/styles/satellite.json",
 } as const;
 
 export function resolveMapStyleUrl(

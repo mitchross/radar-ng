@@ -12,7 +12,7 @@ from backend.shared.manifest import read_manifest_file
 
 MAX_PREFETCH_DISTANCE_KM = float(os.environ.get("STORM_PREFETCH_MAX_DISTANCE_KM", "500"))
 MIN_ZOOM = 4
-MAX_ZOOM = {"radar": 8, "nowcast": 7}
+MAX_ZOOM = {"radar": 7, "nowcast": 6}
 EARTH_RADIUS_KM = 6371.0088
 
 

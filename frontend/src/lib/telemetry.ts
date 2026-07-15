@@ -1,8 +1,6 @@
-// OpenTelemetry wiring for the Expo/React Native app. Ships traces + logs
-// to the self-hosted OTEL Gateway at otel.vanillax.me, which fans out to
-// Tempo (traces) and Loki (logs). View in Grafana at grafana.vanillax.me
-// (datasources: Tempo for traces, Loki with {service_name="radar-ng-mobile"}
-// for logs).
+// Opt-in OpenTelemetry wiring for the Expo/React Native app. Production
+// exports only when EXPO_PUBLIC_TELEMETRY_ENABLED=1 and an explicit endpoint
+// is configured. Location attributes are dropped before export.
 //
 // The OTLP/HTTP exporters use fetch() under the hood, which RN provides
 // natively — no polyfills required. We don't use any auto-instrumentation
@@ -36,9 +34,9 @@ import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
-const OTLP_BASE =
-  (process.env.EXPO_PUBLIC_OTLP_BASE as string | undefined) ??
-  "https://otel.vanillax.me";
+const OTLP_BASE = process.env.EXPO_PUBLIC_OTLP_BASE as string | undefined;
+const TELEMETRY_ENABLED =
+  process.env.EXPO_PUBLIC_TELEMETRY_ENABLED === "1" && Boolean(OTLP_BASE);
 
 const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: "radar-ng-mobile",
@@ -50,31 +48,44 @@ const resource = resourceFromAttributes({
   "device.os_version": String(Platform.Version),
 });
 
-const tracerProvider = new WebTracerProvider({
-  resource,
-  spanProcessors: [
-    new BatchSpanProcessor(
-      new OTLPTraceExporter({ url: `${OTLP_BASE}/v1/traces` }),
-      { maxExportBatchSize: 32, scheduledDelayMillis: 5000 },
-    ),
-  ],
-});
-tracerProvider.register();
+if (TELEMETRY_ENABLED && OTLP_BASE) {
+  const tracerProvider = new WebTracerProvider({
+    resource,
+    spanProcessors: [
+      new BatchSpanProcessor(
+        new OTLPTraceExporter({ url: `${OTLP_BASE}/v1/traces` }),
+        { maxExportBatchSize: 32, scheduledDelayMillis: 5000 },
+      ),
+    ],
+  });
+  tracerProvider.register();
 
-const loggerProvider = new LoggerProvider({
-  resource,
-  processors: [
-    new BatchLogRecordProcessor({
-      exporter: new OTLPLogExporter({ url: `${OTLP_BASE}/v1/logs` }),
-      maxExportBatchSize: 32,
-      scheduledDelayMillis: 5000,
-    }),
-  ],
-});
-logs.setGlobalLoggerProvider(loggerProvider);
+  const loggerProvider = new LoggerProvider({
+    resource,
+    processors: [
+      new BatchLogRecordProcessor({
+        exporter: new OTLPLogExporter({ url: `${OTLP_BASE}/v1/logs` }),
+        maxExportBatchSize: 32,
+        scheduledDelayMillis: 5000,
+      }),
+    ],
+  });
+  logs.setGlobalLoggerProvider(loggerProvider);
+}
 
 const tracer: Tracer = otelTrace.getTracer("radar-ng-mobile");
 const logger = logs.getLogger("radar-ng-mobile");
+
+function privacySafeAttributes(
+  attributes?: Record<string, string | number | boolean>,
+): Record<string, string | number | boolean> | undefined {
+  if (!attributes) return undefined;
+  return Object.fromEntries(
+    Object.entries(attributes).filter(([key]) =>
+      !/(^|[._-])(lat|latitude|lon|lng|longitude|coordinates?)$/i.test(key)
+    ),
+  );
+}
 
 // Wrap an async operation in a span. Records exceptions and sets status
 // automatically; the inner function gets the span so it can add attributes.
@@ -83,7 +94,7 @@ export async function trace<T>(
   fn: (span: Span) => Promise<T>,
   attributes?: Record<string, string | number | boolean>,
 ): Promise<T> {
-  const span = tracer.startSpan(name, { attributes });
+  const span = tracer.startSpan(name, { attributes: privacySafeAttributes(attributes) });
   try {
     return await context.with(
       otelTrace.setSpan(context.active(), span),
@@ -115,11 +126,12 @@ export function logEvent(
   body: string,
   attributes?: Record<string, string | number | boolean>,
 ) {
+  if (!TELEMETRY_ENABLED) return;
   logger.emit({
     severityNumber: severityMap[severity],
     severityText: severity.toUpperCase(),
     body,
-    attributes,
+    attributes: privacySafeAttributes(attributes),
   });
 }
 
@@ -134,7 +146,7 @@ type GlobalErrorUtils = {
 };
 const errorUtils = (globalThis as unknown as { ErrorUtils?: GlobalErrorUtils })
   .ErrorUtils;
-if (errorUtils?.getGlobalHandler && errorUtils?.setGlobalHandler) {
+if (TELEMETRY_ENABLED && errorUtils?.getGlobalHandler && errorUtils?.setGlobalHandler) {
   const prev = errorUtils.getGlobalHandler();
   errorUtils.setGlobalHandler((err, isFatal) => {
     const e = err as Error;

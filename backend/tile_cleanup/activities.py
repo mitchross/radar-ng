@@ -19,10 +19,11 @@ from temporalio import activity
 
 from backend.shared.grid_dump import cleanup_old_grids
 from backend.shared.logger import get_logger
-from backend.shared.manifest import update_manifest_file
+from backend.shared.manifest import read_manifest_file, update_manifest_file
 
 
 TILE_DIR = Path(os.environ.get("TILE_DIR", "/data/tiles"))
+STATE_DIR = Path(os.environ.get("STATE_DIR", "/data/state"))
 log = get_logger("tile-cleanup-activities")
 
 
@@ -57,6 +58,9 @@ def _sweep_layer(layer: str, retention_min: int) -> int:
         return 0
     cutoff = time.time() - retention_min * 60
     candidates: list[Path] = []
+    versioned_runs: list[Path] = []
+    manifest = read_manifest_file(STATE_DIR)
+    current_run = manifest.get("layers", {}).get(layer, {}).get("run_id")
     for entry in sorted(base.iterdir()):
         if not entry.is_dir():
             continue
@@ -64,15 +68,37 @@ def _sweep_layer(layer: str, retention_min: int) -> int:
         if entry.name[:1].isdigit():
             candidates.append(entry)
         else:
-            candidates.extend(p for p in entry.iterdir() if p.is_dir())
+            runs_root = entry / "runs"
+            if runs_root.is_dir():
+                versioned_runs.extend(
+                    path for path in runs_root.iterdir() if path.is_dir()
+                )
+                candidates.extend(
+                    path for path in entry.iterdir()
+                    if path.is_dir() and path.name != "runs"
+                )
+            else:
+                candidates.extend(p for p in entry.iterdir() if p.is_dir())
     removed = 0
+    for run_dir in versioned_runs:
+        if run_dir.name == current_run:
+            continue
+        try:
+            issued_at = datetime.fromisoformat(run_dir.name)
+        except ValueError:
+            continue
+        if issued_at.timestamp() < cutoff:
+            # Versioned runs are never advertised after a manifest swap, so
+            # they can be deleted without mutating current frame indexes.
+            shutil.rmtree(run_dir, ignore_errors=True)
+            removed += 1
     for ts_dir in candidates:
         # Orphaned atomic-render staging dirs ("{ts}.tmp", see
         # render_tiles_atomic): a live render is seconds old; anything past
         # an hour is a crash leftover. Swept by mtime — the name's embedded
         # timestamp is the frame's valid time, which for forecast layers can
         # legitimately be in the future.
-        if ts_dir.name.endswith(".tmp"):
+        if ".tmp-" in ts_dir.name or ts_dir.name.endswith(".tmp"):
             try:
                 if ts_dir.stat().st_mtime < time.time() - 3600:
                     shutil.rmtree(ts_dir, ignore_errors=True)

@@ -23,7 +23,7 @@ import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 // City/metro level — matches the dedicated map's default zoom.
 const MINI_ZOOM = 8;
 const MINI_SOURCE_MIN_ZOOM = 4;
-const MINI_SOURCE_MAX_ZOOM = 8;
+const MINI_SOURCE_MAX_ZOOM = 7;
 
 export function RadarMiniMap({ headline }: { headline?: string }) {
   const router = useRouter();
@@ -51,12 +51,13 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
       : "radar";
   const layer = manifest?.layers?.[layerKey];
   const frames = useMemo<RadarFrame[]>(() => (
-    layer?.timestamps.map((ts) => ({
-      time: Math.floor(new Date(ts).getTime() / 1000),
-      path: ts,
+    (layer?.frames ?? layer?.timestamps.map((timestamp) => ({ timestamp, path: timestamp })) ?? []).map((frame) => ({
+      time: Math.floor(new Date(frame.timestamp).getTime() / 1000),
+      timestamp: frame.timestamp,
+      path: frame.path,
       source: "radar",
     })) ?? []
-  ), [layer?.timestamps]);
+  ), [layer?.frames, layer?.timestamps]);
   const nowFrameIndex = pickNowFrameIndex(frames);
   const nowFrame = nowFrameIndex >= 0 ? frames[nowFrameIndex] : null;
   const radarUrl = nowFrame ? buildSelfHostedTileUrl(serverUrl, layerKey as LayerType, nowFrame.path, activePalette) : null;

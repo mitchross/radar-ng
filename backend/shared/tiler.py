@@ -1,8 +1,10 @@
 """Shared tile renderer: numpy array → PNG tiles in XYZ slippy map format."""
 
 import math
+import errno
 import os
 import shutil
+import uuid
 from pathlib import Path
 
 import numpy as np
@@ -223,18 +225,17 @@ def render_tiles_atomic(
 ) -> int:
     """render_tiles, but the pyramid appears atomically at `output_dir`.
 
-    Renders into a sibling `<name>.tmp` directory and renames it into place
+    Renders into a unique sibling staging directory and renames it into place
     once complete. A crash mid-render leaves only a `.tmp` dir (the cleanup
     sweep removes stale ones) — a reader can never observe a partial
     pyramid, and a manifest entry never points at a half-written frame.
 
-    If `output_dir` already exists (forecast layers re-render the same
-    valid-time path on every model run) it is replaced.
+    Published paths are immutable. If a retry finds an existing complete
+    directory, the new staging tree is discarded. Forecast runs therefore use
+    run-versioned paths instead of rewriting a valid-time directory in place.
     """
     final = Path(output_dir)
-    tmp = final.parent / f"{final.name}.tmp"
-    if tmp.exists():
-        shutil.rmtree(tmp, ignore_errors=True)
+    tmp = final.parent / f".{final.name}.tmp-{uuid.uuid4().hex}"
     try:
         count = render_tiles(
             rgba=rgba, lats=lats, lons=lons,
@@ -247,7 +248,13 @@ def render_tiles_atomic(
         # Fully transparent frame → nothing was written, no dir to publish.
         shutil.rmtree(tmp, ignore_errors=True)
         return 0
-    if final.exists():
-        shutil.rmtree(final, ignore_errors=True)
-    os.rename(tmp, final)
+    try:
+        os.rename(tmp, final)
+    except OSError as exc:
+        if exc.errno not in (errno.EEXIST, errno.ENOTEMPTY):
+            shutil.rmtree(tmp, ignore_errors=True)
+            raise
+        # Another retry/activity won the publish race. The winner is already a
+        # complete immutable pyramid, so never create a delete/rename 404 gap.
+        shutil.rmtree(tmp, ignore_errors=True)
     return count

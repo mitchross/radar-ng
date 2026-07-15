@@ -1,8 +1,8 @@
 /**
  * Cumulus radar timeline — Apple-Weather-inspired "forecast pill".
- * Violet play button + layer/date header + 1h/12h segmented zoom + segmented
+ * Violet play button + layer/date header + 1h/48h segmented zoom + segmented
  * track (past / nowcast / HRRR / long-range) + NOW marker + draggable thumb.
- * Playback advances every 420ms within the active zoom window.
+ * Playback advances every 750ms within the active zoom window.
  */
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import Slider from "@react-native-community/slider";
@@ -13,8 +13,8 @@ import { findClosestIdx } from "../../lib/frameIndex";
 import type { LayerType } from "../../types/weather";
 
 const NOWCAST_MIN = 60;
-const HRRR_MIN = 360;
-const PLAYBACK_MS = 420;
+const HRRR_MIN = 48 * 60;
+const PLAYBACK_MS = 750;
 
 const LAYER_TITLE: Record<LayerType, string> = {
   radar: "Radar",
@@ -28,7 +28,7 @@ const LAYER_TITLE: Record<LayerType, string> = {
   cape: "Storm Energy",
 };
 
-type Zoom = "1h" | "12h";
+type Zoom = "1h" | "48h";
 
 export function TimelineBar() {
   const frames = useWeatherStore((s) => s.frames);
@@ -49,7 +49,7 @@ export function TimelineBar() {
   // Zoom window indices
   const { startIdx, endIdx } = useMemo(() => {
     if (frames.length === 0) return { startIdx: 0, endIdx: 0 };
-    if (zoom === "12h") return { startIdx: 0, endIdx: frames.length - 1 };
+    if (zoom === "48h") return { startIdx: 0, endIdx: frames.length - 1 };
     let s = 0, e = frames.length - 1;
     const lo = nowSec - 60 * 60;
     const hi = nowSec + 60 * 60;
@@ -69,7 +69,7 @@ export function TimelineBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, startIdx, endIdx, frames.length]);
 
-  // 420ms playback tick within zoom window
+  // Playback tick within zoom window
   useEffect(() => {
     if (!isPlaying || frames.length === 0 || endIdx <= startIdx) return;
     const id = setInterval(() => {
@@ -139,7 +139,7 @@ export function TimelineBar() {
           </View>
 
           <View style={styles.segmented}>
-            {(["1h", "12h"] as const).map((z) => (
+            {(["1h", "48h"] as const).map((z) => (
               <Pressable
                 key={z}
                 onPress={() => setZoom(z)}
@@ -218,7 +218,7 @@ export function TimelineBar() {
         <View style={styles.axisRow}>
           {(zoom === "1h"
             ? ["-60", "-30", "Now", "+30", "+60"]
-            : ["-1h", "Now", "+3h", "+12h", "+24h"]
+            : ["Past", "Now", "+12h", "+24h", "+48h"]
           ).map((label, i) => (
             <Text
               key={i}

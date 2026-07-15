@@ -31,6 +31,7 @@ with workflow.unsafe.imports_passed_through():
         hrrr_find_latest_run,
         hrrr_horizon_for_run,
         hrrr_mark_processed,
+        hrrr_publish_run,
         hrrr_process_forecast_hour,
     )
 
@@ -59,6 +60,7 @@ class IngestHrrrResult:
     forecast_hours_processed: int
     cleanup: HrrrCleanupResult | None = None
     layers_per_hour: list[list[str]] = field(default_factory=list)
+    published_layers: list[str] = field(default_factory=list)
 
 
 @workflow.defn(name="IngestHrrrWorkflow")
@@ -123,10 +125,35 @@ class IngestHrrrWorkflow:
         layers_per_hour = [r.rendered_layers for r in results]
         succeeded = sum(1 for r in results if r.rendered_layers)
 
-        if succeeded == 0:
-            # Every hour failed — genuinely broken run (bad grib, full disk).
-            # Leave it unmarked so the next schedule cycle retries from scratch.
-            workflow.logger.error("HRRR run %s: all %d hours failed; not marking processed", find.run_id, horizon)
+        if succeeded != horizon or any(
+            "radar-hrrr" not in result.rendered_layers for result in results
+        ):
+            # Never expose a mixed or partial run. Immutable run paths can be
+            # retried safely; the prior complete manifest remains live.
+            workflow.logger.error(
+                "HRRR run %s incomplete: %d/%d reflectivity hours; not publishing",
+                find.run_id, succeeded, horizon,
+            )
+            cleanup = await self._cleanup()
+            return IngestHrrrResult(
+                run_id=find.run_id,
+                skipped_already_processed=False,
+                forecast_hours_processed=0,
+                cleanup=cleanup,
+                layers_per_hour=layers_per_hour,
+            )
+
+        published_layers: list[str] = await workflow.execute_activity(
+            hrrr_publish_run,
+            args=[find.run_id, results],
+            start_to_close_timeout=timedelta(minutes=2),
+            retry_policy=_DEFAULT_RETRY,
+        )
+        if "radar-hrrr" not in published_layers:
+            workflow.logger.error(
+                "HRRR run %s failed coherent publication; not marking processed",
+                find.run_id,
+            )
             cleanup = await self._cleanup()
             return IngestHrrrResult(
                 run_id=find.run_id,
@@ -149,6 +176,7 @@ class IngestHrrrWorkflow:
             forecast_hours_processed=succeeded,
             cleanup=cleanup,
             layers_per_hour=layers_per_hour,
+            published_layers=published_layers,
         )
 
     async def _cleanup(self) -> HrrrCleanupResult:

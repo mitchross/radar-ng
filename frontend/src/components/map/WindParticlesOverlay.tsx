@@ -86,7 +86,7 @@ export function WindParticlesOverlay({
   const activeLayer = useWeatherStore((s) => s.activeLayer);
 
   const frame = frames[currentFrameIndex];
-  const timestamp = frame?.path ?? null;
+  const timestamp = frame?.timestamp ?? null;
   const shouldFetch =
     enabled &&
     (activeLayer === "wind" || activeLayer === "radar" || activeLayer === "radar-hrrr");

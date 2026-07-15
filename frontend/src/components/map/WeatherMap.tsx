@@ -32,11 +32,6 @@ export function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark"
   const [patched, setPatched] = useState<string | null>(null);
 
   useEffect(() => {
-    // Satellite already points at an absolute URL — no patching needed.
-    if (mapStyle === "satellite") {
-      setPatched(styleUrl);
-      return;
-    }
     let cancelled = false;
 
     async function attempt(): Promise<string> {

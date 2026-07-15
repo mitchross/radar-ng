@@ -26,7 +26,7 @@ import { useWeatherClearTheme } from "../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../theme/weatherClearTheme";
 import WeatherIcon from "../components/weather/WeatherIcon";
 
-type Minute = { i: number; intensity: number; confLo: number; confHi: number };
+type Minute = { i: number; intensity: number };
 
 export default function NowcastScreen() {
   useLocation();
@@ -119,11 +119,10 @@ export default function NowcastScreen() {
       ? verdict.endMinute
       : -1;
 
-  // Total precipitation in inches
-  const totalMm = minutes.reduce((s, m) => s + m.intensity, 0);
+  // Chart intensity is mm/hour; integrate sixty one-minute samples to amount.
+  const totalMm = minutes.reduce((s, m) => s + m.intensity / 60, 0);
   const totalIn = totalMm / 25.4;
 
-  const confidence = estimateConfidence(forecast);
   const location = activeLocationName(locationMode, selectedPlace, devicePlace);
   const isAdv = viewMode === "advanced";
 
@@ -148,7 +147,7 @@ export default function NowcastScreen() {
             style={styles.header}
           >
             <View style={styles.headerCopy}>
-              <Text style={styles.headerKicker}>HYPER-LOCAL NOWCAST</Text>
+              <Text style={styles.headerKicker}>NEXT-HOUR PRECIPITATION</Text>
               <Text numberOfLines={1} style={styles.headerLocation}>{location}</Text>
             </View>
             <SegmentedControl
@@ -263,50 +262,16 @@ export default function NowcastScreen() {
             />
           </View>
 
-          {/* Advanced Mode: Forecast model details & Hyper-local variation */}
+          {/* Advanced Mode: honest model provenance and limitations */}
           {isAdv ? (
             <>
               <View style={styles.sectionWrap}>
                 <SectionLabel>FORECAST MODEL</SectionLabel>
               </View>
               <View style={styles.card}>
-                <Row label="Model" value="HRRR + MRMS blend" />
-                <Row label="Resolution" value="1.9 mi / 15 min" />
-                <Row label="Confidence">
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <View style={styles.confTrack}>
-                      <View
-                        style={[
-                          styles.confFill,
-                          {
-                            width: `${confidence * 100}%`,
-                            backgroundColor:
-                              confidence > 0.7
-                                ? theme.colors.success
-                                : confidence > 0.4
-                                  ? theme.colors.warning
-                                  : "#FF9F2E",
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.confText,
-                        {
-                          color:
-                            confidence > 0.7
-                              ? theme.colors.success
-                              : confidence > 0.4
-                                ? theme.colors.warning
-                                : "#FF9F2E",
-                        },
-                      ]}
-                    >
-                      {Math.round(confidence * 100)}%
-                    </Text>
-                  </View>
-                </Row>
+                <Row label="Product" value="Point precipitation guidance" />
+                <Row label="Source" value="Self-hosted Open-Meteo" />
+                <Row label="Native interval" value="15 minutes" />
                 <Row
                   label="Last update"
                   value={`${Math.round((Date.now() - new Date(forecast.current.time).getTime()) / 60000)} min ago`}
@@ -315,62 +280,25 @@ export default function NowcastScreen() {
               </View>
 
               <View style={styles.sectionWrap}>
-                <SectionLabel>HYPER-LOCAL VARIATION</SectionLabel>
+                <SectionLabel>LIMITS</SectionLabel>
               </View>
               <View style={styles.card}>
-                <Text style={styles.variationCaption}>
-                  Rain totals expected within 2 miles of you
+                <Text style={styles.noteBody}>
+                  This is model guidance for the selected point, interpolated
+                  between 15-minute values. It does not claim block-level
+                  variation or a measured probability of confidence.
                 </Text>
-                {[
-                  { label: "Your block", v: totalIn, hi: true },
-                  { label: "½ mi north", v: totalIn * 1.4 },
-                  { label: "½ mi south", v: totalIn * 0.3 },
-                  { label: "1 mi east", v: totalIn * 0.9 },
-                  { label: "1 mi west", v: totalIn * 1.7 },
-                ].map((r) => (
-                  <View key={r.label} style={styles.variationRow}>
-                    <Text
-                      style={[
-                        styles.variationLabel,
-                        r.hi ? { color: theme.colors.text } : null,
-                      ]}
-                    >
-                      {r.label}
-                    </Text>
-                    <View style={styles.variationTrack}>
-                      <View
-                        style={[
-                          styles.variationFill,
-                          {
-                            width: `${Math.min(100, (r.v / Math.max(0.5, totalIn * 2)) * 100)}%`,
-                            backgroundColor: r.hi
-                              ? theme.colors.accent
-                              : theme.colors.rain,
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.variationValue,
-                        r.hi ? { color: theme.colors.text } : null,
-                      ]}
-                    >
-                      {r.v.toFixed(2)}&quot;
-                    </Text>
-                  </View>
-                ))}
               </View>
             </>
           ) : null}
 
-          {/* Note about hyper-local */}
+          {/* Product provenance */}
           <View style={[styles.card, { marginTop: 14, marginBottom: 24 }]}>
             <Text style={styles.noteTitle}>About this forecast</Text>
             <Text style={styles.noteBody}>
-              Minute-by-minute precip is interpolated from Open-Meteo&apos;s 15-min HRRR
-              output. Connect a self-hosted tile-server in Settings to feed MRMS
-              observations for true minute-level accuracy.
+              The bars interpolate self-hosted Open-Meteo 15-minute guidance.
+              For observed MRMS and the motion-based 0–60 minute radar nowcast,
+              use the Forecast timeline on the Radar screen.
             </Text>
           </View>
 
@@ -483,14 +411,16 @@ function Row({
 // Helper: build minute intervals
 function buildMinutes(minutely: { time: string[]; precipitation: number[] } | undefined): Minute[] {
   if (!minutely || minutely.precipitation.length === 0) {
-    return Array.from({ length: 60 }, (_, i) => ({ i, intensity: 0, confLo: 0, confHi: 0 }));
+    return Array.from({ length: 60 }, (_, i) => ({ i, intensity: 0 }));
   }
   const now = Date.now();
   const startIdx = Math.max(
     0,
     minutely.time.findIndex((t) => new Date(t).getTime() >= now - 7.5 * 60_000),
   );
-  const quarters = minutely.precipitation.slice(startIdx, startIdx + 5);
+  const quarters = minutely.precipitation
+    .slice(startIdx, startIdx + 5)
+    .map((amountMm) => amountMm * 4);
   while (quarters.length < 5) quarters.push(0);
 
   const out: Minute[] = [];
@@ -501,24 +431,11 @@ function buildMinutes(minutely: { time: string[]; precipitation: number[] } | un
       0,
       quarters[q] * (1 - frac) + quarters[q + 1] * frac,
     );
-    const spread = 0.15 + i * 0.005;
-    out.push({
-      i,
-      intensity,
-      confLo: Math.max(0, intensity - spread),
-      confHi: intensity + spread,
-    });
+    out.push({ i, intensity });
   }
   return out;
 }
 
-function estimateConfidence(forecast: { current: { time: string } }): number {
-  const ageMin = (Date.now() - new Date(forecast.current.time).getTime()) / 60_000;
-  if (ageMin < 5) return 0.95;
-  if (ageMin < 15) return 0.8;
-  if (ageMin < 30) return 0.65;
-  return 0.5;
-}
 
 function createStyles(theme: WeatherClearTheme) {
   const cumulus = {
@@ -763,20 +680,6 @@ function createStyles(theme: WeatherClearTheme) {
   rowLabel: { color: cumulus.inkDim, fontSize: 13, fontFamily: cumulusFonts.ui, fontWeight: "500" },
   rowValue: { color: cumulus.ink, fontSize: 14, fontWeight: "600", fontFamily: cumulusFonts.ui },
 
-  confTrack: {
-    width: 80,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.colors.divider,
-    overflow: "hidden",
-  },
-  confFill: { height: "100%", borderRadius: 3 },
-  confText: {
-    fontSize: 11,
-    fontWeight: "700",
-    fontFamily: cumulusFonts.ui,
-  },
-
   noteTitle: {
     color: cumulus.ink,
     fontSize: 14,
@@ -791,38 +694,5 @@ function createStyles(theme: WeatherClearTheme) {
     fontFamily: cumulusFonts.ui,
   },
 
-  variationCaption: {
-    color: cumulus.inkDim,
-    fontSize: 12,
-    fontFamily: cumulusFonts.ui,
-    marginBottom: 10,
-  },
-  variationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 6,
-  },
-  variationLabel: {
-    width: 86,
-    fontSize: 12,
-    color: cumulus.inkDim,
-    fontFamily: cumulusFonts.ui,
-  },
-  variationTrack: {
-    flex: 1,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.colors.divider,
-    overflow: "hidden",
-  },
-  variationFill: { height: "100%", borderRadius: 3 },
-  variationValue: {
-    width: 48,
-    textAlign: "right",
-    fontSize: 12,
-    fontFamily: cumulusFonts.mono,
-    color: cumulus.inkDim,
-  },
   });
 }

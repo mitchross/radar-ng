@@ -1,0 +1,24 @@
+{
+  "version": 8,
+  "name": "Satellite imagery",
+  "sources": {
+    "imagery": {
+      "type": "raster",
+      "tiles": [
+        "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+      ],
+      "tileSize": 256,
+      "attribution": "Tiles © Esri and imagery providers",
+      "maxzoom": 19
+    }
+  },
+  "layers": [
+    {
+      "id": "imagery",
+      "type": "raster",
+      "source": "imagery",
+      "minzoom": 0,
+      "maxzoom": 19
+    }
+  ]
+}

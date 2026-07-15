@@ -17,6 +17,8 @@ from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
+from temporal.task_queues import OPEN_METEO_TASK_QUEUE
+
 with workflow.unsafe.imports_passed_through():
     from backend.open_meteo_sync.activities import (
         OpenMeteoSyncArgs,
@@ -31,9 +33,6 @@ _RETRY = RetryPolicy(
     maximum_interval=timedelta(minutes=5),
     maximum_attempts=3,
 )
-
-OPEN_METEO_TASK_QUEUE = "radar-ng-open-meteo"
-
 
 @workflow.defn(name="OpenMeteoSyncWorkflow")
 class OpenMeteoSyncWorkflow:

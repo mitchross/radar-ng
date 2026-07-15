@@ -74,7 +74,12 @@ def sample_window(meta_path: Path, lat: float, lon: float, radius_km: float) -> 
         meta = json.loads(meta_path.read_text())
         h = int(meta["height"])
         w = int(meta["width"])
-        bin_path = meta_path.parent / meta_path.name.replace(".meta.json", ".bin")
+        data_file = meta.get("data_file")
+        bin_path = (
+            meta_path.parent / str(data_file)
+            if data_file
+            else meta_path.parent / meta_path.name.replace(".meta.json", ".bin")
+        )
         arr = np.fromfile(str(bin_path), dtype="<f4").reshape(h, w)
         lat_max = float(meta["lat_max"])
         lat_min = float(meta["lat_min"])

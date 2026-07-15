@@ -9,8 +9,8 @@ A complete weather backend on hardware you own. Every data source is **free and 
 | layer | source | cadence | resolution |
 |---|---|---|---|
 | radar (base + composite) | NOAA MRMS S3 | 2 min | ~1 km |
-| radar-hrrr, temperature, wind, CAPE, precip type/accum, cloud | NOAA HRRR S3 | hourly, 18–48 h out | 3 km |
-| nowcast (+60 min) | pysteps S-PROG of MRMS | 2 min | 1 km |
+| radar-hrrr simulated reflectivity | NOAA HRRR S3 | hourly, 18–48 h out | 3 km |
+| nowcast (+60 min) | pysteps S-PROG of MRMS | 2 min input cadence | ~2 km science grid |
 | lightning | Blitzortung websocket | ~1 min | strikes |
 | tropical | NHC GIS feeds | 6 h | tracks + cones |
 | forecast | self-hosted Open-Meteo (GFS + HRRR) | 1–6 h | point forecast |
@@ -25,9 +25,9 @@ Full layer matrix with tile paths and retention lives in the [README](../README.
 | profile | what it runs | min | recommended |
 |---|---|---|---|
 | **lab** | docker compose, single node, MRMS radar + nowcast + forecast | 4 cores · 4 GB · 20 GB SSD | 8 cores · 8 GB · 50 GB SSD |
-| **prod** | full K8s, all HRRR layers, HPA'd tile-server | 16 cores · 16 GB · 100 GB SSD | 24 cores · 32 GB · 200 GB NVMe |
+| **prod** | K8s, MRMS + nowcast + HRRR reflectivity | 16 cores · 16 GB · 100 GB SSD | 24 cores · 32 GB · 200 GB NVMe |
 
-The hot spot is the MRMS palette render: every 2-minute radar frame is rasterized into a z4–z8 PNG pyramid per palette. More cores = fresher radar. See [tuning.md](tuning.md) before cutting the pipeline down for small hosts.
+The hot spot is the MRMS palette render: every radar frame is rasterized into a z4–z7 PNG pyramid per palette. More cores = fresher radar. See [tuning.md](tuning.md) before cutting the pipeline down for small hosts.
 
 ### Software
 
@@ -75,7 +75,7 @@ This runs `pmtiles extract`, which uses HTTP range reads to pull only your bound
 docker compose up -d --build
 ```
 
-Images build locally from the repo (no registry needed). One footgun: the worker images build from the repo root with no `.dockerignore`, so a stray multi-GB file in the tree (old `backend/pmtiles-data/`, `frontend/node_modules/`) gets shipped to the docker daemon as build context — park those elsewhere if the build hangs on "transferring context".
+Images build locally from the repo (no registry needed). The root `.dockerignore` keeps frontend output, test caches, docs, and local captures out of the worker build context; add any new local data directories there before they become large.
 
 What starts:
 
@@ -83,7 +83,7 @@ What starts:
 |---|---|
 | `temporal` (+ `temporal-postgres`) | Temporal server — schedules and dispatches all ingest work (gRPC on `:7233` for the `temporal` CLI) |
 | `temporal-ui` | optional web UI — `docker compose --profile ui up -d`, then <http://localhost:8233> |
-| `worker` | Temporal worker — runs every ingest activity on task queue `radar-ng`; **self-seeds all schedules on boot**, no manual setup (`SKIP_SCHEDULE_SEED=1` to suppress) |
+| `worker` | Temporal worker — the default `legacy` role runs every ingest activity on task queue `radar-ng` and self-seeds schedules; production can split roles onto isolated queues after all role workers are deployed |
 | `open-meteo` | self-hosted forecast API |
 | `open-meteo-worker` | isolated worker pool (task queue `radar-ng-open-meteo`) that runs the model syncs |
 | `tile-server` | Caddy + FastAPI, the only public port (`:8080`) |

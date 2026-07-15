@@ -2,19 +2,15 @@
     # Radar/forecast tiles.
     # Observed MRMS frames (radar, radar-composite) are written exactly once
     # per timestamp dir, so they can be cached hard — this is what lets the
-    # app's playback loop replay past frames without re-fetching every tile
-    # each cycle. Forecast layers (nowcast, radar-hrrr, temperature, ...)
-    # rewrite the SAME valid-time path on every model run, so a long TTL
-    # would pin stale predictions; keep those short-lived.
+    # app's playback loop replay past frames without re-fetching every tile.
+    # Forecast products also publish immutable paths (HRRR includes run_id),
+    # so every advertised tile can share the same cache contract.
     handle /tiles/* {
         root * /data
         file_server {
             precompressed gzip
         }
-        @observed path /tiles/radar/* /tiles/radar-composite/*
-        @mutable not path /tiles/radar/* /tiles/radar-composite/*
-        header @observed Cache-Control "public, max-age=86400, immutable"
-        header @mutable Cache-Control "public, max-age=120"
+        header Cache-Control "public, max-age=86400, immutable"
         header Access-Control-Allow-Origin "*"
     }
 
@@ -41,7 +37,6 @@
     # API endpoints (FastAPI)
     handle /api/* {
         reverse_proxy 127.0.0.1:8000
-        header Access-Control-Allow-Origin "*"
     }
 
     # Workflow endpoints (FastAPI) — push tokens + storm watches live under
@@ -50,7 +45,6 @@
     # sees the request.
     handle /v1/* {
         reverse_proxy 127.0.0.1:8000
-        header Access-Control-Allow-Origin "*"
     }
 
     log {

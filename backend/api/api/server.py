@@ -12,10 +12,14 @@ Endpoints:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
+from collections import OrderedDict, defaultdict
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -31,6 +35,11 @@ OPEN_METEO_BASE = os.environ.get("OPEN_METEO_BASE", "https://api.open-meteo.com/
 STYLE_DIR = os.environ.get("STYLE_DIR", "/srv/basemap/styles")
 MRMS_MAX_AGE_S = int(os.environ.get("MRMS_MAX_AGE_S", "600"))  # tiles older than this → degraded
 FORECAST_TTL = int(os.environ.get("FORECAST_TTL_S", "900"))  # 15min
+FORECAST_CACHE_MAX_ENTRIES = int(os.environ.get("FORECAST_CACHE_MAX_ENTRIES", "512"))
+WIND_CACHE_MAX_ENTRIES = int(os.environ.get("WIND_CACHE_MAX_ENTRIES", "48"))
+API_RATE_LIMIT_RPS = float(os.environ.get("API_RATE_LIMIT_RPS", "20"))
+API_RATE_LIMIT_BURST = float(os.environ.get("API_RATE_LIMIT_BURST", "60"))
+log = logging.getLogger(__name__)
 
 CURRENT_FIELDS = (
     "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,"
@@ -41,12 +50,28 @@ HOURLY_FIELDS = (
     "temperature_2m,precipitation,precipitation_probability,weather_code,"
     "wind_speed_10m,relative_humidity_2m,apparent_temperature"
 )
+MINUTELY_15_FIELDS = (
+    "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,"
+    "weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
+)
 DAILY_FIELDS = (
     "temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum,"
     "precipitation_probability_max,uv_index_max,sunrise,sunset"
 )
 
-app = FastAPI(title="radar-ng Tile API")
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    app.state.forecast_http = httpx.AsyncClient(
+        limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+        timeout=httpx.Timeout(15.0),
+    )
+    try:
+        yield
+    finally:
+        await app.state.forecast_http.aclose()
+
+
+app = FastAPI(title="radar-ng Tile API", lifespan=_lifespan)
 
 # Storm-watch + push-token endpoints are workflow-driven — see
 # routes_workflows.py. Register lazily so a deploy that doesn't have
@@ -56,7 +81,9 @@ if os.environ.get("DISABLE_WORKFLOW_ROUTES") != "1":
     from backend.api.api.routes_workflows import router as workflows_router
     app.include_router(workflows_router)
 
-_forecast_cache: dict[str, tuple[float, dict]] = {}
+_forecast_cache: OrderedDict[str, tuple[float, dict]] = OrderedDict()
+_wind_cache: OrderedDict[str, tuple[float, dict]] = OrderedDict()
+_wind_cache_lock = Lock()
 # Manifest in-memory cache. The source of truth is STATE_DIR/manifest.json,
 # maintained by ingest/cleanup activities, so a cold API hit only reads one
 # small JSON file instead of crawling the tile PVC.
@@ -67,7 +94,51 @@ _metrics = {
     "forecast_cache_hits_total": 0,
     "forecast_upstream_errors_total": 0,
     "manifest_requests_total": 0,
+    "rate_limited_requests_total": 0,
 }
+_request_counts: defaultdict[tuple[str, str, int], int] = defaultdict(int)
+_request_duration_sums: defaultdict[tuple[str, str], float] = defaultdict(float)
+_rate_buckets: OrderedDict[str, tuple[float, float]] = OrderedDict()
+
+
+def _client_key(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+@app.middleware("http")
+async def request_controls(request: Request, call_next):
+    started = time.perf_counter()
+    now = time.monotonic()
+    client = _client_key(request)
+    tokens, updated = _rate_buckets.pop(client, (API_RATE_LIMIT_BURST, now))
+    tokens = min(API_RATE_LIMIT_BURST, tokens + max(0.0, now - updated) * API_RATE_LIMIT_RPS)
+    rate_limited = request.url.path != "/api/livez" and tokens < 1.0
+    if request.url.path != "/api/livez" and not rate_limited:
+        tokens -= 1.0
+    # Store the debit before yielding to downstream request handling so
+    # concurrent requests cannot observe a missing bucket and reset to burst.
+    _rate_buckets[client] = (tokens, now)
+    while len(_rate_buckets) > 4096:
+        _rate_buckets.popitem(last=False)
+
+    if rate_limited:
+        _metrics["rate_limited_requests_total"] += 1
+        response = JSONResponse(
+            {"error": "rate_limited"}, status_code=429, headers={"Retry-After": "1"}
+        )
+    else:
+        response = await call_next(request)
+
+    route = request.scope.get("route")
+    path = getattr(route, "path", request.url.path)
+    key = (request.method, str(path), response.status_code)
+    _request_counts[key] += 1
+    duration_key = (request.method, str(path))
+    _request_duration_sums[duration_key] += time.perf_counter() - started
+    return response
 
 
 def _cached(body: dict | list, max_age: int, status_code: int = 200) -> JSONResponse:
@@ -76,16 +147,6 @@ def _cached(body: dict | list, max_age: int, status_code: int = 200) -> JSONResp
         status_code=status_code,
         headers={"Cache-Control": f"public, max-age={max_age}"},
     )
-
-
-def _newest_mtime(path: Path) -> float | None:
-    if not path.exists():
-        return None
-    try:
-        stamps = [p.stat().st_mtime for p in path.iterdir() if p.is_dir()]
-        return max(stamps) if stamps else None
-    except OSError:
-        return None
 
 
 def _read_nowcast_status() -> dict | None:
@@ -97,18 +158,31 @@ def _read_nowcast_status() -> dict | None:
     return body if isinstance(body, dict) else None
 
 
-def _is_layer_dirname(name: str) -> bool:
-    # Layer names in this app match [a-z][a-z0-9_-]*. Excludes filesystem
-    # artifacts like ext4's `lost+found` (root:0 mode 700, unreadable by the
-    # non-root container user → would raise PermissionError on iterdir()).
-    return bool(name) and name[0].isalpha() and all(
-        c.isalnum() or c in ("-", "_") for c in name
-    )
+def _grid_binary_path(meta_path: Path, meta: dict) -> Path:
+    data_file = meta.get("data_file")
+    if data_file:
+        candidate = meta_path.parent / str(data_file)
+        if candidate.parent != meta_path.parent:
+            raise ValueError("invalid grid data_file")
+        return candidate
+    return meta_path.parent / meta_path.name.replace(".meta.json", ".bin")
 
 
 def _build_manifest() -> dict:
     """Read the pre-rendered manifest body from STATE_DIR/manifest.json."""
     return read_manifest_file(STATE_DIR)
+
+
+def _layer_age_seconds(manifest: dict, layer_name: str, now: float | None = None) -> int | None:
+    layer = manifest.get("layers", {}).get(layer_name, {})
+    latest = layer.get("latest")
+    if not latest:
+        return None
+    try:
+        observed = datetime.fromisoformat(str(latest)).timestamp()
+    except ValueError:
+        return None
+    return max(0, int((now or time.time()) - observed))
 
 
 # Endpoint concurrency rule: everything that touches the NFS-backed PVCs is a
@@ -133,6 +207,8 @@ def get_manifest() -> JSONResponse:
 @app.get("/api/forecast/{lat}/{lon}")
 async def get_forecast(lat: float, lon: float) -> JSONResponse:
     _metrics["forecast_requests_total"] += 1
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        raise HTTPException(422, "lat/lon out of range")
     grid_lat = round(lat, 1)
     grid_lon = round(lon, 1)
     cache_key = f"{grid_lat},{grid_lon}"
@@ -140,13 +216,17 @@ async def get_forecast(lat: float, lon: float) -> JSONResponse:
     cached = _forecast_cache.get(cache_key)
     if cached and time.time() - cached[0] < FORECAST_TTL:
         _metrics["forecast_cache_hits_total"] += 1
-        return _cached(cached[1], max_age=300)
+        _forecast_cache.move_to_end(cache_key)
+        return _cached(cached[1], max_age=FORECAST_TTL)
+    if cached:
+        _forecast_cache.pop(cache_key, None)
 
     params = {
         "latitude": str(grid_lat),
         "longitude": str(grid_lon),
         "current": CURRENT_FIELDS,
         "hourly": HOURLY_FIELDS,
+        "minutely_15": MINUTELY_15_FIELDS,
         "daily": DAILY_FIELDS,
         "temperature_unit": "fahrenheit",
         "wind_speed_unit": "mph",
@@ -156,19 +236,21 @@ async def get_forecast(lat: float, lon: float) -> JSONResponse:
     }
 
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(OPEN_METEO_BASE, params=params, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
+        client: httpx.AsyncClient = app.state.forecast_http
+        resp = await client.get(OPEN_METEO_BASE, params=params)
+        resp.raise_for_status()
+        data = resp.json()
     except httpx.HTTPError as exc:
         _metrics["forecast_upstream_errors_total"] += 1
         return JSONResponse(
-            {"error": "upstream_unavailable", "detail": str(exc), "upstream": OPEN_METEO_BASE},
+            {"error": "upstream_unavailable"},
             status_code=502,
         )
 
     _forecast_cache[cache_key] = (time.time(), data)
-    return _cached(data, max_age=300)
+    while len(_forecast_cache) > FORECAST_CACHE_MAX_ENTRIES:
+        _forecast_cache.popitem(last=False)
+    return _cached(data, max_age=FORECAST_TTL)
 
 
 @app.get("/api/inspect/{layer}/{timestamp}/{lat}/{lon}")
@@ -182,10 +264,9 @@ def inspect_point(layer: str, timestamp: str, lat: float, lon: float) -> JSONRes
     safe_layer = "".join(ch for ch in layer if ch.isalnum() or ch in "-_")
     safe_ts = "".join(ch for ch in timestamp if ch.isalnum() or ch in ":-_+.T")
     grid_base = Path(GRID_DIR) / safe_layer / safe_ts
-    bin_path = grid_base.with_suffix(".bin")
     meta_path = grid_base.with_suffix(".meta.json")
 
-    if not (bin_path.exists() and meta_path.exists()):
+    if not meta_path.exists():
         return JSONResponse(
             {"ok": False, "reason": "grid_missing", "layer": layer, "timestamp": timestamp},
             status_code=200,
@@ -193,6 +274,9 @@ def inspect_point(layer: str, timestamp: str, lat: float, lon: float) -> JSONRes
 
     try:
         meta = json.loads(meta_path.read_text())
+        bin_path = _grid_binary_path(meta_path, meta)
+        if not bin_path.exists():
+            raise OSError("grid generation missing")
         h = int(meta["height"])
         w = int(meta["width"])
         lat_min = float(meta["lat_min"])
@@ -202,7 +286,8 @@ def inspect_point(layer: str, timestamp: str, lat: float, lon: float) -> JSONRes
         unit = meta.get("unit", "")
         fill = float(meta.get("fill", float("nan")))
     except (OSError, KeyError, ValueError) as exc:
-        return JSONResponse({"ok": False, "reason": "meta_invalid", "err": str(exc)}, status_code=200)
+        log.warning("inspect metadata read failed: %s", exc)
+        return JSONResponse({"ok": False, "reason": "meta_invalid"}, status_code=200)
 
     if lat < lat_min or lat > lat_max or lon < lon_min or lon > lon_max:
         return JSONResponse(
@@ -232,7 +317,8 @@ def inspect_point(layer: str, timestamp: str, lat: float, lon: float) -> JSONRes
         v01 = read_cell(x0, y0 + 1)
         v11 = read_cell(x0 + 1, y0 + 1)
     except OSError as exc:
-        return JSONResponse({"ok": False, "reason": "read_error", "err": str(exc)}, status_code=200)
+        log.warning("inspect grid read failed: %s", exc)
+        return JSONResponse({"ok": False, "reason": "read_error"}, status_code=200)
 
     def is_fill(v: float) -> bool:
         return v != v or abs(v - fill) < 1e-6
@@ -304,6 +390,13 @@ def wind_field(timestamp: str) -> JSONResponse:
         u_meta = u_dir / f"{safe_ts}.meta.json"
         v_meta = v_dir / f"{safe_ts}.meta.json"
 
+    with _wind_cache_lock:
+        cached_wind = _wind_cache.get(safe_ts)
+        if cached_wind and time.time() - cached_wind[0] < 300:
+            _wind_cache.move_to_end(safe_ts)
+    if cached_wind and time.time() - cached_wind[0] < 300:
+        return _cached(cached_wind[1], max_age=300)
+
     import struct
 
     try:
@@ -311,10 +404,11 @@ def wind_field(timestamp: str) -> JSONResponse:
         v_m = json.loads(v_meta.read_text())
         H = int(u_m["height"])
         W = int(u_m["width"])
-        u_bin = (Path(GRID_DIR) / "wind_u" / f"{safe_ts}.bin").read_bytes()
-        v_bin = (Path(GRID_DIR) / "wind_v" / f"{safe_ts}.bin").read_bytes()
+        u_bin = _grid_binary_path(u_meta, u_m).read_bytes()
+        v_bin = _grid_binary_path(v_meta, v_m).read_bytes()
     except (OSError, KeyError, ValueError) as exc:
-        return JSONResponse({"ok": False, "reason": "grid_read_failed", "err": str(exc)}, status_code=200)
+        log.warning("wind grid read failed: %s", exc)
+        return JSONResponse({"ok": False, "reason": "grid_read_failed"}, status_code=200)
 
     # Target downsampled grid — 240x120 is enough detail for a continent-scale
     # particle field and keeps the payload under ~60 kB.
@@ -345,7 +439,7 @@ def wind_field(timestamp: str) -> JSONResponse:
     u_scaled = [int(round((u - u_min) / u_span * 254 - 127)) for u in u_vals]
     v_scaled = [int(round((v - v_min) / v_span * 254 - 127)) for v in v_vals]
 
-    return _cached({
+    body = {
         "ok": True,
         "timestamp": timestamp,
         "width": out_w,
@@ -360,7 +454,12 @@ def wind_field(timestamp: str) -> JSONResponse:
         "v_max": v_max,
         "u": u_scaled,
         "v": v_scaled,
-    }, max_age=300)
+    }
+    with _wind_cache_lock:
+        _wind_cache[safe_ts] = (time.time(), body)
+        while len(_wind_cache) > WIND_CACHE_MAX_ENTRIES:
+            _wind_cache.popitem(last=False)
+    return _cached(body, max_age=300)
 
 
 @app.get("/api/lightning")
@@ -381,8 +480,9 @@ def lightning() -> JSONResponse:
         body = json.loads(path.read_text())
         return _cached(body, max_age=10)
     except (OSError, json.JSONDecodeError) as exc:
+        log.warning("lightning state read failed: %s", exc)
         return _cached(
-            {"type": "FeatureCollection", "features": [], "error": str(exc)},
+            {"type": "FeatureCollection", "features": [], "reason": "state_read_failed"},
             max_age=10,
         )
 
@@ -400,7 +500,8 @@ def storms() -> JSONResponse:
     try:
         return _cached(json.loads(path.read_text()), max_age=30)
     except (OSError, json.JSONDecodeError) as exc:
-        return _cached({"type": "FeatureCollection", "features": [], "error": str(exc)}, max_age=30)
+        log.warning("storm state read failed: %s", exc)
+        return _cached({"type": "FeatureCollection", "features": [], "reason": "state_read_failed"}, max_age=30)
 
 
 @app.get("/api/storm-prefetch")
@@ -448,7 +549,7 @@ def storm_prefetch_style(
     """Minimal raster style consumed by MapLibre's native offline loader."""
     if layer not in {"radar", "nowcast"} or palette not in {"classic", "vivid", "muted"}:
         raise HTTPException(422, "unsupported layer or palette")
-    max_zoom = 8 if layer == "radar" else 7
+    max_zoom = 7 if layer == "radar" else 6
     if not (4 <= zoom <= max_zoom):
         raise HTTPException(422, "zoom outside layer coverage")
     safe_timestamp = "".join(ch for ch in timestamp if ch.isalnum() or ch in ":-_+.T")
@@ -490,7 +591,8 @@ def tropical() -> JSONResponse:
     try:
         return _cached(json.loads(path.read_text()), max_age=180)
     except (OSError, json.JSONDecodeError) as exc:
-        return _cached({"type": "FeatureCollection", "features": [], "error": str(exc)}, max_age=180)
+        log.warning("tropical state read failed: %s", exc)
+        return _cached({"type": "FeatureCollection", "features": [], "reason": "state_read_failed"}, max_age=180)
 
 
 @app.get("/api/livez")
@@ -516,18 +618,16 @@ async def livez() -> JSONResponse:
 @app.get("/api/health")
 def health() -> JSONResponse:
     """Returns 'ok' when MRMS tiles are fresh, 'degraded' when stale."""
-    radar_dir = Path(TILE_DIR) / "radar"
-    newest = _newest_mtime(radar_dir)
     now = time.time()
+    manifest = _build_manifest()
 
     status = "ok"
     reasons: list[str] = []
-    mrms_age = None
-    if newest is None:
+    mrms_age = _layer_age_seconds(manifest, "radar", now)
+    if mrms_age is None:
         status = "degraded"
         reasons.append("no_mrms_tiles")
     else:
-        mrms_age = int(now - newest)
         if mrms_age > MRMS_MAX_AGE_S:
             status = "degraded"
             reasons.append(f"mrms_stale_{mrms_age}s")
@@ -593,17 +693,12 @@ def get_basemap_style(name: str, request: Request) -> JSONResponse:
 def metrics() -> PlainTextResponse:
     """Prometheus text-format metrics."""
     lines: list[str] = []
-    tile_base = Path(TILE_DIR)
-    layer_counts: dict[str, int] = {}
-    if tile_base.exists():
-        for layer_dir in tile_base.iterdir():
-            # Skip filesystem artifacts like ext4's lost+found — the PVC root
-            # isn't a pure layer-only directory.
-            if not layer_dir.is_dir() or not _is_layer_dirname(layer_dir.name):
-                continue
-            layer_counts[layer_dir.name] = sum(
-                1 for p in layer_dir.iterdir() if p.is_dir()
-            )
+    manifest = _build_manifest()
+    layer_counts = {
+        layer: len(entry.get("frames", entry.get("timestamps", [])))
+        for layer, entry in manifest.get("layers", {}).items()
+        if isinstance(entry, dict)
+    }
 
     for k, v in _metrics.items():
         lines.append(f"# TYPE radar_ng_{k} counter")
@@ -613,11 +708,20 @@ def metrics() -> PlainTextResponse:
     for layer, count in sorted(layer_counts.items()):
         lines.append(f'radar_ng_tile_timestamps{{layer="{layer}"}} {count}')
 
-    radar_dir = tile_base / "radar"
-    newest = _newest_mtime(radar_dir)
-    if newest is not None:
-        age = int(time.time() - newest)
+    age = _layer_age_seconds(manifest, "radar")
+    if age is not None:
         lines.append("# TYPE radar_ng_mrms_age_seconds gauge")
         lines.append(f"radar_ng_mrms_age_seconds {age}")
+
+    lines.append("# TYPE radar_ng_http_requests_total counter")
+    for (method, path, status), count in sorted(_request_counts.items()):
+        lines.append(
+            f'radar_ng_http_requests_total{{method="{method}",path="{path}",status="{status}"}} {count}'
+        )
+    lines.append("# TYPE radar_ng_http_request_duration_seconds_sum counter")
+    for (method, path), duration in sorted(_request_duration_sums.items()):
+        lines.append(
+            f'radar_ng_http_request_duration_seconds_sum{{method="{method}",path="{path}"}} {duration:.6f}'
+        )
 
     return PlainTextResponse("\n".join(lines) + "\n")

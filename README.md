@@ -1,6 +1,6 @@
 # radar-ng
 
-> Hyper-local weather radar you host yourself — a CARROT-Weather-style Expo app on a Python + Temporal tile pipeline. Pure NOAA data, sub-2-minute refresh, no aggregators, no API keys.
+> Self-hosted weather radar on a Python + Temporal tile pipeline. Pure public data, no aggregators, and no API keys.
 
 [![expo](https://img.shields.io/badge/expo-SDK%2057-000)](https://expo.dev) [![python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/) [![temporal](https://img.shields.io/badge/orchestration-temporal-7c53ff)](https://temporal.io) [![k8s](https://img.shields.io/badge/deploy-talos%20%2B%20argocd-326CE5)](https://talos.dev)
 

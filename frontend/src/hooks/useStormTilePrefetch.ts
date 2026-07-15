@@ -17,6 +17,7 @@ export function useStormTilePrefetch() {
   const latitude = useWeatherStore((state) => state.latitude);
   const longitude = useWeatherStore((state) => state.longitude);
   const activePalette = useWeatherStore((state) => state.activePalette);
+  const extrasVisible = useWeatherStore((state) => state.extrasVisible);
 
   const query = useQuery({
     queryKey: ["storm-prefetch", serverUrl, latitude, longitude, activePalette],
@@ -27,12 +28,13 @@ export function useStormTilePrefetch() {
       activePalette,
       PREFETCH_ZOOM,
     ),
-    enabled: latitude != null && longitude != null,
-    staleTime: 30_000,
-    refetchInterval: 60_000,
+    enabled: extrasVisible && latitude != null && longitude != null,
+    staleTime: 5 * 60_000,
+    refetchInterval: extrasVisible ? 5 * 60_000 : false,
   });
 
   useEffect(() => {
+    if (!extrasVisible) return;
     const plan = query.data;
     if (!plan?.plan_id || plan.bboxes.length !== 3) return;
     const currentPlan = plan;
@@ -95,7 +97,7 @@ export function useStormTilePrefetch() {
     return () => {
       cancelled = true;
     };
-  }, [query.data]);
+  }, [extrasVisible, query.data]);
 
   return query;
 }

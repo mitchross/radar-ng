@@ -1,8 +1,8 @@
-"""radar-ng Temporal worker entrypoint.
+"""Role-aware radar-ng Temporal worker entrypoint.
 
-Registers every workflow + every activity on the `radar-ng` task queue.
-Single-pod, single-task-queue topology — split task queues later only if
-perf demands it.
+Production runs one WorkerDeployment per workload class. A legacy role keeps
+the original ``radar-ng`` queue alive while pinned executions drain; local
+development defaults to the same all-in-one behavior.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from backend.ingest_hrrr.activities import (
     hrrr_find_latest_run,
     hrrr_horizon_for_run,
     hrrr_mark_processed,
+    hrrr_publish_run,
     hrrr_process_forecast_hour,
 )
 from backend.ingest_lightning.activities import lightning_consume_stream
@@ -50,10 +51,26 @@ from backend.tile_cleanup.activities import tile_cleanup_sweep
 from temporal.schedules.seed import seed_with_retry as seed_schedules
 from temporal.shared.otel import init_tracer
 from temporal.shared.push import send_push_notification
-from temporal.workflows import ALL_WORKFLOWS
+from temporal.task_queues import (
+    ALERTS_TASK_QUEUE,
+    AUX_TASK_QUEUE,
+    HRRR_TASK_QUEUE,
+    LEGACY_TASK_QUEUE,
+    MRMS_TASK_QUEUE,
+    NOWCAST_TASK_QUEUE,
+)
+from temporal.workflows.ingest_hrrr import IngestHrrrWorkflow
+from temporal.workflows.ingest_lightning import IngestLightningWorkflow
+from temporal.workflows.ingest_mrms import IngestMrmsWorkflow
+from temporal.workflows.ingest_tropical import IngestTropicalWorkflow
+from temporal.workflows.nowcast import NowcastWorkflow
+from temporal.workflows.open_meteo_sync import OpenMeteoSyncWorkflow
+from temporal.workflows.poll_alerts import PollAlertsWorkflow
+from temporal.workflows.register_push_token import RegisterPushTokenWorkflow
+from temporal.workflows.tile_cleanup import TileCleanupWorkflow
+from temporal.workflows.watch_storm import WatchStormWorkflow
 
 
-TASK_QUEUE = "radar-ng"
 DEFAULT_MAX_CONCURRENT_ACTIVITIES = 4
 DEFAULT_MAX_CONCURRENT_ACTIVITY_TASK_POLLS = 2
 
@@ -69,6 +86,7 @@ ALL_ACTIVITIES = [
     hrrr_horizon_for_run,
     hrrr_process_forecast_hour,
     hrrr_mark_processed,
+    hrrr_publish_run,
     hrrr_cleanup,
     # ingest-lightning
     lightning_consume_stream,
@@ -87,6 +105,69 @@ ALL_ACTIVITIES = [
     signal_matching_storm_watches,
     send_push_notification,
 ]
+
+ALL_WORKFLOWS = [
+    IngestMrmsWorkflow,
+    IngestHrrrWorkflow,
+    IngestLightningWorkflow,
+    IngestTropicalWorkflow,
+    NowcastWorkflow,
+    TileCleanupWorkflow,
+    PollAlertsWorkflow,
+    WatchStormWorkflow,
+    RegisterPushTokenWorkflow,
+    OpenMeteoSyncWorkflow,
+]
+
+ROLE_CONFIG: dict[str, tuple[str, list[type], list[object]]] = {
+    "mrms": (
+        MRMS_TASK_QUEUE,
+        [IngestMrmsWorkflow],
+        [
+            mrms_list_unprocessed_keys,
+            mrms_process_frame,
+            mrms_mark_processed,
+            mrms_cleanup,
+        ],
+    ),
+    "nowcast": (NOWCAST_TASK_QUEUE, [NowcastWorkflow], [nowcast_run]),
+    "hrrr": (
+        HRRR_TASK_QUEUE,
+        [IngestHrrrWorkflow],
+        [
+            hrrr_find_latest_run,
+            hrrr_horizon_for_run,
+            hrrr_process_forecast_hour,
+            hrrr_mark_processed,
+            hrrr_publish_run,
+            hrrr_cleanup,
+        ],
+    ),
+    "aux": (
+        AUX_TASK_QUEUE,
+        [
+            IngestLightningWorkflow,
+            IngestTropicalWorkflow,
+            TileCleanupWorkflow,
+            OpenMeteoSyncWorkflow,
+        ],
+        [lightning_consume_stream, tropical_fetch_and_publish, tile_cleanup_sweep],
+    ),
+    "alerts": (
+        ALERTS_TASK_QUEUE,
+        [PollAlertsWorkflow, WatchStormWorkflow],
+        [
+            compare_radar_frames,
+            detect_storm_change,
+            fan_out_push_to_user,
+            fetch_nws_active_alerts,
+            signal_matching_storm_watches,
+            send_push_notification,
+        ],
+    ),
+    "legacy": (LEGACY_TASK_QUEUE, ALL_WORKFLOWS, ALL_ACTIVITIES),
+    "all": (LEGACY_TASK_QUEUE, ALL_WORKFLOWS, ALL_ACTIVITIES),
+}
 
 
 def _deployment_config_from_env() -> WorkerDeploymentConfig | None:
@@ -123,13 +204,20 @@ async def _main() -> None:
     interceptor = init_tracer()
     client = await Client.connect(target, namespace=namespace, interceptors=[interceptor])
 
-    # Self-seed Schedules on every pod start. Idempotent (create-or-update
-    # per schedule_id) so HA replicas racing is fine — both converge on the
-    # same desired state. seed_with_retry tolerates transient RPC errors
-    # (e.g. "shard status unknown" while a just-restarted Temporal warms its
-    # history shards) with bounded backoff; a persistent failure still aborts
-    # startup so k8s restarts us rather than leaving a worker without schedules.
-    if os.environ.get("SKIP_SCHEDULE_SEED") != "1":
+    role = os.environ.get("WORKER_ROLE", "legacy").strip().lower()
+    try:
+        default_queue, workflows, activities = ROLE_CONFIG[role]
+    except KeyError as exc:
+        raise ValueError(
+            f"unknown WORKER_ROLE={role!r}; expected one of {sorted(ROLE_CONFIG)}"
+        ) from exc
+    task_queue = os.environ.get("TEMPORAL_TASK_QUEUE", default_queue)
+
+    # One designated pool seeds Schedules. Seeding from every role creates a
+    # needless startup dependency and lets an old image race a new queue map.
+    seed_setting = os.environ.get("SEED_SCHEDULES")
+    should_seed = seed_setting == "1" or (seed_setting is None and role in {"legacy", "all"})
+    if should_seed and os.environ.get("SKIP_SCHEDULE_SEED") != "1":
         logger.info("seeding schedules…")
         await seed_schedules(client)
         logger.info("schedule seed complete")
@@ -146,9 +234,9 @@ async def _main() -> None:
 
     worker = Worker(
         client,
-        task_queue=TASK_QUEUE,
-        workflows=ALL_WORKFLOWS,
-        activities=ALL_ACTIVITIES,
+        task_queue=task_queue,
+        workflows=workflows,
+        activities=activities,
         deployment_config=deployment_config,
         max_concurrent_activities=max_concurrent_activities,
         max_concurrent_activity_task_polls=max_concurrent_activity_task_polls,
@@ -164,9 +252,9 @@ async def _main() -> None:
             "worker starting on task_queue={} with {} workflows + {} activities "
             "(versioning={}, max_activities={}, activity_polls={})"
         ),
-        TASK_QUEUE,
-        len(ALL_WORKFLOWS),
-        len(ALL_ACTIVITIES),
+        task_queue,
+        len(workflows),
+        len(activities),
         deployment_config.version if deployment_config else "off",
         max_concurrent_activities,
         max_concurrent_activity_task_polls,

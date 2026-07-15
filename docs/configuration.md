@@ -59,6 +59,8 @@ docker compose run --rm basemap-bootstrap
 | `TEMPORAL_ADDRESS` | `temporal:7233` | Point at an external cluster to skip the bundled `temporal` + `temporal-postgres`. |
 | `TEMPORAL_NAMESPACE` | `default` | Namespace workers + API use. |
 | `SKIP_SCHEDULE_SEED` | `0` | `1` stops the worker from (re)seeding Temporal Schedules on boot. |
+| `WORKER_ROLE` | `legacy` | Activity bundle and task queue: `legacy`, `mrms`, `nowcast`, `hrrr`, `aux`, `alerts`, `open-meteo`, or `all`. |
+| `USE_ISOLATED_TASK_QUEUES` | `0` | Route schedules to role queues only after matching role workers are deployed. |
 
 ### Upstream identification
 | Var | Default | Notes |
@@ -90,13 +92,17 @@ docker compose run --rm basemap-bootstrap
 | `STORM_PREFETCH_MAX_DISTANCE_KM` | `500` | Do not prefetch when the nearest storm is farther from the user. |
 | `FORECAST_HOURS` | `18` | HRRR forecast hours rendered per model run. |
 | `EXTENDED_FORECAST_HOURS` | `48` | Extended sub-hourly HRRR hours. |
+| `HRRR_ENABLED_LAYERS` | `radar-hrrr` | Comma-separated HRRR layers. Reflectivity-only is the production-safe default. |
 
 ### Nowcast (pysteps S-PROG)
 | Var | Default | Notes |
 |---|---|---|
 | `NOWCAST_HORIZON_MIN` | `60` | Minutes of extrapolated nowcast. |
 | `NOWCAST_STEP_MIN` | `5` | Minutes between nowcast frames. |
-| `NOWCAST_INPUT_FRAMES` | `4` | Recent MRMS frames fed to the motion field. |
+| `NOWCAST_INPUT_FRAMES` | `4` | Recent MRMS frames fed to the motion field; values below pySTEPS' minimum of 3 are clamped. |
+| `NOWCAST_GRID_INPUT_LAYER` | `radar-nowcast-input` | Higher-fidelity grid dedicated to motion estimation. |
+| `NOWCAST_MAX_INPUT_GAP_MIN` | `6` | Fail closed when consecutive input frames exceed this cadence. |
+| `NOWCAST_ALLOW_PERSISTENCE_FALLBACK` | `0` | Opt-in stationary fallback; disabled so degraded output is not presented as a motion forecast. |
 
 ### Storm watch
 | Var | Default | Notes |
@@ -119,6 +125,12 @@ docker compose run --rm basemap-bootstrap
 | `OPEN_METEO_BASE` | `http://open-meteo:8080/v1/forecast` | Forecast upstream; default is the bundled self-hosted Open-Meteo. |
 | `MRMS_MAX_AGE_S` | `600` | Radar age (s) past which `/api/health` reports `degraded`. |
 | `FORECAST_TTL_S` | `300` | In-process forecast response cache TTL (s). |
+| `FORECAST_CACHE_MAX_ENTRIES` | `512` | Bound for the in-process point-forecast cache. |
+| `WIND_CACHE_MAX_ENTRIES` | `48` | Bound for decoded wind-grid cache entries. |
+| `API_RATE_LIMIT_RPS` | `20` | Per-client token refill rate for API routes. |
+| `API_RATE_LIMIT_BURST` | `60` | Per-client API token bucket capacity. |
+| `DISABLE_WORKFLOW_ROUTES` | `0` | Disable watch/push mutation routes until an identity issuer and signing key are configured. |
+| `WORKFLOW_AUTH_SIGNING_KEY` | unset | HMAC key for scoped workflow-route bearer tokens. |
 
 ---
 

@@ -25,7 +25,7 @@ from temporalio import activity
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
 from backend.shared.grid_dump import cleanup_old_grids, write_grid
 from backend.shared.logger import get_logger
-from backend.shared.manifest import update_manifest_file
+from backend.shared.manifest import read_manifest_file, replace_layer_manifest, update_manifest_file
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
 from backend.shared.tiler import apply_categorical_color_table, apply_color_table, render_tiles_atomic
@@ -38,11 +38,14 @@ TMP_ROOT = Path(os.environ.get("HRRR_TMP_ROOT", "/tmp/hrrr_work"))
 FORECAST_HOURS = int(os.environ.get("FORECAST_HOURS", "18"))
 EXTENDED_FORECAST_HOURS = int(os.environ.get("EXTENDED_FORECAST_HOURS", "48"))
 EXTENDED_RUNS = {0, 6, 12, 18}
-# z9 dropped: client (RadarOverlay.tsx) caps radar-hrrr at z8, so z9 tiles
-# were rendered + stored + never fetched. Matches the MRMS decision from
-# 2026-05-10 (see ingest_mrms/activities.py). Restore here AND in the
-# client SOURCE_MAX_ZOOM map if render perf catches up.
-ZOOM_LEVELS = [4, 5, 6, 7, 8]
+# HRRR is a 3 km model. z6 is its honest display ceiling; higher zooms were
+# interpolated pixels and dominated the forecast fanout.
+ZOOM_LEVELS = [4, 5, 6]
+ENABLED_LAYERS = {
+    value.strip()
+    for value in os.environ.get("HRRR_ENABLED_LAYERS", "radar-hrrr").split(",")
+    if value.strip()
+}
 
 log = get_logger("ingest-hrrr-activities")
 
@@ -84,6 +87,18 @@ HRRR_TILE_LAYERS = [
     "precip-type", "precip-accum", "cloud",
 ]
 
+LAYER_COLOR_KEYS = {
+    "radar-hrrr": "reflectivity",
+    "temperature": "temperature",
+    "dewpoint": "dewpoint",
+    "humidity": "humidity",
+    "wind": "wind_speed",
+    "cape": "cape",
+    "precip-type": "precip_type",
+    "precip-accum": "precip_accum",
+    "cloud": "cloud_cover",
+}
+
 
 # ---------- serialisable I/O ----------
 
@@ -99,6 +114,7 @@ class ForecastHourResult:
     fhr: int
     rendered_layers: list[str] = field(default_factory=list)
     duration_s: float = 0.0
+    valid_timestamp: str = ""
 
 
 @dataclass
@@ -363,7 +379,7 @@ def _safe_grid_dump(layer: str, ts: str, data: np.ndarray, grid: ExtractedGrid, 
         log.warning("grid_dump_failed", extra={"layer": layer, "err": str(exc)})
 
 
-def _write_palette_tiles(tile_base: Path, layer: str, palette: str, ts: str, rgba: np.ndarray, grid: ExtractedGrid) -> None:
+def _write_palette_tiles(tile_base: Path, layer: str, palette: str, path: str, rgba: np.ndarray, grid: ExtractedGrid) -> int:
     lats = grid.lats
     lons = grid.lons
     source_y = grid.source_y
@@ -375,8 +391,8 @@ def _write_palette_tiles(tile_base: Path, layer: str, palette: str, ts: str, rgb
         lats = np.flipud(lats)
         lons = np.flipud(lons)
         source_y = source_y[::-1]
-    out_dir = str(tile_base / layer / palette / ts)
-    render_tiles_atomic(
+    out_dir = str(tile_base / layer / palette / path)
+    return render_tiles_atomic(
         rgba=rgba,
         lats=lats,
         lons=lons,
@@ -394,6 +410,9 @@ def _render_per_palette(
     categorical: bool = False, categories_map: dict[int, str] | None = None,
 ) -> list[str]:
     rendered: list[str] = []
+    expected = {
+        name for name, tables in palette_tables.items() if color_key in tables
+    }
     for pname, tables in palette_tables.items():
         entry = tables.get(color_key)
         if not entry:
@@ -404,8 +423,12 @@ def _render_per_palette(
             rgba = apply_categorical_color_table(data, entry["categories"], categories_map)
         else:
             rgba = apply_color_table(data, entry)
-        _write_palette_tiles(tile_base, layer, pname, ts, rgba, grid)
-        rendered.append(pname)
+        if _write_palette_tiles(tile_base, layer, pname, ts, rgba, grid) > 0:
+            rendered.append(pname)
+    if set(rendered) != expected:
+        for pname in rendered:
+            shutil.rmtree(tile_base / layer / pname / ts, ignore_errors=True)
+        return []
     return rendered
 
 
@@ -413,25 +436,30 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
     date_str, run_hour = run_id.split("_")
     run_dt = datetime.strptime(f"{date_str}{run_hour}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
     ts = (run_dt + timedelta(hours=fhr)).isoformat()
+    tile_path = f"runs/{run_id}/{ts}"
     rendered: list[str] = []
 
     r = _extract_variable(grib_path, VAR_SELECTORS["refc"])
     if r:
         d = r.data
-        palettes = _render_per_palette(tile_base, "radar-hrrr", ts, d, r, palette_tables, "reflectivity")
+        palettes = _render_per_palette(tile_base, "radar-hrrr", tile_path, d, r, palette_tables, "reflectivity")
         if palettes:
             rendered.append("radar-hrrr")
-            update_manifest_file("radar-hrrr", ts, palettes=palettes, action="add")
             _safe_grid_dump("radar-hrrr", ts, d, r, "dBZ")
+
+    # Radar is the latency-critical product. Production defaults to this fast
+    # path; secondary layers can be re-enabled explicitly once their separate
+    # capacity budget exists.
+    if ENABLED_LAYERS == {"radar-hrrr"}:
+        return rendered
 
     r = _extract_variable(grib_path, VAR_SELECTORS["t2m"])
     if r:
         d = r.data
         d = _kelvin_to_f(d)
-        palettes = _render_per_palette(tile_base, "temperature", ts, d, r, palette_tables, "temperature")
+        palettes = _render_per_palette(tile_base, "temperature", tile_path, d, r, palette_tables, "temperature")
         if palettes:
             rendered.append("temperature")
-            update_manifest_file("temperature", ts, palettes=palettes, action="add")
             _safe_grid_dump("temperature", ts, d, r, "°F")
 
     if any("dewpoint" in t for t in palette_tables.values()):
@@ -439,27 +467,24 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
         if r:
             d = r.data
             d = _kelvin_to_f(d)
-            palettes = _render_per_palette(tile_base, "dewpoint", ts, d, r, palette_tables, "dewpoint")
+            palettes = _render_per_palette(tile_base, "dewpoint", tile_path, d, r, palette_tables, "dewpoint")
             if palettes:
                 rendered.append("dewpoint")
-                update_manifest_file("dewpoint", ts, palettes=palettes, action="add")
 
     if any("humidity" in t for t in palette_tables.values()):
         r = _extract_variable(grib_path, VAR_SELECTORS["rh2m"])
         if r:
             d = r.data
-            palettes = _render_per_palette(tile_base, "humidity", ts, d, r, palette_tables, "humidity")
+            palettes = _render_per_palette(tile_base, "humidity", tile_path, d, r, palette_tables, "humidity")
             if palettes:
                 rendered.append("humidity")
-                update_manifest_file("humidity", ts, palettes=palettes, action="add")
 
     r = _extract_variable(grib_path, VAR_SELECTORS["cape"])
     if r:
         d = r.data
-        palettes = _render_per_palette(tile_base, "cape", ts, d, r, palette_tables, "cape")
+        palettes = _render_per_palette(tile_base, "cape", tile_path, d, r, palette_tables, "cape")
         if palettes:
             rendered.append("cape")
-            update_manifest_file("cape", ts, palettes=palettes, action="add")
             _safe_grid_dump("cape", ts, d, r, "J/kg")
 
     u = _extract_variable(grib_path, VAR_SELECTORS["u10"])
@@ -470,10 +495,9 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
         u_mph = _ms_to_mph(u_data)
         v_mph = _ms_to_mph(v_data)
         speed = np.sqrt(u_mph ** 2 + v_mph ** 2)
-        palettes = _render_per_palette(tile_base, "wind", ts, speed, u, palette_tables, "wind_speed")
+        palettes = _render_per_palette(tile_base, "wind", tile_path, speed, u, palette_tables, "wind_speed")
         if palettes:
             rendered.append("wind")
-            update_manifest_file("wind", ts, palettes=palettes, action="add")
             _safe_grid_dump("wind", ts, speed, u, "mph")
             _safe_grid_dump("wind_u", ts, u_mph, u, "mph")
             _safe_grid_dump("wind_v", ts, v_mph, u, "mph")
@@ -482,19 +506,17 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
     if r:
         d = r.data
         d_in = d / 25.4
-        palettes = _render_per_palette(tile_base, "precip-accum", ts, d_in, r, palette_tables, "precip_accum")
+        palettes = _render_per_palette(tile_base, "precip-accum", tile_path, d_in, r, palette_tables, "precip_accum")
         if palettes:
             rendered.append("precip-accum")
-            update_manifest_file("precip-accum", ts, palettes=palettes, action="add")
             _safe_grid_dump("precip-accum", ts, d_in, r, "in")
 
     r = _extract_variable(grib_path, VAR_SELECTORS["tcdc"])
     if r:
         d = r.data
-        palettes = _render_per_palette(tile_base, "cloud", ts, d, r, palette_tables, "cloud_cover")
+        palettes = _render_per_palette(tile_base, "cloud", tile_path, d, r, palette_tables, "cloud_cover")
         if palettes:
             rendered.append("cloud")
-            update_manifest_file("cloud", ts, palettes=palettes, action="add")
             _safe_grid_dump("cloud", ts, d, r, "%")
 
     precip: dict[str, np.ndarray] = {}
@@ -512,11 +534,10 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
         if "cfrzr" in precip: cat[precip["cfrzr"] > 0] = 3
         if "cicep" in precip: cat[precip["cicep"] > 0] = 4
         ptype_map = {1: "rain", 2: "snow", 3: "freezing_rain", 4: "ice_pellets"}
-        palettes = _render_per_palette(tile_base, "precip-type", ts, cat, pgrid, palette_tables, "precip_type",
+        palettes = _render_per_palette(tile_base, "precip-type", tile_path, cat, pgrid, palette_tables, "precip_type",
                                        categorical=True, categories_map=ptype_map)
         if palettes:
             rendered.append("precip-type")
-            update_manifest_file("precip-type", ts, palettes=palettes, action="add")
 
     return rendered
 
@@ -564,7 +585,9 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
     tile_base = Path(TILE_DIR)
     date_str, run_hour = run_id.split("_")
     tmp_dir = _current_activity_tmp_dir("hrrr", run_id, f"f{fhr:02d}")
-    needed = list(IDX_MATCHERS.keys())
+    needed = ["refc"] if ENABLED_LAYERS == {"radar-hrrr"} else list(IDX_MATCHERS.keys())
+    run_dt = datetime.strptime(f"{date_str}{run_hour}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
+    valid_timestamp = (run_dt + timedelta(hours=fhr)).isoformat()
 
     activity.heartbeat({"phase": "download", "fhr": fhr})
 
@@ -575,7 +598,12 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
     grib_path = await asyncio.to_thread(_download)
     if grib_path is None or not grib_path.exists():
         shutil.rmtree(tmp_dir, ignore_errors=True)
-        return ForecastHourResult(fhr=fhr, rendered_layers=[], duration_s=round(time.time() - started, 2))
+        return ForecastHourResult(
+            fhr=fhr,
+            rendered_layers=[],
+            duration_s=round(time.time() - started, 2),
+            valid_timestamp=valid_timestamp,
+        )
 
     activity.heartbeat({"phase": "render", "fhr": fhr})
     try:
@@ -598,7 +626,89 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
 
     duration = time.time() - started
     log.info("hour_done", extra={"run_id": run_id, "fhr": fhr, "rendered": rendered, "duration_s": round(duration, 1)})
-    return ForecastHourResult(fhr=fhr, rendered_layers=rendered, duration_s=round(duration, 2))
+    return ForecastHourResult(
+        fhr=fhr,
+        rendered_layers=rendered,
+        duration_s=round(duration, 2),
+        valid_timestamp=valid_timestamp,
+    )
+
+
+def _publish_hrrr_run_sync(
+    run_id: str,
+    results: list[ForecastHourResult],
+    palette_tables: dict[str, dict],
+    *,
+    state_dir: str | Path | None = None,
+) -> list[str]:
+    """Commit only a complete, consecutive HRRR run to the public manifest."""
+    ordered = sorted(results, key=lambda result: result.fhr)
+    if not ordered or [result.fhr for result in ordered] != list(
+        range(1, len(ordered) + 1)
+    ):
+        return []
+    if any("radar-hrrr" not in result.rendered_layers for result in ordered):
+        return []
+
+    complete_layers = set(ordered[0].rendered_layers)
+    for result in ordered[1:]:
+        complete_layers.intersection_update(result.rendered_layers)
+
+    published: list[str] = []
+    run_issued_at = datetime.strptime(run_id, "%Y%m%d_%H").replace(
+        tzinfo=timezone.utc
+    ).isoformat()
+    for layer in sorted(complete_layers):
+        color_key = LAYER_COLOR_KEYS.get(layer)
+        if color_key is None:
+            continue
+        palettes = sorted(
+            name for name, tables in palette_tables.items() if color_key in tables
+        )
+        if not palettes:
+            continue
+        frames = [
+            {
+                "timestamp": result.valid_timestamp,
+                "path": f"runs/{run_id}/{result.valid_timestamp}",
+                "source": "hrrr",
+                "kind": "model_guidance",
+                "issued_at": run_issued_at,
+                "run_id": run_id,
+                "lead_minutes": result.fhr * 60,
+                "spatial_resolution_km": 3.0,
+                "max_zoom": max(ZOOM_LEVELS),
+            }
+            for result in ordered
+        ]
+        replace_layer_manifest(
+            layer,
+            [frame["timestamp"] for frame in frames],
+            palettes=palettes,
+            state_dir=state_dir or STATE_DIR,
+            frames=frames,
+            layer_metadata={
+                "title": "HRRR simulated reflectivity"
+                if layer == "radar-hrrr"
+                else f"HRRR {layer}",
+                "kind": "model_guidance",
+                "run_id": run_id,
+                "complete": True,
+            },
+        )
+        published.append(layer)
+    return published
+
+
+@activity.defn(name="hrrr_publish_run")
+async def hrrr_publish_run(
+    run_id: str, results: list[ForecastHourResult]
+) -> list[str]:
+    """Publish a coherent immutable model run after every required hour exists."""
+    palette_tables = await asyncio.to_thread(_load_palette_tables)
+    return await asyncio.to_thread(
+        _publish_hrrr_run_sync, run_id, results, palette_tables
+    )
 
 
 @activity.defn(name="hrrr_mark_processed")
@@ -614,21 +724,43 @@ async def hrrr_mark_processed(run_id: str) -> None:
 async def hrrr_cleanup(retention_hours: int) -> HrrrCleanupResult:
     def _go() -> HrrrCleanupResult:
         tile_base = Path(TILE_DIR)
+        manifest = read_manifest_file(STATE_DIR)
         cutoff = time.time() - (retention_hours * 3600)
         removed = 0
         for layer in HRRR_TILE_LAYERS:
+            current_run = manifest.get("layers", {}).get(layer, {}).get("run_id")
             layer_dir = tile_base / layer
             if not layer_dir.exists():
                 continue
-            candidates: list[Path] = []
-            for entry in sorted(layer_dir.iterdir()):
-                if not entry.is_dir():
+            legacy_candidates: list[Path] = []
+            for palette_dir in sorted(layer_dir.iterdir()):
+                if not palette_dir.is_dir():
                     continue
-                if entry.name[:1].isdigit():
-                    candidates.append(entry)
-                else:
-                    candidates.extend(p for p in entry.iterdir() if p.is_dir())
-            for ts_dir in candidates:
+                if palette_dir.name[:1].isdigit():
+                    legacy_candidates.append(palette_dir)
+                    continue
+                runs_root = palette_dir / "runs"
+                if runs_root.is_dir():
+                    for run_dir in runs_root.iterdir():
+                        if not run_dir.is_dir():
+                            continue
+                        if run_dir.name == current_run:
+                            continue
+                        try:
+                            run_dt = datetime.strptime(run_dir.name, "%Y%m%d_%H").replace(
+                                tzinfo=timezone.utc
+                            )
+                        except ValueError:
+                            continue
+                        if run_dt.timestamp() < cutoff:
+                            shutil.rmtree(run_dir, ignore_errors=True)
+                            removed += 1
+                legacy_candidates.extend(
+                    path
+                    for path in palette_dir.iterdir()
+                    if path.is_dir() and path.name != "runs"
+                )
+            for ts_dir in legacy_candidates:
                 try:
                     dt = datetime.fromisoformat(ts_dir.name)
                 except ValueError:

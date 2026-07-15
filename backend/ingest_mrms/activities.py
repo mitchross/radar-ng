@@ -39,16 +39,14 @@ MRMS_BASE = "https://noaa-mrms-pds.s3.amazonaws.com"
 TILE_DIR = os.environ.get("TILE_DIR", "/data/tiles")
 STATE_DIR = os.environ.get("STATE_DIR", "/data/state")
 TMP_ROOT = Path(os.environ.get("MRMS_TMP_ROOT", "/tmp/mrms_work"))
-# Z9 was a ~75% slice of total render wall-clock (a single z9 render alone
-# took ~7-8 min of the historic 11 min). Cutting it makes individual frame
-# renders fit inside the 2-min schedule cadence, which is the only way to
-# keep the manifest fresh given current hardware. The mobile client clamps
-# RasterSource.maxZoomLevel to match (see RadarOverlay.tsx); MapLibre will
-# upsample z8 tiles when the user pinches past z=8, which looks soft but
-# still reads correctly. Restore z=9 only if rendering moves to a faster
-# stack (per-zoom multiprocessing was already added in the same change).
-ZOOM_LEVELS = [4, 5, 6, 7, 8]
+# z7 is approximately the native display ceiling of the ~1 km CONUS MRMS
+# source. z8 was pure upsampling and accounted for roughly 75% of this
+# pyramid's tile count, so it spent freshness budget without adding detail.
+ZOOM_LEVELS = [4, 5, 6, 7]
 BACKLOG_PER_CYCLE = int(os.environ.get("BACKLOG_PER_CYCLE", "3"))
+NOWCAST_SCIENCE_GRID_MAX_CELLS = int(
+    os.environ.get("NOWCAST_SCIENCE_GRID_MAX_CELLS", "7000000")
+)
 
 
 def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
@@ -297,8 +295,6 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
     timestamp = _extract_timestamp(inp.key)
     grid_data = np.flipud(data) if flip else data
 
-    activity.heartbeat({"phase": "grid", "timestamp": timestamp})
-
     def _grids() -> None:
         try:
             write_grid(inp.layer_name, timestamp, grid_data, lats_arr, lons_arr, unit="dBZ")
@@ -312,8 +308,6 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
                 write_storms_json(Path(STATE_DIR), grid_data, lats_arr, lons_arr, timestamp)
             except Exception as exc:  # noqa: BLE001
                 log.warning("storm_detect_failed", extra={"err": str(exc)})
-
-    await asyncio.to_thread(_grids)
 
     activity.heartbeat({"phase": "render", "timestamp": timestamp, "palettes": list(palette_tables.keys())})
 
@@ -341,8 +335,8 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
             for fut in futures:
                 pname = futures[fut]
                 try:
-                    fut.result()
-                    rendered.append(pname)
+                    if fut.result() > 0:
+                        rendered.append(pname)
                 except Exception as exc:  # noqa: BLE001
                     log.error("palette_render_failed", extra={"palette": pname, "err": str(exc)})
         return rendered
@@ -362,8 +356,66 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
         raise
     else:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+    expected_palettes = set(palette_tables)
+    if set(rendered_palettes) != expected_palettes:
+        # A frame is publishable only when every advertised palette exists.
+        # Remove successful partials so a retry can cleanly win the immutable
+        # path instead of inheriting a permanently incomplete frame.
+        for palette in rendered_palettes:
+            shutil.rmtree(tile_base / inp.layer_name / palette / timestamp, ignore_errors=True)
+        log.error(
+            "frame_incomplete",
+            extra={
+                "layer": inp.layer_name,
+                "timestamp": timestamp,
+                "expected_palettes": sorted(expected_palettes),
+                "rendered_palettes": sorted(rendered_palettes),
+            },
+        )
+        return ProcessFrameResult(
+            key=inp.key,
+            timestamp=timestamp,
+            rendered=False,
+            palettes=sorted(rendered_palettes),
+            duration_s=round(time.time() - started, 2),
+        )
+
+    # Grids and storm metadata are derived from a frame only after all public
+    # tiles are complete. Nowcast can never anchor to an unpublishable frame.
+    activity.heartbeat({"phase": "grid", "timestamp": timestamp})
+    await asyncio.to_thread(_grids)
+    if inp.layer_name == "radar":
+        await asyncio.to_thread(
+            write_grid,
+            "radar-nowcast-input",
+            timestamp,
+            grid_data,
+            lats_arr,
+            lons_arr,
+            "dBZ",
+            max_cells=NOWCAST_SCIENCE_GRID_MAX_CELLS,
+        )
+
     duration = time.time() - started
-    update_manifest_file(inp.layer_name, timestamp, palettes=rendered_palettes, action="add")
+    update_manifest_file(
+        inp.layer_name,
+        timestamp,
+        palettes=rendered_palettes,
+        action="add",
+        frame={
+            "path": timestamp,
+            "source": "mrms",
+            "kind": "observation",
+            "issued_at": timestamp,
+            "lead_minutes": 0,
+            "spatial_resolution_km": 1.0,
+            "max_zoom": max(ZOOM_LEVELS),
+        },
+        layer_metadata={
+            "title": "MRMS observed reflectivity",
+            "kind": "observation",
+        },
+    )
     log.info("frame_done", extra={"layer": inp.layer_name, "timestamp": timestamp, "duration_s": round(duration, 1)})
 
     return ProcessFrameResult(

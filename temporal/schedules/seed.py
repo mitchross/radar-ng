@@ -35,8 +35,15 @@ from temporalio.client import (
 )
 from temporalio.service import RPCError, RPCStatusCode
 
+from temporal.task_queues import (
+    ALERTS_TASK_QUEUE,
+    AUX_TASK_QUEUE,
+    HRRR_TASK_QUEUE,
+    MRMS_TASK_QUEUE,
+    NOWCAST_TASK_QUEUE,
+    LEGACY_TASK_QUEUE,
+)
 
-TASK_QUEUE = "radar-ng"
 
 # RPC status codes worth retrying while seeding at worker startup. The
 # dominant case: a Temporal server that just (re)started has history shards
@@ -61,6 +68,7 @@ class ScheduleDef:
     workflow_name: str
     workflow_input: list[Any] = field(default_factory=list)
     interval: timedelta | None = None
+    task_queue: str = AUX_TASK_QUEUE
 
 
 SCHEDULES: list[ScheduleDef] = [
@@ -69,25 +77,36 @@ SCHEDULES: list[ScheduleDef] = [
         "ingest-mrms-base", "IngestMrmsWorkflow",
         workflow_input=[{"mrms_prefix": "CONUS/MergedBaseReflectivityQC_00.50", "layer_name": "radar"}],
         interval=timedelta(minutes=2),
+        task_queue=MRMS_TASK_QUEUE,
     ),
     # MRMS composite reflectivity (full atmosphere) — every 2 min
     ScheduleDef(
         "ingest-mrms-composite", "IngestMrmsWorkflow",
         workflow_input=[{"mrms_prefix": "CONUS/MergedReflectivityComposite_00.50", "layer_name": "radar-composite"}],
         interval=timedelta(minutes=2),
+        task_queue=MRMS_TASK_QUEUE,
     ),
     # HRRR forecast — every 15 min
-    ScheduleDef("ingest-hrrr", "IngestHrrrWorkflow", interval=timedelta(minutes=15)),
+    ScheduleDef(
+        "ingest-hrrr", "IngestHrrrWorkflow",
+        interval=timedelta(minutes=15), task_queue=HRRR_TASK_QUEUE,
+    ),
     # Lightning WS consumer — every 60 min (workflow runs activity for ~50 min)
     ScheduleDef("ingest-lightning", "IngestLightningWorkflow", interval=timedelta(minutes=60)),
     # NHC tropical cyclones — every 1 hour
     ScheduleDef("ingest-tropical", "IngestTropicalWorkflow", interval=timedelta(hours=1)),
     # pysteps nowcast — every 2 min
-    ScheduleDef("nowcast", "NowcastWorkflow", interval=timedelta(minutes=2)),
+    ScheduleDef(
+        "nowcast", "NowcastWorkflow",
+        interval=timedelta(minutes=2), task_queue=NOWCAST_TASK_QUEUE,
+    ),
     # Tile + grid cleanup — every 1 hour
     ScheduleDef("tile-cleanup", "TileCleanupWorkflow", interval=timedelta(hours=1)),
     # NWS active alerts — every 5 min
-    ScheduleDef("poll-alerts", "PollAlertsWorkflow", interval=timedelta(minutes=5)),
+    ScheduleDef(
+        "poll-alerts", "PollAlertsWorkflow",
+        interval=timedelta(minutes=5), task_queue=ALERTS_TASK_QUEUE,
+    ),
     # Open-meteo GFS sync — every 6h. The legacy CronJob used "30 */6 * * *"
     # to align with GFS run lag, but Temporal SKIP overlap + --past-days=2
     # backfill make exact wall-clock alignment unnecessary; freshness is
@@ -123,12 +142,17 @@ def _spec_for(s: ScheduleDef) -> Schedule:
     if s.interval is None:
         raise ValueError(f"schedule {s.schedule_id} has no interval")
     spec = ScheduleSpec(intervals=[ScheduleIntervalSpec(every=s.interval)])
+    task_queue = (
+        s.task_queue
+        if os.environ.get("USE_ISOLATED_TASK_QUEUES") == "1"
+        else LEGACY_TASK_QUEUE
+    )
     return Schedule(
         action=ScheduleActionStartWorkflow(
             s.workflow_name,
             *s.workflow_input,
             id=f"sched-{s.schedule_id}",
-            task_queue=TASK_QUEUE,
+            task_queue=task_queue,
         ),
         spec=spec,
         policy=SchedulePolicy(

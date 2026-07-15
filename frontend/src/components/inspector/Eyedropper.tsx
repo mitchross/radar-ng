@@ -55,7 +55,7 @@ export function EyedropperPin({ pinned, onClear }: Props) {
     inspectPoint({
       serverUrl,
       layer: activeLayer,
-      timestamp: frame.path,
+      timestamp: frame.timestamp,
       lat: pinned.lat,
       lon: pinned.lon,
     })

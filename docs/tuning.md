@@ -4,15 +4,15 @@ Every knob that matters, and which direction to turn it. The single constraint d
 
 ## Where the CPU goes
 
-Per MRMS frame: S3 list (~200 ms) → GRIB2 download (~1 s) → pygrib decode (~800 ms) → **palette render (~2 min, dominates everything)** → storm-cell detect (~300 ms). The render rasterizes the decoded grid into a full z4–z8 PNG pyramid, once per palette, parallelized across a thread pool (PIL releases the GIL during PNG encode).
+Per MRMS frame: S3 list → GRIB2 download → pygrib decode → **palette render (dominant)** → storm-cell detection → atomic publication. The render rasterizes the decoded grid into a z4–z7 PNG pyramid once per palette. Measure this on your own hardware; the acceptance target is publication inside the source cadence, not a hard-coded historical timing claim.
 
 The three levers on render cost, biggest first:
 
 ### 1. Zoom levels
 
-`ZOOM_LEVELS = [4, 5, 6, 7, 8]` in `backend/ingest_mrms/activities.py`. Tile count quadruples per zoom level, so **the top level is ~75% of total render cost** — that's exactly why z9 was dropped (frames were arriving ~15 min stale with it; without it, ≈2 min). If you're on a small host and radar still can't keep up, dropping to z7 max cuts the work by ~4× again.
+`ZOOM_LEVELS = [4, 5, 6, 7]` in `backend/ingest_mrms/activities.py`. Tile count quadruples per zoom level, so the top level is roughly 75% of the pyramid. z7 is already the honest ceiling for the ~1 km source; on a small host, reduce palette count before dropping observed-radar coverage further.
 
-The client must agree: `SOURCE_MAX_ZOOM` in `frontend/src/components/map/RadarOverlay.tsx` tells MapLibre the real pyramid ceiling (`radar: 8`) so it upsamples the top tile instead of firing 404-bound requests at zooms that don't exist. Change one, change the other. Same story at the bottom: `SOURCE_MIN_ZOOM = 4` keeps MapLibre from requesting world-scale tiles that CONUS-only coverage would never answer.
+The client must agree: `SOURCE_MAX_ZOOM` in `frontend/src/components/map/RadarOverlay.tsx` tells MapLibre the real pyramid ceiling (`radar: 7`, nowcast/HRRR: 6) so it upsamples the top tile instead of firing 404-bound requests at zooms that don't exist. Change one, change the other. Same story at the bottom: `SOURCE_MIN_ZOOM = 4` keeps MapLibre from requesting world-scale tiles that CONUS-only coverage would never answer.
 
 ### 2. Palette count
 
@@ -29,7 +29,7 @@ The worker (or standalone `ingest-mrms` in older setups) is sized **1 cpu / 1 Gi
 
 ## Ingest cadence + catch-up
 
-- `BACKLOG_PER_CYCLE` (compose lab default 2, prod 3) — after downtime, each 2-min cycle processes up to N unprocessed S3 keys, **newest-first**, committing state per frame. Users get the current picture immediately and history backfills. Raising it clears backlogs faster at the cost of longer cycles; not worth touching unless you have long nightly outages.
+- `BACKLOG_PER_CYCLE` (compose lab default 2, current cluster default 1) — after downtime, each cycle processes up to N unprocessed S3 keys, newest-first. Keep it at 1 while one frame is slower than the source cadence; raising it can make freshness worse by extending each workflow run.
 - `MRMS_MAX_AGE_S=600` (tile-server env) — staleness budget before `/api/health` reports `degraded` (HTTP 503) and the app shows its "data delayed" banner. 600 s tolerates ~3 missed frames. Loosen it on deliberately slow setups rather than living with a permanently red health check; don't tighten below ~300 s or normal NOAA jitter will page you.
 
 ## Tile retention + cleanup
@@ -46,14 +46,14 @@ Retention × cadence × pyramid size is your steady-state disk (~5 GB). Longer r
 
 ## Serving: HPA + cache headers
 
-**HPA:** tile-server scales 2 → 6 on CPU. Static-file serving scales near-linearly; 2 replicas cover a household, the ceiling exists to cap damage. Ingest is *not* horizontally scaled — its throughput is a per-worker concern (above).
+**HPA and storage:** the current cluster's tile-server is capped at one replica because tiles, grids, and state use ReadWriteOnce volumes. An HPA cannot create safe multi-pod serving while that remains the data plane. The north-star design moves immutable tiles to S3-compatible object storage and manifest/state to a shared service; only then should the API/tile tier scale horizontally.
 
 **Caddy cache headers** (`backend/api/Caddyfile`) encode a data-model fact worth understanding before touching them:
 
 | path | Cache-Control | why |
 |---|---|---|
 | `/tiles/radar/*`, `/tiles/radar-composite/*` | `public, max-age=86400, immutable` | **observed** frames are written exactly once per timestamp dir and never change — hard caching is what lets playback loop past frames without re-fetching every tile each cycle |
-| all other `/tiles/*` (nowcast, radar-hrrr, temperature, …) | `public, max-age=120` | **forecast** layers rewrite the *same* valid-time path on every model run — a long TTL pins stale predictions |
+| `/tiles/nowcast/*`, `/tiles/radar-hrrr/*`, other model layers | `public, max-age=86400, immutable` | each forecast run now has immutable paths; manifest v2 points clients at the current complete run |
 | `/basemap/tiles/*` | `max-age=86400` | static archive |
 | `/basemap/styles/*` | `max-age=3600` | style JSON |
 

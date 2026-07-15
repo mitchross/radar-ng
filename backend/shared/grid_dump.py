@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import time
+import uuid
 from pathlib import Path
 
 import numpy as np
@@ -34,6 +36,7 @@ def write_grid(
     lons: np.ndarray,
     unit: str,
     fill: float = float("nan"),
+    max_cells: int | None = None,
 ) -> str | None:
     """Dump `data` to GRID_DIR/{layer}/{timestamp}.bin + meta sidecar.
 
@@ -67,9 +70,12 @@ def write_grid(
         lons = lons[order]
         data = data[:, order]
 
-    # Downsample (stride-based) until total cells ≤ MAX_CELLS.
+    # Downsample (stride-based) until total cells fits the caller's purpose.
+    # Inspector grids use the compact default; nowcast science inputs opt into
+    # a larger cap without forcing every point-inspection request to read them.
+    cell_limit = max(1, int(max_cells or MAX_CELLS))
     stride = 1
-    while (h // stride) * (w // stride) > MAX_CELLS:
+    while (h // stride) * (w // stride) > cell_limit:
         stride *= 2
     if stride > 1:
         data = data[::stride, ::stride]
@@ -87,8 +93,12 @@ def write_grid(
     else:
         fill_val = float(fill)
 
-    with open(out_base.with_suffix(".bin"), "wb") as f:
+    generation = uuid.uuid4().hex
+    bin_path = out_base.parent / f"{out_base.name}.{generation}.bin"
+    with bin_path.open("wb") as f:
         f.write(arr.tobytes(order="C"))
+        f.flush()
+        os.fsync(f.fileno())
 
     meta = {
         "height": int(h),
@@ -100,9 +110,27 @@ def write_grid(
         "unit": unit,
         "fill": fill_val,
         "stride": stride,
+        "data_file": bin_path.name,
     }
-    out_base.with_suffix(".meta.json").write_text(json.dumps(meta))
-    return str(out_base.with_suffix(".bin"))
+    meta_path = out_base.with_suffix(".meta.json")
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{meta_path.name}.", suffix=".tmp", dir=str(meta_path.parent)
+    )
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(meta, f, separators=(",", ":"), sort_keys=True)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        # The metadata is the commit pointer. Readers either see the complete
+        # prior generation or this complete generation, never half a pair.
+        os.replace(tmp_name, meta_path)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+    return str(bin_path)
 
 
 def cleanup_old_grids() -> int:

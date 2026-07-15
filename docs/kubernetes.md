@@ -1,6 +1,6 @@
 # Running radar-ng on Kubernetes
 
-The advanced path. Compose ([self-hosting.md](self-hosting.md)) gives you everything on one box; Kubernetes buys you HA tile-serving, HPA under load, PodDisruptionBudgets, and a Prometheus scrape target. This doc is **bring-your-own-cluster** — any conformant Kubernetes with a decent storage class works. Nothing here requires the author's Talos/ArgoCD setup.
+The advanced path. Compose ([self-hosting.md](self-hosting.md)) gives you everything on one box; Kubernetes adds controlled rollouts, workload isolation, disruption policy, and Prometheus integration. HA tile-serving requires an object/RWX data plane—it does not come from Kubernetes while producer and API pods share ReadWriteOnce volumes. This doc is **bring-your-own-cluster**; nothing here requires the author's Talos/ArgoCD setup.
 
 ## What you need first
 
@@ -42,7 +42,7 @@ Four volumes, shared across pods:
 | `state` | 5 Gi | worker (rw) · tile-server (ro) |
 | `openmeteo` | 30 Gi | open-meteo-worker (rw) · open-meteo (rw) |
 
-Because the tile-server is HPA'd (2–6 replicas) **and** the worker writes the same volumes, you need either an RWX-capable storage class (Longhorn RWX, NFS, CephFS) or node-affinity pinning everything that shares a volume onto one node. The author runs Longhorn.
+If these PVCs are ReadWriteOnce, use `strategy: Recreate`, keep the tile-server at one replica, and co-locate every pod that mounts them. Do not combine an RWO data plane with a multi-replica HPA. For horizontal scale, publish immutable tiles to S3-compatible object storage and keep the serving tier stateless; RWX storage is a smaller migration but still leaves the shared filesystem on the request path.
 
 The worker mounts each PVC separately at `/data/tiles`, `/data/grids`, `/data/state` — keep the same paths or override `TILE_DIR`/`GRID_DIR`/`STATE_DIR`.
 
@@ -50,11 +50,11 @@ The basemap PMTiles archive needs the same one-time download as compose (see [se
 
 ## Resource shapes
 
-Production-tested requests/limits:
+Starting requests/limits; validate them against your source cadence and load test:
 
 | service | requests | limits |
 |---|---|---|
-| worker (runs MRMS/HRRR/nowcast activities) | 1 cpu · 1 Gi | **6 cpu · 6 Gi** — parallel palette render is the hot path |
+| legacy worker (runs MRMS/HRRR/nowcast activities) | 1 cpu · 3 Gi | 12 cpu · 12 Gi — current single-pool cluster shape |
 | open-meteo-worker | 0.5 cpu · 512 Mi | 2 cpu · 2 Gi |
 | tile-server | 0.2 cpu · 256 Mi | 2 cpu · 1 Gi |
 | open-meteo | 0.2 cpu · 512 Mi | 2 cpu · 2 Gi |
@@ -70,9 +70,9 @@ Do **not** probe `/api/health`. It returns 503 when radar *data* is stale — a 
 
 ## HPA
 
-The tile-server scales 2 → 6 on CPU. Tile serving is static-file + gzip, so it scales near-linearly; 2 replicas comfortably handle a handful of clients, and the ceiling of 6 exists mostly to cap noisy-neighbor damage. Add a `PodDisruptionBudget` (`minAvailable: 1`) so node drains don't kill the map.
+With ReadWriteOnce tiles/grids/state, set HPA `minReplicas: 1` and `maxReplicas: 1`; the HPA is an explicit guardrail, not scaling. After tiles move to object storage and the API becomes stateless, establish the replica range with the 100-user acceptance test and add a `PodDisruptionBudget` that matches that tested floor.
 
-The worker should **not** be HPA'd: schedule seeding is idempotent (two replicas racing on boot converge fine — that's how the stock 2-replica deployment works), but activity throughput is bounded by `TEMPORAL_MAX_CONCURRENT_ACTIVITIES`, not replica count, and each replica wants the full 6-cpu limit during renders.
+Do not HPA the legacy all-in-one worker. For scale, deploy explicit Temporal WorkerDeployments for `mrms`, `nowcast`, `hrrr`, `aux`, and `alerts`, then route schedules only after every queue has a healthy poller. Size each role independently from queue latency and publication freshness.
 
 ## Schedules
 
