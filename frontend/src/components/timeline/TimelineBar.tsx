@@ -73,7 +73,9 @@ export function TimelineBar() {
   useEffect(() => {
     if (!isPlaying || frames.length === 0 || endIdx <= startIdx) return;
     const id = setInterval(() => {
-      const next = idxRef.current + 1 > endIdx ? startIdx : idxRef.current + 1;
+      const next = idxRef.current < startIdx || idxRef.current >= endIdx
+        ? startIdx
+        : idxRef.current + 1;
       setCurrentFrameIndex(next);
     }, PLAYBACK_MS);
     return () => clearInterval(id);

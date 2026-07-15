@@ -3,11 +3,13 @@
  * Redesigned for Editorial Light. Gated cards in Simple/Advanced mode.
  */
 import { useCallback, useMemo, useState } from "react";
-import { ScrollView, View, Text, StyleSheet, RefreshControl } from "react-native";
+import { ScrollView, View, Text, StyleSheet, RefreshControl, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../hooks/useForecast";
+import { useRadarNowcast } from "../hooks/useRadarNowcast";
 import { useLocation } from "../hooks/useLocation";
 import { activeLocationName } from "../lib/locationLabel";
 import { useWeatherStore } from "../stores/useWeatherStore";
@@ -25,11 +27,14 @@ import {
 import { useWeatherClearTheme } from "../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../theme/weatherClearTheme";
 import WeatherIcon from "../components/weather/WeatherIcon";
+import { interpolateRadarNowcast } from "../lib/radarNowcast";
+import type { RadarNowcastPoint } from "../types/weather";
 
 type Minute = { i: number; intensity: number };
 
 export default function NowcastScreen() {
   useLocation();
+  const router = useRouter();
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const locationMode = useWeatherStore((s) => s.locationMode);
@@ -37,6 +42,10 @@ export default function NowcastScreen() {
   const devicePlace = useWeatherStore((s) => s.devicePlace);
   const viewMode = useWeatherStore((s) => s.viewMode);
   const setViewMode = useWeatherStore((s) => s.setViewMode);
+  const setActiveLayer = useWeatherStore((s) => s.setActiveLayer);
+  const setTimelineMode = useWeatherStore((s) => s.setTimelineMode);
+  const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
+  const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
   const {
     data: forecast,
     isLoading,
@@ -44,17 +53,29 @@ export default function NowcastScreen() {
     isFetching,
     refetch,
   } = useForecast();
+  const radarNowcast = useRadarNowcast();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await queryClient.invalidateQueries({ queryKey: ["forecast"] });
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["forecast"] }),
+        queryClient.refetchQueries({ queryKey: ["radar-nowcast"] }),
+      ]);
     } finally {
       setRefreshing(false);
     }
   }, [queryClient]);
+
+  const openMotionRadar = useCallback(() => {
+    setActiveLayer("radar");
+    setTimelineMode("forecast");
+    setCurrentFrameIndex(-1);
+    setIsPlaying(true);
+    router.push("/radar");
+  }, [router, setActiveLayer, setCurrentFrameIndex, setIsPlaying, setTimelineMode]);
 
   const presentation = getForecastScreenState({
     data: forecast,
@@ -98,9 +119,18 @@ export default function NowcastScreen() {
     ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
     : CONDITION_GRADIENTS[condition];
 
-  const minutes = buildMinutes(forecast.minutely_15);
+  const pointNowcast =
+    radarNowcast.data &&
+    (radarNowcast.data.status === "ok" || radarNowcast.data.status === "degraded") &&
+    radarNowcast.data.points.length > 0
+      ? radarNowcast.data
+      : null;
+  const usingRadarNowcast = pointNowcast !== null;
+  const minutes = pointNowcast
+    ? buildRadarMinutes(pointNowcast.points)
+    : buildMinutes(forecast.minutely_15);
   const verdict = getNowcastVerdict(
-    forecast.minutely_15?.precipitation?.length
+    usingRadarNowcast || forecast.minutely_15?.precipitation?.length
       ? minutes.map((minute) => minute.intensity)
       : undefined,
   );
@@ -119,12 +149,13 @@ export default function NowcastScreen() {
       ? verdict.endMinute
       : -1;
 
-  // Chart intensity is mm/hour; integrate sixty one-minute samples to amount.
-  const totalMm = minutes.reduce((s, m) => s + m.intensity / 60, 0);
-  const totalIn = totalMm / 25.4;
+  // Chart intensity is inches/hour; integrate sixty one-minute samples.
+  const totalIn = minutes.reduce((sum, minute) => sum + minute.intensity / 60, 0);
 
   const location = activeLocationName(locationMode, selectedPlace, devicePlace);
   const isAdv = viewMode === "advanced";
+  const radarFrameCount = pointNowcast?.points.length ?? 0;
+  const radarResolution = pointNowcast?.spatial_resolution_km;
 
   return (
     <LinearGradient colors={gradient} style={styles.container}>
@@ -199,6 +230,39 @@ export default function NowcastScreen() {
             ) : null}
           </View>
 
+          <Pressable
+            onPress={openMotionRadar}
+            accessibilityRole="button"
+            accessibilityLabel="Play the next hour motion radar"
+            style={({ pressed }) => [styles.motionCard, pressed ? styles.motionCardPressed : null]}
+          >
+            <View style={styles.motionPlay}>
+              <View style={styles.motionPlayIcon} />
+            </View>
+            <View style={styles.motionCopy}>
+              <Text style={styles.motionKicker}>PLAY MOTION RADAR</Text>
+              <Text style={styles.motionTitle}>
+                {usingRadarNowcast
+                  ? `${radarFrameCount} MRMS frames · next ${pointNowcast?.horizon_minutes ?? 60} min`
+                  : "Open the live forecast timeline"}
+              </Text>
+              <Text style={styles.motionSub}>
+                {usingRadarNowcast
+                  ? verdict.kind === "dry"
+                    ? "Dry at your point; animate storms around you"
+                    : "See precipitation move through your area"
+                  : "Motion guidance is warming; observed radar is available"}
+              </Text>
+            </View>
+            <Text style={styles.motionChevron}>›</Text>
+          </Pressable>
+
+          {!usingRadarNowcast ? (
+            <Text accessibilityRole="alert" style={styles.guidanceNotice}>
+              Showing 15-minute model guidance until MRMS point nowcast is ready.
+            </Text>
+          ) : null}
+
           {/* Intensity chart */}
           <View
             accessible
@@ -209,7 +273,7 @@ export default function NowcastScreen() {
               <Text style={styles.chartLabel}>INTENSITY {"\u00B7"} IN/HR</Text>
               <Text style={styles.chartLabel}>NEXT 60 MIN</Text>
             </View>
-            <NowcastChart minutes={minutes} />
+            <NowcastChart minutes={minutes} dry={verdict.kind === "dry"} />
             <View style={styles.chartAxis}>
               <Text style={styles.axisTick}>NOW</Text>
               <Text style={styles.axisTick}>+15</Text>
@@ -243,7 +307,7 @@ export default function NowcastScreen() {
             <KeyCard
               label="PEAK"
               value={rainStart < 0 ? "\u2014" : `+${peakMin}m`}
-              sub={rainStart < 0 ? undefined : `${(minutes[peakMin].intensity / 25.4).toFixed(2)}"/hr`}
+              sub={rainStart < 0 ? undefined : `${minutes[peakMin].intensity.toFixed(2)}"/hr`}
               icon="heavyRain"
               color={theme.colors.hot}
             />
@@ -269,12 +333,28 @@ export default function NowcastScreen() {
                 <SectionLabel>FORECAST MODEL</SectionLabel>
               </View>
               <View style={styles.card}>
-                <Row label="Product" value="Point precipitation guidance" />
-                <Row label="Source" value="Self-hosted Open-Meteo" />
-                <Row label="Native interval" value="15 minutes" />
+                <Row
+                  label="Product"
+                  value={usingRadarNowcast ? "Motion radar at your point" : "Point precipitation guidance"}
+                />
+                <Row
+                  label="Source"
+                  value={usingRadarNowcast ? "NOAA MRMS + pySTEPS" : "Self-hosted Open-Meteo"}
+                />
+                <Row
+                  label="Native interval"
+                  value={usingRadarNowcast ? `${pointNowcast?.step_minutes ?? 5} minutes` : "15 minutes"}
+                />
+                {usingRadarNowcast && radarResolution != null ? (
+                  <Row label="Spatial resolution" value={`~${radarResolution} km`} />
+                ) : null}
                 <Row
                   label="Last update"
-                  value={`${Math.round((Date.now() - new Date(forecast.current.time).getTime()) / 60000)} min ago`}
+                  value={`${Math.max(0, Math.round((Date.now() - new Date(
+                    pointNowcast?.issued_at
+                      ? pointNowcast.issued_at
+                      : forecast.current.time,
+                  ).getTime()) / 60000))} min ago`}
                   last
                 />
               </View>
@@ -284,9 +364,9 @@ export default function NowcastScreen() {
               </View>
               <View style={styles.card}>
                 <Text style={styles.noteBody}>
-                  This is model guidance for the selected point, interpolated
-                  between 15-minute values. It does not claim block-level
-                  variation or a measured probability of confidence.
+                  {usingRadarNowcast
+                    ? "This is reflectivity advected from recent MRMS observations. Rain rate uses a standard Z-R estimate and should not be read as a rain-gauge measurement."
+                    : "This is model guidance for the selected point, interpolated between 15-minute values. It does not claim block-level variation or a measured probability of confidence."}
                 </Text>
               </View>
             </>
@@ -296,9 +376,9 @@ export default function NowcastScreen() {
           <View style={[styles.card, { marginTop: 14, marginBottom: 24 }]}>
             <Text style={styles.noteTitle}>About this forecast</Text>
             <Text style={styles.noteBody}>
-              The bars interpolate self-hosted Open-Meteo 15-minute guidance.
-              For observed MRMS and the motion-based 0–60 minute radar nowcast,
-              use the Forecast timeline on the Radar screen.
+              {usingRadarNowcast
+                ? "The bars sample your self-hosted MRMS motion nowcast at this location. Play Motion Radar to see the full 0–60 minute field evolve around you."
+                : "The bars interpolate self-hosted Open-Meteo 15-minute guidance while the MRMS point product warms up. Observed and forecast radar remain available on the Radar screen."}
             </Text>
           </View>
 
@@ -309,7 +389,7 @@ export default function NowcastScreen() {
   );
 }
 
-function NowcastChart({ minutes }: { minutes: Minute[] }) {
+function NowcastChart({ minutes, dry }: { minutes: Minute[]; dry: boolean }) {
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const H = 140;
@@ -341,6 +421,11 @@ function NowcastChart({ minutes }: { minutes: Minute[] }) {
           );
         })}
       </View>
+      {dry ? (
+        <View pointerEvents="none" style={styles.dryChartLabel}>
+          <Text style={styles.dryChartText}>DRY AT YOUR LOCATION</Text>
+        </View>
+      ) : null}
       <View style={styles.baseline} />
     </View>
   );
@@ -420,7 +505,9 @@ function buildMinutes(minutely: { time: string[]; precipitation: number[] } | un
   );
   const quarters = minutely.precipitation
     .slice(startIdx, startIdx + 5)
-    .map((amountMm) => amountMm * 4);
+    // The API requests precipitation_unit=inch; convert each 15-minute
+    // accumulation to an hourly rate for the chart.
+    .map((amountInches) => amountInches * 4);
   while (quarters.length < 5) quarters.push(0);
 
   const out: Minute[] = [];
@@ -434,6 +521,10 @@ function buildMinutes(minutely: { time: string[]; precipitation: number[] } | un
     out.push({ i, intensity });
   }
   return out;
+}
+
+function buildRadarMinutes(points: RadarNowcastPoint[]): Minute[] {
+  return interpolateRadarNowcast(points).map((intensity, i) => ({ i, intensity }));
 }
 
 
@@ -536,6 +627,71 @@ function createStyles(theme: WeatherClearTheme) {
   heroStrong: { color: cumulus.ink, fontWeight: "600" },
   heroDim: { color: cumulus.inkFaint },
 
+  motionCard: {
+    marginHorizontal: 16,
+    marginTop: 20,
+    minHeight: 82,
+    borderRadius: 20,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: theme.colors.surfaceStrong,
+    borderWidth: 1,
+    borderColor: theme.colors.accentBorder,
+  },
+  motionCardPressed: { opacity: 0.72 },
+  motionPlay: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.accent,
+  },
+  motionPlayIcon: {
+    width: 0,
+    height: 0,
+    marginLeft: 3,
+    borderTopWidth: 6,
+    borderBottomWidth: 6,
+    borderLeftWidth: 10,
+    borderTopColor: "transparent",
+    borderBottomColor: "transparent",
+    borderLeftColor: "#FFFFFF",
+  },
+  motionCopy: { flex: 1, minWidth: 0 },
+  motionKicker: {
+    color: theme.colors.accent,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.3,
+    fontFamily: cumulusFonts.ui,
+  },
+  motionTitle: {
+    color: cumulus.ink,
+    fontSize: 14,
+    fontWeight: "700",
+    marginTop: 3,
+    fontFamily: cumulusFonts.ui,
+  },
+  motionSub: {
+    color: cumulus.inkMuted,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 2,
+    fontFamily: cumulusFonts.ui,
+  },
+  motionChevron: { color: theme.colors.accent, fontSize: 28, fontWeight: "300" },
+  guidanceNotice: {
+    marginHorizontal: 24,
+    marginTop: 9,
+    color: theme.colors.warning,
+    fontSize: 11,
+    lineHeight: 15,
+    fontFamily: cumulusFonts.ui,
+  },
+
   card: {
     marginHorizontal: 16,
     marginTop: 20,
@@ -578,6 +734,20 @@ function createStyles(theme: WeatherClearTheme) {
     flexDirection: "row",
     alignItems: "flex-end",
     height: 140,
+  },
+  dryChartLabel: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 58,
+    alignItems: "center",
+  },
+  dryChartText: {
+    color: cumulus.inkFaint,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.3,
+    fontFamily: cumulusFonts.ui,
   },
   baseline: {
     position: "absolute",

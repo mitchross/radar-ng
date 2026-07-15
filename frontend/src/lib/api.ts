@@ -2,6 +2,7 @@ import { API, SELF_HOSTED } from "./constants";
 import { trace } from "./telemetry";
 import type {
   OpenMeteoResponse,
+  RadarNowcastResponse,
   NWSAlertCollection,
   SelfHostedManifest,
   StormPrefetchPlan,
@@ -20,6 +21,27 @@ export async function fetchForecast(
       span.setAttribute("http.status_code", res.status);
       if (!res.ok) throw new Error(`Forecast error: ${res.status}`);
       return res.json();
+    },
+    { "geo.lat": lat, "geo.lon": lon },
+  );
+}
+
+/** Location-sampled pySTEPS/MRMS motion nowcast from the self-hosted stack. */
+export async function fetchRadarNowcast(
+  serverUrl: string,
+  lat: number,
+  lon: number,
+): Promise<RadarNowcastResponse> {
+  return trace(
+    "api.fetchRadarNowcast",
+    async (span) => {
+      const res = await fetch(`${serverUrl}${SELF_HOSTED.NOWCAST_PATH}/${lat}/${lon}`);
+      span.setAttribute("http.status_code", res.status);
+      if (!res.ok) throw new Error(`Nowcast error: ${res.status}`);
+      const body = (await res.json()) as RadarNowcastResponse;
+      span.setAttribute("radar.nowcast.points", body.points.length);
+      span.setAttribute("radar.nowcast.status", body.status);
+      return body;
     },
     { "geo.lat": lat, "geo.lon": lon },
   );

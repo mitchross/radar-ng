@@ -16,6 +16,7 @@ SOURCE = (Path(__file__).parent / "server.py").read_text()
 FS_BOUND = [
     "get_manifest",
     "inspect_point",
+    "nowcast_point",
     "wind_field",
     "lightning",
     "storms",

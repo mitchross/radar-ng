@@ -5,6 +5,7 @@ Endpoints:
 - GET /api/manifest.json      — tile layers + available timestamps
 - GET /api/forecast/{lat}/{lon} — Open-Meteo proxy (public upstream OR self-hosted
                                   if OPEN_METEO_BASE env points at a local instance)
+- GET /api/nowcast/{lat}/{lon} — MRMS motion nowcast sampled at one location
 - GET /api/health             — ok / degraded (degrades when MRMS tiles are stale)
 - GET /api/metrics            — Prometheus-style counters + gauges
 """
@@ -37,6 +38,7 @@ MRMS_MAX_AGE_S = int(os.environ.get("MRMS_MAX_AGE_S", "600"))  # tiles older tha
 FORECAST_TTL = int(os.environ.get("FORECAST_TTL_S", "900"))  # 15min
 FORECAST_CACHE_MAX_ENTRIES = int(os.environ.get("FORECAST_CACHE_MAX_ENTRIES", "512"))
 WIND_CACHE_MAX_ENTRIES = int(os.environ.get("WIND_CACHE_MAX_ENTRIES", "48"))
+NOWCAST_POINT_CACHE_MAX_ENTRIES = int(os.environ.get("NOWCAST_POINT_CACHE_MAX_ENTRIES", "1024"))
 API_RATE_LIMIT_RPS = float(os.environ.get("API_RATE_LIMIT_RPS", "20"))
 API_RATE_LIMIT_BURST = float(os.environ.get("API_RATE_LIMIT_BURST", "60"))
 log = logging.getLogger(__name__)
@@ -84,6 +86,8 @@ if os.environ.get("DISABLE_WORKFLOW_ROUTES") != "1":
 _forecast_cache: OrderedDict[str, tuple[float, dict]] = OrderedDict()
 _wind_cache: OrderedDict[str, tuple[float, dict]] = OrderedDict()
 _wind_cache_lock = Lock()
+_nowcast_point_cache: OrderedDict[tuple[str, float, float], dict] = OrderedDict()
+_nowcast_point_cache_lock = Lock()
 # Manifest in-memory cache. The source of truth is STATE_DIR/manifest.json,
 # maintained by ingest/cleanup activities, so a cold API hit only reads one
 # small JSON file instead of crawling the tile PVC.
@@ -94,6 +98,8 @@ _metrics = {
     "forecast_cache_hits_total": 0,
     "forecast_upstream_errors_total": 0,
     "manifest_requests_total": 0,
+    "nowcast_point_requests_total": 0,
+    "nowcast_point_cache_hits_total": 0,
     "rate_limited_requests_total": 0,
 }
 _request_counts: defaultdict[tuple[str, str, int], int] = defaultdict(int)
@@ -240,7 +246,7 @@ async def get_forecast(lat: float, lon: float) -> JSONResponse:
         resp = await client.get(OPEN_METEO_BASE, params=params)
         resp.raise_for_status()
         data = resp.json()
-    except httpx.HTTPError as exc:
+    except httpx.HTTPError:
         _metrics["forecast_upstream_errors_total"] += 1
         return JSONResponse(
             {"error": "upstream_unavailable"},
@@ -253,24 +259,15 @@ async def get_forecast(lat: float, lon: float) -> JSONResponse:
     return _cached(data, max_age=FORECAST_TTL)
 
 
-@app.get("/api/inspect/{layer}/{timestamp}/{lat}/{lon}")
-def inspect_point(layer: str, timestamp: str, lat: float, lon: float) -> JSONResponse:
-    """Bilinear-interpolate a single point from a stored Float32 grid.
-
-    Ingestors dump downsampled grids to GRID_DIR/{layer}/{timestamp}.bin with
-    a sidecar .meta.json describing shape + lat/lon bounds. Returns a 404 body
-    (status 200 — so the app can handle gracefully) when the grid isn't there.
-    """
+def _sample_grid_point(layer: str, timestamp: str, lat: float, lon: float) -> dict:
+    """Bilinear-interpolate one point from a stored Float32 grid."""
     safe_layer = "".join(ch for ch in layer if ch.isalnum() or ch in "-_")
     safe_ts = "".join(ch for ch in timestamp if ch.isalnum() or ch in ":-_+.T")
     grid_base = Path(GRID_DIR) / safe_layer / safe_ts
     meta_path = grid_base.with_suffix(".meta.json")
 
     if not meta_path.exists():
-        return JSONResponse(
-            {"ok": False, "reason": "grid_missing", "layer": layer, "timestamp": timestamp},
-            status_code=200,
-        )
+        return {"ok": False, "reason": "grid_missing", "layer": layer, "timestamp": timestamp}
 
     try:
         meta = json.loads(meta_path.read_text())
@@ -287,13 +284,10 @@ def inspect_point(layer: str, timestamp: str, lat: float, lon: float) -> JSONRes
         fill = float(meta.get("fill", float("nan")))
     except (OSError, KeyError, ValueError) as exc:
         log.warning("inspect metadata read failed: %s", exc)
-        return JSONResponse({"ok": False, "reason": "meta_invalid"}, status_code=200)
+        return {"ok": False, "reason": "meta_invalid"}
 
     if lat < lat_min or lat > lat_max or lon < lon_min or lon > lon_max:
-        return JSONResponse(
-            {"ok": False, "reason": "out_of_bounds", "lat": lat, "lon": lon},
-            status_code=200,
-        )
+        return {"ok": False, "reason": "out_of_bounds", "lat": lat, "lon": lon}
 
     # Bilinear interpolation — read only the 4 values we need instead of the full grid.
     fx = (lon - lon_min) / (lon_max - lon_min) * (w - 1)
@@ -305,46 +299,142 @@ def inspect_point(layer: str, timestamp: str, lat: float, lon: float) -> JSONRes
 
     import struct
 
-    def read_cell(ix: int, iy: int) -> float:
+    def read_cell(fh, ix: int, iy: int) -> float:
         offset = (iy * w + ix) * 4
-        with open(bin_path, "rb") as f:
-            f.seek(offset)
-            return struct.unpack("<f", f.read(4))[0]
+        fh.seek(offset)
+        return struct.unpack("<f", fh.read(4))[0]
 
     try:
-        v00 = read_cell(x0, y0)
-        v10 = read_cell(x0 + 1, y0)
-        v01 = read_cell(x0, y0 + 1)
-        v11 = read_cell(x0 + 1, y0 + 1)
+        with open(bin_path, "rb") as fh:
+            v00 = read_cell(fh, x0, y0)
+            v10 = read_cell(fh, x0 + 1, y0)
+            v01 = read_cell(fh, x0, y0 + 1)
+            v11 = read_cell(fh, x0 + 1, y0 + 1)
     except OSError as exc:
         log.warning("inspect grid read failed: %s", exc)
-        return JSONResponse({"ok": False, "reason": "read_error"}, status_code=200)
+        return {"ok": False, "reason": "read_error"}
 
     def is_fill(v: float) -> bool:
         return v != v or abs(v - fill) < 1e-6
 
     valid = [v for v in (v00, v10, v01, v11) if not is_fill(v)]
     if not valid:
-        return JSONResponse(
-            {"ok": True, "value": None, "unit": unit, "reason": "no_data"},
-            status_code=200,
-        )
+        return {"ok": True, "value": None, "unit": unit, "reason": "no_data"}
 
     v0 = v00 * (1 - dx) + v10 * dx if not (is_fill(v00) or is_fill(v10)) else (valid[0])
     v1 = v01 * (1 - dx) + v11 * dx if not (is_fill(v01) or is_fill(v11)) else (valid[-1])
     value = v0 * (1 - dy) + v1 * dy
 
-    return JSONResponse(
-        {
-            "ok": True,
-            "value": float(value),
-            "unit": unit,
-            "layer": layer,
+    return {
+        "ok": True,
+        "value": float(value),
+        "unit": unit,
+        "layer": layer,
+        "timestamp": timestamp,
+        "lat": lat,
+        "lon": lon,
+    }
+
+
+@app.get("/api/inspect/{layer}/{timestamp}/{lat}/{lon}")
+def inspect_point(layer: str, timestamp: str, lat: float, lon: float) -> JSONResponse:
+    """Bilinear-interpolate a point; missing frames fail softly as HTTP 200."""
+    return JSONResponse(_sample_grid_point(layer, timestamp, lat, lon))
+
+
+def _dbz_to_rain_rate(dbz: float) -> float:
+    """Marshall-Palmer Z-R estimate in millimetres per hour."""
+    if dbz < 5:
+        return 0.0
+    reflectivity = 10 ** (dbz / 10.0)
+    return min(300.0, max(0.0, (reflectivity / 200.0) ** (1.0 / 1.6)))
+
+
+@app.get("/api/nowcast/{lat}/{lon}")
+def nowcast_point(lat: float, lon: float) -> JSONResponse:
+    """Return the current MRMS motion nowcast sampled at one location."""
+    _metrics["nowcast_point_requests_total"] += 1
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        raise HTTPException(422, "lat/lon out of range")
+
+    manifest = _build_manifest()
+    layer = manifest.get("layers", {}).get("nowcast")
+    if not isinstance(layer, dict) or not layer.get("frames"):
+        status = _read_nowcast_status() or {}
+        return _cached({
+            "status": "unavailable",
+            "reason": status.get("reason", "no_frames"),
+            "detail": status.get("detail"),
+            "points": [],
+        }, max_age=15)
+
+    run_id = str(layer.get("run_id") or layer.get("latest") or "unknown")
+    grid_lat = round(lat, 3)
+    grid_lon = round(lon, 3)
+    cache_key = (run_id, grid_lat, grid_lon)
+    with _nowcast_point_cache_lock:
+        cached = _nowcast_point_cache.get(cache_key)
+        if cached is not None:
+            _metrics["nowcast_point_cache_hits_total"] += 1
+            _nowcast_point_cache.move_to_end(cache_key)
+            return _cached(cached, max_age=30)
+
+    points: list[dict] = []
+    missing = 0
+    out_of_bounds = 0
+    for frame in layer.get("frames", []):
+        if not isinstance(frame, dict) or not frame.get("timestamp"):
+            continue
+        timestamp = str(frame["timestamp"])
+        sample = _sample_grid_point("nowcast", timestamp, grid_lat, grid_lon)
+        if not sample.get("ok"):
+            missing += 1
+            if sample.get("reason") == "out_of_bounds":
+                out_of_bounds += 1
+            continue
+        dbz_value = sample.get("value")
+        dbz = float(dbz_value) if dbz_value is not None else None
+        points.append({
             "timestamp": timestamp,
-            "lat": lat,
-            "lon": lon,
-        }
-    )
+            "lead_minutes": frame.get("lead_minutes"),
+            "dbz": dbz,
+            "precipitation_mm_h": _dbz_to_rain_rate(dbz) if dbz is not None else 0.0,
+        })
+
+    if not points:
+        reason = "out_of_bounds" if out_of_bounds and out_of_bounds == missing else "grids_warming_up"
+        return _cached({
+            "status": "unavailable",
+            "reason": reason,
+            "issued_at": layer.get("run_id"),
+            "points": [],
+        }, max_age=15)
+
+    body = {
+        "status": "ok" if missing == 0 else "degraded",
+        "source": "mrms-nowcast",
+        "method": layer.get("method"),
+        "issued_at": layer.get("run_id"),
+        "horizon_minutes": layer.get("horizon_minutes", 60),
+        "step_minutes": layer.get("step_minutes", 5),
+        "spatial_resolution_km": next(
+            (
+                frame.get("spatial_resolution_km")
+                for frame in layer.get("frames", [])
+                if isinstance(frame, dict) and frame.get("spatial_resolution_km") is not None
+            ),
+            None,
+        ),
+        "latitude": grid_lat,
+        "longitude": grid_lon,
+        "points": points,
+    }
+    with _nowcast_point_cache_lock:
+        _nowcast_point_cache[cache_key] = body
+        _nowcast_point_cache.move_to_end(cache_key)
+        while len(_nowcast_point_cache) > NOWCAST_POINT_CACHE_MAX_ENTRIES:
+            _nowcast_point_cache.popitem(last=False)
+    return _cached(body, max_age=30)
 
 
 @app.get("/api/wind-field/{timestamp}")

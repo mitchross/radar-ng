@@ -1,5 +1,6 @@
 import {
   fetchForecast,
+  fetchRadarNowcast,
   fetchAlerts,
   fetchSelfHostedManifest,
   fetchStormPrefetchPlan,
@@ -11,6 +12,22 @@ global.fetch = mockFetch;
 
 afterEach(() => {
   mockFetch.mockReset();
+});
+
+describe("fetchRadarNowcast", () => {
+  it("fetches the self-hosted point motion nowcast", async () => {
+    const nowcast = { status: "ok", points: [] };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(nowcast),
+    });
+
+    await expect(fetchRadarNowcast("https://radar.example", 42.96, -85.67)).resolves.toEqual(nowcast);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://radar.example/api/nowcast/42.96/-85.67",
+    );
+  });
 });
 
 describe("fetchForecast", () => {

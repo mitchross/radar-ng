@@ -21,6 +21,7 @@ import numpy as np
 from temporalio import activity
 
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
+from backend.shared.grid_dump import write_grid
 from backend.shared.logger import get_logger
 from backend.shared.manifest import replace_layer_manifest
 from backend.shared.palettes import get_palette_names, load_palette
@@ -43,6 +44,10 @@ MAX_INPUT_GAP_MIN = float(os.environ.get("NOWCAST_MAX_INPUT_GAP_MIN", "6"))
 # The science grid is ~2 km after its bounded downsample. z6 is its honest
 # display ceiling; z7 added 4x work while only magnifying interpolated pixels.
 ZOOM_LEVELS = [4, 5, 6]
+# Compact grids let the API sample the 12 public lead times at an arbitrary
+# user location without decoding colorized tiles. Keep these much smaller
+# than the seven-million-cell science inputs used by pySTEPS itself.
+POINT_GRID_MAX_CELLS = int(os.environ.get("NOWCAST_POINT_GRID_MAX_CELLS", "900000"))
 
 log = get_logger("nowcast-activities")
 
@@ -302,6 +307,7 @@ async def nowcast_run() -> NowcastResult:
     palette_tables = await asyncio.to_thread(_load_palette_tables)
     rendered_palettes: set[str] = set()
     rendered_timestamps: list[str] = []
+    point_grid_files: list[str] = []
     manifest_frames: list[dict] = []
     expected_palettes = {
         name for name, tables in palette_tables.items() if tables.get("reflectivity")
@@ -331,8 +337,27 @@ async def nowcast_run() -> NowcastResult:
             heartbeat_details=lambda i=i: {"phase": "render", "leadtime": i},
         )
         if set(palettes) == expected_palettes:
+            grid_file = await asyncio.to_thread(
+                write_grid,
+                "nowcast",
+                ts,
+                frame,
+                lats_arr,
+                lons_arr,
+                "dBZ",
+                -9999.0,
+                POINT_GRID_MAX_CELLS,
+            )
+            if not grid_file:
+                for palette in palettes:
+                    shutil.rmtree(
+                        TILE_DIR / "nowcast" / palette / tile_path,
+                        ignore_errors=True,
+                    )
+                continue
             rendered_palettes.update(palettes)
             rendered_timestamps.append(ts)
+            point_grid_files.append(grid_file)
             manifest_frames.append({
                 "timestamp": ts,
                 "path": tile_path,
@@ -375,6 +400,16 @@ async def nowcast_run() -> NowcastResult:
                 "run_id": latest_iso,
             },
         )
+        # The manifest swap is the publication boundary. The endpoint samples
+        # that complete run in one request, so older point grids can go after
+        # the swap without exposing a partially written new series.
+        point_dir = GRID_DIR / "nowcast"
+        keep = {f"{timestamp}.meta.json" for timestamp in rendered_timestamps}
+        keep.update(Path(path).name for path in point_grid_files)
+        if point_dir.exists():
+            for path in point_dir.iterdir():
+                if path.is_file() and path.name not in keep:
+                    path.unlink(missing_ok=True)
         state = ProcessedSet(STATE_DIR / "nowcast.json", max_entries=100)
         state.add(latest_iso)
 
