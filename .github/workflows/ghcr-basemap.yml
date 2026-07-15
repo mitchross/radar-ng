@@ -69,7 +69,10 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          # Existing package predates this repository link. The bootstrap
+          # credential is temporary and removed after this push attaches the
+          # OCI source label; normal builds continue to use GITHUB_TOKEN.
+          password: ${{ secrets.GHCR_BOOTSTRAP_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Hydrate PMTiles archive from current basemap:latest
         run: |

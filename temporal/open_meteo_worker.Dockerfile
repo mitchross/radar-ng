@@ -24,6 +24,11 @@ USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
+    for source in /etc/apt/sources.list.d/*; do \
+      if [ -f "$source" ] && grep -q 'packages.apache.org/artifactory/arrow' "$source"; then \
+        rm -f "$source"; \
+      fi; \
+    done && \
     apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-pip python3-venv
 
