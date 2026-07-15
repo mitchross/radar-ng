@@ -55,6 +55,10 @@ from temporal.task_queues import (
 # crash-looped every replica until the shards settled — and any scheduled
 # run landing in that window (e.g. nowcast) could fail in the churn.
 _RETRYABLE_RPC_CODES = frozenset({
+    # The Rust SDK bridge reports some client-side "Timeout expired" calls as
+    # CANCELLED (code 1) instead of DEADLINE_EXCEEDED. Treat both as the same
+    # bounded startup transient so schedule seeding cannot crash-loop a worker.
+    RPCStatusCode.CANCELLED,
     RPCStatusCode.UNAVAILABLE,
     RPCStatusCode.DEADLINE_EXCEEDED,
     RPCStatusCode.RESOURCE_EXHAUSTED,
