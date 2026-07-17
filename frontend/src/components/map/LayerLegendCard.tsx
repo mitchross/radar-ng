@@ -24,6 +24,8 @@ const LAYER_SOURCE: Record<LayerType, SourceTag> = {
   cape: "Later",
   "precip-accum": "Later",
   cloud: "Later",
+  "air-quality": "Now",
+  ozone: "Now",
 };
 
 const SOURCE_COLOR: Record<SourceTag, string> = {
@@ -122,6 +124,29 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
       { label: "0%", color: "#e6e6e6" },
     ],
   },
+  // US AQI category colors (EPA), worst at the top like the other scales.
+  "air-quality": {
+    title: "Air Quality",
+    stops: [
+      { label: "Hazard", color: "#7e0023" },
+      { label: "V. Unh.", color: "#8f3f97" },
+      { label: "Unhealthy", color: "#ff3c00" },
+      { label: "Sensitive", color: "#ff7e00" },
+      { label: "Moderate", color: "#f5d500" },
+      { label: "Good", color: "#00c800" },
+    ],
+  },
+  ozone: {
+    title: "Ozone",
+    stops: [
+      { label: "Hazard", color: "#7e0023" },
+      { label: "V. Unh.", color: "#8f3f97" },
+      { label: "Unhealthy", color: "#ff3c00" },
+      { label: "Sensitive", color: "#ff7e00" },
+      { label: "Moderate", color: "#f5d500" },
+      { label: "Good", color: "#00c800" },
+    ],
+  },
 };
 
 export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
@@ -139,6 +164,11 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
     if (frame?.source === "nowcast") source = "Soon";
     else if (frame?.source === "radar-hrrr") source = "Later";
     else source = "Now";
+  } else if (activeLayer === "air-quality" || activeLayer === "ozone") {
+    // A single AQM run spans the current hour plus 3 days out, so the tag
+    // tracks whichever frame the scrubber is on.
+    const frame = frames[currentFrameIndex];
+    if (frame && frame.time > Math.floor(Date.now() / 1000) + 30 * 60) source = "Later";
   }
 
   return (

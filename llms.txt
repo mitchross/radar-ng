@@ -3,7 +3,7 @@
 > Hyper-local weather radar with a self-hosted tile pipeline: a CARROT-Weather-style Expo mobile app backed by a Python + Temporal ingest/render pipeline on Kubernetes. Pure NOAA data (MRMS / HRRR / NWS / lightning), sub-2-minute radar refresh, rendered on hardware you own — no third-party aggregators, no API keys, no accounts.
 
 radar-ng is a monorepo:
-- `backend/` — Python 3.12 ingest + tile-rendering Temporal activities (MRMS radar, HRRR forecast, lightning, tropical, nowcast, open-meteo sync).
+- `backend/` — Python 3.12 ingest + tile-rendering Temporal activities (MRMS radar, HRRR forecast, NAQFC air quality, lightning, tropical, nowcast, open-meteo sync).
 - `temporal/` — Temporal workflows + workers that orchestrate the pipeline (scheduled via Temporal Schedules, no cron).
 - `frontend/` — Expo SDK 56 / TypeScript universal app (the "Weather Clear" light UI).
 - `deploy/` — Docker Compose golden path + reference Kubernetes manifests.
@@ -26,6 +26,7 @@ First-party container images publish to `ghcr.io/mitchross/radar-ng-{tile-server
 All free, public, no keys:
 - NOAA MRMS — base reflectivity radar (`noaa-mrms-pds` on S3), ~2-minute cadence.
 - NOAA HRRR — high-resolution forecast model (`noaa-hrrr-bdp-pds` on S3).
+- NOAA NAQFC/AQMv7 — air-quality guidance, bias-corrected PM2.5 + ozone (`noaa-nws-naqfc-pds` on S3), two cycles daily, 72 h horizon.
 - NWS — active weather alerts (`api.weather.gov/alerts/active`).
 - NHC — tropical cyclones (`nhc.noaa.gov/CurrentStorms.json`).
 - Blitzortung — community lightning strike network.

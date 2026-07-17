@@ -9,10 +9,12 @@
  */
 import { View, Text, StyleSheet } from "react-native";
 import { Marker } from "@maplibre/maplibre-react-native";
+import { useQuery } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { useForecast } from "../../hooks/useForecast";
 import { activeLocationLabel } from "../../lib/locationLabel";
 import { cumulus, getWindDirection } from "../../lib/cumulusTheme";
+import { inspectPoint, type InspectReading } from "../../lib/inspector";
 import type { LayerType } from "../../types/weather";
 
 export function LayerLocationMarker() {
@@ -23,11 +25,32 @@ export function LayerLocationMarker() {
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
   const devicePlace = useWeatherStore((s) => s.devicePlace);
+  const serverUrl = useWeatherStore((s) => s.serverUrl);
+  const frames = useWeatherStore((s) => s.frames);
+  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const { data: forecast } = useForecast();
+
+  // Open-Meteo carries no pollutant fields, so the AQ pill samples the AQM
+  // grid at the pinned frame via the same /api/inspect the eyedropper uses.
+  const isAqLayer = activeLayer === "air-quality" || activeLayer === "ozone";
+  const frameTimestamp = frames[currentFrameIndex]?.timestamp ?? null;
+  const { data: aqReading } = useQuery({
+    queryKey: ["aq-point", activeLayer, frameTimestamp, latitude, longitude, serverUrl],
+    queryFn: () =>
+      inspectPoint({
+        serverUrl,
+        layer: activeLayer,
+        timestamp: frameTimestamp as string,
+        lat: latitude as number,
+        lon: longitude as number,
+      }),
+    enabled: isAqLayer && frameTimestamp != null && latitude != null && longitude != null,
+    staleTime: 60_000,
+  });
 
   if (latitude == null || longitude == null) return null;
 
-  const body = renderBody(activeLayer, forecast, temperatureUnit);
+  const body = renderBody(activeLayer, forecast, temperatureUnit, aqReading);
   const label = activeLocationLabel(locationMode, selectedPlace, devicePlace);
 
   return (
@@ -46,7 +69,19 @@ function renderBody(
   layer: LayerType,
   forecast: ReturnType<typeof useForecast>["data"],
   unit: "fahrenheit" | "celsius",
+  aqReading?: InspectReading,
 ) {
+  if (layer === "air-quality" || layer === "ozone") {
+    const v = aqReading?.ok ? aqReading.value : null;
+    if (v == null) return <Text style={styles.value}>{"—"}</Text>;
+    return (
+      <>
+        <Text style={styles.value}>{Math.round(v)}</Text>
+        <Text style={styles.unit}>{layer === "ozone" ? "PPB" : "µG/M³"}</Text>
+      </>
+    );
+  }
+
   if (layer === "wind") {
     const mph = forecast?.current?.wind_speed_10m;
     const deg = forecast?.current?.wind_direction_10m;

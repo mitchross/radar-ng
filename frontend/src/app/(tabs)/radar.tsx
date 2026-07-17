@@ -49,7 +49,10 @@ export default function RadarScreen() {
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
 
   const camera = useSharedCamera(DEFAULTS.LONGITUDE, DEFAULTS.LATITUDE, DEFAULTS.ZOOM);
-  const windParticlesOn = activeLayer === "wind";
+  // Particles also run over the air-quality heatmap (the IQAir Earth look):
+  // the wind field is what carries the smoke plume, so seeing it flow over
+  // the PM2.5 wash explains where the plume is headed.
+  const windParticlesOn = activeLayer === "wind" || activeLayer === "air-quality";
 
   return (
     <View style={styles.container}>
@@ -68,6 +71,8 @@ export default function RadarScreen() {
         {activeLayer === "cape" && <WeatherLayerOverlay layerId="cape" opacity={0.5} />}
         {activeLayer === "precip-accum" && <WeatherLayerOverlay layerId="precip-accum" opacity={radarOpacity} />}
         {activeLayer === "cloud" && <WeatherLayerOverlay layerId="cloud" opacity={0.65} />}
+        {activeLayer === "air-quality" && <WeatherLayerOverlay layerId="air-quality" opacity={0.75} />}
+        {activeLayer === "ozone" && <WeatherLayerOverlay layerId="ozone" opacity={0.75} />}
         <AlertPolygon />
         <TropicalOverlay onSelect={setSelectedTropical} />
         {/* Storm-cell + lightning dots are noisy for casual users.

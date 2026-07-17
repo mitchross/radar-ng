@@ -17,8 +17,16 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Slider from "@react-native-community/slider";
+import Constants from "expo-constants";
+import { useQuery } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { checkServerHealth } from "../../lib/api";
+import {
+  checkServerHealth,
+  fetchSelfHostedManifest,
+  fetchServerStatus,
+  type ServerStatus,
+} from "../../lib/api";
+import type { SelfHostedManifest } from "../../types/weather";
 import { activeLocationLabel, formatPlaceLabel } from "../../lib/locationLabel";
 import { SELF_HOSTED } from "../../lib/constants";
 import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
@@ -32,7 +40,7 @@ import type { SelectedPlace } from "../../types/location";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 
-type SourceKey = "radar" | "satellite" | "forecast" | "basemap" | "alerts";
+type SourceKey = "radar" | "satellite" | "forecast" | "airquality" | "basemap" | "alerts";
 type SourceStatus = "healthy" | "stale" | "error" | "disabled";
 
 function useSettingsTheme() {
@@ -72,6 +80,7 @@ export default function SettingsScreen() {
   const [refreshLabel, setRefreshLabel] = useState("2 min");
   const [refreshTick, setRefreshTick] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +92,20 @@ export default function SettingsScreen() {
       cancelled = true;
     };
   }, [serverUrl, refreshTick]);
+
+  // Live stack data for the Advanced cards. The old build shipped a
+  // hard-coded container list ("versions are wrong") — everything shown
+  // now comes from /api/health + /api/manifest.json.
+  const { data: serverStatus, refetch: refetchStatus } = useQuery({
+    queryKey: ["server-status", serverUrl],
+    queryFn: () => fetchServerStatus(serverUrl),
+    refetchInterval: 60_000,
+  });
+  const { data: stackManifest, refetch: refetchManifest } = useQuery({
+    queryKey: ["manifest", serverUrl],
+    queryFn: () => fetchSelfHostedManifest(serverUrl),
+    staleTime: 30_000,
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedCityQuery(cityQuery), 250);
@@ -99,11 +122,11 @@ export default function SettingsScreen() {
     setRefreshing(true);
     setRefreshTick((t) => t + 1);
     try {
-      await checkServerHealth(serverUrl);
+      await Promise.all([checkServerHealth(serverUrl), refetchStatus(), refetchManifest()]);
     } finally {
       setRefreshing(false);
     }
-  }, [serverUrl]);
+  }, [serverUrl, refetchStatus, refetchManifest]);
 
   const sources = useMemo(
     () => buildSources(serverUrl, stackHealthy),
@@ -272,44 +295,67 @@ export default function SettingsScreen() {
             </>
           )}
 
-          {/* Advanced Mode: Docker stack services list */}
+          {/* Advanced Mode: live stack pipeline status (from /api/health +
+              /api/manifest.json — nothing here is hard-coded). */}
           {isAdv && (
             <>
-              <SectionHeader>Docker Stack</SectionHeader>
+              <SectionHeader>Stack Pipelines</SectionHeader>
               <View style={styles.card}>
-                {DOCKER_CONTAINERS.map((c, i) => (
+                {buildStackServices(serverStatus, stackManifest).map((c, i, arr) => (
                   <View key={c.name}>
                     <ContainerRow {...c} />
-                    {i < DOCKER_CONTAINERS.length - 1 && <Sep />}
+                    {i < arr.length - 1 && <Sep />}
                   </View>
                 ))}
               </View>
               <View style={styles.btnRow}>
-                <BigBtn primary>Pull & Restart</BigBtn>
-                <BigBtn>View Logs</BigBtn>
+                <BigBtn onPress={() => setActivityOpen((v) => !v)}>
+                  {activityOpen ? "Hide Activity" : "View Activity"}
+                </BigBtn>
               </View>
+              {activityOpen && (
+                <View style={styles.card}>
+                  {buildStackActivity(serverStatus, stackManifest).map((entry, i, arr) => (
+                    <View key={`${entry.time}-${i}`}>
+                      <Row>
+                        <RowLeft title={entry.text} sub={entry.detail} />
+                        <Text style={styles.monoDim}>{fmtAge(entry.ageS)}</Text>
+                      </Row>
+                      {i < arr.length - 1 && <Sep />}
+                    </View>
+                  ))}
+                  {buildStackActivity(serverStatus, stackManifest).length === 0 && (
+                    <Row>
+                      <RowLeft title="No activity reported" sub="Stack unreachable or manifest empty" />
+                    </Row>
+                  )}
+                </View>
+              )}
             </>
           )}
 
           {/* Advanced Mode: Tile Cache details */}
-          {isAdv && (
+          {isAdv && serverStatus?.tiles_disk && (
             <>
               <SectionHeader>Tile Cache</SectionHeader>
               <View style={styles.card}>
                 <Row>
-                  <RowLeft title="Storage" sub="3.4 GB of 8 GB used" />
-                  <Text style={styles.monoDim}>42.5%</Text>
+                  <RowLeft
+                    title="Storage"
+                    sub={`${fmtGb(serverStatus.tiles_disk.used_bytes)} of ${fmtGb(serverStatus.tiles_disk.total_bytes)} used`}
+                  />
+                  <Text style={styles.monoDim}>{serverStatus.tiles_disk.percent}%</Text>
                 </Row>
                 <View style={{ paddingHorizontal: 14, paddingBottom: 12 }}>
                   <View style={styles.progressTrack}>
-                    <View style={[styles.progressFill, { width: "42.5%" }]} />
+                    <View
+                      style={[
+                        styles.progressFill,
+                        { width: `${Math.min(100, serverStatus.tiles_disk.percent)}%` },
+                      ]}
+                    />
                   </View>
                 </View>
-                <Sep />
-                <Row>
-                  <RowLeft title="Purge cache" sub="Frees radar + basemap tiles" />
-                  <Text style={styles.clearBtn}>Clear</Text>
-                </Row>
               </View>
             </>
           )}
@@ -407,7 +453,9 @@ export default function SettingsScreen() {
               <View style={styles.card}>
                 <Row>
                   <RowLeft title="App version" />
-                  <Text style={styles.monoDim}>1.0.0</Text>
+                  <Text style={styles.monoDim}>
+                    {Constants.expoConfig?.version ?? "dev"}
+                  </Text>
                 </Row>
                 <Sep />
                 <Row>
@@ -436,7 +484,7 @@ export default function SettingsScreen() {
 
           <Text style={styles.footer}>
             radar-ng — Cumulus UI{"\n"}
-            Self-hosted: MRMS · HRRR · Open-Meteo · Protomaps · NWS alerts
+            Self-hosted: MRMS · HRRR · NAQFC · Open-Meteo · Protomaps · NWS alerts
           </Text>
           <View style={{ height: 140 }} />
         </ScrollView>
@@ -464,6 +512,13 @@ function buildSources(
       name: "Forecast (HRRR + Open-Meteo)",
       icon: "🌡",
       endpoint: `${serverUrl}${SELF_HOSTED.FORECAST_PATH}/{lat}/{lon}`,
+      status,
+    },
+    {
+      key: "airquality",
+      name: "Air quality (NOAA AQM)",
+      icon: "🌫",
+      endpoint: `${serverUrl}/tiles/air-quality/{palette}/{path}/{z}/{x}/{y}.png`,
       status,
     },
     {
@@ -803,11 +858,20 @@ function Segmented({
   );
 }
 
-function BigBtn({ children, primary }: { children: string; primary?: boolean }) {
+function BigBtn({
+  children,
+  primary,
+  onPress,
+}: {
+  children: string;
+  primary?: boolean;
+  onPress?: () => void;
+}) {
   const { styles } = useSettingsTheme();
   return (
     <Pressable
       accessibilityRole="button"
+      onPress={onPress}
       style={[styles.bigBtn, primary ? styles.bigBtnPrimary : styles.bigBtnGhost]}
     >
       <Text style={[styles.bigBtnText, primary ? { color: "#ffffff" } : null]}>{children}</Text>
@@ -815,20 +879,178 @@ function BigBtn({ children, primary }: { children: string; primary?: boolean }) 
   );
 }
 
-const DOCKER_CONTAINERS: {
+/** ─── Live stack status (replaces the old hard-coded container list) ── */
+
+interface StackServiceRow {
   name: string;
-  image: string;
+  image: string; // detail line under the name
   status: "healthy" | "updating" | "error";
-  ports: string;
-}[] = [
-  { name: "tile-server", image: "ghcr.io/radar-ng/tile-server:latest", status: "healthy", ports: "8080→80" },
-  { name: "ingest-mrms", image: "ghcr.io/radar-ng/ingest-mrms:latest", status: "healthy", ports: "—" },
-  { name: "ingest-hrrr", image: "ghcr.io/radar-ng/ingest-hrrr:latest", status: "healthy", ports: "—" },
-  { name: "nowcast-pysteps", image: "ghcr.io/radar-ng/nowcast:latest", status: "updating", ports: "—" },
-  { name: "open-meteo", image: "ghcr.io/open-meteo/open-meteo:latest", status: "healthy", ports: "8081→8080" },
-  { name: "basemap", image: "protomaps/go-pmtiles:serve", status: "healthy", ports: "8082→8081" },
-  { name: "caddy", image: "caddy:2.7", status: "healthy", ports: "443→443" },
-];
+  ports: string; // right-aligned label (freshness)
+}
+
+/** Age in seconds of a manifest layer's newest run/frame, from issued_at
+ *  when available (forecast layers publish future valid times). */
+function manifestLayerAge(
+  manifest: SelfHostedManifest | undefined,
+  layer: string,
+  nowS: number,
+): number | null {
+  const entry = manifest?.layers?.[layer];
+  if (!entry) return null;
+  const frames = entry.frames ?? [];
+  const last = frames[frames.length - 1];
+  if (last?.issued_at) return Math.max(0, nowS - Date.parse(last.issued_at) / 1000);
+  if (entry.latest) return Math.max(0, nowS - Date.parse(entry.latest) / 1000);
+  return null;
+}
+
+function freshness(
+  ageS: number | null,
+  freshS: number,
+  staleS: number,
+): "healthy" | "updating" | "error" {
+  if (ageS == null) return "error";
+  if (ageS <= freshS) return "healthy";
+  if (ageS <= staleS) return "updating";
+  return "error";
+}
+
+function fmtAge(ageS: number | null): string {
+  if (ageS == null) return "—";
+  if (ageS < 90) return "just now";
+  if (ageS < 90 * 60) return `${Math.round(ageS / 60)}m ago`;
+  if (ageS < 48 * 3600) return `${Math.round(ageS / 3600)}h ago`;
+  return `${Math.round(ageS / 86400)}d ago`;
+}
+
+function fmtGb(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+function buildStackServices(
+  status: ServerStatus | null | undefined,
+  manifest: SelfHostedManifest | undefined,
+): StackServiceRow[] {
+  const nowS = Date.now() / 1000;
+  const reachable = status != null;
+  const rows: StackServiceRow[] = [
+    {
+      name: "tile-server",
+      image: "Caddy + FastAPI · /api + /tiles",
+      status: !reachable ? "error" : status.status === "ok" ? "healthy" : "updating",
+      ports: status?.checked_at ? fmtAge(Math.max(0, nowS - Date.parse(status.checked_at) / 1000)) : "—",
+    },
+  ];
+
+  const mrmsAge = status?.mrms_age_s ?? manifestLayerAge(manifest, "radar", nowS);
+  rows.push({
+    name: "radar (MRMS)",
+    image: "noaa-mrms-pds · 2 min cadence",
+    status: freshness(mrmsAge, 10 * 60, 30 * 60),
+    ports: fmtAge(mrmsAge),
+  });
+
+  const nowcastState = status?.nowcast?.status;
+  const nowcastAge = manifestLayerAge(manifest, "nowcast", nowS);
+  rows.push({
+    name: "nowcast (pysteps)",
+    image: "S-PROG extrapolation · next hour",
+    status:
+      nowcastState === "ok"
+        ? "healthy"
+        : nowcastState === "degraded"
+          ? "updating"
+          : freshness(nowcastAge, 10 * 60, 30 * 60),
+    ports: fmtAge(nowcastAge),
+  });
+
+  const hrrrAge = manifestLayerAge(manifest, "radar-hrrr", nowS);
+  rows.push({
+    name: "forecast (HRRR)",
+    image: "noaa-hrrr-bdp-pds · hourly runs",
+    status: freshness(hrrrAge, 2.5 * 3600, 6 * 3600),
+    ports: fmtAge(hrrrAge),
+  });
+
+  // AQM publishes two cycles a day, so "fresh" is a much wider window.
+  const aqAge = manifestLayerAge(manifest, "air-quality", nowS);
+  rows.push({
+    name: "air quality (AQM)",
+    image: "noaa-nws-naqfc-pds · 2 cycles/day",
+    status: freshness(aqAge, 16 * 3600, 30 * 3600),
+    ports: fmtAge(aqAge),
+  });
+
+  return rows;
+}
+
+interface StackActivityEntry {
+  time: number; // epoch seconds
+  ageS: number;
+  text: string;
+  detail?: string;
+}
+
+/** Recent ingest events, synthesized from the manifest + health payloads —
+ *  the closest thing to "stack logs" the phone can honestly show. */
+function buildStackActivity(
+  status: ServerStatus | null | undefined,
+  manifest: SelfHostedManifest | undefined,
+): StackActivityEntry[] {
+  const nowS = Date.now() / 1000;
+  const entries: StackActivityEntry[] = [];
+
+  const layerLabels: Record<string, string> = {
+    radar: "Radar frame rendered",
+    "radar-composite": "Composite frame rendered",
+    nowcast: "Nowcast published",
+    "radar-hrrr": "HRRR run published",
+    temperature: "Temperature layer published",
+    wind: "Wind layer published",
+    "precip-accum": "Rain-total layer published",
+    "precip-type": "Precip-type layer published",
+    cloud: "Cloud layer published",
+    "air-quality": "Air-quality run published",
+    ozone: "Ozone run published",
+  };
+
+  for (const [layer, entry] of Object.entries(manifest?.layers ?? {})) {
+    const label = layerLabels[layer] ?? `${layer} updated`;
+    const frames = entry.frames ?? [];
+    const isModelRun = frames.some((f) => f.issued_at);
+    if (isModelRun) {
+      const last = frames[frames.length - 1];
+      const t = Date.parse(last?.issued_at ?? entry.latest ?? "") / 1000;
+      if (Number.isFinite(t)) {
+        entries.push({
+          time: t,
+          ageS: Math.max(0, nowS - t),
+          text: label,
+          detail: `${frames.length} frames`,
+        });
+      }
+    } else {
+      // Observed layers: show the newest few frames individually.
+      for (const frame of frames.slice(-3)) {
+        const t = Date.parse(frame.timestamp) / 1000;
+        if (!Number.isFinite(t) || t > nowS + 60) continue;
+        entries.push({ time: t, ageS: Math.max(0, nowS - t), text: label });
+      }
+    }
+  }
+
+  for (const reason of status?.reasons ?? []) {
+    const t = status?.checked_at ? Date.parse(status.checked_at) / 1000 : nowS;
+    entries.push({
+      time: t,
+      ageS: Math.max(0, nowS - t),
+      text: `⚠ ${reason}`,
+      detail: "health check",
+    });
+  }
+
+  return entries.sort((a, b) => b.time - a.time).slice(0, 20);
+}
 
 function createStyles(theme: WeatherClearTheme) {
   const cumulus = {

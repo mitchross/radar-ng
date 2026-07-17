@@ -112,3 +112,35 @@ export async function checkServerHealth(serverUrl: string): Promise<boolean> {
     }
   });
 }
+
+export interface ServerStatus {
+  status: "ok" | "degraded";
+  mrms_age_s: number | null;
+  mrms_max_age_s?: number;
+  nowcast?: { status?: string; reason?: string };
+  reasons?: string[];
+  tiles_disk?: {
+    total_bytes: number;
+    used_bytes: number;
+    percent: number;
+  } | null;
+  checked_at?: string;
+}
+
+/**
+ * Full /api/health body. The endpoint answers 503 WITH a JSON body when the
+ * stack is degraded, so parse regardless of HTTP status; null only means
+ * unreachable.
+ */
+export async function fetchServerStatus(serverUrl: string): Promise<ServerStatus | null> {
+  return trace("api.fetchServerStatus", async (span) => {
+    try {
+      const res = await fetch(`${serverUrl}${SELF_HOSTED.HEALTH_PATH}`, { signal: AbortSignal.timeout(5000) });
+      span.setAttribute("http.status_code", res.status);
+      return (await res.json()) as ServerStatus;
+    } catch {
+      span.setAttribute("radar.health.timeout", true);
+      return null;
+    }
+  });
+}

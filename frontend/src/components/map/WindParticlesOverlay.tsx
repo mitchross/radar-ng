@@ -89,7 +89,10 @@ export function WindParticlesOverlay({
   const timestamp = frame?.timestamp ?? null;
   const shouldFetch =
     enabled &&
-    (activeLayer === "wind" || activeLayer === "radar" || activeLayer === "radar-hrrr");
+    (activeLayer === "wind" ||
+      activeLayer === "air-quality" ||
+      activeLayer === "radar" ||
+      activeLayer === "radar-hrrr");
   const { data: fieldData } = useWindField(shouldFetch ? timestamp : null);
   const field: WindField | null =
     fieldData && fieldData.ok ? (fieldData as WindField) : null;

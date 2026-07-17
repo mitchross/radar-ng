@@ -183,7 +183,9 @@ export type LayerType =
   | "cape"
   | "precip-type"
   | "precip-accum"
-  | "cloud";
+  | "cloud"
+  | "air-quality"
+  | "ozone";
 
 export interface LayerConfig {
   id: LayerType;

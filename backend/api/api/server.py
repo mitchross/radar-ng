@@ -728,12 +728,29 @@ def health() -> JSONResponse:
         reason = nowcast_status.get("reason") or "nowcast_degraded"
         reasons.append(str(reason))
 
+    # Real tile-volume usage so the app's stack card doesn't have to guess.
+    tiles_disk: dict[str, float] | None = None
+    try:
+        import shutil as _shutil
+
+        usage = _shutil.disk_usage(TILE_DIR)
+        tiles_disk = {
+            "total_bytes": usage.total,
+            "used_bytes": usage.total - usage.free,
+            "percent": round((usage.total - usage.free) / usage.total * 100, 1)
+            if usage.total
+            else 0.0,
+        }
+    except OSError:
+        pass
+
     body = {
         "status": status,
         "mrms_age_s": mrms_age,
         "mrms_max_age_s": MRMS_MAX_AGE_S,
         "nowcast": nowcast_status or {"status": "unknown", "reason": "no_status"},
         "reasons": reasons,
+        "tiles_disk": tiles_disk,
         "upstream_forecast": OPEN_METEO_BASE,
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }

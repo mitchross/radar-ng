@@ -22,6 +22,8 @@ const LAYER_LABEL: Record<LayerType, string> = {
   "precip-accum": "RAINFALL 1H",
   cloud: "CLOUD COVER",
   cape: "CAPE",
+  "air-quality": "PM2.5",
+  ozone: "OZONE",
 };
 
 export interface PinnedPoint {

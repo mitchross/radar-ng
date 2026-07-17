@@ -38,6 +38,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY backend/base/requirements.txt /app/backend/base/requirements.txt
 COPY backend/ingest_mrms/requirements.txt /app/backend/ingest_mrms/requirements.txt
 COPY backend/ingest_hrrr/requirements.txt /app/backend/ingest_hrrr/requirements.txt
+COPY backend/ingest_airquality/requirements.txt /app/backend/ingest_airquality/requirements.txt
 COPY backend/ingest_lightning/requirements.txt /app/backend/ingest_lightning/requirements.txt
 COPY backend/ingest_tropical/requirements.txt /app/backend/ingest_tropical/requirements.txt
 COPY backend/nowcast/requirements.txt /app/backend/nowcast/requirements.txt
@@ -48,6 +49,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       -r /app/backend/base/requirements.txt \
       -r /app/backend/ingest_mrms/requirements.txt \
       -r /app/backend/ingest_hrrr/requirements.txt \
+      -r /app/backend/ingest_airquality/requirements.txt \
       -r /app/backend/ingest_lightning/requirements.txt \
       -r /app/backend/ingest_tropical/requirements.txt \
       -r /app/backend/nowcast/requirements.txt

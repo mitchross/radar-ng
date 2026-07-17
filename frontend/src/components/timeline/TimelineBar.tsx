@@ -26,6 +26,8 @@ const LAYER_TITLE: Record<LayerType, string> = {
   "precip-accum": "Rain Total",
   cloud: "Clouds",
   cape: "Storm Energy",
+  "air-quality": "Air Quality",
+  ozone: "Ozone",
 };
 
 type Zoom = "1h" | "48h";
