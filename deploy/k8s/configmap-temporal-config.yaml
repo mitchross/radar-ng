@@ -22,6 +22,9 @@ data:
   MRMS_PREFIX: "CONUS/MergedBaseReflectivityQC_00.50"
   FORECAST_HOURS: "18"
   EXTENDED_FORECAST_HOURS: "48"
+  # HRRR secondary layers: wind (fill + particle field), rain total, precip
+  # type, temperature, clouds. Trim this list to shed render load.
+  HRRR_ENABLED_LAYERS: "radar-hrrr,wind,precip-accum,precip-type,temperature,cloud"
   # nowcast
   NOWCAST_HORIZON_MIN: "60"
   NOWCAST_STEP_MIN: "5"

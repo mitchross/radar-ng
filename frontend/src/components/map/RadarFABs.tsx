@@ -11,7 +11,7 @@ import { pickNowFrameIndex } from "../../hooks/useManifest";
 import { cumulus } from "../../lib/cumulusTheme";
 import type { LayerType } from "../../types/weather";
 
-type IconKind = "umbrella" | "thermo" | "dust" | "wind" | "bolt" | "layers" | "drop" | "cloud";
+type IconKind = "umbrella" | "thermo" | "dust" | "wind" | "bolt" | "layers" | "drop" | "cloud" | "ozone";
 
 // Five layers, plain English, no acronyms. HRRR/Composite/CAPE/Precip-Type
 // are still ingested in the backend (and feed the merged radar timeline) —
@@ -29,6 +29,8 @@ const LAYER_OPTIONS: {
   { id: "wind", name: "Wind", icon: "wind", tint: "#DDE8F5", selfHostedOnly: true },
   { id: "precip-accum", name: "Rain Total", icon: "drop", tint: "#DEEAFA", selfHostedOnly: true },
   { id: "cloud", name: "Clouds", icon: "cloud", tint: "#ECECEF", selfHostedOnly: true },
+  { id: "air-quality", name: "Air Quality", icon: "dust", tint: "#E9F5E4", selfHostedOnly: true },
+  { id: "ozone", name: "Ozone", icon: "ozone", tint: "#EDF2FB", selfHostedOnly: true },
 ];
 
 export function RadarFABs({
@@ -371,6 +373,15 @@ function LayerOptionIcon({ kind }: { kind: IconKind }) {
       </View>
     );
   }
+  if (kind === "ozone") {
+    // O₃ — a ring with a small satellite dot.
+    return (
+      <View style={optIcon.box}>
+        <View style={optIcon.ozoneRing} />
+        <View style={optIcon.ozoneDot} />
+      </View>
+    );
+  }
   return <View style={optIcon.box} />;
 }
 
@@ -700,6 +711,25 @@ const optIcon = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 3.5,
+    backgroundColor: "#1a2030",
+  },
+  ozoneRing: {
+    position: "absolute",
+    left: 3,
+    top: 4,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: "#1a2030",
+  },
+  ozoneDot: {
+    position: "absolute",
+    left: 16,
+    top: 2,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: "#1a2030",
   },
 });

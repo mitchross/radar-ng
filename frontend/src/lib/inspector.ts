@@ -71,7 +71,29 @@ export function formatReading(layer: LayerType, r: InspectReading): string {
   if (layer === "precip-type") return "Active";
   if (layer === "precip-accum") return v < 0.01 ? "—" : `${v.toFixed(2)} in`;
   if (layer === "cloud") return `${Math.round(v)}%`;
+  if (layer === "air-quality") return `${Math.round(v)} µg/m³ · ${describePm25(v)}`;
+  if (layer === "ozone") return `${Math.round(v)} ppb · ${describeOzone(v)}`;
   return `${v.toFixed(1)} ${r.unit}`.trim();
+}
+
+// EPA 2024 PM2.5 breakpoints (µg/m³) → AQI category.
+function describePm25(ugm3: number): string {
+  if (ugm3 <= 9) return "Good";
+  if (ugm3 <= 35.4) return "Moderate";
+  if (ugm3 <= 55.4) return "Sensitive";
+  if (ugm3 <= 125.4) return "Unhealthy";
+  if (ugm3 <= 225.4) return "Very Unhealthy";
+  return "Hazardous";
+}
+
+// 8-hour ozone breakpoints (ppb) → AQI category, applied to the hourly value.
+function describeOzone(ppb: number): string {
+  if (ppb <= 54) return "Good";
+  if (ppb <= 70) return "Moderate";
+  if (ppb <= 85) return "Sensitive";
+  if (ppb <= 105) return "Unhealthy";
+  if (ppb <= 200) return "Very Unhealthy";
+  return "Hazardous";
 }
 
 function describeDBZ(dbz: number): string {

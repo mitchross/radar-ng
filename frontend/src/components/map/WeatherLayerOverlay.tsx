@@ -31,7 +31,10 @@ export function WeatherLayerOverlay({ layerId, opacity = 0.7 }: Props) {
       tiles={[tileUrl]}
       tileSize={256}
       minzoom={layerConfig.minZoom}
-      maxzoom={layerConfig.maxZoom}
+      // Model pyramids stop at the frame's max_zoom (z6 for HRRR/AQM);
+      // requesting deeper levels just fires guaranteed 404s through the
+      // public hop. MapLibre overzooms the last level natively.
+      maxzoom={frame.maxZoom ?? layerConfig.maxZoom}
     >
       <Layer
         type="raster"

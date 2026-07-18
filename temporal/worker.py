@@ -27,6 +27,13 @@ from backend.api.api.storm_watch_activities import (
     persist_push_token,
     signal_matching_storm_watches,
 )
+from backend.ingest_airquality.activities import (
+    aqm_cleanup,
+    aqm_find_latest_run,
+    aqm_mark_processed,
+    aqm_publish_run,
+    aqm_render_chunk,
+)
 from backend.ingest_hrrr.activities import (
     hrrr_cleanup,
     hrrr_find_latest_run,
@@ -61,6 +68,7 @@ from temporal.task_queues import (
     MRMS_TASK_QUEUE,
     NOWCAST_TASK_QUEUE,
 )
+from temporal.workflows.ingest_airquality import IngestAirQualityWorkflow
 from temporal.workflows.ingest_hrrr import IngestHrrrWorkflow
 from temporal.workflows.ingest_lightning import IngestLightningWorkflow
 from temporal.workflows.ingest_mrms import IngestMrmsWorkflow
@@ -90,6 +98,12 @@ ALL_ACTIVITIES = [
     hrrr_mark_processed,
     hrrr_publish_run,
     hrrr_cleanup,
+    # ingest-airquality
+    aqm_find_latest_run,
+    aqm_render_chunk,
+    aqm_publish_run,
+    aqm_mark_processed,
+    aqm_cleanup,
     # ingest-lightning
     lightning_consume_stream,
     # ingest-tropical
@@ -113,6 +127,7 @@ ALL_ACTIVITIES = [
 ALL_WORKFLOWS = [
     IngestMrmsWorkflow,
     IngestHrrrWorkflow,
+    IngestAirQualityWorkflow,
     IngestLightningWorkflow,
     IngestTropicalWorkflow,
     NowcastWorkflow,
@@ -152,10 +167,20 @@ ROLE_CONFIG: dict[str, tuple[str, list[type], list[object]]] = {
         [
             IngestLightningWorkflow,
             IngestTropicalWorkflow,
+            IngestAirQualityWorkflow,
             TileCleanupWorkflow,
             OpenMeteoSyncWorkflow,
         ],
-        [lightning_consume_stream, tropical_fetch_and_publish, tile_cleanup_sweep],
+        [
+            lightning_consume_stream,
+            tropical_fetch_and_publish,
+            aqm_find_latest_run,
+            aqm_render_chunk,
+            aqm_publish_run,
+            aqm_mark_processed,
+            aqm_cleanup,
+            tile_cleanup_sweep,
+        ],
     ),
     "alerts": (
         ALERTS_TASK_QUEUE,

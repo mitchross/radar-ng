@@ -71,4 +71,7 @@ export const LAYERS: LayerConfig[] = [
   { id: "precip-accum", label: "Rain 1h", icon: "A", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "cloud", label: "Clouds", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "cape", label: "CAPE", icon: "S", isFillLayer: false, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  // NAQFC AQMv7 guidance (~5 km): current hour + 3-day forecast per cycle.
+  { id: "air-quality", label: "Air Quality", icon: "Q", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  { id: "ozone", label: "Ozone", icon: "O", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
 ];

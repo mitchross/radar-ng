@@ -97,6 +97,12 @@ SCHEDULES: list[ScheduleDef] = [
         "ingest-hrrr", "IngestHrrrWorkflow",
         interval=timedelta(minutes=15), task_queue=HRRR_TASK_QUEUE,
     ),
+    # NAQFC air quality (PM2.5 + ozone) — cycles land twice daily; poll every
+    # 30 min so a fresh cycle is picked up promptly. Non-new runs are a HEAD.
+    ScheduleDef(
+        "ingest-airquality", "IngestAirQualityWorkflow",
+        interval=timedelta(minutes=30),
+    ),
     # Lightning WS consumer — every 60 min (workflow runs activity for ~50 min)
     ScheduleDef("ingest-lightning", "IngestLightningWorkflow", interval=timedelta(minutes=60)),
     # NHC tropical cyclones — every 1 hour

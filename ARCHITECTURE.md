@@ -16,6 +16,7 @@ The phone app is the windshield; the Kubernetes pipeline is the engine. radar-ng
 | `backend/api/` | the tile-server pod: Caddy in front of FastAPI | serves tile pyramids as static files, proxies `/api/*` + `/v1/*` to FastAPI, fronts the basemap; FastAPI holds the manifest/forecast/inspect/metrics endpoints and starts Temporal workflows for mobile | `Caddyfile` · `api/server.py` · `api/routes_workflows.py` · `start.sh` |
 | `backend/ingest_mrms/` | MRMS radar activities | list/download/decode 2-min MRMS GRIB2 frames, render 3-palette tile pyramids, detect storm cells; env-driven prefix — the same code runs both `radar` and `radar-composite` | `activities.py` |
 | `backend/ingest_hrrr/` | HRRR forecast activities | per-forecast-hour simulated reflectivity out to 18–48 h; secondary variables are capacity-gated | `activities.py` |
+| `backend/ingest_airquality/` | NAQFC/AQMv7 air quality | bias-corrected PM2.5 + ozone GRIB2 (72 hourly messages per cycle, 06z/12z) rendered per-chunk into AQI-colored pyramids — current hour + 3-day forecast in one run | `activities.py` |
 | `backend/ingest_lightning/` | Blitzortung consumer | long-running websocket activity, writes strikes to the state PVC | `activities.py` |
 | `backend/ingest_tropical/` | NHC ingest | fetches NHC GIS feeds, publishes active systems | `activities.py` |
 | `backend/nowcast/` | pysteps S-PROG | optical flow over recent MRMS grids → +60 min extrapolated radar tiles | `activities.py` |
@@ -65,6 +66,7 @@ Everything periodic is a Temporal Schedule — there are no CronJobs and no cron
 | `nowcast` | `NowcastWorkflow` | 2 min |
 | `poll-alerts` | `PollAlertsWorkflow` | 5 min |
 | `ingest-hrrr` | `IngestHrrrWorkflow` | 15 min |
+| `ingest-airquality` | `IngestAirQualityWorkflow` | 30 min (new cycles land 2×/day) |
 | `ingest-lightning` | `IngestLightningWorkflow` | 60 min (activity streams ~50 min) |
 | `ingest-tropical` | `IngestTropicalWorkflow` | 1 h |
 | `tile-cleanup` | `TileCleanupWorkflow` | 1 h |

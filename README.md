@@ -12,8 +12,9 @@
   <img src="docs/screenshots/settings.png" width="19%" alt="Settings" />
 </p>
 
-radar-ng pulls radar (NOAA MRMS), forecast (HRRR + Open-Meteo), alerts (NWS),
-lightning (Blitzortung), and tropical (NHC) straight from the public sources,
+radar-ng pulls radar (NOAA MRMS), forecast (HRRR + Open-Meteo), air quality
+(NOAA NAQFC), alerts (NWS), lightning (Blitzortung), and tropical (NHC)
+straight from the public sources,
 renders map tiles on hardware you own, and serves them to a universal Expo app.
 The phone is the windshield; a Kubernetes + Temporal pipeline is the engine.
 
@@ -96,8 +97,9 @@ component breakdown, the per-frame pipeline, and the caching story are in
 ## Data sources
 
 All free, public, no keys: **NOAA MRMS** (radar) · **NOAA HRRR** + **Open-Meteo**
-(forecast) · **NWS** (alerts) · **NHC** (tropical) · **Blitzortung** (lightning)
-· **Protomaps** (basemap).
+(forecast, wind, precipitation) · **NOAA NAQFC/AQM** (air quality: PM2.5 + ozone,
+current + 3-day forecast) · **NWS** (alerts) · **NHC** (tropical) ·
+**Blitzortung** (lightning) · **Protomaps** (basemap).
 
 ## Stack
 
