@@ -1,0 +1,93 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+  ],
+  timezone: 'America/Detroit',
+  schedule: [
+    '* 0-3 * * 1',
+  ],
+  prHourlyLimit: 3,
+  prConcurrentLimit: 5,
+  enabledManagers: [
+    'bun',
+    'pip_requirements',
+    'github-actions',
+  ],
+  packageRules: [
+    {
+      description: 'GitHub Actions retain the previous monthly update cadence.',
+      matchManagers: [
+        'github-actions',
+      ],
+      schedule: [
+        '* 0-3 1 * *',
+      ],
+    },
+    {
+      description: 'Major upgrades require explicit approval in the Dependency Dashboard.',
+      matchUpdateTypes: [
+        'major',
+      ],
+      dependencyDashboardApproval: true,
+      automerge: false,
+    },
+    {
+      description: 'Group routine frontend updates into one review.',
+      matchManagers: [
+        'bun',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+      ],
+      groupName: 'frontend dependencies',
+      automerge: false,
+    },
+    {
+      description: 'Expo and React Native packages are a compatibility cohort and require explicit approval.',
+      matchManagers: [
+        'bun',
+      ],
+      matchPackageNames: [
+        '/^(?:@expo\\/|expo(?:-|$)|react(?:-dom|-native(?:-|$)|$)|@react-native(?:\\/|-))/',
+        '@shopify/react-native-skia',
+      ],
+      groupName: 'Expo and React Native compatibility set',
+      dependencyDashboardApproval: true,
+      automerge: false,
+    },
+    {
+      description: 'Group routine Python updates across all requirements files.',
+      matchManagers: [
+        'pip_requirements',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+      ],
+      groupName: 'Python dependencies',
+      automerge: false,
+    },
+    {
+      description: 'Group routine GitHub Actions updates into one review.',
+      matchManagers: [
+        'github-actions',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+      ],
+      groupName: 'GitHub Actions',
+      automerge: false,
+    },
+    {
+      description: 'Wait for new npm and PyPI releases to age before proposing them.',
+      matchDatasources: [
+        'npm',
+        'pypi',
+      ],
+      minimumReleaseAge: '3 days',
+    },
+  ],
+}
