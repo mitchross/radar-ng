@@ -75,6 +75,36 @@ docker compose run --rm basemap-bootstrap
 | `BASEMAP_PMTILES_URL` | dated example | **Set this** to a recent build (see above). |
 | `BASEMAP_BBOX` | `-125,24,-66,50` | `minLon,minLat,maxLon,maxLat`; default = CONUS. |
 
+### Frontend basemap provider (bundled vs external)
+
+The app ships **batteries-included**: by default the map renders the **bundled**
+Protomaps basemap served by your own tile-server (`/basemap/styles/*`, backed by
+`basemap-bootstrap` + go-pmtiles above). Forks and upstream users set nothing.
+
+Optionally, the frontend can point at an **external** MapLibre style URL instead
+— e.g. a self-hosted [VersaTiles](https://versatiles.org) instance shared across
+several apps — without deploying the bundled basemap at all. These are **frontend
+build-time** vars (`EXPO_PUBLIC_*`, inlined into the app bundle by Expo, same as
+the telemetry vars); they are **not** backend/compose settings. Leave them unset
+for bundled mode.
+
+| Var (build-time `EXPO_PUBLIC_*`) | Default | Notes |
+|---|---|---|
+| `EXPO_PUBLIC_BASEMAP_LIGHT_STYLE_URL` | _(unset → bundled)_ | Absolute MapLibre style URL for the **light** theme. |
+| `EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL` | _(unset → bundled)_ | Absolute MapLibre style URL for the **dark** theme. |
+| `EXPO_PUBLIC_BASEMAP_SATELLITE_STYLE_URL` | _(unset → bundled Esri)_ | Optional; omit to keep the bundled no-key satellite style. |
+
+Each style resolves independently: set only light+dark to move the vector
+basemap external while keeping the bundled satellite. An external style must be
+a complete absolute document (its own `sources`/`glyphs`/`sprite`); the app
+loads it directly instead of rewriting relative tile paths. The provider serving
+it must allow the app's origin via CORS. Example (build the app with):
+
+```bash
+EXPO_PUBLIC_BASEMAP_LIGHT_STYLE_URL=https://maps.vanillax.me/styles/light.json \
+EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
+```
+
 ### Ingest / render tunables
 | Var | Default | Notes |
 |---|---|---|

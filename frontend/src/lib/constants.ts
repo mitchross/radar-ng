@@ -7,19 +7,66 @@ export const API = {
   NWS_ALERTS: "https://api.weather.gov/alerts/active",
 } as const;
 
-// Basemap styles live in the tile-server image at /srv/basemap/styles/.
-// Style documents are served by the self-hosted API. The satellite document
+export type MapStyleId = "light" | "dark" | "satellite";
+
+// BUNDLED basemap (the default — "batteries included"). These relative style
+// documents are served by your own tile-server image at /srv/basemap/styles/;
+// resolveMapStyleUrl joins them to the active serverUrl. Forks and upstream
+// users need set nothing to get a working map. The satellite document
 // references Esri's public no-key imagery tiles and carries attribution.
-export const MAP_STYLES_SELFHOSTED = {
+export const MAP_STYLES_SELFHOSTED: Record<MapStyleId, string> = {
   light: "/basemap/styles/positron.json",
   dark: "/basemap/styles/dark-matter.json",
   satellite: "/basemap/styles/satellite.json",
-} as const;
+};
+
+// EXTERNAL basemap (opt-in). Point these at absolute MapLibre style URLs — e.g.
+// a self-hosted VersaTiles instance — to render an external basemap instead of
+// the bundled one. Set at BUILD time via EXPO_PUBLIC_* env (Expo inlines them
+// into the bundle, the same mechanism telemetry.ts uses):
+//
+//   EXPO_PUBLIC_BASEMAP_LIGHT_STYLE_URL=https://maps.example.com/styles/light.json
+//   EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.example.com/styles/dark.json
+//   EXPO_PUBLIC_BASEMAP_SATELLITE_STYLE_URL=...            # optional
+//
+// Any style left unset falls back to its bundled counterpart, so you can move
+// just light+dark to an external provider and keep the bundled Esri satellite.
+// Unset ⇒ empty ⇒ bundled, so this is invisible to anyone who doesn't opt in.
+export const MAP_STYLES_EXTERNAL: Partial<Record<MapStyleId, string | undefined>> = {
+  light: process.env.EXPO_PUBLIC_BASEMAP_LIGHT_STYLE_URL,
+  dark: process.env.EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL,
+  satellite: process.env.EXPO_PUBLIC_BASEMAP_SATELLITE_STYLE_URL,
+};
+
+// A configured external style only counts when it's an absolute URL; a stray
+// empty/relative value falls through to the bundled path rather than breaking.
+function externalStyleFor(
+  mapStyle: MapStyleId,
+  external: Partial<Record<MapStyleId, string | undefined>>,
+): string | undefined {
+  const v = external[mapStyle];
+  return v && v.startsWith("http") ? v : undefined;
+}
+
+/**
+ * True when `mapStyle` resolves to an external (absolute) MapLibre style URL
+ * rather than the bundled tile-server style. `external` is injectable for
+ * testing; production callers use the env-derived default.
+ */
+export function isExternalMapStyle(
+  mapStyle: MapStyleId,
+  external: Partial<Record<MapStyleId, string | undefined>> = MAP_STYLES_EXTERNAL,
+): boolean {
+  return externalStyleFor(mapStyle, external) !== undefined;
+}
 
 export function resolveMapStyleUrl(
   serverUrl: string,
-  mapStyle: "light" | "dark" | "satellite"
+  mapStyle: MapStyleId,
+  external: Partial<Record<MapStyleId, string | undefined>> = MAP_STYLES_EXTERNAL,
 ): string {
+  const ext = externalStyleFor(mapStyle, external);
+  if (ext) return ext;
   const path = MAP_STYLES_SELFHOSTED[mapStyle];
   return path.startsWith("http") ? path : `${serverUrl}${path}`;
 }

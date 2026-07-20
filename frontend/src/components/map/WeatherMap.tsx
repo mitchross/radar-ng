@@ -9,7 +9,7 @@ import {
 import { Children, isValidElement, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, type NativeSyntheticEvent } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { DEFAULTS, resolveMapStyleUrl } from "../../lib/constants";
+import { DEFAULTS, isExternalMapStyle, resolveMapStyleUrl } from "../../lib/constants";
 import { trace } from "../../lib/telemetry";
 
 const ZOOM_MIN = 1;
@@ -29,9 +29,21 @@ interface WeatherMapProps {
  */
 export function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark" | "satellite") {
   const styleUrl = resolveMapStyleUrl(serverUrl, mapStyle);
-  const [patched, setPatched] = useState<string | null>(null);
+  const external = isExternalMapStyle(mapStyle);
+  // External styles are complete absolute documents, so they can be handed to
+  // MapLibre immediately (avoids a black-map flash on the first frame).
+  const [patched, setPatched] = useState<string | null>(external ? styleUrl : null);
 
   useEffect(() => {
+    // External basemap (e.g. self-hosted VersaTiles): the style JSON is a
+    // complete absolute MapLibre document — its sources/glyphs/sprite are
+    // already absolute, so there is nothing to rewrite. Hand MapLibre the URL
+    // directly, exactly how any hosted style is loaded. The fetch+patch dance
+    // below exists ONLY for the bundled Protomaps style's relative tile paths.
+    if (external) {
+      setPatched(styleUrl);
+      return;
+    }
     let cancelled = false;
 
     async function attempt(): Promise<string> {
@@ -88,7 +100,7 @@ export function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark"
     return () => {
       cancelled = true;
     };
-  }, [serverUrl, mapStyle, styleUrl]);
+  }, [serverUrl, mapStyle, styleUrl, external]);
 
   return patched;
 }
