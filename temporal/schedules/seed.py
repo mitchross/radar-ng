@@ -174,26 +174,93 @@ def _spec_for(s: ScheduleDef) -> Schedule:
     )
 
 
-async def seed(client: Client) -> None:
-    for s in SCHEDULES:
-        spec = _spec_for(s)
-        try:
-            await client.create_schedule(s.schedule_id, spec)
-            print(f"[seed] created schedule {s.schedule_id}")
-        except ScheduleAlreadyRunningError:
-            handle = client.get_schedule_handle(s.schedule_id)
+# Per-RPC budget for schedule operations. A healthy create/update/delete
+# answers in well under a second; a scheduler workflow wedged server-side
+# (post cluster-rebuild state, 2026-08-25 `nowcast` incident) hangs the RPC
+# until the client's default deadline instead. A short explicit timeout turns
+# "wedged" into a detectable signal rather than a 100s+ stall per attempt.
+_RPC_TIMEOUT = timedelta(seconds=15)
 
-            def _update(inp: ScheduleUpdateInput, desired: Schedule = spec) -> ScheduleUpdate:
-                # Preserve the live state (paused flag + note): replacing the
-                # whole Schedule with the desired spec silently UN-paused
-                # schedules on every worker restart/deploy — pausing radar
-                # ingest during an incident didn't survive the next rollout.
-                return ScheduleUpdate(
-                    schedule=dataclasses.replace(desired, state=inp.description.schedule.state)
+# Consecutive per-schedule timeouts before we conclude the schedule's backing
+# temporal-sys-scheduler workflow is wedged and recreate it. Transient server
+# churn clears in 1-2 attempts; a wedge never does.
+_WEDGE_ATTEMPTS = 3
+
+# The Rust SDK bridge surfaces client-side deadline hits as CANCELLED
+# ("Timeout expired"), not just DEADLINE_EXCEEDED.
+_TIMEOUT_CODES = frozenset({
+    RPCStatusCode.CANCELLED,
+    RPCStatusCode.DEADLINE_EXCEEDED,
+})
+
+
+async def _apply(client: Client, s: ScheduleDef, spec: Schedule) -> None:
+    """Create-or-update one schedule, preserving live paused state."""
+    try:
+        await client.create_schedule(s.schedule_id, spec, rpc_timeout=_RPC_TIMEOUT)
+        print(f"[seed] created schedule {s.schedule_id}")
+    except ScheduleAlreadyRunningError:
+        handle = client.get_schedule_handle(s.schedule_id)
+
+        def _update(inp: ScheduleUpdateInput, desired: Schedule = spec) -> ScheduleUpdate:
+            # Preserve the live state (paused flag + note): replacing the
+            # whole Schedule with the desired spec silently UN-paused
+            # schedules on every worker restart/deploy — pausing radar
+            # ingest during an incident didn't survive the next rollout.
+            return ScheduleUpdate(
+                schedule=dataclasses.replace(desired, state=inp.description.schedule.state)
+            )
+
+        await handle.update(_update, rpc_timeout=_RPC_TIMEOUT)
+        print(f"[seed] updated schedule {s.schedule_id}")
+
+
+async def _recreate_wedged(client: Client, s: ScheduleDef, spec: Schedule) -> None:
+    """Self-heal a schedule whose scheduler workflow no longer answers RPCs.
+
+    Observed after the 2026-08-24 cluster rebuild: every RPC against the
+    `nowcast` schedule (describe/update/delete — even from admintools) hung to
+    deadline while the other 15 schedules answered instantly, so seeding died
+    on it and crash-looped the worker 100+ times. The wedged state does not
+    clear on its own; delete + recreate is the recovery. Losing the paused
+    flag on that one schedule is acceptable — an unresponsive schedule cannot
+    report its state anyway.
+    """
+    print(f"[seed] recreating wedged schedule {s.schedule_id}…")
+    handle = client.get_schedule_handle(s.schedule_id)
+    try:
+        await handle.delete(rpc_timeout=_RPC_TIMEOUT)
+    except RPCError as exc:
+        if exc.status == RPCStatusCode.NOT_FOUND:
+            pass  # already gone — just recreate
+        elif exc.status in _TIMEOUT_CODES:
+            # Delete rides through the same wedged workflow; terminate the
+            # backing system workflow directly, then delete the husk.
+            wf = client.get_workflow_handle(f"temporal-sys-scheduler:{s.schedule_id}")
+            try:
+                await wf.terminate(
+                    reason="radar-ng seed: schedule RPCs wedged; recreating",
+                    rpc_timeout=_RPC_TIMEOUT,
                 )
+            except RPCError as texc:
+                if texc.status != RPCStatusCode.NOT_FOUND:
+                    raise
+            try:
+                await handle.delete(rpc_timeout=_RPC_TIMEOUT)
+            except RPCError as dexc:
+                if dexc.status != RPCStatusCode.NOT_FOUND:
+                    raise
+        else:
+            raise
+    await client.create_schedule(s.schedule_id, spec, rpc_timeout=_RPC_TIMEOUT)
+    print(f"[seed] recreated wedged schedule {s.schedule_id}")
 
-            await handle.update(_update)
-            print(f"[seed] updated schedule {s.schedule_id}")
+
+async def seed(client: Client) -> None:
+    """Single seeding pass over all schedules (no retries). Kept for the
+    one-off `python -m temporal.schedules.seed` debugging path."""
+    for s in SCHEDULES:
+        await _apply(client, s, _spec_for(s))
 
 
 async def seed_with_retry(
@@ -203,30 +270,56 @@ async def seed_with_retry(
     base_delay: float = 1.0,
     max_delay: float = 20.0,
 ) -> None:
-    """Run seed() with bounded exponential backoff over transient RPC errors.
+    """Seed all schedules, retrying transients and self-healing wedges.
 
-    seed() is idempotent (create-or-update per schedule_id), so re-running the
-    whole pass after a partial failure is safe — already-created schedules
-    fall through to the update path. Non-retryable errors and exhausted
-    attempts re-raise, so a genuinely-down Temporal still fails startup and
-    lets k8s restart the pod rather than parking a worker with no schedules.
+    Per-schedule create-or-update is idempotent, so only the schedules that
+    failed are retried on later passes. Two failure classes are handled:
 
-    Default budget (~10 attempts, 1s→20s capped) covers ~110s of shard
-    warmup, comfortably more than a normal Temporal restart needs.
+    - Transient RPC errors (shard warmup after a Temporal restart, etc.):
+      bounded exponential backoff, ~110s total budget, then re-raise so a
+      genuinely-down Temporal still fails startup and k8s restarts the pod.
+    - A wedged schedule (its scheduler workflow hangs every RPC to deadline,
+      forever): after _WEDGE_ATTEMPTS consecutive timeouts on the SAME
+      schedule, delete + recreate it instead of crash-looping the worker.
     """
+    timeout_streak: dict[str, int] = {}
+    pending = list(SCHEDULES)
     for attempt in range(1, max_attempts + 1):
-        try:
-            await seed(client)
+        failed: list[ScheduleDef] = []
+        last_exc: RPCError | None = None
+        for s in pending:
+            spec = _spec_for(s)
+            try:
+                await _apply(client, s, spec)
+                timeout_streak.pop(s.schedule_id, None)
+            except RPCError as exc:
+                if exc.status not in _RETRYABLE_RPC_CODES:
+                    raise
+                if exc.status in _TIMEOUT_CODES:
+                    streak = timeout_streak.get(s.schedule_id, 0) + 1
+                    timeout_streak[s.schedule_id] = streak
+                    if streak >= _WEDGE_ATTEMPTS:
+                        await _recreate_wedged(client, s, spec)
+                        timeout_streak.pop(s.schedule_id, None)
+                        continue
+                last_exc = exc
+                failed.append(s)
+                print(
+                    f"[seed] transient RPC error ({exc.status.name}) on "
+                    f"{s.schedule_id}, attempt {attempt}/{max_attempts}: "
+                    f"{exc.message!r}"
+                )
+        if not failed:
             return
-        except RPCError as exc:
-            if exc.status not in _RETRYABLE_RPC_CODES or attempt == max_attempts:
-                raise
-            delay = min(max_delay, base_delay * 2 ** (attempt - 1))
-            print(
-                f"[seed] transient RPC error ({exc.status.name}) on attempt "
-                f"{attempt}/{max_attempts}: {exc.message!r}; retrying in {delay:.0f}s"
-            )
-            await asyncio.sleep(delay)
+        if attempt == max_attempts:
+            raise last_exc if last_exc else RuntimeError("schedule seeding failed")
+        delay = min(max_delay, base_delay * 2 ** (attempt - 1))
+        print(
+            f"[seed] {len(failed)} schedule(s) still failing after attempt "
+            f"{attempt}/{max_attempts}; retrying in {delay:.0f}s"
+        )
+        await asyncio.sleep(delay)
+        pending = failed
 
 
 async def _main() -> None:
