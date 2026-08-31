@@ -20,12 +20,13 @@ import asyncio
 import dataclasses
 import os
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from temporalio.client import (
     Client,
     Schedule,
+    ScheduleActionExecutionStartWorkflow,
     ScheduleActionStartWorkflow,
     ScheduleAlreadyRunningError,
     ScheduleIntervalSpec,
@@ -72,6 +73,7 @@ _RETRYABLE_RPC_CODES = frozenset({
 class ScheduleDef:
     schedule_id: str
     workflow_name: str
+    max_runtime: timedelta
     workflow_input: list[Any] = field(default_factory=list)
     interval: timedelta | None = None
     task_queue: str = AUX_TASK_QUEUE
@@ -81,6 +83,7 @@ SCHEDULES: list[ScheduleDef] = [
     # MRMS base reflectivity (QC) — every 2 min
     ScheduleDef(
         "ingest-mrms-base", "IngestMrmsWorkflow",
+        max_runtime=timedelta(minutes=90),
         workflow_input=[{"mrms_prefix": "CONUS/MergedBaseReflectivityQC_00.50", "layer_name": "radar"}],
         interval=timedelta(minutes=2),
         task_queue=MRMS_TASK_QUEUE,
@@ -88,6 +91,7 @@ SCHEDULES: list[ScheduleDef] = [
     # MRMS composite reflectivity (full atmosphere) — every 2 min
     ScheduleDef(
         "ingest-mrms-composite", "IngestMrmsWorkflow",
+        max_runtime=timedelta(minutes=90),
         workflow_input=[{"mrms_prefix": "CONUS/MergedReflectivityComposite_00.50", "layer_name": "radar-composite"}],
         interval=timedelta(minutes=2),
         task_queue=MRMS_TASK_QUEUE,
@@ -95,28 +99,41 @@ SCHEDULES: list[ScheduleDef] = [
     # HRRR forecast — every 15 min
     ScheduleDef(
         "ingest-hrrr", "IngestHrrrWorkflow",
+        max_runtime=timedelta(hours=2),
         interval=timedelta(minutes=15), task_queue=HRRR_TASK_QUEUE,
     ),
     # NAQFC air quality (PM2.5 + ozone) — cycles land twice daily; poll every
     # 30 min so a fresh cycle is picked up promptly. Non-new runs are a HEAD.
     ScheduleDef(
         "ingest-airquality", "IngestAirQualityWorkflow",
+        max_runtime=timedelta(hours=2),
         interval=timedelta(minutes=30),
     ),
     # Lightning WS consumer — every 60 min (workflow runs activity for ~50 min)
-    ScheduleDef("ingest-lightning", "IngestLightningWorkflow", interval=timedelta(minutes=60)),
+    ScheduleDef(
+        "ingest-lightning", "IngestLightningWorkflow",
+        max_runtime=timedelta(minutes=65), interval=timedelta(minutes=60),
+    ),
     # NHC tropical cyclones — every 1 hour
-    ScheduleDef("ingest-tropical", "IngestTropicalWorkflow", interval=timedelta(hours=1)),
+    ScheduleDef(
+        "ingest-tropical", "IngestTropicalWorkflow",
+        max_runtime=timedelta(minutes=15), interval=timedelta(hours=1),
+    ),
     # pysteps nowcast — every 2 min
     ScheduleDef(
         "nowcast", "NowcastWorkflow",
+        max_runtime=timedelta(minutes=30),
         interval=timedelta(minutes=2), task_queue=NOWCAST_TASK_QUEUE,
     ),
     # Tile + grid cleanup — every 1 hour
-    ScheduleDef("tile-cleanup", "TileCleanupWorkflow", interval=timedelta(hours=1)),
+    ScheduleDef(
+        "tile-cleanup", "TileCleanupWorkflow",
+        max_runtime=timedelta(minutes=15), interval=timedelta(hours=1),
+    ),
     # NWS active alerts — every 5 min
     ScheduleDef(
         "poll-alerts", "PollAlertsWorkflow",
+        max_runtime=timedelta(minutes=15),
         interval=timedelta(minutes=5), task_queue=ALERTS_TASK_QUEUE,
     ),
     # Open-meteo GFS sync — every 6h. The legacy CronJob used "30 */6 * * *"
@@ -125,6 +142,7 @@ SCHEDULES: list[ScheduleDef] = [
     # bounded by the 6h interval regardless.
     ScheduleDef(
         "open-meteo-sync-gfs", "OpenMeteoSyncWorkflow",
+        max_runtime=timedelta(minutes=90),
         # ncep_gfs013 (0.13° surface), NOT ncep_gfs025: open-meteo restructured
         # its S3 open-data so ncep_gfs025 now holds only upper-air/pressure-level
         # fields — surface vars (temperature_2m, dew_point_2m, …) moved to
@@ -140,6 +158,7 @@ SCHEDULES: list[ScheduleDef] = [
     # Open-meteo HRRR sync — every 1h.
     ScheduleDef(
         "open-meteo-sync-hrrr", "OpenMeteoSyncWorkflow",
+        max_runtime=timedelta(minutes=90),
         workflow_input=[{
             "model": "ncep_hrrr_conus",
             "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure",
@@ -165,6 +184,7 @@ def _spec_for(s: ScheduleDef) -> Schedule:
             *s.workflow_input,
             id=f"sched-{s.schedule_id}",
             task_queue=task_queue,
+            execution_timeout=s.max_runtime,
         ),
         spec=spec,
         policy=SchedulePolicy(
@@ -212,7 +232,38 @@ async def _apply(client: Client, s: ScheduleDef, spec: Schedule) -> None:
             )
 
         await handle.update(_update, rpc_timeout=_RPC_TIMEOUT)
+        await _terminate_stale_actions(client, s, handle)
         print(f"[seed] updated schedule {s.schedule_id}")
+
+
+async def _terminate_stale_actions(client: Client, s: ScheduleDef, handle: Any) -> None:
+    """Close schedule actions that outlived the same bound used for new runs."""
+    description = await handle.describe(rpc_timeout=_RPC_TIMEOUT)
+    cutoff = datetime.now(timezone.utc) - s.max_runtime
+    for action in description.info.running_actions:
+        if not isinstance(action, ScheduleActionExecutionStartWorkflow):
+            continue
+        workflow_handle = client.get_workflow_handle(action.workflow_id)
+        workflow_description = await workflow_handle.describe(
+            rpc_timeout=_RPC_TIMEOUT
+        )
+        if workflow_description.start_time >= cutoff:
+            continue
+        try:
+            await workflow_handle.terminate(
+                reason=(
+                    f"radar-ng schedule {s.schedule_id}: execution exceeded "
+                    f"{s.max_runtime}"
+                ),
+                rpc_timeout=_RPC_TIMEOUT,
+            )
+            print(f"[seed] terminated stale action {action.workflow_id}")
+        except RPCError as exc:
+            if exc.status not in {
+                RPCStatusCode.NOT_FOUND,
+                RPCStatusCode.FAILED_PRECONDITION,
+            }:
+                raise
 
 
 async def _recreate_wedged(client: Client, s: ScheduleDef, spec: Schedule) -> None:
