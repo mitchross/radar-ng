@@ -332,7 +332,9 @@ export default function HomeScreen() {
                     ? "offline"
                     : alertStatus.kind === "stale"
                       ? "stale"
-                      : "unavailable"}
+                      : alertStatus.kind === "checking"
+                        ? "checking"
+                        : "unavailable"}
                 </Text>
                 <Text style={styles.alertSub} numberOfLines={2}>
                   {alertStatus.accessibilityLabel}

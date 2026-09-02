@@ -1,8 +1,10 @@
 import { QueryClient, QueryObserver, onlineManager } from "@tanstack/react-query";
 import {
+  ALERT_ALL_CLEAR_MAX_AGE_MS,
   getAlertCollectionSnapshot,
   getAlertEndTime,
   getAlertFreshnessStatus,
+  isAlertDataRecent,
   scheduleAlertTransition,
 } from "../../src/lib/alertLifecycle";
 import { getAlertsScreenState } from "../../src/lib/weatherPresentation";
@@ -140,6 +142,8 @@ describe("NWS alert lifecycle", () => {
       isOnline: false,
       refreshFailed: false,
       isPending: false,
+      isRecent: true,
+      isFetching: false,
     });
 
     expect(snapshot.collection.features.map((alert) => alert.id)).toEqual(["cached"]);
@@ -160,6 +164,8 @@ describe("NWS alert lifecycle", () => {
       isOnline: true,
       refreshFailed: true,
       isPending: false,
+      isRecent: true,
+      isFetching: false,
     });
     const failedEmpty = getAlertFreshnessStatus({
       hasCachedData: true,
@@ -168,6 +174,8 @@ describe("NWS alert lifecycle", () => {
       isOnline: true,
       refreshFailed: true,
       isPending: false,
+      isRecent: true,
+      isFetching: false,
     });
 
     expect(getAlertsScreenState({
@@ -212,6 +220,8 @@ describe("NWS alert lifecycle", () => {
         isOnline: true,
         refreshFailed: failed.isError,
         isPending: failed.isPending,
+        isRecent: true,
+        isFetching: failed.isFetching,
       }).kind).toBe("stale");
     } finally {
       unsubscribe();
@@ -254,11 +264,113 @@ describe("NWS alert lifecycle", () => {
         isOnline: true,
         refreshFailed: reconnected.isError,
         isPending: reconnected.isPending,
+        isRecent: true,
+        isFetching: reconnected.isFetching,
       }).kind).toBe("current");
     } finally {
       unsubscribe();
       client.unmount();
       client.clear();
     }
+  });
+
+  it("treats a stale empty cache as checking on foreground resume until the refetch confirms all clear", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const key = ["alerts", 42.9, -85.6] as const;
+    const backgroundedAt = NOW - 3 * 60 * 60_000;
+    client.setQueryData(key, collection(), { updatedAt: backgroundedAt });
+    let resolveRefetch: (value: NWSAlertCollection) => void = () => undefined;
+    const queryFn = jest.fn(() => new Promise<NWSAlertCollection>((resolve) => {
+      resolveRefetch = resolve;
+    }));
+    const observer = new QueryObserver(client, { queryKey: key, queryFn, enabled: false });
+    const unsubscribe = observer.subscribe(() => undefined);
+    const statusFor = (result: ReturnType<typeof observer.getCurrentResult>, now: number) => {
+      const snapshot = getAlertCollectionSnapshot(result.data!, now);
+      return getAlertFreshnessStatus({
+        hasCachedData: result.data !== undefined,
+        activeCount: snapshot.collection.features.length,
+        invalidCount: snapshot.invalidCount,
+        isOnline: true,
+        refreshFailed: result.isError,
+        isPending: result.isPending,
+        isRecent: isAlertDataRecent(result.dataUpdatedAt, now),
+        isFetching: result.isFetching,
+      });
+    };
+
+    try {
+      const resumeRefetch = observer.refetch();
+      await Promise.resolve();
+      const inFlight = observer.getCurrentResult();
+      const checking = statusFor(inFlight, NOW);
+
+      expect(inFlight).toMatchObject({ isFetching: true, isPending: false, dataUpdatedAt: backgroundedAt });
+      expect(checking).toMatchObject({ kind: "checking", label: "CHECKING" });
+      expect(checking.accessibilityLabel).toContain("too old to trust");
+      expect(getAlertsScreenState({
+        data: inFlight.data,
+        isLoading: inFlight.isLoading,
+        isPending: inFlight.isPending,
+        freshness: checking.kind,
+      })).toEqual({ kind: "loading" });
+
+      jest.useFakeTimers();
+      jest.setSystemTime(NOW);
+      resolveRefetch(collection());
+      await resumeRefetch;
+      const confirmed = observer.getCurrentResult();
+      const current = statusFor(confirmed, Date.now());
+
+      expect(confirmed.dataUpdatedAt).toBeGreaterThanOrEqual(NOW);
+      expect(current).toMatchObject({ kind: "current", label: "CURRENT" });
+      expect(getAlertsScreenState({
+        data: confirmed.data,
+        isLoading: confirmed.isLoading,
+        isPending: confirmed.isPending,
+        freshness: current.kind,
+      })).toEqual({ kind: "empty" });
+    } finally {
+      unsubscribe();
+      client.clear();
+    }
+  });
+
+  it("lets an all-clear age out after two missed polls but keeps still-active cached alerts visible", () => {
+    const polledAt = NOW - ALERT_ALL_CLEAR_MAX_AGE_MS;
+    expect(isAlertDataRecent(polledAt, NOW)).toBe(true);
+    expect(isAlertDataRecent(polledAt, NOW + 1)).toBe(false);
+    expect(isAlertDataRecent(0, NOW)).toBe(false);
+
+    const idleStale = getAlertFreshnessStatus({
+      hasCachedData: true,
+      activeCount: 0,
+      invalidCount: 0,
+      isOnline: true,
+      refreshFailed: false,
+      isPending: false,
+      isRecent: false,
+      isFetching: false,
+    });
+    const staleWithAlert = getAlertFreshnessStatus({
+      hasCachedData: true,
+      activeCount: 1,
+      invalidCount: 0,
+      isOnline: true,
+      refreshFailed: false,
+      isPending: false,
+      isRecent: false,
+      isFetching: true,
+    });
+
+    expect(idleStale).toMatchObject({ kind: "checking", label: "UNVERIFIED" });
+    expect(staleWithAlert).toMatchObject({ kind: "checking", label: "CHECKING" });
+    expect(staleWithAlert.accessibilityLabel).toContain("Showing still-active alerts");
+    expect(getAlertsScreenState({
+      data: collection(makeAlert("cached")),
+      isLoading: false,
+      isPending: false,
+      freshness: staleWithAlert.kind,
+    })).toEqual({ kind: "content" });
   });
 });

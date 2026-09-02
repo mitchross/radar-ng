@@ -1,4 +1,8 @@
+import { DEFAULTS } from "./constants";
 import type { NWSAlert, NWSAlertCollection } from "../types/weather";
+
+// All-clear survives one missed poll (the query's staleTime) but not two; older cached emptiness is unverified.
+export const ALERT_ALL_CLEAR_MAX_AGE_MS = 2 * DEFAULTS.ALERTS_REFETCH_MS;
 
 const ISO_DATE_TIME =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-](\d{2}):(\d{2}))$/;
@@ -15,7 +19,7 @@ export interface AlertCollectionSnapshot {
   nextTransitionAt: number | null;
 }
 
-export type AlertFreshnessKind = "current" | "stale" | "offline" | "unavailable";
+export type AlertFreshnessKind = "current" | "checking" | "stale" | "offline" | "unavailable";
 
 export interface AlertFreshnessStatus {
   kind: AlertFreshnessKind;
@@ -139,6 +143,11 @@ export function scheduleAlertTransition(
   return () => clearTimeout(timer);
 }
 
+/** True while a successful response is young enough to vouch for "no active alerts". */
+export function isAlertDataRecent(dataUpdatedAt: number, nowMilliseconds = Date.now()): boolean {
+  return dataUpdatedAt > 0 && nowMilliseconds - dataUpdatedAt <= ALERT_ALL_CLEAR_MAX_AGE_MS;
+}
+
 export function getAlertFreshnessStatus(input: {
   hasCachedData: boolean;
   activeCount: number;
@@ -146,6 +155,8 @@ export function getAlertFreshnessStatus(input: {
   isOnline: boolean;
   refreshFailed: boolean;
   isPending: boolean;
+  isRecent: boolean;
+  isFetching: boolean;
 }): AlertFreshnessStatus {
   if (!input.isOnline) {
     return {
@@ -188,6 +199,18 @@ export function getAlertFreshnessStatus(input: {
       kind: "unavailable",
       label: "UNAVAILABLE",
       accessibilityLabel: "Weather alerts unavailable.",
+    };
+  }
+
+  if (input.hasCachedData && !input.isRecent) {
+    return {
+      kind: "checking",
+      label: input.isFetching ? "CHECKING" : "UNVERIFIED",
+      accessibilityLabel: input.activeCount > 0
+        ? "Checking for weather alert updates. Showing still-active alerts from the last successful check."
+        : input.isFetching
+          ? "Checking for weather alerts. The last all-clear is too old to trust until this check finishes."
+          : "Weather alert status unverified. The last all-clear is too old to trust until the next check.",
     };
   }
 

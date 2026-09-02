@@ -4,8 +4,10 @@ import { fetchAlerts } from "../lib/api";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { DEFAULTS } from "../lib/constants";
 import {
+  ALERT_ALL_CLEAR_MAX_AGE_MS,
   getAlertCollectionSnapshot,
   getAlertFreshnessStatus,
+  isAlertDataRecent,
   scheduleAlertTransition,
 } from "../lib/alertLifecycle";
 import { useAppActive } from "./useAppActive";
@@ -29,14 +31,22 @@ export function useAlerts() {
     staleTime: DEFAULTS.ALERTS_REFETCH_MS,
   });
 
+  const now = Date.now();
   const snapshot = query.data
-    ? getAlertCollectionSnapshot(query.data, Date.now())
+    ? getAlertCollectionSnapshot(query.data, now)
     : undefined;
+  const isRecent = query.data !== undefined && isAlertDataRecent(query.dataUpdatedAt, now);
+  // Re-render when the all-clear ages out too, so a stalled poll cannot leave "no alerts" on screen.
+  const allClearExpiresAt = isRecent ? query.dataUpdatedAt + ALERT_ALL_CLEAR_MAX_AGE_MS : null;
+  const alertTransitionAt = snapshot?.nextTransitionAt ?? null;
+  const nextTransitionAt = alertTransitionAt === null || allClearExpiresAt === null
+    ? alertTransitionAt ?? allClearExpiresAt
+    : Math.min(alertTransitionAt, allClearExpiresAt);
 
   useEffect(() => {
     if (!appActive) return undefined;
-    return scheduleAlertTransition(snapshot?.nextTransitionAt ?? null, advanceClock);
-  }, [appActive, snapshot?.nextTransitionAt]);
+    return scheduleAlertTransition(nextTransitionAt, advanceClock);
+  }, [appActive, nextTransitionAt]);
 
   const alertStatus = getAlertFreshnessStatus({
     hasCachedData: query.data !== undefined,
@@ -45,6 +55,8 @@ export function useAlerts() {
     isOnline,
     refreshFailed: query.isError,
     isPending: query.isPending,
+    isRecent,
+    isFetching: query.isFetching,
   });
 
   return {

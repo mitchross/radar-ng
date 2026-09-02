@@ -66,13 +66,13 @@ export function getAlertsScreenState(input: {
   data: { features: readonly unknown[] } | undefined;
   isLoading: boolean;
   isPending: boolean;
-  freshness: "current" | "stale" | "offline" | "unavailable";
+  freshness: "current" | "checking" | "stale" | "offline" | "unavailable";
 }): { kind: "loading" | "error" | "empty" | "content" } {
   if (input.data?.features.length) return { kind: "content" };
   if (input.data && input.freshness === "current") return { kind: "empty" };
   if (
-    input.freshness === "current" &&
-    (input.isLoading || input.isPending)
+    input.freshness === "checking" ||
+    (input.freshness === "current" && (input.isLoading || input.isPending))
   ) {
     return { kind: "loading" };
   }
