@@ -1,5 +1,6 @@
 import {
   radarButtonAccessibilityLabel,
+  radarQueryIsOffline,
   radarStatus,
 } from "../../src/lib/radarStatus";
 
@@ -7,6 +8,12 @@ const NOW = Date.parse("2026-09-02T21:00:00Z");
 const secondsAgo = (seconds: number) => Math.floor(NOW / 1000) - seconds;
 
 describe("radarStatus", () => {
+  it("treats a NetInfo-paused cached query as offline", () => {
+    expect(radarQueryIsOffline(false, true)).toBe(true);
+    expect(radarQueryIsOffline(true, false)).toBe(true);
+    expect(radarQueryIsOffline(false, false)).toBe(false);
+  });
+
   it("calls a recent displayed observation live", () => {
     expect(radarStatus({
       frameTimeSeconds: secondsAgo(10 * 60),

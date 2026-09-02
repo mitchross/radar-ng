@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { pickNowFrameIndex } from "../../hooks/useManifest";
 import { cumulus } from "../../lib/cumulusTheme";
+import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import type { LayerType } from "../../types/weather";
 
 type IconKind = "umbrella" | "thermo" | "dust" | "wind" | "bolt" | "layers" | "drop" | "cloud" | "ozone";
@@ -60,15 +61,17 @@ export function RadarFABs({
   // taps. Also surface a spin state so the user gets visual confirmation.
   const onRefresh = async () => {
     if (refreshing) return;
-    setRefreshing(true);
-    setIsPlaying(false);
-    const frames = useWeatherStore.getState().frames;
-    setCurrentFrameIndex(pickNowFrameIndex(frames));
-    try {
-      await queryClient.refetchQueries({ queryKey: ["manifest"] });
-    } finally {
-      setRefreshing(false);
-    }
+    await runOnlineRefresh(async () => {
+      setRefreshing(true);
+      setIsPlaying(false);
+      const frames = useWeatherStore.getState().frames;
+      setCurrentFrameIndex(pickNowFrameIndex(frames));
+      try {
+        await queryClient.refetchQueries({ queryKey: ["manifest"] });
+      } finally {
+        setRefreshing(false);
+      }
+    });
   };
 
   const options = LAYER_OPTIONS;

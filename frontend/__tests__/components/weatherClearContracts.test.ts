@@ -50,6 +50,21 @@ describe("Weather Clear native UI contracts", () => {
     expect(mapStyle).toContain("minHeight: 44");
   });
 
+  it("wires native foreground and connectivity state into React Query", () => {
+    const rootLayout = source("app/_layout.tsx");
+    expect(rootLayout).toContain("bindAppFocus(AppState, setFocused)");
+    expect(rootLayout).toContain("bindNetworkOnline(NetInfo, setOnline)");
+  });
+
+  it.each([
+    "app/(tabs)/index.tsx",
+    "screens/NowcastScreen.tsx",
+    "app/(tabs)/settings.tsx",
+    "components/map/RadarFABs.tsx",
+  ])("guards awaited manual refreshes while offline in %s", (file) => {
+    expect(source(file)).toContain("runOnlineRefresh");
+  });
+
   it.each([
     ["app/(tabs)/index.tsx", "Current weather"],
     ["screens/NowcastScreen.tsx", "Next hour precipitation"],
