@@ -287,9 +287,9 @@ class SeedIsolationTests(unittest.IsolatedAsyncioTestCase):
             patch.object(seed, "SCHEDULES", [transient, permanent]),
             patch.object(seed, "_apply", side_effect=apply),
             contextlib.redirect_stdout(output),
+            self.assertRaises(seed.ScheduleSeedError),
         ):
-            with self.assertRaises(seed.ScheduleSeedError):
-                await seed.seed_with_retry(object(), max_attempts=1)
+            await seed.seed_with_retry(object(), max_attempts=1)
 
         rendered = output.getvalue()
         for field in (
@@ -331,9 +331,9 @@ class SeedIsolationTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(seed, "SCHEDULES", [bad, good]),
             patch.object(seed, "_apply", side_effect=apply),
+            self.assertRaises(seed.ScheduleSeedError) as raised,
         ):
-            with self.assertRaises(seed.ScheduleSeedError) as raised:
-                await seed.seed(object())
+            await seed.seed(object())
 
         self.assertCountEqual(applied, ["bad", "good"])
         self.assertEqual(set(raised.exception.failures), {"bad"})
@@ -381,14 +381,14 @@ class SeedIsolationTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(seed, "SCHEDULES", [transient, permanent, healthy]),
             patch.object(seed, "_apply", side_effect=apply),
+            self.assertRaises(seed.ScheduleSeedError) as raised,
         ):
-            with self.assertRaises(seed.ScheduleSeedError) as raised:
-                await seed.seed_with_retry(
-                    object(),
-                    max_attempts=2,
-                    base_delay=0,
-                    max_delay=0,
-                )
+            await seed.seed_with_retry(
+                object(),
+                max_attempts=2,
+                base_delay=0,
+                max_delay=0,
+            )
 
         self.assertEqual(
             attempts,
@@ -457,14 +457,16 @@ class SeedIsolationTests(unittest.IsolatedAsyncioTestCase):
                 calls.append("get-workflow-handle")
                 raise AssertionError("timeout recovery must not terminate a workflow")
 
-        with patch.object(seed, "SCHEDULES", [definition]):
-            with self.assertRaises(seed.ScheduleSeedError) as raised:
-                await seed.seed_with_retry(
-                    Client(),
-                    max_attempts=3,
-                    base_delay=0,
-                    max_delay=0,
-                )
+        with (
+            patch.object(seed, "SCHEDULES", [definition]),
+            self.assertRaises(seed.ScheduleSeedError) as raised,
+        ):
+            await seed.seed_with_retry(
+                Client(),
+                max_attempts=3,
+                base_delay=0,
+                max_delay=0,
+            )
 
         self.assertEqual(calls, ["create", "create", "create"])
         self.assertEqual(set(raised.exception.failures), {"timed-out"})

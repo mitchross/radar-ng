@@ -194,7 +194,6 @@ class WorkerSupervisionTests(unittest.IsolatedAsyncioTestCase):
             "event=TEMPORAL_SCHEDULE_RECONCILIATION_FAILED",
             "schedule_ids=nowcast,poll-alerts",
             "errors=nowcast:RPCError[DEADLINE_EXCEEDED],poll-alerts:ValueError",
-            "worker_polling=active",
             "operator_action=inspect_schedule_reconciliation",
         ):
             with self.subTest(field=field):
@@ -203,8 +202,13 @@ class WorkerSupervisionTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("sensitive upstream", rendered[0])
         self.assertNotIn("private details", rendered[0])
 
-    async def test_worker_polling_starts_before_failing_reconciliation(self):
+        self.assertNotIn("worker_polling=active", rendered[0])
+
+    async def test_reconciliation_waits_for_validation_and_poller_start(self):
         events: list[str] = []
+        validation_started = asyncio.Event()
+        allow_validation = asyncio.Event()
+        poller_started = asyncio.Event()
         seed_started = asyncio.Event()
 
         async def fail_seed(_client):
@@ -216,11 +220,28 @@ class WorkerSupervisionTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.Event().wait()
 
         class FakeWorker:
+            is_running = False
+
             async def run(self):
-                events.append("poll")
-                await seed_started.wait()
-                # Give the reconciliation wrapper time to consume the error.
-                await asyncio.sleep(0)
+                events.append("validate")
+                validation_started.set()
+                await allow_validation.wait()
+                self.is_running = True
+
+                async def poll():
+                    events.append("poll")
+                    poller_started.set()
+                    await asyncio.Event().wait()
+
+                poller = asyncio.create_task(poll())
+                try:
+                    await seed_started.wait()
+                    # Give the reconciliation wrapper time to consume the error.
+                    await asyncio.sleep(0)
+                finally:
+                    self.is_running = False
+                    poller.cancel()
+                    await asyncio.gather(poller, return_exceptions=True)
 
         with (
             patch.object(worker, "seed_schedules", side_effect=fail_seed),
@@ -228,20 +249,73 @@ class WorkerSupervisionTests(unittest.IsolatedAsyncioTestCase):
             patch.object(worker, "watch_schedules", side_effect=stay_alive),
             patch.object(worker, "logger", _RecordingLogger()),
         ):
+            run_task = asyncio.create_task(
+                worker._run_worker(FakeWorker(), object(), should_seed=True)
+            )
+            await validation_started.wait()
+            await asyncio.sleep(worker.WORKER_START_POLL_SECONDS * 2)
+            self.assertFalse(seed_started.is_set())
+            self.assertFalse(poller_started.is_set())
+
+            allow_validation.set()
+            await run_task
+
+        self.assertEqual(events, ["validate", "poll", "seed"])
+
+    async def test_validation_failure_starts_no_background_work(self):
+        calls: list[str] = []
+
+        async def forbidden(name):
+            calls.append(name)
+
+        class FakeWorker:
+            is_running = False
+
+            async def run(self):
+                await asyncio.sleep(0)
+                raise RuntimeError("namespace validation failed")
+
+        with (
+            patch.object(
+                worker,
+                "health_file_loop",
+                side_effect=lambda *_args: forbidden("health"),
+            ),
+            patch.object(
+                worker,
+                "_reconcile_schedules",
+                side_effect=lambda *_args: forbidden("reconcile"),
+            ),
+            patch.object(
+                worker,
+                "watch_schedules",
+                side_effect=lambda *_args: forbidden("watchdog"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "namespace validation failed"),
+        ):
             await worker._run_worker(FakeWorker(), object(), should_seed=True)
 
-        self.assertEqual(events, ["poll", "seed"])
+        self.assertEqual(calls, [])
 
     async def test_non_seeding_pool_does_not_start_schedule_tasks(self):
+        health_started = asyncio.Event()
+
         async def health(*_args, **_kwargs):
+            health_started.set()
             await asyncio.Event().wait()
 
         async def forbidden(*_args, **_kwargs):
             raise AssertionError("non-seeding pool started schedule control work")
 
         class FakeWorker:
+            is_running = False
+
             async def run(self):
-                await asyncio.sleep(0)
+                self.is_running = True
+                try:
+                    await health_started.wait()
+                finally:
+                    self.is_running = False
 
         with (
             patch.object(worker, "health_file_loop", side_effect=health),

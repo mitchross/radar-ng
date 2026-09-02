@@ -45,11 +45,10 @@ from temporal.task_queues import (
     ALERTS_TASK_QUEUE,
     AUX_TASK_QUEUE,
     HRRR_TASK_QUEUE,
+    LEGACY_TASK_QUEUE,
     MRMS_TASK_QUEUE,
     NOWCAST_TASK_QUEUE,
-    LEGACY_TASK_QUEUE,
 )
-
 
 # RPC status codes worth retrying while seeding at worker startup. The
 # dominant case: a Temporal server that just (re)started has history shards

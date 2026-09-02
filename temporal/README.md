@@ -90,6 +90,14 @@ concurrent delete lands between create reporting `ALREADY_EXISTS` and the
 update describe, the resulting `NOT_FOUND` retries the whole create-or-update
 reconciliation with the same bounded policy.
 
+Schedule reconciliation and observation do not start until the worker passes
+namespace validation and the SDK has created its configured poller tasks.
+Temporal Python SDK 1.30 exposes `Worker.is_running` for that lifecycle boundary
+but no acknowledgement that the server has accepted a long poll; Radar waits
+for the boundary and yields once so the poller tasks enter their bridge calls.
+A validation/startup failure therefore causes no Schedule mutation, while a
+later reconciliation failure remains non-fatal to the already-running worker.
+
 The Temporal Python SDK update callback supplies the freshest description
 available to that update attempt, and Radar derives the replacement state only
 from that callback input. Temporal Python SDK 1.30 does not expose a Schedule
