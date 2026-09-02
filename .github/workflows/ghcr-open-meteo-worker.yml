@@ -11,7 +11,6 @@ on:
       - 'temporal/requirements.txt'
       - 'backend/open_meteo_sync/**'
       - 'backend/shared/logger.py'
-      - '.github/workflows/ghcr-open-meteo-worker.yml'
   workflow_dispatch:
     inputs:
       version:

@@ -10,7 +10,6 @@ on:
     paths:
       - 'temporal/**'
       - 'backend/**'
-      - '.github/workflows/ghcr-temporal-worker.yml'
   workflow_dispatch:
     inputs:
       version:

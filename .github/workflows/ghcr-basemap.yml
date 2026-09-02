@@ -16,7 +16,6 @@ on:
     paths:
       - 'backend/basemap/**'
       - 'backend/pmtiles-data/**'
-      - '.github/workflows/ghcr-basemap.yml'
   workflow_dispatch:
     inputs:
       version:

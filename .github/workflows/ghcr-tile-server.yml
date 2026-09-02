@@ -10,7 +10,6 @@ on:
       - 'backend/api/**'
       - 'backend/shared/**'
       - 'backend/basemap/styles/**'
-      - '.github/workflows/ghcr-tile-server.yml'
   workflow_dispatch:
     inputs:
       version:
