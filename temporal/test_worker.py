@@ -4,6 +4,9 @@ import types
 import unittest
 from unittest.mock import patch
 
+from loguru import logger as loguru_logger
+from temporalio.service import RPCError, RPCStatusCode
+
 from temporal.schedules.seed import ScheduleSeedError
 
 
@@ -158,6 +161,47 @@ class WorkerSupervisionTests(unittest.IsolatedAsyncioTestCase):
             "TEMPORAL_SCHEDULE_RECONCILIATION_FAILED",
         )
         self.assertEqual(fields["schedule_ids"], ["nowcast"])
+        self.assertEqual(fields["errors"], "nowcast:RuntimeError")
+
+    async def test_default_message_render_has_ids_and_safe_error_labels(self):
+        failure = ScheduleSeedError(
+            {
+                "nowcast": RPCError(
+                    "secret payload must not render",
+                    RPCStatusCode.DEADLINE_EXCEEDED,
+                    b"private details",
+                ),
+                "poll-alerts": ValueError("sensitive upstream response"),
+            }
+        )
+        rendered: list[str] = []
+
+        async def fail(_client):
+            raise failure
+
+        sink_id = loguru_logger.add(
+            lambda message: rendered.append(str(message).strip()),
+            level="CRITICAL",
+        )
+        try:
+            with patch.object(worker, "seed_schedules", side_effect=fail):
+                await worker._reconcile_schedules(object())
+        finally:
+            loguru_logger.remove(sink_id)
+
+        self.assertEqual(len(rendered), 1)
+        for field in (
+            "event=TEMPORAL_SCHEDULE_RECONCILIATION_FAILED",
+            "schedule_ids=nowcast,poll-alerts",
+            "errors=nowcast:RPCError[DEADLINE_EXCEEDED],poll-alerts:ValueError",
+            "worker_polling=active",
+            "operator_action=inspect_schedule_reconciliation",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, rendered[0])
+        self.assertNotIn("secret payload", rendered[0])
+        self.assertNotIn("sensitive upstream", rendered[0])
+        self.assertNotIn("private details", rendered[0])
 
     async def test_worker_polling_starts_before_failing_reconciliation(self):
         events: list[str] = []

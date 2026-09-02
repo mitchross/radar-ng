@@ -242,6 +242,13 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
         return default
 
 
+def _failure_label(failure: Exception) -> str:
+    """Return a concise error label without logging exception payload data."""
+    label = type(failure).__name__
+    status_name = getattr(getattr(failure, "status", None), "name", None)
+    return f"{label}[{status_name}]" if status_name else label
+
+
 async def _reconcile_schedules(client: Client) -> None:
     """Reconcile definitions without making worker polling depend on success."""
     logger.info("reconciling schedules in background…")
@@ -250,20 +257,36 @@ async def _reconcile_schedules(client: Client) -> None:
     except asyncio.CancelledError:
         raise
     except ScheduleSeedError as exc:
+        schedule_ids = sorted(exc.failures)
+        rendered_ids = ",".join(schedule_ids)
+        rendered_errors = ",".join(
+            f"{schedule_id}:{_failure_label(exc.failures[schedule_id])}"
+            for schedule_id in schedule_ids
+        )
         logger.bind(
             event="TEMPORAL_SCHEDULE_RECONCILIATION_FAILED",
-            schedule_ids=sorted(exc.failures),
-            failures={
-                schedule_id: repr(failure)
-                for schedule_id, failure in exc.failures.items()
-            },
-        ).critical("schedule reconciliation incomplete; worker polling remains active")
-    except Exception as exc:  # noqa: BLE001 - polling must survive reconciliation bugs
-        logger.bind(
-            event="TEMPORAL_SCHEDULE_RECONCILIATION_FAILED",
-            failure=repr(exc),
+            schedule_ids=schedule_ids,
+            errors=rendered_errors,
+            operator_action="inspect_schedule_reconciliation",
         ).critical(
-            "schedule reconciliation failed unexpectedly; worker polling remains active"
+            "event=TEMPORAL_SCHEDULE_RECONCILIATION_FAILED "
+            "schedule_ids={} errors={} worker_polling=active "
+            "operator_action=inspect_schedule_reconciliation",
+            rendered_ids,
+            rendered_errors,
+        )
+    except Exception as exc:  # noqa: BLE001 - polling must survive reconciliation bugs
+        failure_label = _failure_label(exc)
+        logger.bind(
+            event="TEMPORAL_SCHEDULE_RECONCILIATION_FAILED",
+            schedule_ids=[],
+            errors=f"unexpected:{failure_label}",
+            operator_action="inspect_schedule_reconciliation",
+        ).critical(
+            "event=TEMPORAL_SCHEDULE_RECONCILIATION_FAILED "
+            "schedule_ids=unknown errors=unexpected:{} worker_polling=active "
+            "operator_action=inspect_schedule_reconciliation",
+            failure_label,
         )
     else:
         logger.info("schedule reconciliation complete")

@@ -99,6 +99,7 @@ async def check_schedule(
     # concurrent checks converge before either can yield again.
     reported_stalls[schedule.schedule_id] = stalled_action_time
     overdue = now - stalled_action_time
+    overdue_seconds = int(overdue.total_seconds())
     live_action = getattr(description.schedule, "action", None)
     workflow_name = getattr(live_action, "workflow", schedule.workflow_name)
     task_queue = getattr(live_action, "task_queue", schedule.task_queue)
@@ -108,14 +109,20 @@ async def check_schedule(
         workflow_name=workflow_name,
         task_queue=task_queue,
         next_action_time=stalled_action_time.isoformat(),
-        overdue_seconds=overdue.total_seconds(),
+        overdue_seconds=overdue_seconds,
         interval_seconds=schedule.interval.total_seconds(),
         automatic_recovery=False,
         operator_action="inspect_temporal_timer_dlq",
     ).critical(
-        "{}: schedule {} is overdue with no running action; observer made no mutation",
+        "event={} schedule_id={} workflow_name={} task_queue={} "
+        "next_action_time={} overdue_seconds={} automatic_recovery=false "
+        "operator_action=inspect_temporal_timer_dlq",
         STALL_EVENT,
         schedule.schedule_id,
+        workflow_name,
+        task_queue,
+        stalled_action_time.isoformat(),
+        overdue_seconds,
     )
     return True
 

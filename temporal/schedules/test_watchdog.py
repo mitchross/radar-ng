@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from loguru import logger as loguru_logger
+
 from temporal.schedules import watchdog
 from temporal.schedules.seed import ScheduleDef
 
@@ -175,6 +177,34 @@ class CheckScheduleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fields["overdue_seconds"], 3600)
         self.assertFalse(fields["automatic_recovery"])
         self.assertEqual(fields["operator_action"], "inspect_temporal_timer_dlq")
+
+    async def test_default_message_render_contains_every_actionable_field(self):
+        handle = _Handle([NOW - timedelta(hours=1)])
+        definition = _def()
+        rendered: list[str] = []
+        sink_id = loguru_logger.add(
+            lambda message: rendered.append(str(message).strip()),
+            level="CRITICAL",
+        )
+
+        try:
+            await watchdog.check_schedule(_Client(handle), definition, {}, now=NOW)
+        finally:
+            loguru_logger.remove(sink_id)
+
+        self.assertEqual(len(rendered), 1)
+        for field in (
+            "event=TEMPORAL_SCHEDULE_STALLED",
+            "schedule_id=poll-x",
+            "workflow_name=XWorkflow",
+            f"task_queue={definition.task_queue}",
+            "next_action_time=2026-09-02T11:00:00+00:00",
+            "overdue_seconds=3600",
+            "automatic_recovery=false",
+            "operator_action=inspect_temporal_timer_dlq",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, rendered[0])
 
     async def test_same_stalled_timer_is_suppressed_in_one_process(self):
         handle = _Handle([NOW - timedelta(hours=1)])
