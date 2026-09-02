@@ -232,10 +232,11 @@ def _axis_to_fractional_indices(values: np.ndarray, axis: np.ndarray) -> np.ndar
         raise ValueError("source axes must be strictly monotonic")
 
     values = np.asarray(values, dtype=np.float64)
-    # NOAA grids are normally affine. Keep that path allocation-light while
-    # correctly supporting a monotonic non-uniform axis when one is supplied.
+    # Affine path must stay byte-identical to the shipped renderer: same formula, same rounding.
     if np.allclose(steps, steps[0], rtol=1e-7, atol=abs(float(steps[0])) * 1e-10):
-        return (values - axis[0]) / steps[0]
+        start = float(axis[0])
+        span = float(axis[-1]) - start
+        return (values - start) / span * (len(axis) - 1)
 
     segment = np.searchsorted(ordered, values, side="right") - 1
     segment = np.clip(segment, 0, len(ordered) - 2)
@@ -498,9 +499,7 @@ def _finite_bounds(values: np.ndarray, name: str) -> tuple[float, float]:
     arr = np.asarray(values)
     if arr.size == 0:
         raise ValueError(f"{name} has no finite coordinates")
-    # np.nanmin/max avoid copying the multi-million-cell HRRR coordinate
-    # meshes on every frame. Infinity is exceptional, so pay for a filtered
-    # fallback only when it is actually present at an extremum.
+    # nanmin/nanmax avoid copying the multi-million-cell HRRR meshes; filter infinities only when hit.
     with np.errstate(all="ignore"):
         low = float(np.nanmin(arr))
         high = float(np.nanmax(arr))
@@ -1762,9 +1761,7 @@ def _publication_group_lock(
         root = Path(lock_root).resolve(strict=False)
         roots = {name: root for name in finals}
     else:
-        # The fallback is deterministic for each final and stays above the
-        # timestamp/run directory. Production integrations pass the durable
-        # layer root explicitly so retention can never replace a lock inode.
+        # Fallback stays above the timestamp/run dir; callers pass the layer root so retention never replaces a lock inode.
         roots = {name: final.parent.parent for name, final in canonical.items()}
     lock_paths: set[Path] = set()
     for name, final in canonical.items():
@@ -1899,9 +1896,7 @@ def _render_and_publish_atomic(
                 "complete palette set has mixed or incompatible render identities"
             )
 
-        # Filling around a foreign-renderer winner could produce one logical
-        # frame with mixed algorithms. Only exact current identities may be
-        # combined with newly published palettes.
+        # Never mix renderers inside one frame: only exact current identities combine with new palettes.
         for name, inspection in bound.items():
             if inspection.identity != identities[name]:
                 raise PyramidIdentityConflict(
@@ -1955,9 +1950,7 @@ def _render_and_publish_atomic(
                     identities[name],
                 )
 
-            # Decide every action before mutating any existing tree. This
-            # avoids partially adopting a legacy set when a later palette is
-            # incomplete or belongs to another source.
+            # Decide every action before mutating anything, so a bad later palette cannot leave a half-adopted set.
             actions: dict[str, tuple[str, PyramidInspection | None]] = {}
             for name, final in unresolved.items():
                 if counts[name] == 0:

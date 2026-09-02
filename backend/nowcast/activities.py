@@ -454,13 +454,9 @@ async def nowcast_run() -> NowcastResult:
             raise RuntimeError(
                 f"nowcast incomplete: rendered {len(rendered_timestamps)}/{n_lead} leadtimes"
             )
-        # Completion makes this run eligible for whole-generation retention.
-        # It happens before the manifest boundary so the old manifest remains
-        # fully readable if this process stops anywhere above the atomic swap.
+        # Mark complete before the manifest swap so a crash here leaves the old manifest fully readable.
         finalize_grid_generation("nowcast", latest_iso)
-        # One atomic swap: this run's frames replace ALL previous nowcast
-        # frames in the manifest. Old tile dirs stay on disk until the
-        # cleanup sweep removes them, but the app never sees them again.
+        # One atomic swap replaces ALL previous nowcast frames; old tile dirs linger until the cleanup sweep.
         replace_layer_manifest(
             "nowcast",
             rendered_timestamps,
@@ -475,11 +471,8 @@ async def nowcast_run() -> NowcastResult:
                 "run_id": latest_iso,
             },
         )
-        # The manifest swap is the publication boundary. Retention must still
-        # go through the shared layer lock: an ad-hoc directory sweep could
-        # unlink `.grid.lock`, another writer's committed generation, or its
-        # metadata temporary. Keep two full runs so a concurrent/newer writer
-        # cannot evict point grids that the just-published manifest references.
+        # Prune under the shared layer lock only (an ad-hoc sweep could unlink .grid.lock or a committed generation);
+        # keep two full runs so a newer writer cannot evict grids this manifest references.
         _prune_nowcast_point_grids(latest_iso)
         state = ProcessedSet(STATE_DIR / "nowcast.json", max_entries=100)
         state.add(latest_iso)

@@ -151,9 +151,7 @@ def write_grid(
         lons = lons[order]
         data = data[:, order]
 
-    # Downsample (stride-based) until total cells fits the caller's purpose.
-    # Inspector grids use the compact default; nowcast science inputs opt into
-    # a larger cap without forcing every point-inspection request to read them.
+    # Stride-downsample to the caller's cell cap: inspector grids stay compact, nowcast opts into a larger cap.
     cell_limit = max(1, int(max_cells or MAX_CELLS))
     stride = 1
     while (h // stride) * (w // stride) > cell_limit:

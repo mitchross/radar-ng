@@ -335,10 +335,7 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
     )
 
     def _render_all() -> list[str]:
-        # One in-process pass samples physical values once per tile; every
-        # palette is then a PLTE/tRNS rewrite of the same indexed PNG. Let
-        # failures reach Temporal so a retry can converge on any complete,
-        # immutable palette directories already published by the first try.
+        # Sample once per tile; each palette is a PLTE/tRNS rewrite. Failures reach Temporal so a retry converges.
         return _render_all_palettes(
             palette_tables,
             grid_data,
