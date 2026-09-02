@@ -5,12 +5,16 @@ on:
     paths:
       - 'backend/**'
       - 'temporal/**'
+      - '!temporal/open_meteo_worker.py'
+      - '!temporal/open_meteo_worker.Dockerfile'
       - '.github/workflows/ci-backend.yml'
   push:
     branches: [master]
     paths:
       - 'backend/**'
       - 'temporal/**'
+      - '!temporal/open_meteo_worker.py'
+      - '!temporal/open_meteo_worker.Dockerfile'
       - '.github/workflows/ci-backend.yml'
 
 permissions:

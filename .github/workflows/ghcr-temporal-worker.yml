@@ -10,6 +10,9 @@ on:
     paths:
       - 'temporal/**'
       - 'backend/**'
+      # These belong only to the separately built Open-Meteo activity worker.
+      - '!temporal/open_meteo_worker.py'
+      - '!temporal/open_meteo_worker.Dockerfile'
   workflow_dispatch:
     inputs:
       version:
