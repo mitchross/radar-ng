@@ -133,7 +133,7 @@ on the NAS, not in Longhorn on one node.
 | Grids | ~7 GiB today, ~1 GiB after keep-last-4 | RustFS bucket | none |
 | Manifest, state, alerts, push tokens | < 100 MiB | Postgres (kopiur-backed) | Longhorn, 10 Gi |
 | Open-Meteo model data | ~6 GiB rolling | Longhorn RWO (the writer needs ext4; NFS fails with errno 95) | 30 Gi on one node, as today |
-| CONUS basemap PMTiles | up to 50 GiB, static | NAS share (same static-PV pattern as VersaTiles), or retire it and use the VersaTiles planet already on the NAS | none |
+| CONUS basemap PMTiles | up to 50 GiB, static | **Retired.** The app uses the shared VersaTiles server (`maps.vanillax.me/styles/{light,dark}.json`) | none |
 | VersaTiles planet | 62 GiB, static | already on the NAS over SMB | none |
 
 No node needs more than ~40 Gi for radar-ng (Postgres + Open-Meteo + a tile
@@ -247,11 +247,13 @@ frame < 10 s, nowcast run < 90 s, worker CPU halves.
    roles that only write to S3/Postgres lose their `podAffinity` and schedule
    anywhere.
 6. Push tokens and alert state move to Postgres; the `alerts` role runs 2 replicas.
-7. Basemap: move the PMTiles archive to the NAS share (bootstrap Job writes
-   there once, marker file skips re-download, same as VersaTiles) so the
-   `pmtiles` Longhorn volume and the `basemap`↔Job co-location go away.
-   Decide whether the Protomaps CONUS extract is still needed next to the
-   VersaTiles planet.
+7. Basemap: one map server for everything. The app's `frontend/.env.production` points
+   the light/dark styles at the shared VersaTiles instance (`maps.vanillax.me`),
+   which already serves Shortbread tiles, glyphs, sprites and two styles for any
+   consumer (radar-ng, Project NOMAD, Home Assistant). After one on-device
+   check, delete `deployment-basemap.yaml`, `job-basemap-bootstrap.yaml`, the
+   `pmtiles` PVC and the `basemap` Service from gitops; the bundled Protomaps
+   styles stay in the image as the fallback for other self-hosters.
 
 Storage model after this phase: Longhorn holds Postgres (10 Gi, kopiur-backed)
 and the Open-Meteo data volume; RustFS holds every tile and grid; nothing in
