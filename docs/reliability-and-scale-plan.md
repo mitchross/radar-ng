@@ -50,19 +50,24 @@ Five related PRs merged on 2026-09-02:
 |---|---|---|
 | Phase 0 backend/app fixes | [radar-ng #33](https://github.com/mitchross/radar-ng/pull/33) | Merged |
 | Phase 0 GitOps/alerts/Temporal fixes | [talos #2160](https://github.com/mitchross/talos-argocd-proxmox/pull/2160) | Merged |
-| Five role worker pools | [talos #2161](https://github.com/mitchross/talos-argocd-proxmox/pull/2161) | Merged, **not rendered into the live cluster** |
+| Five role worker pools | [talos #2161](https://github.com/mitchross/talos-argocd-proxmox/pull/2161) | Merged and live at `v1.1.25`; routing remains on legacy |
 | Shared VersaTiles production styles | [radar-ng #34](https://github.com/mitchross/radar-ng/pull/34) | Merged; old Radar basemap kept for device rollback |
 | Constant-child raster carousel | [radar-ng #35](https://github.com/mitchross/radar-ng/pull/35) | Merged behind `CAROUSEL_WINDOW=1` |
 
-Argo currently reports Radar at the #2161 merge as Synced and Healthy, but its
-desired-resource inventory is stale. Production still has only the legacy
-`radar-ng-worker` at `v1.1.24`; the five role WorkerDeployments and their
-PodMonitor do not exist. Repo-server logs repeatedly show a manifest cache hit,
-matching the documented Argo repo-cache poison failure mode.
+The stale Argo render cleared on a fresh repo-server render without an operator
+restart. Production now has the legacy worker plus all five role
+WorkerDeployments at `v1.1.25`, and the PodMonitor scrapes all six. Both
+workflow and activity pollers are present on every role queue.
 
-**Do not switch schedules to role queues yet.** All five role queues have zero
-pollers. Clear the Argo repo-server/Redis cache, hard-refresh Radar, and verify
-the rendered inventory first.
+Argo is still `OutOfSync/Healthy`: admission adds WorkerDeployment defaults
+(`minReadySeconds`, `progressDeadlineSeconds`, and port protocol), while Git
+omits them. Argo server-side-applies the same six resources every five minutes.
+Declare those stable defaults in Git; do not hide arbitrary WorkerDeployment
+differences.
+
+**Do not switch schedules to role queues yet.** The new pools are healthy but
+idle, HRRR is absent, alert polling still needs watchdog recovery, and all
+shared RWO mounts keep every pool on one node.
 
 Other live facts:
 
@@ -70,8 +75,8 @@ Other live facts:
 |---|---|---|
 | MRMS and nowcast | Fresh during the audit | Main observation path is working now |
 | HRRR radar | Missing from the public manifest | Phase 0 has not passed |
-| HRRR failure | Old worker retries future NOAA 404s, gets 0/18 hours, publishes nothing | Merged pending/resume fix is not live |
-| Schedules | Alerts, Open-Meteo HRRR sync, and cleanup were 60–95 min overdue before the watchdog woke them | Watchdog helps; Temporal is still unreliable |
+| HRRR failure | Future 404s are now pending, but NOAA reports REFC as `shortName=refc`; the display-name selector silently renders zero layers | Match the stable short name and fail loudly when mandatory REFC is absent |
+| Schedules | Live scheduler `USER_TIMER` tasks for alerts, cleanup, and Open-Meteo were found in Temporal's timer DLQ; a scoped replay restored their future timers | Watchdog preserves continuity but cannot repair a dead-lettered durable timer |
 | Temporal | One history shard, one replica per service, single Postgres | A known control-plane failure domain |
 | Push/workflow API | `DISABLE_WORKFLOW_ROUTES=1`; all workers use `PUSH_DISABLED=1` | Deliberately off; not a production-ready feature |
 | Public manifest | ~119 KB raw, ~4.8 KB through Cloudflare compression, ~0.3 s sample | Bandwidth is not the first problem |
@@ -90,10 +95,15 @@ These are point-in-time observations, not capacity results.
 | Open-Meteo | 5.44 / 30 GiB | quiet during the sample; requires an ext4-style RWO mount |
 | Retiring PMTiles | 17.8 / 50 GiB | quiet |
 
-The worker peaked near 1.63 CPU and 6.68 GiB in the observed hour. The tile
+The worker peaked near 1.63 CPU and 6.68 GiB in the initial observed hour. The tile
 server used about 4 millicores and 77 MiB. A representative radar frame was
 207 PNGs per palette and ~9.5 MB across three palettes; composite was 396 PNGs
 per palette and ~18.9 MB.
+
+After the pools went live, the five idle pods used only about 85–89 MiB each,
+but reserved 6.75 CPU and 11 GiB. The shared GPU node was at 88% requested
+memory with about 11 GiB scheduler headroom. Actual memory was comfortable;
+requested capacity is the cutover and rollout constraint.
 
 **Disk speed is not the current hot path.** Moving the same workload to a local
 PVC would trade away failover without fixing the CPU, memory, scheduler, or
@@ -104,9 +114,9 @@ single-node coupling problems.
 | Failure | Verified cause | Permanent rule |
 |---|---|---|
 | Four-hour radar gap | CoreDNS was down; worker polling failed; a 90-minute workflow under `SKIP` blocked later fires | Workflow timeout is at most 2–3 cadences; poll health drives liveness |
-| Three schedules slept for hours | Scheduler timers wedged during Temporal persistence/control-plane faults; one shard amplified the blast radius | Watch overdue schedules now; migrate to a new sharded Temporal database later |
+| Three schedules slept for hours | Their exact scheduler `USER_TIMER` tasks were dead-lettered during Temporal persistence/control-plane faults; manual triggers never restored them | Alert on the timer DLQ, recover it deliberately, and migrate to a new sharded Temporal database |
 | Worker OOM | Nowcast, HRRR, AQ, two MRMS renders, alerts, and lightning shared one process | One bounded worker pool per role |
-| HRRR absent | A not-yet-uploaded NOAA object was treated as a failed run | 404 means pending; publish the consecutive available prefix and resume |
+| HRRR absent | Future 404 handling was fixed, then a mutable GRIB display-name selector stopped matching NOAA's current REFC metadata | Use stable GRIB identifiers and fail a downloaded hour when a mandatory field is absent |
 | One node owns everything | Tiles, grids, and state are Longhorn RWO volumes | Durable shared artifacts leave POSIX volumes; scratch stays local |
 | Argo said Synced but was stale | Repo-server returned a poisoned cached render | A rollout verifies live inventory and image digests, not only Argo health text |
 
@@ -248,19 +258,26 @@ the edge rather than one unrelated in-memory limiter per replica.
 
 ### Gate 0 — make the merged safety work real
 
-**Status: merged, stale in production, not passed.**
+**Status: merged and live, but not passed.**
 
-1. Follow the documented Argo cache-recovery runbook: restart repo-server and
-   Redis as prescribed, then hard-refresh the Radar Application.
-2. Prove the desired inventory contains all five role WorkerDeployments and the
-   SDK-metrics PodMonitor. Prove the live image versions match Git.
-3. Verify the updated legacy worker now treats future HRRR 404s as pending and
-   publishes a consecutive prefix with `complete: false`.
+1. Stop the WorkerDeployment default-field self-heal loop and prove Argo stays
+   `Synced/Healthy` for at least 15 minutes.
+2. Keep proving all five role WorkerDeployments, their workflow/activity
+   pollers, the SDK-metrics PodMonitor, and the live image versions match Git.
+3. Ship the REFC selector fix, then verify future HRRR 404s remain pending and
+   a consecutive prefix publishes with `complete: false`.
 4. Confirm worker health/liveness, Temporal SDK metrics, Radar/Temporal alerts,
    and the watchdog are present and scraped.
 5. Run 24 hours with MRMS action count at least 95% of expected fires, HRRR in
    the manifest, no overdue schedule, and worker memory below 70% of limit.
 6. Route critical stale-data alerts to a human and perform one test page.
+
+The 2026-09-02 recovery merged only timer-DLQ messages 0–6, the smallest prefix
+covering Radar's three live stuck schedulers. Five messages remain because the
+next prefix includes two live News schedules. Coordinate that cleanup
+separately; never purge a timer DLQ without reading and matching every entry to
+its current workflow. A healthy gate requires natural schedule fires, not only
+watchdog-triggered runs.
 
 Rollback through a Git revert to the last safe image, but preserve the bounded
 timeouts, catch-up windows, watchdog, and freshness alerts. Never restore the
@@ -269,8 +286,7 @@ tiles as part of rollback.
 
 ### Gate 1 — cut over the five worker pools
 
-**Status: manifests merged; live pools currently absent and all role queues
-have zero pollers.**
+**Status: pools live and polling; schedules still route to legacy.**
 
 The pools are `mrms`, `nowcast`, `hrrr`, `aux`, and `alerts`. They isolate CPU,
 memory, and task slots, but their shared RWO mounts still force them onto the
@@ -579,20 +595,21 @@ boundaries, not on every camera frame or particle.
 
 ## 10. Immediate order of work
 
-1. Repair Argo's stale render and prove the merged versions are live.
-2. Start the 24-hour Phase 0 watch, especially HRRR and overdue schedules.
-3. During that watch, fix telemetry location leakage and add frontend manifest
+1. Land the WorkerDeployment-default fix and prove Argo stops self-healing.
+2. Land the HRRR REFC selector fix and prove a real forecast prefix publishes.
+3. Start the 24-hour Phase 0 watch, especially HRRR and overdue schedules.
+4. During that watch, fix telemetry location leakage and add frontend manifest
    validation/CI; these do not depend on phone builds.
-4. Pass Phase 0, then cut the worker pools over with poller proof and
+5. Pass Phase 0, then cut the worker pools over with poller proof and
    node-headroom checks.
-5. Repair and canary render-once behind a rollback flag.
-6. Implement storage interfaces and shadow-write the Radar object bucket.
-7. Replicate the Radar serving plane. Harden shared maps separately only if the
+6. Repair and canary render-once behind a rollback flag.
+7. Implement storage interfaces and shadow-write the Radar object bucket.
+8. Replicate the Radar serving plane. Harden shared maps separately only if the
    optional homelab profile remains worth operating.
-8. Move Radar to the new sharded Temporal database with publication fencing.
-9. Run capacity/failure/security tests, then publish the honest support
+9. Move Radar to the new sharded Temporal database with publication fencing.
+10. Run capacity/failure/security tests, then publish the honest support
    envelope and recovery times.
-10. Perform the deferred iPhone/Android gate and only then enable five slots
+11. Perform the deferred iPhone/Android gate and only then enable five slots
     and retire the duplicate basemap.
 
 ## 11. Engineering references
