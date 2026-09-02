@@ -13,7 +13,9 @@ import {
   QueryCache,
   MutationCache,
   focusManager,
+  onlineManager,
 } from "@tanstack/react-query";
+import NetInfo from "@react-native-community/netinfo";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -23,6 +25,7 @@ import {
   useWeatherClearTheme,
 } from "../theme/WeatherClearThemeProvider";
 import { useStormTilePrefetch } from "../hooks/useStormTilePrefetch";
+import { bindAppFocus, bindNetworkOnline } from "../lib/queryLifecycle";
 
 // Root-level error boundary: without it, a single throw anywhere in the tree
 // (a Skia worklet edge case, a MapLibre native error surfacing in JS) takes
@@ -33,8 +36,13 @@ export { ErrorBoundary } from "expo-router";
 // RN never fires `visibilitychange`, so without this react-query believes the app is
 // always focused: refetchOnWindowFocus never runs and refetchInterval polls in the background.
 focusManager.setEventListener((setFocused) => {
-  const sub = AppState.addEventListener("change", (state) => setFocused(state === "active"));
-  return () => sub.remove();
+  return bindAppFocus(AppState, setFocused);
+});
+
+// React Native has no browser online event. NetInfo pauses queries while the
+// device is disconnected and resumes stale work after the link returns.
+onlineManager.setEventListener((setOnline) => {
+  return bindNetworkOnline(NetInfo, setOnline);
 });
 
 const queryClient = new QueryClient({

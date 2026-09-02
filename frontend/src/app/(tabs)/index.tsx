@@ -12,6 +12,7 @@ import { useForecast } from "../../hooks/useForecast";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useLocation } from "../../hooks/useLocation";
 import { activeLocationLabel, activeLocationName } from "../../lib/locationLabel";
+import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import {
   CONDITION_GRADIENTS,
@@ -63,15 +64,17 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([
-        queryClient.refetchQueries({ queryKey: ["forecast"] }),
-        queryClient.refetchQueries({ queryKey: ["alerts"] }),
-      ]);
-    } finally {
-      setRefreshing(false);
-    }
+    await runOnlineRefresh(async () => {
+      setRefreshing(true);
+      try {
+        await Promise.all([
+          queryClient.refetchQueries({ queryKey: ["forecast"] }),
+          queryClient.refetchQueries({ queryKey: ["alerts"] }),
+        ]);
+      } finally {
+        setRefreshing(false);
+      }
+    });
   }, [queryClient]);
 
   const presentation = getForecastScreenState({

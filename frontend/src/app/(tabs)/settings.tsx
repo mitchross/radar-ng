@@ -30,6 +30,7 @@ import { useManifestQuery } from "../../hooks/useManifest";
 import type { SelfHostedManifest } from "../../types/weather";
 import { activeLocationLabel, formatPlaceLabel } from "../../lib/locationLabel";
 import { SELF_HOSTED } from "../../lib/constants";
+import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
 import { PaletteSelector } from "../../components/palette/PaletteSelector";
 import {
@@ -105,12 +106,14 @@ export default function SettingsScreen() {
   } = useCitySearch(debouncedCityQuery);
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([refetchStatus(), refetchManifest()]);
-    } finally {
-      setRefreshing(false);
-    }
+    await runOnlineRefresh(async () => {
+      setRefreshing(true);
+      try {
+        await Promise.all([refetchStatus(), refetchManifest()]);
+      } finally {
+        setRefreshing(false);
+      }
+    });
   }, [refetchStatus, refetchManifest]);
 
   const sources = useMemo(

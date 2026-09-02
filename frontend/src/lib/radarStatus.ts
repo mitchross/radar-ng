@@ -8,6 +8,11 @@ export interface RadarStatus {
   tone: RadarStatusTone;
 }
 
+/** Cached query data is offline when refresh failed or is paused by NetInfo. */
+export function radarQueryIsOffline(isError: boolean, isPaused: boolean): boolean {
+  return isError || isPaused;
+}
+
 export function radarButtonAccessibilityLabel(
   status: RadarStatus,
   headline?: string,

@@ -13,6 +13,7 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS } from "../../lib/constants";
 import {
   radarButtonAccessibilityLabel,
+  radarQueryIsOffline,
   radarStatus,
 } from "../../lib/radarStatus";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
@@ -37,7 +38,7 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
   const lon = useWeatherStore((s) => s.longitude) ?? DEFAULTS.LONGITUDE;
   const patchedStyle = usePatchedMapStyle(serverUrl, "light");
 
-  const { data: manifest, dataUpdatedAt, isError, isPending } = useManifestQuery();
+  const { data: manifest, dataUpdatedAt, isError, isPaused, isPending } = useManifestQuery();
 
   // Match the dedicated Radar tab's observed MRMS source first. Composite is
   // only a compatibility fallback for clusters that still publish it.
@@ -63,7 +64,7 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
   const statusNow = dataUpdatedAt > 0 ? Math.max(Date.now(), dataUpdatedAt) : Date.now();
   const status = radarStatus({
     frameTimeSeconds: nowFrame?.time ?? null,
-    refreshFailed: isError,
+    refreshFailed: radarQueryIsOffline(isError, isPaused),
     loading: isPending,
     nowMilliseconds: statusNow,
   });

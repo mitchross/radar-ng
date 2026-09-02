@@ -12,6 +12,7 @@ import { useForecast } from "../hooks/useForecast";
 import { useRadarNowcast } from "../hooks/useRadarNowcast";
 import { useLocation } from "../hooks/useLocation";
 import { activeLocationName } from "../lib/locationLabel";
+import { runOnlineRefresh } from "../lib/queryLifecycle";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { CONDITION_GRADIENTS, getCumulusCondition, isNightAt } from "../lib/cumulusTheme";
 import {
@@ -58,15 +59,17 @@ export default function NowcastScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([
-        queryClient.refetchQueries({ queryKey: ["forecast"] }),
-        queryClient.refetchQueries({ queryKey: ["radar-nowcast"] }),
-      ]);
-    } finally {
-      setRefreshing(false);
-    }
+    await runOnlineRefresh(async () => {
+      setRefreshing(true);
+      try {
+        await Promise.all([
+          queryClient.refetchQueries({ queryKey: ["forecast"] }),
+          queryClient.refetchQueries({ queryKey: ["radar-nowcast"] }),
+        ]);
+      } finally {
+        setRefreshing(false);
+      }
+    });
   }, [queryClient]);
 
   const openMotionRadar = useCallback(() => {
