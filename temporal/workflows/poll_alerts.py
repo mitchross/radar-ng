@@ -38,11 +38,13 @@ with workflow.unsafe.imports_passed_through():
     )
 
 
+# Short ladder: the whole run must finish inside the schedule's 4.5-min
+# ceiling, and the next 5-min poll is the real retry for the push path.
 _RETRY = RetryPolicy(
     initial_interval=timedelta(seconds=2),
     backoff_coefficient=2.0,
-    maximum_interval=timedelta(seconds=60),
-    maximum_attempts=4,
+    maximum_interval=timedelta(seconds=15),
+    maximum_attempts=3,
 )
 
 

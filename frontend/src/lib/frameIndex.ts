@@ -24,3 +24,24 @@ export function findClosestIdx(frames: { time: number }[], target: number): numb
   if (target > frames[frames.length - 1].time) return frames.length - 1;
   return best;
 }
+
+/**
+ * Where the frame the user was looking at (by wall-clock `prevTime`) lives in a
+ * refreshed frame list. Indices shift every manifest poll (head pruned, run
+ * rolled), so a bare index would silently move the paused frame forward in time.
+ *
+ * Returns -1 when the caller should snap to "now" instead: empty list, an
+ * explicit -1 index, or no frame within `toleranceSec` of `prevTime` (layer switch).
+ */
+export function resnapFrameIndex(
+  frames: { time: number }[],
+  currentIndex: number,
+  prevTime: number | null,
+  toleranceSec = 15 * 60,
+): number {
+  if (frames.length === 0 || currentIndex < 0) return -1;
+  if (prevTime === null) return currentIndex < frames.length ? currentIndex : -1;
+  if (frames[currentIndex]?.time === prevTime) return currentIndex;
+  const idx = findClosestIdx(frames, prevTime);
+  return Math.abs(frames[idx].time - prevTime) <= toleranceSec ? idx : -1;
+}

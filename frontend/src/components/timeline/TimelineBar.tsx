@@ -10,11 +10,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
 import { findClosestIdx } from "../../lib/frameIndex";
+import { useAppActive } from "../../hooks/useAppActive";
 import type { LayerType } from "../../types/weather";
 
 const NOWCAST_MIN = 60;
 const HRRR_MIN = 48 * 60;
 const PLAYBACK_MS = 750;
+const NOW_REFRESH_MS = 60_000;
 
 const LAYER_TITLE: Record<LayerType, string> = {
   radar: "Radar",
@@ -46,7 +48,9 @@ export function TimelineBar() {
   const idxRef = useRef(currentFrameIndex);
   useEffect(() => { idxRef.current = currentFrameIndex; }, [currentFrameIndex]);
 
-  const nowSec = useMemo(() => Math.floor(Date.now() / 1000), []);
+  // Frozen-at-mount "now" drifted the 1h window and NOW marker into the past after ~30 min on the tab.
+  const nowSec = useNowSec();
+  const appActive = useAppActive();
 
   // Zoom window indices
   const { startIdx, endIdx } = useMemo(() => {
@@ -71,9 +75,9 @@ export function TimelineBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, startIdx, endIdx, frames.length]);
 
-  // Playback tick within zoom window
+  // Playback tick within zoom window; paused while backgrounded (each tick remounts a RasterSource).
   useEffect(() => {
-    if (!isPlaying || frames.length === 0 || endIdx <= startIdx) return;
+    if (!appActive || !isPlaying || frames.length === 0 || endIdx <= startIdx) return;
     const id = setInterval(() => {
       const next = idxRef.current < startIdx || idxRef.current >= endIdx
         ? startIdx
@@ -81,12 +85,11 @@ export function TimelineBar() {
       setCurrentFrameIndex(next);
     }, PLAYBACK_MS);
     return () => clearInterval(id);
-  }, [isPlaying, startIdx, endIdx, frames.length, setCurrentFrameIndex]);
+  }, [appActive, isPlaying, startIdx, endIdx, frames.length, setCurrentFrameIndex]);
 
-  // Segment boundaries depend only on the frame stream + zoom window, not on the
-  // playback index — memoize so the 420ms tick doesn't re-run three O(n) frame
-  // scans (over the full merged forecast stream) on every single frame. Must
-  // stay above the early return below to satisfy rules-of-hooks.
+  // Segment boundaries don't depend on the playback index — memoize so the
+  // 750 ms tick doesn't re-run three O(n) frame scans. Must stay above the
+  // early return below (rules-of-hooks).
   const { nowPct, nowcastPct, hrrrPct } = useMemo(() => {
     const winLen = Math.max(1, endIdx - startIdx);
     const toPct = (i: number) => ((i - startIdx) / winLen) * 100;
@@ -238,6 +241,16 @@ export function TimelineBar() {
       </View>
     </View>
   );
+}
+
+/** Epoch seconds, refreshed once a minute while mounted. */
+function useNowSec(): number {
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const id = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), NOW_REFRESH_MS);
+    return () => clearInterval(id);
+  }, []);
+  return nowSec;
 }
 
 function DashedRow({ color }: { color: string }) {

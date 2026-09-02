@@ -6,8 +6,12 @@ For each scheduled workflow, attempts `client.create_schedule(...)` and
 falls through to `update(...)` if the schedule already exists. HA
 replicas racing is harmless: both converge on the same desired state.
 
-All schedules use `OverlapPolicy.SKIP` (slow run does not queue) and a
-`CatchupWindow=1h` (no thundering-herd backfill on worker recovery).
+All schedules use `OverlapPolicy.SKIP` (slow run does not queue). Each
+ScheduleDef also carries its own `max_runtime` (workflow execution timeout,
+sized to a few multiples of the cadence so one stuck run cannot block many
+fires), a `catchup_window` (short for frequent schedules so worker recovery
+does not replay a burst of stale fires) and, on the 2-min schedules, a
+`jitter` so three workflows do not start on the same second.
 
 Defines TWO ingest-mrms schedules (base + composite) driving the same
 workflow with different inputs, replacing both the legacy
@@ -77,53 +81,64 @@ class ScheduleDef:
     workflow_input: list[Any] = field(default_factory=list)
     interval: timedelta | None = None
     task_queue: str = AUX_TASK_QUEUE
+    catchup_window: timedelta = timedelta(hours=1)
+    jitter: timedelta | None = None
+
+
+# Shared knobs for the 2-min schedules: a missed hour of 2-min fires is
+# worthless (fresher data supersedes it), and jitter spreads their CPU peaks.
+_FAST_CATCHUP = timedelta(minutes=5)
+_FAST_JITTER = timedelta(seconds=20)
 
 
 SCHEDULES: list[ScheduleDef] = [
     # MRMS base reflectivity (QC) — every 2 min
     ScheduleDef(
         "ingest-mrms-base", "IngestMrmsWorkflow",
-        max_runtime=timedelta(minutes=90),
+        max_runtime=timedelta(minutes=6),
         workflow_input=[{"mrms_prefix": "CONUS/MergedBaseReflectivityQC_00.50", "layer_name": "radar"}],
         interval=timedelta(minutes=2),
         task_queue=MRMS_TASK_QUEUE,
+        catchup_window=_FAST_CATCHUP, jitter=_FAST_JITTER,
     ),
     # MRMS composite reflectivity (full atmosphere) — every 2 min
     ScheduleDef(
         "ingest-mrms-composite", "IngestMrmsWorkflow",
-        max_runtime=timedelta(minutes=90),
+        max_runtime=timedelta(minutes=6),
         workflow_input=[{"mrms_prefix": "CONUS/MergedReflectivityComposite_00.50", "layer_name": "radar-composite"}],
         interval=timedelta(minutes=2),
         task_queue=MRMS_TASK_QUEUE,
+        catchup_window=_FAST_CATCHUP, jitter=_FAST_JITTER,
     ),
     # HRRR forecast — every 15 min
     ScheduleDef(
         "ingest-hrrr", "IngestHrrrWorkflow",
-        max_runtime=timedelta(hours=2),
+        max_runtime=timedelta(minutes=45),
         interval=timedelta(minutes=15), task_queue=HRRR_TASK_QUEUE,
     ),
     # NAQFC air quality (PM2.5 + ozone) — cycles land twice daily; poll every
     # 30 min so a fresh cycle is picked up promptly. Non-new runs are a HEAD.
     ScheduleDef(
         "ingest-airquality", "IngestAirQualityWorkflow",
-        max_runtime=timedelta(hours=2),
+        max_runtime=timedelta(minutes=75),
         interval=timedelta(minutes=30),
     ),
     # Lightning WS consumer — every 60 min (workflow runs activity for ~50 min)
     ScheduleDef(
         "ingest-lightning", "IngestLightningWorkflow",
-        max_runtime=timedelta(minutes=65), interval=timedelta(minutes=60),
+        max_runtime=timedelta(minutes=56), interval=timedelta(minutes=60),
     ),
     # NHC tropical cyclones — every 1 hour
     ScheduleDef(
         "ingest-tropical", "IngestTropicalWorkflow",
-        max_runtime=timedelta(minutes=15), interval=timedelta(hours=1),
+        max_runtime=timedelta(minutes=5), interval=timedelta(hours=1),
     ),
     # pysteps nowcast — every 2 min
     ScheduleDef(
         "nowcast", "NowcastWorkflow",
-        max_runtime=timedelta(minutes=30),
+        max_runtime=timedelta(minutes=12),
         interval=timedelta(minutes=2), task_queue=NOWCAST_TASK_QUEUE,
+        catchup_window=_FAST_CATCHUP, jitter=_FAST_JITTER,
     ),
     # Tile + grid cleanup — every 1 hour
     ScheduleDef(
@@ -133,8 +148,9 @@ SCHEDULES: list[ScheduleDef] = [
     # NWS active alerts — every 5 min
     ScheduleDef(
         "poll-alerts", "PollAlertsWorkflow",
-        max_runtime=timedelta(minutes=15),
+        max_runtime=timedelta(minutes=4, seconds=30),
         interval=timedelta(minutes=5), task_queue=ALERTS_TASK_QUEUE,
+        catchup_window=timedelta(minutes=10),
     ),
     # Open-meteo GFS sync — every 6h. The legacy CronJob used "30 */6 * * *"
     # to align with GFS run lag, but Temporal SKIP overlap + --past-days=2
@@ -142,7 +158,7 @@ SCHEDULES: list[ScheduleDef] = [
     # bounded by the 6h interval regardless.
     ScheduleDef(
         "open-meteo-sync-gfs", "OpenMeteoSyncWorkflow",
-        max_runtime=timedelta(minutes=90),
+        max_runtime=timedelta(minutes=60),
         # ncep_gfs013 (0.13° surface), NOT ncep_gfs025: open-meteo restructured
         # its S3 open-data so ncep_gfs025 now holds only upper-air/pressure-level
         # fields — surface vars (temperature_2m, dew_point_2m, …) moved to
@@ -158,7 +174,7 @@ SCHEDULES: list[ScheduleDef] = [
     # Open-meteo HRRR sync — every 1h.
     ScheduleDef(
         "open-meteo-sync-hrrr", "OpenMeteoSyncWorkflow",
-        max_runtime=timedelta(minutes=90),
+        max_runtime=timedelta(minutes=55),
         workflow_input=[{
             "model": "ncep_hrrr_conus",
             "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure",
@@ -172,7 +188,7 @@ SCHEDULES: list[ScheduleDef] = [
 def _spec_for(s: ScheduleDef) -> Schedule:
     if s.interval is None:
         raise ValueError(f"schedule {s.schedule_id} has no interval")
-    spec = ScheduleSpec(intervals=[ScheduleIntervalSpec(every=s.interval)])
+    spec = ScheduleSpec(intervals=[ScheduleIntervalSpec(every=s.interval)], jitter=s.jitter)
     task_queue = (
         s.task_queue
         if os.environ.get("USE_ISOLATED_TASK_QUEUES") == "1"
@@ -189,7 +205,7 @@ def _spec_for(s: ScheduleDef) -> Schedule:
         spec=spec,
         policy=SchedulePolicy(
             overlap=ScheduleOverlapPolicy.SKIP,
-            catchup_window=timedelta(hours=1),
+            catchup_window=s.catchup_window,
         ),
     )
 
@@ -303,7 +319,12 @@ async def _recreate_wedged(client: Client, s: ScheduleDef, spec: Schedule) -> No
                     raise
         else:
             raise
-    await client.create_schedule(s.schedule_id, spec, rpc_timeout=_RPC_TIMEOUT)
+    try:
+        await client.create_schedule(s.schedule_id, spec, rpc_timeout=_RPC_TIMEOUT)
+    except ScheduleAlreadyRunningError:
+        # HA race: another replica won the delete+create; converged either way.
+        print(f"[seed] schedule {s.schedule_id} already recreated by a peer")
+        return
     print(f"[seed] recreated wedged schedule {s.schedule_id}")
 
 

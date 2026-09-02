@@ -95,7 +95,6 @@ export const SELF_HOSTED = {
   FORECAST_PATH: "/api/forecast",
   NOWCAST_PATH: "/api/nowcast",
   HEALTH_PATH: "/api/health",
-  METRICS_PATH: "/api/metrics",
   BASEMAP_TILE_PATTERN: "/basemap/tiles/{z}/{x}/{y}.mvt",
 } as const;
 

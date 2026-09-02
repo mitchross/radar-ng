@@ -50,11 +50,18 @@ _DEFAULT_RETRY = RetryPolicy(
     maximum_interval=timedelta(seconds=100),
     maximum_attempts=5,
 )
+# Listing is a cheap S3 call; everything here must fit the 6-min run ceiling.
+_LIST_RETRY = RetryPolicy(
+    initial_interval=timedelta(seconds=1),
+    backoff_coefficient=2.0,
+    maximum_interval=timedelta(seconds=10),
+    maximum_attempts=3,
+)
 _FRAME_RETRY = RetryPolicy(
     initial_interval=timedelta(seconds=2),
     backoff_coefficient=2.0,
-    maximum_interval=timedelta(seconds=60),
-    maximum_attempts=3,
+    maximum_interval=timedelta(seconds=30),
+    maximum_attempts=2,
 )
 
 
@@ -75,8 +82,8 @@ class IngestMrmsWorkflow:
         args = args or IngestMrmsArgs()
         listing: ListKeysResult = await workflow.execute_activity(
             mrms_list_unprocessed_keys, args,
-            start_to_close_timeout=timedelta(seconds=60),
-            retry_policy=_DEFAULT_RETRY,
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=_LIST_RETRY,
         )
 
         if not listing.keys:
@@ -126,14 +133,11 @@ class IngestMrmsWorkflow:
     async def _process_frame(self, key: str, layer_name: str) -> ProcessFrameResult:
         return await workflow.execute_activity(
             mrms_process_frame, ProcessFrameInput(key=key, layer_name=layer_name),
-            start_to_close_timeout=timedelta(minutes=20),
-            # Total budget across ALL retry attempts + queue wait. Without it,
-            # 3 attempts × 20 min could pin this run for ~an hour while
-            # OverlapPolicy.SKIP drops every newer frame — better to give up
-            # on one bad frame and let the next schedule fire pick up fresh
-            # data.
-            schedule_to_close_timeout=timedelta(minutes=30),
-            heartbeat_timeout=timedelta(seconds=180),
+            # A frame renders in 22-40 s; these bounds keep one bad frame from
+            # pinning the run past the 6-min schedule ceiling while SKIP drops newer data.
+            start_to_close_timeout=timedelta(minutes=4),
+            schedule_to_close_timeout=timedelta(minutes=5),
+            heartbeat_timeout=timedelta(seconds=60),
             retry_policy=_FRAME_RETRY,
         )
 

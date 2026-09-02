@@ -1,4 +1,9 @@
+import json
+
+import pytest
+
 from backend.shared.manifest import (
+    manifest_path,
     read_manifest_file,
     replace_layer_manifest,
     update_manifest_file,
@@ -59,3 +64,28 @@ def test_replace_layer_manifest_empty_list_drops_layer(tmp_path):
 
     manifest = read_manifest_file(tmp_path)
     assert "nowcast" not in manifest["layers"]
+
+
+def test_read_manifest_file_missing_is_empty(tmp_path):
+    manifest = read_manifest_file(tmp_path)
+    assert manifest["layers"] == {}
+
+
+def test_read_manifest_file_corrupt_raises_instead_of_wiping(tmp_path):
+    update_manifest_file("radar", "2026-05-20T12:00:00+00:00", state_dir=tmp_path)
+    manifest_path(tmp_path).write_text('{"layers": {"radar": ')
+
+    with pytest.raises(json.JSONDecodeError):
+        read_manifest_file(tmp_path)
+    # The writer must see the error too, so a transient bad read never
+    # rewrites the file with a single layer.
+    with pytest.raises(json.JSONDecodeError):
+        update_manifest_file("nowcast", "2026-05-20T12:05:00+00:00", state_dir=tmp_path)
+    assert manifest_path(tmp_path).read_text() == '{"layers": {"radar": '
+
+
+def test_read_manifest_file_unreadable_raises(tmp_path):
+    manifest_path(tmp_path).mkdir()
+
+    with pytest.raises(OSError):
+        read_manifest_file(tmp_path)

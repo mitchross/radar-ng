@@ -162,15 +162,17 @@ def _download_and_decode_sync(
 
     try:
         grbs = pygrib.open(str(grib_path))
-        grb = grbs[1]
-        data = grb.values
-        lats, lons = grb.latlons()
+        try:
+            grb = grbs[1]
+            data = grb.values
+            lats, lons = grb.latlons()
+        finally:
+            grbs.close()
         lat_col = lats[:, 0]
         lon_row = lons[0, :]
         lon_row = np.where(lon_row > 180.0, lon_row - 360.0, lon_row)
         if hasattr(data, "filled"):
             data = data.filled(np.nan)
-        grbs.close()
         return data.astype(np.float32), lat_col.astype(np.float64), lon_row.astype(np.float64)
     finally:
         gz_path.unlink(missing_ok=True)
@@ -272,7 +274,9 @@ class ProcessFrameInput:
 @activity.defn(name="mrms_process_frame")
 async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
     started = time.time()
-    palette_tables = _load_palette_tables()
+    # Palette JSON reads and the flock'd manifest update below are disk I/O:
+    # on the event loop they stall every other activity's heartbeats.
+    palette_tables = await asyncio.to_thread(_load_palette_tables)
     tile_base = Path(TILE_DIR)
     timestamp_hint = inp.key.rsplit("/", 1)[-1].replace(".grib2.gz", "")
     tmp_dir = _current_activity_tmp_dir("mrms", inp.layer_name, timestamp_hint)
@@ -283,7 +287,11 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
         with httpx.Client() as client:
             return _download_and_decode_sync(client, inp.key, tmp_dir)
 
-    decoded = await asyncio.to_thread(_download)
+    try:
+        decoded = await asyncio.to_thread(_download)
+    except BaseException:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
     if decoded is None:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         return ProcessFrameResult(key=inp.key, rendered=False)
@@ -351,10 +359,9 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
                 "palettes": list(palette_tables.keys()),
             },
         )
-    except Exception:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        raise
-    else:
+    finally:
+        # finally, not except Exception: CancelledError is a BaseException and
+        # a cancelled frame otherwise leaks its tmp dir on the node disk.
         shutil.rmtree(tmp_dir, ignore_errors=True)
     expected_palettes = set(palette_tables)
     if set(rendered_palettes) != expected_palettes:
@@ -397,7 +404,8 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
         )
 
     duration = time.time() - started
-    update_manifest_file(
+    await asyncio.to_thread(
+        update_manifest_file,
         inp.layer_name,
         timestamp,
         palettes=rendered_palettes,

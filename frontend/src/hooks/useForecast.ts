@@ -10,7 +10,7 @@ export function useForecast() {
 
   return useQuery({
     queryKey: ["forecast", latitude, longitude, serverUrl],
-    queryFn: () => fetchForecast(serverUrl, latitude!, longitude!),
+    queryFn: ({ signal }) => fetchForecast(serverUrl, latitude!, longitude!, signal),
     enabled: latitude !== null && longitude !== null,
     refetchInterval: DEFAULTS.FORECAST_REFETCH_MS,
     staleTime: DEFAULTS.FORECAST_REFETCH_MS,

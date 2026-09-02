@@ -54,8 +54,8 @@ _DEFAULT_RETRY = RetryPolicy(
 _CHUNK_RETRY = RetryPolicy(
     initial_interval=timedelta(seconds=5),
     backoff_coefficient=2.0,
-    maximum_interval=timedelta(seconds=120),
-    maximum_attempts=3,
+    maximum_interval=timedelta(seconds=60),
+    maximum_attempts=2,
 )
 
 
@@ -100,12 +100,11 @@ class IngestAirQualityWorkflow:
                     return await workflow.execute_activity(
                         aqm_render_chunk,
                         args=[find.run_id, layer, start_msg],
-                        start_to_close_timeout=timedelta(minutes=25),
-                        # Bound total time across retries + queue wait so one
-                        # sick chunk can't pin the run while SKIP overlap
-                        # drops every newer trigger.
-                        schedule_to_close_timeout=timedelta(minutes=40),
-                        heartbeat_timeout=timedelta(seconds=180),
+                        # A chunk measures ~13-14 min; 6 chunks two at a time
+                        # must fit the schedule's 75-min ceiling.
+                        start_to_close_timeout=timedelta(minutes=20),
+                        schedule_to_close_timeout=timedelta(minutes=25),
+                        heartbeat_timeout=timedelta(seconds=120),
                         retry_policy=_CHUNK_RETRY,
                     )
                 except ActivityError:

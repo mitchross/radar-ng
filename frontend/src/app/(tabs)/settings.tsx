@@ -21,11 +21,12 @@ import Constants from "expo-constants";
 import { useQuery } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import {
-  checkServerHealth,
-  fetchSelfHostedManifest,
   fetchServerStatus,
+  healthLevelOf,
+  type HealthLevel,
   type ServerStatus,
 } from "../../lib/api";
+import { useManifestQuery } from "../../hooks/useManifest";
 import type { SelfHostedManifest } from "../../types/weather";
 import { activeLocationLabel, formatPlaceLabel } from "../../lib/locationLabel";
 import { SELF_HOSTED } from "../../lib/constants";
@@ -76,36 +77,21 @@ export default function SettingsScreen() {
   const [urlDraft, setUrlDraft] = useState(serverUrl);
   const [cityQuery, setCityQuery] = useState("");
   const [debouncedCityQuery, setDebouncedCityQuery] = useState("");
-  const [stackHealthy, setStackHealthy] = useState<boolean | null>(null);
-  const [refreshLabel, setRefreshLabel] = useState("2 min");
-  const [refreshTick, setRefreshTick] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setStackHealthy(null);
-    checkServerHealth(serverUrl).then((ok) => {
-      if (!cancelled) setStackHealthy(ok);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [serverUrl, refreshTick]);
 
   // Live stack data for the Advanced cards. The old build shipped a
   // hard-coded container list ("versions are wrong") — everything shown
   // now comes from /api/health + /api/manifest.json.
   const { data: serverStatus, refetch: refetchStatus } = useQuery({
     queryKey: ["server-status", serverUrl],
-    queryFn: () => fetchServerStatus(serverUrl),
+    queryFn: ({ signal }) => fetchServerStatus(serverUrl, signal),
     refetchInterval: 60_000,
   });
-  const { data: stackManifest, refetch: refetchManifest } = useQuery({
-    queryKey: ["manifest", serverUrl],
-    queryFn: () => fetchSelfHostedManifest(serverUrl),
-    staleTime: 30_000,
-  });
+  const { data: stackManifest, refetch: refetchManifest } = useManifestQuery();
+  // undefined = still loading; null = unreachable (fetchServerStatus swallows errors).
+  const stackHealth: HealthLevel | null =
+    serverStatus === undefined ? null : healthLevelOf(serverStatus);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedCityQuery(cityQuery), 250);
@@ -120,17 +106,16 @@ export default function SettingsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    setRefreshTick((t) => t + 1);
     try {
-      await Promise.all([checkServerHealth(serverUrl), refetchStatus(), refetchManifest()]);
+      await Promise.all([refetchStatus(), refetchManifest()]);
     } finally {
       setRefreshing(false);
     }
-  }, [serverUrl, refetchStatus, refetchManifest]);
+  }, [refetchStatus, refetchManifest]);
 
   const sources = useMemo(
-    () => buildSources(serverUrl, stackHealthy),
-    [serverUrl, stackHealthy]
+    () => buildSources(serverUrl, stackHealth),
+    [serverUrl, stackHealth]
   );
 
   const stackHost = useMemo(() => hostOf(serverUrl), [serverUrl]);
@@ -180,14 +165,17 @@ export default function SettingsScreen() {
             <View style={styles.hero}>
               <View style={styles.heroHeader}>
                 <Text style={styles.heroKicker}>SELF-HOSTED STACK</Text>
-                <StatusDot ok={stackHealthy === true} loading={stackHealthy === null} />
+                <StatusDot level={stackHealth} />
               </View>
               <Text style={styles.heroName}>radar-ng</Text>
               <Text style={styles.heroUrl}>{stackHost}</Text>
               <View style={styles.heroStatsRow}>
-                <Stat label="UPTIME" value="14d" />
-                <Stat label="TILES/DAY" value="48.2k" />
-                <Stat label="CACHE" value="87%" />
+                <Stat label="MRMS AGE" value={fmtAge(serverStatus?.mrms_age_s ?? null)} />
+                <Stat label="NOWCAST" value={(serverStatus?.nowcast?.status ?? "—").toUpperCase()} />
+                <Stat
+                  label="TILE DISK"
+                  value={serverStatus?.tiles_disk ? `${Math.round(serverStatus.tiles_disk.percent)}%` : "—"}
+                />
               </View>
             </View>
           )}
@@ -360,22 +348,6 @@ export default function SettingsScreen() {
             </>
           )}
 
-          <SectionHeader>Network</SectionHeader>
-          <View style={styles.card}>
-            <SelectRow
-              label="Refresh interval"
-              value={refreshLabel}
-              options={["30 sec", "1 min", "2 min", "5 min"]}
-              onChange={setRefreshLabel}
-            />
-            <Sep />
-            <ToggleRow
-              label="Use cellular for tiles"
-              value={true}
-              onChange={() => {}}
-            />
-          </View>
-
           <SectionHeader>Preferences</SectionHeader>
           <View style={styles.card}>
             <Row>
@@ -465,17 +437,8 @@ export default function SettingsScreen() {
                 <Sep />
                 <Row>
                   <RowLeft title="Stack status" />
-                  <Text
-                    style={[
-                      styles.monoDim,
-                          { color: stackHealthy ? theme.colors.success : theme.colors.destructive },
-                    ]}
-                  >
-                    {stackHealthy === null
-                      ? "…"
-                      : stackHealthy
-                      ? "ONLINE"
-                      : "OFFLINE"}
+                  <Text style={[styles.monoDim, stackHealth ? { color: HEALTH_COLOR(theme)[stackHealth] } : null]}>
+                    {stackHealth === null ? "…" : HEALTH_LABEL[stackHealth]}
                   </Text>
                 </Row>
               </View>
@@ -493,12 +456,20 @@ export default function SettingsScreen() {
   );
 }
 
+const HEALTH_LABEL: Record<HealthLevel, string> = { ok: "ONLINE", degraded: "DEGRADED", error: "OFFLINE" };
+const HEALTH_COLOR = (theme: WeatherClearTheme): Record<HealthLevel, string> => ({
+  ok: theme.colors.success,
+  degraded: theme.colors.warning,
+  error: theme.colors.destructive,
+});
+
 function buildSources(
   serverUrl: string,
-  ok: boolean | null
+  health: HealthLevel | null
 ): { key: SourceKey; name: string; icon: string; endpoint: string; status: SourceStatus }[] {
+  // Loading and degraded both show STALE: the stack answers, its data is just old.
   const status: SourceStatus =
-    ok === null ? "stale" : ok ? "healthy" : "error";
+    health === null || health === "degraded" ? "stale" : health === "ok" ? "healthy" : "error";
   return [
     {
       key: "radar",
@@ -553,11 +524,11 @@ function hostOf(url: string): string {
   }
 }
 
-function StatusDot({ ok, loading }: { ok: boolean; loading?: boolean }) {
+function StatusDot({ level }: { level: HealthLevel | null }) {
   const { theme, styles } = useSettingsTheme();
-  if (loading) return <ActivityIndicator size="small" color={theme.colors.textMuted} />;
-  const color = ok ? theme.colors.success : theme.colors.destructive;
-  const label = ok ? "ONLINE" : "ERROR";
+  if (level === null) return <ActivityIndicator size="small" color={theme.colors.textMuted} />;
+  const color = HEALTH_COLOR(theme)[level];
+  const label = HEALTH_LABEL[level];
   return (
     <View style={styles.statusRow}>
       <View style={[styles.statusDot, { backgroundColor: color }]} />
@@ -772,59 +743,6 @@ function ToggleRow({
         trackColor={{ true: theme.colors.accent, false: theme.colors.surfaceMuted }}
         thumbColor={theme.colors.surface}
       />
-    </View>
-  );
-}
-
-function SelectRow({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (v: string) => void;
-}) {
-  const { theme, styles } = useSettingsTheme();
-  const [open, setOpen] = useState(false);
-  return (
-    <View style={{ paddingHorizontal: 14, paddingVertical: 8 }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${label}, ${value}`}
-        accessibilityState={{ expanded: open }}
-        style={{ flexDirection: "row", alignItems: "center", paddingVertical: 4 }}
-        onPress={() => setOpen(!open)}
-      >
-        <Text style={[styles.rowLabel, { flex: 1 }]}>{label}</Text>
-        <Text style={styles.monoDim}>{value}</Text>
-        <Text style={styles.chev}>{open ? "▾" : "▸"}</Text>
-      </Pressable>
-      {open ? (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, paddingTop: 6 }}>
-          {options.map((opt) => (
-            <Pressable
-              key={opt}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: opt === value }}
-              onPress={() => {
-                onChange(opt);
-                setOpen(false);
-              }}
-                style={[
-                  styles.selectChip,
-                  opt === value ? { backgroundColor: theme.colors.accent } : null,
-                ]}
-              >
-                <Text style={[styles.selectChipText, opt === value ? { color: "#ffffff" } : null]}>
-                  {opt}
-                </Text>
-              </Pressable>
-          ))}
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -1333,15 +1251,6 @@ function createStyles(theme: WeatherClearTheme) {
   progressFill: { height: "100%", backgroundColor: cumulus.accent },
   clearBtn: { color: cumulus.alert, fontWeight: "700", fontSize: 13, fontFamily: cumulusFonts.ui },
 
-  selectChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    backgroundColor: theme.colors.surfaceStrong,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  selectChipText: { color: cumulus.ink, fontSize: 12, fontFamily: cumulusFonts.mono },
 
   segmented: {
     flexDirection: "row",

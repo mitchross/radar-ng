@@ -15,18 +15,3 @@ export function setString(key: string, value: string): void {
     storage.set(key, value);
   } catch {}
 }
-
-export function getBoolean(key: string, fallback: boolean): boolean {
-  try {
-    const val = storage.getBoolean(key);
-    return val !== undefined ? val : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-export function setBoolean(key: string, value: boolean): void {
-  try {
-    storage.set(key, value);
-  } catch {}
-}

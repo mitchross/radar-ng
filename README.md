@@ -92,6 +92,7 @@ component breakdown, the per-frame pipeline, and the caching story are in
 | [docs/tuning.md](docs/tuning.md) | Faster / cheaper / fresher, knob by knob |
 | [docs/debug-harness.md](docs/debug-harness.md) | Inspect a live stack: freshness, latency, Temporal, disk |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How it all fits together |
+| [docs/reliability-and-scale-plan.md](docs/reliability-and-scale-plan.md) | Where it breaks today and the phased plan to multi-node, multi-pool, object-storage serving |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, verification, conventions |
 
 ## Data sources

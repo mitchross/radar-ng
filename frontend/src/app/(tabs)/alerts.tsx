@@ -17,13 +17,16 @@ import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { NWSAlert } from "../../types/weather";
 
+// Hoisted: Intl formatter construction is expensive relative to a render.
+const TIME_FMT = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" });
+
 export default function AlertsScreen() {
   useLocation();
   const router = useRouter();
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const viewMode = useWeatherStore((s) => s.viewMode);
-  const { data, isLoading, isError, refetch, isFetching } = useAlerts();
+  const { data, isLoading, isError, refetch, isFetching, dataUpdatedAt } = useAlerts();
   const alerts = data?.features ?? [];
   const isAdv = viewMode === "advanced";
   const presentation = getAlertsScreenState({ data, isLoading, isError });
@@ -88,7 +91,7 @@ export default function AlertsScreen() {
               onAction={() => refetch()}
             />
           ) : null}
-          {presentation.kind === "empty" ? <EmptyState isAdv={isAdv} /> : null}
+          {presentation.kind === "empty" ? <EmptyState isAdv={isAdv} polledAt={dataUpdatedAt} /> : null}
           {presentation.kind === "content" ? alerts.map((alert) => (
             <AlertCard
               key={alert.id}
@@ -148,7 +151,7 @@ function AlertCard({ alert, onPress }: { alert: NWSAlert; onPress: () => void })
   );
 }
 
-function EmptyState({ isAdv }: { isAdv: boolean }) {
+function EmptyState({ isAdv, polledAt }: { isAdv: boolean; polledAt: number }) {
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   return (
@@ -173,12 +176,8 @@ function EmptyState({ isAdv }: { isAdv: boolean }) {
             <Text style={styles.metadataValue}>NWS CAP</Text>
           </View>
           <View style={[styles.metadataRow, styles.rowBorder]}>
-            <Text style={styles.metadataLabel}>Monitored zone</Text>
-            <Text style={styles.metadataValue}>MIZ064 · Kent</Text>
-          </View>
-          <View style={[styles.metadataRow, styles.rowBorder]}>
             <Text style={styles.metadataLabel}>Last polled</Text>
-            <Text style={styles.metadataValue}>2 min ago</Text>
+            <Text style={styles.metadataValue}>{polledAt ? TIME_FMT.format(polledAt) : "—"}</Text>
           </View>
         </View>
       ) : null}

@@ -19,8 +19,10 @@ import asyncio
 import json
 import os
 import random
+import tempfile
 import time
 from collections import deque
+from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -84,7 +86,8 @@ def _in_bbox(lat: float, lon: float) -> bool:
     return BBOX[0] <= lat <= BBOX[1] and BBOX[2] <= lon <= BBOX[3]
 
 
-def _write_geojson(strikes: deque[dict]) -> None:
+def _write_geojson(strikes: Iterable[dict]) -> None:
+    """Blocking; call via to_thread with a snapshot (the live deque mutates)."""
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     now = time.time()
     features = [
@@ -106,9 +109,18 @@ def _write_geojson(strikes: deque[dict]) -> None:
         "generated_at": now,
         "retention_min": RETENTION_MIN,
     }
-    tmp = OUT_PATH.with_suffix(".tmp")
-    tmp.write_text(json.dumps(body))
-    tmp.replace(OUT_PATH)
+    # Unique temp name: a fixed ".tmp" raced a second writer and could publish
+    # a half-written file.
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{OUT_PATH.name}.", suffix=".tmp", dir=str(STATE_DIR))
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(json.dumps(body))
+        os.replace(tmp_name, OUT_PATH)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
 
 
 @activity.defn(name="lightning_consume_stream")
@@ -128,6 +140,11 @@ async def lightning_consume_stream(duration_s: int) -> LightningRunResult:
         while strikes and strikes[0]["t"] < cutoff:
             strikes.popleft()
 
+    async def _flush() -> None:
+        # json.dumps of 5000 features on the event loop stalled every other
+        # activity's heartbeats in this worker; snapshot, then write off-loop.
+        await asyncio.to_thread(_write_geojson, list(strikes))
+
     # Heartbeat from a background task on a fixed 30s cadence, decoupled from
     # message arrival. Blitzortung frames can stop for long stretches (quiet
     # weather, a half-open socket), during which the `async for` below blocks;
@@ -139,7 +156,10 @@ async def lightning_consume_stream(duration_s: int) -> LightningRunResult:
             await asyncio.sleep(30)
             _prune()
             stats["buffer"] = len(strikes)
-            _write_geojson(strikes)
+            try:
+                await _flush()
+            except Exception as exc:  # noqa: BLE001 — a write error must not stop heartbeats
+                log.warning("geojson_flush_failed", extra={"err": str(exc)})
             activity.heartbeat(dict(stats))
 
     primary_host = "ws2.blitzortung.org"
@@ -149,7 +169,7 @@ async def lightning_consume_stream(duration_s: int) -> LightningRunResult:
     ]
 
     # Always emit an empty file at start so the API never 404s.
-    _write_geojson(strikes)
+    await _flush()
 
     beat = asyncio.create_task(_beat())
     try:
@@ -197,18 +217,18 @@ async def lightning_consume_stream(duration_s: int) -> LightningRunResult:
                         _prune()
                         now = time.time()
                         if now - last_flush >= FLUSH_EVERY_S:
-                            _write_geojson(strikes)
+                            await _flush()
                             last_flush = now
             except Exception as exc:  # noqa: BLE001
                 log.warning("ws_disconnect", extra={"url": url, "err": str(exc)})
-                _write_geojson(strikes)
+                await _flush()
                 await asyncio.sleep(5 + random.random() * 5)
     finally:
         beat.cancel()
         with suppress(asyncio.CancelledError):
             await beat
 
-    _write_geojson(strikes)
+    await _flush()
     return LightningRunResult(
         duration_s=round(time.time() - started, 1),
         msgs=stats["msgs"], parsed=stats["parsed"], in_bbox=stats["in_bbox"],

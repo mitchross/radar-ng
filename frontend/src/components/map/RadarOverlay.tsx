@@ -2,36 +2,20 @@ import { Layer, RasterSource } from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
 
-// Server-side tile coverage caps per data product. Telling MapLibre the
-// real max zoom lets it upsample from the highest available tile instead
-// of fetching higher zooms, getting 404s, and painting nothing. Discovered
-// the hard way: nowcast frames at z=7+ returned 404 and the overlay went
-// blank during "Now" / next-hour playback.
-//
-// 2026-05-10: dropped radar+radar-hrrr from 9 to 8. Z9 alone was ~75% of
-// the per-frame render wall-clock and the schedule cadence couldn't keep
-// up (frames were ~15 min stale). Pinching past z=8 now upsamples the z=8
-// tile, which softens detail but keeps the overlay aligned. Restore to 9
-// when render perf catches up at the source.
+// Real pyramid ceiling per product (MRMS 7, nowcast/HRRR 6); a manifest
+// `max_zoom` overrides. Overstating it makes MapLibre fetch 404 tiles and paint nothing.
 const SOURCE_MAX_ZOOM: Record<string, number> = {
   radar: 7,
   "radar-hrrr": 6,
   nowcast: 6,
 };
 
-// Lowest zoom the tile pyramids actually render. Below this, MapLibre
-// would fire 404-bound requests (e.g. /tiles/.../1/0/0.png) over the
-// public Cloudflare hop, racking up ~250 ms RTT each and starving real
-// tile fetches → "Failed to load tile 1/0/0=>1 ... timeout" in logs.
-// MRMS coverage is CONUS-only, so very-low-zoom world tiles wouldn't be
-// meaningful anyway; clamping here keeps the wire quiet.
+// Pyramids start at z4 (CONUS only); lower zooms are 404s that starve real tile fetches.
 const SOURCE_MIN_ZOOM = 4;
 
-// One source per render. The earlier 7-frame preload pattern triggered an
-// iOS NSRangeException inside `[MLRNMapView insertReactSubview:atIndex:]`
-// — Fragment-wrapped multi-source children confused native subview indexing
-// on iOS, and the radar tab crashed on mount. Smooth scrubbing is nice-to-have;
-// not crashing is mandatory.
+// One RasterSource, remounted per frame (a mounted source cannot change its URL).
+// A 7-source preload crashed iOS (NSRangeException in MLRNMapView insertReactSubview:
+// child count churned); the 5-slot constant-count carousel from b12012f is the planned fix.
 export function RadarOverlay() {
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
