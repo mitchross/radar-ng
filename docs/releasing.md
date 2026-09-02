@@ -1,78 +1,155 @@
 # Releasing — code to running pods
 
-The pipeline is fully automatic; this doc exists so you know what's supposed
-to happen, how long each hop takes, how to fast-track it, and how to unwedge
-it when a hop silently stalls (each failure mode below has actually happened).
+Production releases come from GitHub, GHCR, and the
+`talos-argocd-proxmox` GitOps repository. The older Gitea workflows and
+`registry.vanillax.me` are not the production Radar NG release path.
 
-## The loop
+## Normal path
 
+```text
+merge a tested PR into mitchross/radar-ng:master
+  -> the matching .github/workflows/ghcr-*.yml build runs
+  -> GHCR receives :latest, :sha-<commit>, and :vX.Y.Z
+  -> hosted Renovate proposes the GHCR tag in talos-argocd-proxmox
+  -> Cluster CI validates the GitOps PR
+  -> merge the GitOps PR
+  -> Argo CD reconciles my-apps-radar-ng
+  -> verify live image digests and product behavior
 ```
-push to radar-ng (Gitea master)
-  → Gitea Actions build-*.yml         (~5–10 min)
-      reads registry, bumps patch, pushes :vX.Y.Z + :latest
-  → registry.vanillax.me
-  → Renovate CronJob (hourly at :17)  (opens PR on talos-argocd-proxmox)
-  → Renovate's NEXT hourly run        (merges the PR it opened last run)
-  → ArgoCD (webhook / 3-min poll)     (syncs my-apps-radar-ng)
-  → pods roll
+
+There is no release commit or git tag. Each image workflow reads its existing
+GHCR semver tags and allocates the next patch version. The workflows are
+serialized per image so two builds cannot choose the same version.
+
+The workflow `on.push.paths` blocks are the source of truth for which source
+change builds which artifact. A shared-code change can correctly build more
+than one image. The production images are:
+
+- `ghcr.io/mitchross/radar-ng-temporal-worker`
+- `ghcr.io/mitchross/radar-ng-tile-server`
+- `ghcr.io/mitchross/radar-ng-open-meteo-worker`
+- `ghcr.io/mitchross/radar-ng-basemap`
+
+Never deploy `latest`. GitOps pins immutable semver tags; record the digest and
+the OCI `org.opencontainers.image.revision` label during rollout verification.
+
+## Before merging source
+
+1. Require the PR checks for the code being released. Backend CI builds the
+   actual release images and runs their tests inside those images.
+2. Keep one release for a given image in flight at a time. Workflow concurrency
+   prevents a tag-allocation race, but serial source merges keep provenance and
+   rollback obvious.
+3. For workflow-code changes, confirm Temporal compatibility: replay a
+   representative history or use a reviewed patch/version marker. A normal
+   unit test is not a history-compatibility proof.
+4. Confirm no unrelated backend change is being used merely to force an image
+   bump. Use `workflow_dispatch` with an explicit reviewed version only when a
+   rebuild is actually required.
+
+Watch the release:
+
+```bash
+gh run list --repo mitchross/radar-ng --branch master --limit 10
+gh run watch <run-id> --repo mitchross/radar-ng
+gh run view <run-id> --repo mitchross/radar-ng --log
 ```
 
-**No manual tagging, ever.** CI computes the next semver from existing
-registry tags (`build-api.yml` step "Compute next semver"). If you tag by
-hand you will race it.
+Read the completed workflow output for the published version. Do not predict
+the tag from the current registry state; another serialized run may be ahead.
 
-**End-to-end latency: ~1–2 h** (dominated by Renovate's open-on-one-run,
-merge-on-the-next behavior). That's fine for routine changes.
+## GitOps rollout
 
-### Which push builds which image
+Hosted Renovate watches the public GHCR images used by the cluster. The
+in-cluster Renovate CronJob owns the private registry and is not the process to
+wait for here.
 
-| paths touched | workflow | image |
-|---|---|---|
-| `backend/api/**`, `backend/shared/**`, `backend/basemap/styles/**` | build-api | `radar-ng-tile-server` |
-| `backend/**`, `temporal/**` | build-temporal-worker | `radar-ng-temporal-worker` |
-| `temporal/open_meteo_worker.Dockerfile` + reqs | build-open-meteo-worker | `radar-ng-open-meteo-worker` |
-| `backend/basemap/**` | build-basemap | `radar-ng-basemap` |
+Review every repeated image reference. In particular, the monolithic Temporal
+worker artifact appears in the legacy WorkerDeployment and all five role
+WorkerDeployments. All six must move together while they share workflow and
+activity definitions.
 
-One push to `backend/shared/` bumps both tile-server AND worker — expected.
+For an urgent release, open a clean Talos worktree from current `origin/main`,
+change the exact image references, render the application, and use a normal
+GitOps PR:
 
-## Fast-track (when you don't want to wait 2 h)
+```bash
+git diff --check
+kustomize build my-apps/development/radar-ng >/tmp/radar-ng.yaml
+gh pr checks <pr-number> --repo mitchross/talos-argocd-proxmox --watch
+```
 
-1. Wait for the Gitea Actions run to finish (Gitea → Actions, ~5–10 min).
-   Verify: `curl -sk https://registry.vanillax.me/v2/radar-ng-tile-server/tags/list`
-2. Either merge Renovate's open PR on `talos-argocd-proxmox` yourself, or —
-   if Renovate hasn't run yet — edit the image tag in
-   `my-apps/development/radar-ng/*.yaml` directly and push. Renovate treats a
-   hand-bumped tag as up-to-date and stands down.
-3. Argo picks it up within ~3 min. To force it:
-   `kubectl annotate application my-apps-radar-ng -n argocd argocd.argoproj.io/refresh=normal --overwrite`
+Do not use the dirty root checkout as proof that a release branch is complete.
+Do not mix a queue-routing change, storage migration, or feature flag with an
+image rollout. First prove the new artifact on the old routing and storage.
+
+## Live verification
+
+Argo being Healthy is necessary, not sufficient. Verify the object actually
+running:
+
+```bash
+kubectl get application my-apps-radar-ng -n argocd
+kubectl get pods -n radar-ng -o wide
+kubectl get workerdeployments.temporal.io -n radar-ng
+kubectl get deployment tile-server -n radar-ng \
+  -o jsonpath='{.spec.template.spec.containers[*].image}'
+curl -sS https://radar-ng-api.vanillax.me/api/health | jq .
+```
+
+For workers, require every WorkerDeployment to report its target version,
+every pod to be Ready, and every container `imageID` to match the reviewed
+digest. Confirm workflow and activity pollers on each expected task queue.
+
+Then verify the behavior that justified the release. Examples:
+
+- HRRR: a natural ingest publishes a non-empty consecutive `radar-hrrr`
+  manifest prefix and a representative tile returns successfully.
+- MRMS/nowcast: freshness stays inside the ten-minute page budget through at
+  least two natural cadences.
+- Open-Meteo: both containers use the intended compatible artifact, the TCP
+  endpoint is Ready, the Temporal activity poller is present, and the next
+  natural sync completes.
+- tile-server: health, manifest, representative immutable tile, and forecast
+  endpoints work through the public route.
+
+Watch restarts, OOMs, Temporal backlog, Schedule reconciliation errors, and the
+timer-DLQ metric during the rollout. Keep the old worker version available
+while pinned or already-running executions drain.
 
 ## Rollback
 
-Set the image tag back to the last good version in the gitops repo and push.
-Argo rolls back; Renovate will re-open a PR for the newer (bad) tag on its
-next run — close it with a comment, or push the fixed code so a newer tag
-supersedes it. Never `kubectl rollout undo`: selfHeal reverts you within
-minutes.
+Revert the GitOps image change to the last known-good immutable tag in every
+place it appears, then merge that revert. Do not use `kubectl rollout undo`;
+Argo self-heal will restore Git and make the live state misleading.
 
-## Failure modes (all field-tested)
+Rollback must not delete a PVC, recreate a Temporal Schedule, terminate a
+workflow, purge a DLQ, or remove last-good tiles. Those are separate operator
+decisions with separate recovery plans.
 
-| symptom | cause | fix |
-|---|---|---|
-| Renovate merges land in git but pods never roll; Argo says `Synced` | Argo repo-server manifest cache went stale (seen after node outages) — it compares against old manifests while labeling them with HEAD's hash | `kubectl annotate application my-apps-radar-ng -n argocd argocd.argoproj.io/refresh=hard --overwrite` |
-| New tile-server tag crashloops with `caddy: Operation not permitted` | a binary copied with `COPY --from` carried file capabilities; pods run `capabilities: drop [ALL]` | copy binaries through `install` (strips xattrs) — see `backend/api/Dockerfile` |
-| Forecast API crashloops with a missing shared library | something tracked upstream `:latest` and upstream broke it | pin real version tags everywhere; let Renovate propose bumps (crashes then show up in a reviewable PR, not a silent pull) |
-| Dependency Dashboard shows nothing pending right after a build | images landed *after* Renovate's :17 run | wait for the next hour, or `kubectl create job -n renovate --from=cronjob/renovate renovate-manual` |
-| CI flaked and a child workflow needs a `:vN.N.N` that never got pushed | — | trigger `.gitea/workflows/retag-from-latest.yml` from the Gitea Actions UI (pulls `:latest`, re-tags as next semver) |
-| Worker pods don't adopt a resource-only change to the WorkerDeployment CR | the Worker Controller only rolls on new build ids | bump the worker image (any code push) or patch the build Deployment to force a new build_id |
+Renovate may propose the newer tag again. Close or hold that PR until a fixed
+version supersedes it.
 
-## Verifying a release landed
+## Recovery and common failures
 
-```bash
-# what's live vs what git wants
-kubectl get deployment tile-server -n radar-ng \
-  -o jsonpath='{.spec.template.spec.containers[0].image}'
-curl -sk https://radar-ng-api.vanillax.me/api/health | jq .status
+| Symptom | Safe response |
+|---|---|
+| Release workflow failed before pushing the version | Fix/re-run the source workflow. Do not invent a tag by hand. |
+| A version is needed from `latest` | Use `ghcr-retag-from-latest.yml` only after proving `latest` has the intended OCI source revision. Retagging the wrong `latest` creates false provenance. |
+| Renovate did not open a PR yet | Confirm the GHCR tag exists, then wait for hosted Renovate or open a clean manual GitOps PR. Do not wait on the private-registry CronJob. |
+| Renovate updated only one worker reference | Do not merge. Update and verify all six worker references together. |
+| Git has the new image but Argo renders an old manifest | Request a normal refresh first. If the repo-server cache is proven stale, use `argocd.argoproj.io/refresh=hard`; never restart random workloads to repair Git cache state. |
+| Worker resource-only change does not produce a new build ID | Publish a reviewed worker image or use the Worker Controller mechanism documented in GitOps. Do not patch the generated Deployment. |
+| New image starts but the feature is still absent | Compare pod `imageID`, OCI source revision, environment flags, task-queue pollers, and the natural product output. A pod name or semver tag alone is not provenance. |
 
-# worker version is encoded in the pod name (radar-ng-worker-v1-1-N-…)
-kubectl get pods -n radar-ng
-```
+## Special cases
+
+The basemap archive is intentionally hydrated from the existing GHCR image
+because the large PMTiles file is not in git. Treat the current image as an
+artifact input and verify its digest before rebuilding.
+
+Open-Meteo is a filesystem-coupled, single-pod `Recreate` workload. Keep its
+serve and sync binaries on an explicitly compatible image, merge its GitOps
+rollout between sync runs, and budget for one cold pull plus Longhorn attach.
+Changing it to `RollingUpdate`, splitting the two containers across pods, or
+moving its live files to generic NFS is not a routine release optimization.
