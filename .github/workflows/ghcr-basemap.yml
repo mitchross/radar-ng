@@ -24,6 +24,10 @@ on:
         required: false
         default: ''
 
+concurrency:
+  group: ghcr-basemap-release
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest

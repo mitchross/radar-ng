@@ -18,6 +18,12 @@ on:
         required: false
         default: ''
 
+# Version allocation reads the registry before publishing. Serialize this
+# workflow so two runs cannot choose and push the same patch tag.
+concurrency:
+  group: ghcr-temporal-worker-release
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest

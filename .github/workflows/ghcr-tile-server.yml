@@ -18,6 +18,10 @@ on:
         required: false
         default: ''
 
+concurrency:
+  group: ghcr-tile-server-release
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
