@@ -42,9 +42,7 @@ class OpenMeteoSyncWorkflow:
             open_meteo_sync, args,
             task_queue=OPEN_METEO_TASK_QUEUE,
             start_to_close_timeout=timedelta(minutes=35),
-            # Total budget across retries + queue wait: 3 x 35 min unbounded
-            # could pin the hourly HRRR sync for ~1.75 h while SKIP drops the
-            # next fires. The next scheduled sync supersedes this one anyway.
+            # Bounded so the hourly HRRR sync can't pin itself past its 55-min ceiling.
             schedule_to_close_timeout=timedelta(minutes=50),
             heartbeat_timeout=timedelta(seconds=90),
             retry_policy=_RETRY,

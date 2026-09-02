@@ -15,6 +15,7 @@ from datetime import timedelta
 from loguru import logger
 from temporalio.client import Client
 from temporalio.common import VersioningBehavior
+from temporalio.runtime import PrometheusConfig, Runtime, TelemetryConfig
 from temporalio.worker import Worker, WorkerDeploymentConfig, WorkerDeploymentVersion
 
 from backend.api.api.storm_watch_activities import (
@@ -57,7 +58,10 @@ from backend.tile_cleanup.activities import tile_cleanup_sweep
 # base image carries the Swift binary. Temporal dispatches the activity
 # to whichever worker has it registered, so this worker intentionally
 # does not import or register it.
+from temporal.schedules.seed import SCHEDULES
 from temporal.schedules.seed import seed_with_retry as seed_schedules
+from temporal.schedules.watchdog import watch_schedules
+from temporal.shared.health import health_file_loop
 from temporal.shared.otel import init_tracer
 from temporal.shared.push import send_push_notification
 from temporal.task_queues import (
@@ -215,6 +219,14 @@ def _deployment_config_from_env() -> WorkerDeploymentConfig | None:
     )
 
 
+def _runtime_from_env() -> Runtime | None:
+    """SDK Prometheus metrics (poll failures, slot usage) unless TEMPORAL_METRICS_BIND=off."""
+    bind = os.environ.get("TEMPORAL_METRICS_BIND", "0.0.0.0:9464")
+    if bind.strip().lower() == "off":
+        return None
+    return Runtime(telemetry=TelemetryConfig(metrics=PrometheusConfig(bind_address=bind)))
+
+
 def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
     raw = os.environ.get(name)
     if raw is None:
@@ -232,7 +244,9 @@ async def _main() -> None:
     logger.info("connecting to temporal at {} (namespace={})", target, namespace)
 
     interceptor = init_tracer()
-    client = await Client.connect(target, namespace=namespace, interceptors=[interceptor])
+    client = await Client.connect(
+        target, namespace=namespace, interceptors=[interceptor], runtime=_runtime_from_env()
+    )
 
     role = os.environ.get("WORKER_ROLE", "legacy").strip().lower()
     try:
@@ -247,7 +261,8 @@ async def _main() -> None:
     # needless startup dependency and lets an old image race a new queue map.
     seed_setting = os.environ.get("SEED_SCHEDULES")
     should_seed = seed_setting == "1" or (seed_setting is None and role in {"legacy", "all"})
-    if should_seed and os.environ.get("SKIP_SCHEDULE_SEED") != "1":
+    should_seed = should_seed and os.environ.get("SKIP_SCHEDULE_SEED") != "1"
+    if should_seed:
         logger.info("seeding schedules…")
         await seed_schedules(client)
         logger.info("schedule seed complete")
@@ -304,7 +319,19 @@ async def _main() -> None:
             ),
         )
 
-    await worker.run()
+    # Liveness file for the k8s probe (see temporal/shared/health.py) and, on
+    # the seeding pool only, the watchdog that kicks wedged schedules.
+    background = [asyncio.create_task(health_file_loop(client), name="health-file")]
+    if should_seed:
+        background.append(
+            asyncio.create_task(watch_schedules(client, SCHEDULES), name="schedule-watchdog")
+        )
+    try:
+        await worker.run()
+    finally:
+        for task in background:
+            task.cancel()
+        await asyncio.gather(*background, return_exceptions=True)
     logger.info("worker drained, exiting")
 
 
