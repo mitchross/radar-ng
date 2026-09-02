@@ -13,12 +13,16 @@ import {
   type ViewMode,
 } from "../lib/persistedPrefs";
 import type { AppearanceMode } from "../theme/weatherClearTheme";
+import type { PlaybackWindow } from "../lib/radarCarousel";
 
 interface WeatherState {
   frames: RadarFrame[];
   currentFrameIndex: number;
   isPlaying: boolean;
   playbackSpeed: number;
+  // Inclusive index range the timeline loops over (1h/48h zoom); null = all frames.
+  // The raster carousel prefetches inside it, including the loop wrap.
+  playbackWindow: PlaybackWindow | null;
   latitude: number | null;
   longitude: number | null;
   locationMode: LocationMode;
@@ -44,6 +48,7 @@ interface WeatherState {
   setIsPlaying: (playing: boolean) => void;
   togglePlaying: () => void;
   setPlaybackSpeed: (speed: number) => void;
+  setPlaybackWindow: (window: PlaybackWindow | null) => void;
   setLocation: (lat: number, lon: number) => void;
   setSelectedPlace: (place: SelectedPlace) => void;
   setDevicePlace: (place: SelectedPlace | null) => void;
@@ -104,6 +109,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   currentFrameIndex: -1,
   isPlaying: false,
   playbackSpeed: DEFAULTS.PLAYBACK_FPS,
+  playbackWindow: null,
   latitude: initialResolvedLocationMode === "city" && initialSelectedPlace ? initialSelectedPlace.latitude : DEFAULTS.LATITUDE,
   longitude: initialResolvedLocationMode === "city" && initialSelectedPlace ? initialSelectedPlace.longitude : DEFAULTS.LONGITUDE,
   locationMode: initialResolvedLocationMode,
@@ -131,6 +137,12 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   togglePlaying: () => set((s) => ({ isPlaying: !s.isPlaying })),
   setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
+  setPlaybackWindow: (window) =>
+    set((s) =>
+      s.playbackWindow?.start === window?.start && s.playbackWindow?.end === window?.end
+        ? s
+        : { playbackWindow: window },
+    ),
   setLocation: (lat, lon) => set({ latitude: lat, longitude: lon }),
   setSelectedPlace: (place) => {
     setString("locationMode", "city");

@@ -23,11 +23,13 @@ export interface StormCellCollection {
   threshold_dbz?: number;
 }
 
-export function useStormCells() {
+/** `enabled` gates polling — the overlay stays mounted while extras are off. */
+export function useStormCells(enabled = true) {
   const serverUrl = useWeatherStore((s) => s.serverUrl);
 
   return useQuery({
     queryKey: ["storms", serverUrl],
+    enabled,
     queryFn: ({ signal }): Promise<StormCellCollection> =>
       trace("api.fetchStormCells", async (span) => {
         const r = await fetchWithTimeout(`${serverUrl}/api/storms`, {}, signal);

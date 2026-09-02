@@ -1,46 +1,41 @@
-import { Layer, RasterSource } from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
-import type { LayerType } from "../../types/weather";
+import type { LayerType, RadarFrame } from "../../types/weather";
 import { LAYERS } from "../../lib/constants";
+import { RasterFrameCarousel, type CarouselFrameSpec } from "./RasterFrameCarousel";
 
 interface Props {
   layerId: LayerType;
   opacity?: number;
 }
 
+// Same carousel as RadarOverlay; only the URL/zoom spec differs.
 export function WeatherLayerOverlay({ layerId, opacity = 0.7 }: Props) {
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const activePalette = useWeatherStore((s) => s.activePalette);
-
-  if (frames.length === 0 || currentFrameIndex < 0) return null;
-  const frame = frames[currentFrameIndex];
-  if (!frame) return null;
+  const playbackWindow = useWeatherStore((s) => s.playbackWindow);
 
   const layerConfig = LAYERS.find((l) => l.id === layerId);
   if (!layerConfig) return null;
 
-  const tileUrl = buildSelfHostedTileUrl(serverUrl, layerId, frame.path, activePalette);
+  const specFor = (frame: RadarFrame): CarouselFrameSpec => ({
+    tileUrl: buildSelfHostedTileUrl(serverUrl, layerId, frame.path, activePalette),
+    // Model pyramids stop at the frame's max_zoom (z6 for HRRR/AQM); deeper requests are 404s.
+    maxZoom: frame.maxZoom ?? layerConfig.maxZoom,
+    variant: `${layerId}-${activePalette}`,
+  });
 
   return (
-    <RasterSource
-      id={`${layerId}-source`}
-      key={`${layerId}-${activePalette}-${frame.path}`}
-      tiles={[tileUrl]}
-      tileSize={256}
-      minzoom={layerConfig.minZoom}
-      // Model pyramids stop at the frame's max_zoom (z6 for HRRR/AQM);
-      // requesting deeper levels just fires guaranteed 404s through the
-      // public hop. MapLibre overzooms the last level natively.
-      maxzoom={frame.maxZoom ?? layerConfig.maxZoom}
-    >
-      <Layer
-        type="raster"
-        id={`${layerId}-layer`}
-        paint={{ "raster-opacity": opacity, "raster-fade-duration": 0 }}
-      />
-    </RasterSource>
+    <RasterFrameCarousel
+      idPrefix={layerId}
+      frames={frames}
+      currentFrameIndex={currentFrameIndex}
+      playbackWindow={playbackWindow}
+      opacity={opacity}
+      minZoom={layerConfig.minZoom}
+      specFor={specFor}
+    />
   );
 }
