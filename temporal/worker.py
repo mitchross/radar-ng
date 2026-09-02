@@ -54,12 +54,14 @@ from backend.ingest_mrms.activities import (
 from backend.ingest_tropical.activities import tropical_fetch_and_publish
 from backend.nowcast.activities import nowcast_run
 from backend.tile_cleanup.activities import tile_cleanup_sweep
+
 # NOTE: open_meteo_sync activity is registered by the SEPARATE
 # radar-ng-open-meteo-worker pod (temporal/open_meteo_worker.py) — its
 # base image carries the Swift binary. Temporal dispatches the activity
 # to whichever worker has it registered, so this worker intentionally
 # does not import or register it.
 from temporal.schedules.seed import SCHEDULES
+from temporal.schedules.seed import ScheduleSeedError
 from temporal.schedules.seed import seed_with_retry as seed_schedules
 from temporal.schedules.watchdog import watch_schedules
 from temporal.shared.health import health_file_loop
@@ -224,7 +226,9 @@ def _runtime_from_env() -> Runtime | None:
     bind = os.environ.get("TEMPORAL_METRICS_BIND", "0.0.0.0:9464")
     if bind.strip().lower() == "off":
         return None
-    return Runtime(telemetry=TelemetryConfig(metrics=PrometheusConfig(bind_address=bind)))
+    return Runtime(
+        telemetry=TelemetryConfig(metrics=PrometheusConfig(bind_address=bind))
+    )
 
 
 def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
@@ -238,6 +242,63 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
         return default
 
 
+async def _reconcile_schedules(client: Client) -> None:
+    """Reconcile definitions without making worker polling depend on success."""
+    logger.info("reconciling schedules in background…")
+    try:
+        await seed_schedules(client)
+    except asyncio.CancelledError:
+        raise
+    except ScheduleSeedError as exc:
+        logger.bind(
+            event="TEMPORAL_SCHEDULE_RECONCILIATION_FAILED",
+            schedule_ids=sorted(exc.failures),
+            failures={
+                schedule_id: repr(failure)
+                for schedule_id, failure in exc.failures.items()
+            },
+        ).critical("schedule reconciliation incomplete; worker polling remains active")
+    except Exception as exc:  # noqa: BLE001 - polling must survive reconciliation bugs
+        logger.bind(
+            event="TEMPORAL_SCHEDULE_RECONCILIATION_FAILED",
+            failure=repr(exc),
+        ).critical(
+            "schedule reconciliation failed unexpectedly; worker polling remains active"
+        )
+    else:
+        logger.info("schedule reconciliation complete")
+
+
+async def _run_worker(
+    worker: Worker,
+    client: Client,
+    *,
+    should_seed: bool,
+) -> None:
+    """Run pollers while supervising non-fatal control-plane background work."""
+    # Creating the background tasks is non-blocking. The direct await below
+    # enters Worker.run() first, so polling startup is never gated on Schedule
+    # reconciliation or observation.
+    background = [asyncio.create_task(health_file_loop(client), name="health-file")]
+    if should_seed:
+        background.append(
+            asyncio.create_task(
+                _reconcile_schedules(client), name="schedule-reconciliation"
+            )
+        )
+        background.append(
+            asyncio.create_task(
+                watch_schedules(client, SCHEDULES), name="schedule-watchdog"
+            )
+        )
+    try:
+        await worker.run()
+    finally:
+        for task in background:
+            task.cancel()
+        await asyncio.gather(*background, return_exceptions=True)
+
+
 async def _main() -> None:
     target = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
     namespace = os.environ.get("TEMPORAL_NAMESPACE", "default")
@@ -245,7 +306,10 @@ async def _main() -> None:
 
     interceptor = init_tracer()
     client = await Client.connect(
-        target, namespace=namespace, interceptors=[interceptor], runtime=_runtime_from_env()
+        target,
+        namespace=namespace,
+        interceptors=[interceptor],
+        runtime=_runtime_from_env(),
     )
 
     role = os.environ.get("WORKER_ROLE", "legacy").strip().lower()
@@ -260,13 +324,10 @@ async def _main() -> None:
     # One designated pool seeds Schedules. Seeding from every role creates a
     # needless startup dependency and lets an old image race a new queue map.
     seed_setting = os.environ.get("SEED_SCHEDULES")
-    should_seed = seed_setting == "1" or (seed_setting is None and role in {"legacy", "all"})
+    should_seed = seed_setting == "1" or (
+        seed_setting is None and role in {"legacy", "all"}
+    )
     should_seed = should_seed and os.environ.get("SKIP_SCHEDULE_SEED") != "1"
-    if should_seed:
-        logger.info("seeding schedules…")
-        await seed_schedules(client)
-        logger.info("schedule seed complete")
-
     deployment_config = _deployment_config_from_env()
     max_concurrent_activities = _int_env(
         "TEMPORAL_MAX_CONCURRENT_ACTIVITIES",
@@ -319,19 +380,11 @@ async def _main() -> None:
             ),
         )
 
-    # Liveness file for the k8s probe (see temporal/shared/health.py) and, on
-    # the seeding pool only, the watchdog that kicks wedged schedules.
-    background = [asyncio.create_task(health_file_loop(client), name="health-file")]
-    if should_seed:
-        background.append(
-            asyncio.create_task(watch_schedules(client, SCHEDULES), name="schedule-watchdog")
-        )
-    try:
-        await worker.run()
-    finally:
-        for task in background:
-            task.cancel()
-        await asyncio.gather(*background, return_exceptions=True)
+    # Liveness and schedule control-plane work are background concerns: a
+    # failed reconciliation must never prevent this process from polling its
+    # task queue. The designated seeding pool also runs the read-only stall
+    # observer; it emits alerts but never mutates a Schedule.
+    await _run_worker(worker, client, should_seed=should_seed)
     logger.info("worker drained, exiting")
 
 
