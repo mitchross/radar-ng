@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+from collections.abc import Sequence
 from datetime import timedelta
 
 from loguru import logger
@@ -72,17 +73,21 @@ from temporal.task_queues import (
     MRMS_TASK_QUEUE,
     NOWCAST_TASK_QUEUE,
 )
-from temporal.workflows.ingest_airquality import IngestAirQualityWorkflow
-from temporal.workflows.ingest_hrrr import IngestHrrrWorkflow
-from temporal.workflows.ingest_lightning import IngestLightningWorkflow
-from temporal.workflows.ingest_mrms import IngestMrmsWorkflow
-from temporal.workflows.ingest_tropical import IngestTropicalWorkflow
-from temporal.workflows.nowcast import NowcastWorkflow
-from temporal.workflows.open_meteo_sync import OpenMeteoSyncWorkflow
-from temporal.workflows.poll_alerts import PollAlertsWorkflow
-from temporal.workflows.register_push_token import RegisterPushTokenWorkflow
-from temporal.workflows.tile_cleanup import TileCleanupWorkflow
-from temporal.workflows.watch_storm import WatchStormWorkflow
+from temporal.workflows import (
+    ALL_WORKFLOWS,
+    DeletePushTokenWorkflow,
+    IngestAirQualityWorkflow,
+    IngestHrrrWorkflow,
+    IngestLightningWorkflow,
+    IngestMrmsWorkflow,
+    IngestTropicalWorkflow,
+    NowcastWorkflow,
+    OpenMeteoSyncWorkflow,
+    PollAlertsWorkflow,
+    RegisterPushTokenWorkflow,
+    TileCleanupWorkflow,
+    WatchStormWorkflow,
+)
 
 
 DEFAULT_MAX_CONCURRENT_ACTIVITIES = 4
@@ -128,21 +133,7 @@ ALL_ACTIVITIES = [
     send_push_notification,
 ]
 
-ALL_WORKFLOWS = [
-    IngestMrmsWorkflow,
-    IngestHrrrWorkflow,
-    IngestAirQualityWorkflow,
-    IngestLightningWorkflow,
-    IngestTropicalWorkflow,
-    NowcastWorkflow,
-    TileCleanupWorkflow,
-    PollAlertsWorkflow,
-    WatchStormWorkflow,
-    RegisterPushTokenWorkflow,
-    OpenMeteoSyncWorkflow,
-]
-
-ROLE_CONFIG: dict[str, tuple[str, list[type], list[object]]] = {
+ROLE_CONFIG: dict[str, tuple[str, Sequence[type], Sequence[object]]] = {
     "mrms": (
         MRMS_TASK_QUEUE,
         [IngestMrmsWorkflow],
@@ -188,8 +179,17 @@ ROLE_CONFIG: dict[str, tuple[str, list[type], list[object]]] = {
     ),
     "alerts": (
         ALERTS_TASK_QUEUE,
-        [PollAlertsWorkflow, WatchStormWorkflow],
         [
+            PollAlertsWorkflow,
+            WatchStormWorkflow,
+            # Compatibility-only: the API no longer puts token values in new
+            # histories, but retained executions may still target this queue.
+            RegisterPushTokenWorkflow,
+            DeletePushTokenWorkflow,
+        ],
+        [
+            persist_push_token,
+            delete_push_token,
             compare_radar_frames,
             detect_storm_change,
             fan_out_push_to_user,

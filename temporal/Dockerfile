@@ -65,4 +65,7 @@ COPY temporal /app/temporal
 # Treat /app as the import root so `from backend...` and `from temporal...` work
 ENV PYTHONPATH=/app
 
+# Release gate: no image exists unless its own workflow code replays every retained history.
+RUN python -m unittest -q temporal.workflows.test_replay temporal.workflows.test_workflow_discovery
+
 CMD ["python", "-m", "temporal.worker"]

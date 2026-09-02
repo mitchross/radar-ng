@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       services:
-        description: 'Comma-separated services to retag (default: basemap, tile-server, temporal-worker, open-meteo-worker)'
+        description: 'Comma-separated services to retag (default: basemap, tile-server, open-meteo-worker; temporal-worker must be named explicitly and passes its embedded replay gate first)'
         required: false
-        default: 'basemap,tile-server,temporal-worker,open-meteo-worker'
+        default: 'basemap,tile-server,open-meteo-worker'
 
 jobs:
   retag:
@@ -57,6 +57,11 @@ jobs:
 
             echo "  current: ${LATEST:-none}  →  promoting :latest as :${NEXT}"
             docker pull -q "${REGISTRY}/${img}:latest"
+            if [ "$svc" = "temporal-worker" ]; then
+              # An image without the embedded replay gate predates it and must never be promoted.
+              docker run --rm --entrypoint python "${REGISTRY}/${img}:latest" \
+                -m unittest -q temporal.workflows.test_replay temporal.workflows.test_workflow_discovery
+            fi
             docker tag "${REGISTRY}/${img}:latest" "${REGISTRY}/${img}:${NEXT}"
             docker push -q "${REGISTRY}/${img}:${NEXT}"
           done

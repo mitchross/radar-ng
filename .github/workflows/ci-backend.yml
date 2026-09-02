@@ -43,7 +43,7 @@ jobs:
           cache-from: type=gha,scope=ci-temporal-worker
           cache-to: type=gha,mode=max,scope=ci-temporal-worker
 
-      - name: Run worker unit tests in the image
+      - name: Run worker unit and replay tests in the image
         run: >-
           docker run --rm --entrypoint sh radar-ng-temporal-worker:ci -c
           'pip install --disable-pip-version-check pytest==9.0.3 &&

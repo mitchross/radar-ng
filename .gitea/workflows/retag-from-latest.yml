@@ -12,17 +12,16 @@ name: retag from latest
 #   • you bumped gitops to :v1.0.N and want the same image promoted across
 #     every service that didn't naturally bump
 #
-# Triggers via the Actions UI ("Run workflow" → optionally specify
-# services="basemap" to scope it). Default = every image still built by
-# this repo (the ingest_* / nowcast / api / base zombies were removed
-# when their Kubernetes deployments were retired in favor of the
-# consolidated temporal-worker image).
+# Triggers via the Actions UI ("Run workflow" → optionally specify a
+# comma-separated service list). The safe default is basemap only.
+# temporal-worker must be named explicitly and is retagged only after the
+# pulled image passes its own replay gate.
 
 on:
   workflow_dispatch:
     inputs:
       services:
-        description: 'Comma-separated services to retag (default: all)'
+        description: 'Comma-separated services to retag (default: basemap; temporal-worker must be named explicitly and pass its embedded replay gate)'
         required: false
         default: 'basemap'
 
@@ -49,6 +48,11 @@ jobs:
             fi
             echo "  current: ${LATEST:-none}  →  promoting :latest as :${NEXT}"
             docker pull -q "${REGISTRY}/${img}:latest"
+            if [ "$svc" = "temporal-worker" ]; then
+              # An image without the embedded replay gate predates it and must never be promoted.
+              docker run --rm --entrypoint python "${REGISTRY}/${img}:latest" \
+                -m unittest -q temporal.workflows.test_replay temporal.workflows.test_workflow_discovery
+            fi
             docker tag "${REGISTRY}/${img}:latest" "${REGISTRY}/${img}:${NEXT}"
             docker push -q "${REGISTRY}/${img}:${NEXT}"
           done

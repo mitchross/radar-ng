@@ -1,0 +1,206 @@
+{
+  "events": [
+    {
+      "eventId": "1",
+      "eventTime": "2256-07-09T16:57:44.714Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_STARTED",
+      "workflowExecutionStartedEventAttributes": {
+        "workflowType": {
+          "name": "OpenMeteoSyncWorkflow"
+        },
+        "taskQueue": {
+          "name": "synthetic-replay-fixtures"
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "data": "eyJtb2RlbCI6InN5bnRoZXRpYy1tb2RlbCIsInBhc3RfZGF5cyI6MCwidmFyaWFibGVzIjoic3ludGhldGljLXZhcmlhYmxlIn0="
+            }
+          ]
+        },
+        "workflowExecutionTimeout": "315360000s",
+        "workflowRunTimeout": "315360000s",
+        "workflowTaskTimeout": "10s",
+        "originalExecutionRunId": "3bef8c7d-2f43-43ee-9c0d-8f242ba152bd",
+        "identity": "synthetic-replay-client",
+        "firstExecutionRunId": "3bef8c7d-2f43-43ee-9c0d-8f242ba152bd",
+        "attempt": 1,
+        "firstWorkflowTaskBackoff": "0s",
+        "priority": {}
+      }
+    },
+    {
+      "eventId": "2",
+      "eventTime": "2256-07-09T16:57:44.714Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "synthetic-replay-fixtures"
+        },
+        "startToCloseTimeout": "10s",
+        "attempt": 1
+      }
+    },
+    {
+      "eventId": "3",
+      "eventTime": "2256-07-09T16:57:44.714Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "workflowTaskStartedEventAttributes": {
+        "scheduledEventId": "2",
+        "identity": "synthetic-replay-worker",
+        "historySizeBytes": "365"
+      }
+    },
+    {
+      "eventId": "4",
+      "eventTime": "2256-07-09T16:57:44.725Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": "2",
+        "identity": "synthetic-replay-worker",
+        "binaryChecksum": "2d8a475df23d54e583324a512a23c553",
+        "sdkMetadata": {
+          "coreUsedFlags": [
+            1,
+            2,
+            3
+          ],
+          "sdkName": "temporal-python",
+          "sdkVersion": "1.30.0"
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "eventId": "5",
+      "eventTime": "2256-07-09T16:57:44.725Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "1",
+        "activityType": {
+          "name": "open_meteo_sync"
+        },
+        "taskQueue": {
+          "name": "radar-ng-open-meteo",
+          "kind": "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header": {},
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "data": "eyJtb2RlbCI6InN5bnRoZXRpYy1tb2RlbCIsInBhc3RfZGF5cyI6MCwidmFyaWFibGVzIjoic3ludGhldGljLXZhcmlhYmxlIn0="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": "3000s",
+        "scheduleToStartTimeout": "3000s",
+        "startToCloseTimeout": "2100s",
+        "heartbeatTimeout": "90s",
+        "workflowTaskCompletedEventId": "3",
+        "retryPolicy": {
+          "initialInterval": "10s",
+          "backoffCoefficient": 2.0,
+          "maximumInterval": "300s",
+          "maximumAttempts": 3
+        },
+        "priority": {}
+      }
+    },
+    {
+      "eventId": "6",
+      "eventTime": "2256-07-09T16:57:44.725Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": "5",
+        "identity": "synthetic-replay-worker-open-meteo",
+        "attempt": 1
+      }
+    },
+    {
+      "eventId": "7",
+      "eventTime": "2256-07-09T16:57:44.726Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "activityTaskFailedEventAttributes": {
+        "failure": {
+          "message": "synthetic-activity-failure",
+          "applicationFailureInfo": {
+            "type": "synthetic-failure",
+            "nonRetryable": true
+          }
+        },
+        "scheduledEventId": "5",
+        "startedEventId": "6",
+        "identity": "synthetic-replay-worker-open-meteo",
+        "retryState": "RETRY_STATE_NON_RETRYABLE_FAILURE"
+      }
+    },
+    {
+      "eventId": "8",
+      "eventTime": "2256-07-09T16:57:44.726Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "synthetic-replay-fixtures"
+        },
+        "startToCloseTimeout": "10s",
+        "attempt": 1
+      }
+    },
+    {
+      "eventId": "9",
+      "eventTime": "2256-07-09T16:57:44.726Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "workflowTaskStartedEventAttributes": {
+        "scheduledEventId": "8",
+        "identity": "synthetic-replay-worker",
+        "historySizeBytes": "1986"
+      }
+    },
+    {
+      "eventId": "10",
+      "eventTime": "2256-07-09T16:57:44.727Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": "8",
+        "identity": "synthetic-replay-worker",
+        "binaryChecksum": "2d8a475df23d54e583324a512a23c553",
+        "sdkMetadata": {},
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "eventId": "11",
+      "eventTime": "2256-07-09T16:57:44.727Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_FAILED",
+      "workflowExecutionFailedEventAttributes": {
+        "failure": {
+          "message": "Activity task failed",
+          "cause": {
+            "message": "synthetic-activity-failure",
+            "applicationFailureInfo": {
+              "type": "synthetic-failure",
+              "nonRetryable": true
+            }
+          },
+          "activityFailureInfo": {
+            "scheduledEventId": "5",
+            "startedEventId": "6",
+            "identity": "synthetic-replay-worker-open-meteo",
+            "activityType": {
+              "name": "open_meteo_sync"
+            },
+            "activityId": "1",
+            "retryState": "RETRY_STATE_NON_RETRYABLE_FAILURE"
+          }
+        },
+        "workflowTaskCompletedEventId": "9"
+      }
+    }
+  ]
+}

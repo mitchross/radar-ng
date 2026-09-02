@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build and push all radar-ng container images to registry.vanillax.me.
-# Registry is anonymous-push (no docker login needed).
+# Needs `docker login registry.vanillax.me` with publishing credentials; anonymous push is not a supported path.
 #
 # Usage:
 #   ./scripts/build-push.sh            # build + push everything
