@@ -61,6 +61,7 @@ describe("Weather Clear native UI contracts", () => {
     "screens/NowcastScreen.tsx",
     "app/(tabs)/settings.tsx",
     "components/map/RadarFABs.tsx",
+    "app/(tabs)/alerts.tsx",
   ])("guards awaited manual refreshes while offline in %s", (file) => {
     expect(source(file)).toContain("runOnlineRefresh");
   });
@@ -72,5 +73,18 @@ describe("Weather Clear native UI contracts", () => {
     ["app/(tabs)/settings.tsx", "Weather settings"],
   ])("labels the primary %s screen region", (file, label) => {
     expect(source(file)).toContain(`accessibilityLabel="${label}"`);
+  });
+
+  it("announces degraded NWS alert state wherever cached alerts remain visible", () => {
+    for (const file of [
+      "app/(tabs)/index.tsx",
+      "app/(tabs)/alerts.tsx",
+      "app/(tabs)/radar.tsx",
+      "app/alert/[id].tsx",
+    ]) {
+      const contents = source(file);
+      expect(contents).toContain("alertStatus.accessibilityLabel");
+      expect(contents).toContain('accessibilityRole="alert"');
+    }
   });
 });

@@ -41,10 +41,12 @@ describe("forecast presentation", () => {
   });
 
   it.each([
-    [{ data: undefined, isLoading: true, isError: false }, "loading"],
-    [{ data: undefined, isLoading: false, isError: true }, "error"],
-    [{ data: { features: [] }, isLoading: false, isError: false }, "empty"],
-    [{ data: { features: [{ id: "one" }] }, isLoading: false, isError: false }, "content"],
+    [{ data: undefined, isLoading: true, isPending: true, freshness: "current" }, "loading"],
+    [{ data: undefined, isLoading: false, isPending: true, freshness: "offline" }, "error"],
+    [{ data: undefined, isLoading: false, isPending: false, freshness: "unavailable" }, "error"],
+    [{ data: { features: [] }, isLoading: false, isPending: false, freshness: "current" }, "empty"],
+    [{ data: { features: [] }, isLoading: false, isPending: false, freshness: "stale" }, "error"],
+    [{ data: { features: [{ id: "one" }] }, isLoading: false, isPending: false, freshness: "offline" }, "content"],
   ] as const)("maps alert query state to %s", (input, kind) => {
     expect(getAlertsScreenState(input).kind).toBe(kind);
   });

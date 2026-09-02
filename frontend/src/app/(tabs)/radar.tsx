@@ -9,7 +9,7 @@
  *   • TimelineBar      ("Reflectivity / Sunday, April 19 2026" header)
  */
 import { useState } from "react";
-import { View, StyleSheet, Pressable } from "react-native";
+import { View, StyleSheet, Pressable, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { WeatherMap } from "../../components/map/WeatherMap";
@@ -32,12 +32,14 @@ import { RadarFABs } from "../../components/map/RadarFABs";
 import { MapStylePicker } from "../../components/map/MapStylePicker";
 import { EyedropperPin, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
+import { useAlerts } from "../../hooks/useAlerts";
 import { useLocation } from "../../hooks/useLocation";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 
 export default function RadarScreen() {
   useManifest();
   useLocation();
+  const { alertStatus } = useAlerts();
   const router = useRouter();
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);
@@ -94,6 +96,16 @@ export default function RadarScreen() {
           <View style={[styles.closeLine, styles.closeLineA]} />
           <View style={[styles.closeLine, styles.closeLineB]} />
         </Pressable>
+        {alertStatus.kind !== "current" ? (
+          <Text
+            accessibilityRole="alert"
+            accessibilityLabel={alertStatus.accessibilityLabel}
+            pointerEvents="none"
+            style={styles.alertStatus}
+          >
+            ALERTS {alertStatus.label}
+          </Text>
+        ) : null}
       </SafeAreaView>
 
       {/* Wind particles — Skia canvas overlay, active on the wind layer */}
@@ -155,4 +167,20 @@ const styles = StyleSheet.create({
   },
   closeLineA: { transform: [{ rotate: "45deg" }] },
   closeLineB: { transform: [{ rotate: "-45deg" }] },
+  alertStatus: {
+    position: "absolute",
+    top: 8,
+    right: 12,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    lineHeight: 44,
+    textAlignVertical: "center",
+    borderRadius: 12,
+    overflow: "hidden",
+    color: "#FFFFFF",
+    backgroundColor: "rgba(10,10,20,0.82)",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
 });
