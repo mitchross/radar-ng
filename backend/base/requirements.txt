@@ -1,5 +1,6 @@
-numpy>=1.26,<2
-Pillow>=10.0
+# Exact pins: tile bytes must stay identical across releases (see docs/reliability-and-scale-plan.md Gate 2).
+numpy==1.26.4
+Pillow==12.3.0
 pygrib>=2.1
 httpx>=0.27
 mercantile>=1.2
