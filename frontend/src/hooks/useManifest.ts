@@ -1,9 +1,10 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSelfHostedManifest } from "../lib/api";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { DEFAULTS } from "../lib/constants";
-import { storage } from "../lib/storage";
+import { getString, setString } from "../lib/storage";
+import { resnapFrameIndex } from "../lib/frameIndex";
 import type { RadarFrame, SelfHostedManifest } from "../types/weather";
 
 /**
@@ -95,37 +96,49 @@ export function pickNowFrameIndex(frames: RadarFrame[]): number {
   return best;
 }
 
+const MANIFEST_CACHE_KEY = "manifest-cache-v2";
+
+function readCachedManifest(serverUrl: string): SelfHostedManifest | undefined {
+  const cached = getString(MANIFEST_CACHE_KEY, "");
+  if (!cached) return undefined;
+  try {
+    const parsed = JSON.parse(cached) as { serverUrl?: string; manifest?: SelfHostedManifest };
+    return parsed.serverUrl === serverUrl ? parsed.manifest : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The one manifest query. Radar tab, home mini-map and Settings all observe
+ * this key, so one 30 s poll feeds all three (react-query dedupes by key).
+ */
+export function useManifestQuery() {
+  const serverUrl = useWeatherStore((s) => s.serverUrl);
+  return useQuery({
+    queryKey: ["manifest", serverUrl],
+    queryFn: async ({ signal }) => {
+      const manifest = await fetchSelfHostedManifest(serverUrl, signal);
+      setString(MANIFEST_CACHE_KEY, JSON.stringify({ serverUrl, manifest }));
+      return manifest;
+    },
+    initialData: () => readCachedManifest(serverUrl),
+    // The MMKV seed is stale by definition; without this react-query trusts it for a full 30 s.
+    initialDataUpdatedAt: 0,
+    refetchInterval: DEFAULTS.MANIFEST_REFETCH_MS,
+    refetchIntervalInBackground: false,
+  });
+}
+
+/** Manifest query + writes the active layer's frame list into the store. Mount once (radar tab). */
 export function useManifest() {
   const setFrames = useWeatherStore((s) => s.setFrames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
-  const serverUrl = useWeatherStore((s) => s.serverUrl);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const timelineMode = useWeatherStore((s) => s.timelineMode);
 
-  const cacheKey = "manifest-cache-v2";
-  const query = useQuery({
-    queryKey: ["manifest", serverUrl],
-    queryFn: async () => {
-      const manifest = await fetchSelfHostedManifest(serverUrl);
-      storage.set(cacheKey, JSON.stringify({ serverUrl, manifest }));
-      return manifest;
-    },
-    initialData: () => {
-      const cached = storage.getString(cacheKey);
-      if (!cached) return undefined;
-      try {
-        const parsed = JSON.parse(cached) as {
-          serverUrl?: string;
-          manifest?: SelfHostedManifest;
-        };
-        return parsed.serverUrl === serverUrl ? parsed.manifest : undefined;
-      } catch {
-        return undefined;
-      }
-    },
-    refetchInterval: DEFAULTS.MANIFEST_REFETCH_MS,
-  });
+  const query = useManifestQuery();
 
   const frames = useMemo(
     () => (query.data ? buildSelfHostedFrames(query.data, activeLayer, timelineMode) : []),
@@ -136,16 +149,28 @@ export function useManifest() {
     setFrames(frames);
   }, [frames, setFrames]);
 
-  // Snap to "Now" when the index is uninitialised or out of bounds. Split from
-  // the frames effect so scrubbing the timeline doesn't rebuild the frame list.
-  // React Query's structural sharing means a refetch with identical data won't
-  // change `query.data`, so the refresh button can't rely on this effect alone
-  // to re-snap — it computes the index synchronously via pickNowFrameIndex.
+  // Wall-clock time of the frame on screen. Frame identity across polls is
+  // `time`, not index: a poll that prunes the head shifts every index.
+  const shownTimeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (frames.length === 0) return;
+    const idx = useWeatherStore.getState().currentFrameIndex;
+    const byTime = resnapFrameIndex(frames, idx, shownTimeRef.current);
+    const next = byTime === -1 ? pickNowFrameIndex(frames) : byTime;
+    shownTimeRef.current = frames[next]?.time ?? null;
+    if (next !== idx) setCurrentFrameIndex(next);
+  }, [frames, setCurrentFrameIndex]);
+
+  // Scrub / tick / explicit -1 reset: remember what's showing, and snap an
+  // uninitialised or out-of-range index to "now".
   useEffect(() => {
     if (frames.length === 0) return;
     if (currentFrameIndex === -1 || currentFrameIndex >= frames.length) {
       setCurrentFrameIndex(pickNowFrameIndex(frames));
+      return;
     }
+    shownTimeRef.current = frames[currentFrameIndex].time;
   }, [frames, currentFrameIndex, setCurrentFrameIndex]);
 
   return query;

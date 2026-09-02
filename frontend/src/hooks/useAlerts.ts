@@ -9,7 +9,7 @@ export function useAlerts() {
 
   return useQuery({
     queryKey: ["alerts", latitude, longitude],
-    queryFn: () => fetchAlerts(latitude!, longitude!),
+    queryFn: ({ signal }) => fetchAlerts(latitude!, longitude!, signal),
     enabled: latitude !== null && longitude !== null,
     refetchInterval: DEFAULTS.ALERTS_REFETCH_MS,
     staleTime: DEFAULTS.ALERTS_REFETCH_MS,

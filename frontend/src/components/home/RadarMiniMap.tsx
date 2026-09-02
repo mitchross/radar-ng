@@ -8,13 +8,11 @@
 import { useMemo } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Camera, Layer, Map, RasterSource } from "@maplibre/maplibre-react-native";
-import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { fetchSelfHostedManifest } from "../../lib/api";
 import { DEFAULTS } from "../../lib/constants";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
-import { pickNowFrameIndex } from "../../hooks/useManifest";
+import { pickNowFrameIndex, useManifestQuery } from "../../hooks/useManifest";
 import { usePatchedMapStyle } from "../map/WeatherMap";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { LayerType, RadarFrame } from "../../types/weather";
@@ -35,12 +33,7 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
   const lon = useWeatherStore((s) => s.longitude) ?? DEFAULTS.LONGITUDE;
   const patchedStyle = usePatchedMapStyle(serverUrl, "light");
 
-  const { data: manifest } = useQuery({
-    queryKey: ["manifest", serverUrl, "mini"],
-    queryFn: () => fetchSelfHostedManifest(serverUrl),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
+  const { data: manifest } = useManifestQuery();
 
   // Match the dedicated Radar tab's observed MRMS source first. Composite is
   // only a compatibility fallback for clusters that still publish it.

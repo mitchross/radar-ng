@@ -4,7 +4,9 @@ import {
   fetchAlerts,
   fetchSelfHostedManifest,
   fetchStormPrefetchPlan,
-  checkServerHealth,
+  fetchServerStatus,
+  fetchWithTimeout,
+  healthLevelOf,
 } from "../../src/lib/api";
 
 const mockFetch = jest.fn();
@@ -12,6 +14,45 @@ global.fetch = mockFetch;
 
 afterEach(() => {
   mockFetch.mockReset();
+  jest.useRealTimers();
+});
+
+const calledUrl = () => mockFetch.mock.calls[0][0] as string;
+const calledInit = () => mockFetch.mock.calls[0][1] as RequestInit;
+
+describe("fetchWithTimeout", () => {
+  it("always hands fetch an AbortSignal", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true });
+    await fetchWithTimeout("http://x");
+    expect(calledInit().signal).toBeInstanceOf(AbortSignal);
+    expect(calledInit().signal?.aborted).toBe(false);
+  });
+
+  it("aborts the request when the deadline passes", async () => {
+    jest.useFakeTimers();
+    mockFetch.mockImplementationOnce(
+      (_url: string, init: RequestInit) =>
+        new Promise((_, reject) => {
+          init.signal!.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const pending = expect(fetchWithTimeout("http://x", {}, undefined, 1000)).rejects.toThrow("aborted");
+    jest.advanceTimersByTime(1001);
+    await pending;
+  });
+
+  it("chains the caller's signal (react-query cancellation)", async () => {
+    const caller = new AbortController();
+    mockFetch.mockImplementationOnce(
+      (_url: string, init: RequestInit) =>
+        new Promise((_, reject) => {
+          init.signal!.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const pending = expect(fetchWithTimeout("http://x", {}, caller.signal)).rejects.toThrow("aborted");
+    caller.abort();
+    await pending;
+  });
 });
 
 describe("fetchRadarNowcast", () => {
@@ -24,9 +65,7 @@ describe("fetchRadarNowcast", () => {
     });
 
     await expect(fetchRadarNowcast("https://radar.example", 42.96, -85.67)).resolves.toEqual(nowcast);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "https://radar.example/api/nowcast/42.96/-85.67",
-    );
+    expect(calledUrl()).toBe("https://radar.example/api/nowcast/42.96/-85.67");
   });
 });
 
@@ -40,9 +79,7 @@ describe("fetchForecast", () => {
 
     const result = await fetchForecast("https://radar-ng-api.vanillax.me", 38.9, -77.0);
     expect(result).toEqual(forecast);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "https://radar-ng-api.vanillax.me/api/forecast/38.9/-77",
-    );
+    expect(calledUrl()).toBe("https://radar-ng-api.vanillax.me/api/forecast/38.9/-77");
   });
 
   it("throws on non-ok response", async () => {
@@ -59,10 +96,8 @@ describe("fetchAlerts", () => {
     });
 
     await fetchAlerts(38.9, -77.0);
-    const calledUrl = mockFetch.mock.calls[0][0] as string;
-    const calledOptions = mockFetch.mock.calls[0][1] as RequestInit;
-    expect(calledUrl).toContain("point=38.9,-77");
-    expect(calledOptions.headers).toEqual(
+    expect(calledUrl()).toContain("point=38.9,-77");
+    expect(calledInit().headers).toEqual(
       expect.objectContaining({ "User-Agent": expect.stringContaining("radar-ng") }),
     );
   });
@@ -81,7 +116,7 @@ describe("fetchSelfHostedManifest", () => {
     });
     const result = await fetchSelfHostedManifest("http://localhost:8080");
     expect(result).toEqual(manifest);
-    expect(mockFetch).toHaveBeenCalledWith("http://localhost:8080/api/manifest.json");
+    expect(calledUrl()).toBe("http://localhost:8080/api/manifest.json");
   });
 });
 
@@ -94,31 +129,41 @@ describe("fetchStormPrefetchPlan", () => {
       json: () => Promise.resolve(plan),
     });
 
-    const result = await fetchStormPrefetchPlan(
-      "https://radar.example",
-      42.96,
-      -85.67,
-      "vivid",
-      6,
-    );
+    const result = await fetchStormPrefetchPlan("https://radar.example", 42.96, -85.67, "vivid", 6);
 
     expect(result).toEqual(plan);
-    expect(mockFetch).toHaveBeenCalledWith(
+    expect(calledUrl()).toBe(
       "https://radar.example/api/storm-prefetch?lat=42.96&lon=-85.67&zoom=6&palette=vivid",
     );
   });
 });
 
-describe("checkServerHealth", () => {
-  it("returns true when server is healthy", async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true });
-    const result = await checkServerHealth("http://localhost:8080");
-    expect(result).toBe(true);
+describe("fetchServerStatus / healthLevelOf", () => {
+  it("parses a 503 degraded body instead of treating it as down", async () => {
+    const body = { status: "degraded", mrms_age_s: 1800, reasons: ["mrms_stale"] };
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 503, json: () => Promise.resolve(body) });
+    const status = await fetchServerStatus("http://localhost:8080");
+    expect(status).toEqual(body);
+    expect(healthLevelOf(status)).toBe("degraded");
   });
 
-  it("returns false when server is unreachable", async () => {
+  it("reports ok from a 200 body", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ status: "ok", mrms_age_s: 90 }),
+    });
+    expect(healthLevelOf(await fetchServerStatus("http://x"))).toBe("ok");
+  });
+
+  it("returns null (error) when unreachable or the body is not a health payload", async () => {
     mockFetch.mockRejectedValueOnce(new Error("Network error"));
-    const result = await checkServerHealth("http://localhost:8080");
-    expect(result).toBe(false);
+    expect(await fetchServerStatus("http://x")).toBeNull();
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 502, json: () => Promise.reject(new Error("html")) });
+    expect(await fetchServerStatus("http://x")).toBeNull();
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ detail: "nope" }) });
+    expect(await fetchServerStatus("http://x")).toBeNull();
+    expect(healthLevelOf(null)).toBe("error");
+    expect(healthLevelOf(undefined)).toBe("error");
   });
 });

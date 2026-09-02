@@ -5,8 +5,6 @@ import { setString } from "../../src/lib/storage";
 jest.mock("../../src/lib/storage", () => ({
   getString: jest.fn((_k: string, d: string) => d),
   setString: jest.fn(),
-  getBoolean: jest.fn(() => false),
-  setBoolean: jest.fn(),
 }));
 
 beforeEach(() => {
@@ -42,23 +40,6 @@ describe("useWeatherStore", () => {
     ];
     useWeatherStore.getState().setFrames(frames);
     expect(useWeatherStore.getState().frames).toEqual(frames);
-  });
-
-  it("nextFrame wraps around to 0", () => {
-    useWeatherStore.setState({
-      frames: [
-        { time: 1, timestamp: "1970-01-01T00:00:01Z", path: "/a" },
-        { time: 2, timestamp: "1970-01-01T00:00:02Z", path: "/b" },
-      ],
-      currentFrameIndex: 1,
-    });
-    useWeatherStore.getState().nextFrame();
-    expect(useWeatherStore.getState().currentFrameIndex).toBe(0);
-  });
-
-  it("nextFrame does nothing with empty frames", () => {
-    useWeatherStore.getState().nextFrame();
-    expect(useWeatherStore.getState().currentFrameIndex).toBe(-1);
   });
 
   it("togglePlaying flips isPlaying", () => {
@@ -118,10 +99,12 @@ describe("useWeatherStore", () => {
     expect(useWeatherStore.getState().activeLayer).toBe("temperature");
   });
 
-  it("toggleOverlay adds and removes overlays", () => {
-    useWeatherStore.getState().toggleOverlay("wind");
-    expect(useWeatherStore.getState().visibleOverlays.has("wind")).toBe(true);
-    useWeatherStore.getState().toggleOverlay("wind");
-    expect(useWeatherStore.getState().visibleOverlays.has("wind")).toBe(false);
+  it("setServerUrl persists a valid origin and ignores garbage", () => {
+    useWeatherStore.getState().setServerUrl("http://192.168.1.10:8080/");
+    expect(useWeatherStore.getState().serverUrl).toBe("http://192.168.1.10:8080");
+    expect(setString).toHaveBeenCalledWith("serverUrl", "http://192.168.1.10:8080");
+
+    useWeatherStore.getState().setServerUrl("not a url");
+    expect(useWeatherStore.getState().serverUrl).toBe("http://192.168.1.10:8080");
   });
 });

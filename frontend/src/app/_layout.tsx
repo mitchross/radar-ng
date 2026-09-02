@@ -11,11 +11,12 @@ import {
   QueryClientProvider,
   QueryCache,
   MutationCache,
+  focusManager,
 } from "@tanstack/react-query";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View } from "react-native";
+import { AppState, StyleSheet, View } from "react-native";
 import {
   WeatherClearThemeProvider,
   useWeatherClearTheme,
@@ -27,6 +28,13 @@ import { useStormTilePrefetch } from "../hooks/useStormTilePrefetch";
 // down the whole app with a red screen. expo-router's built-in boundary
 // shows the error with a retry affordance instead.
 export { ErrorBoundary } from "expo-router";
+
+// RN never fires `visibilitychange`, so without this react-query believes the app is
+// always focused: refetchOnWindowFocus never runs and refetchInterval polls in the background.
+focusManager.setEventListener((setFocused) => {
+  const sub = AppState.addEventListener("change", (state) => setFocused(state === "active"));
+  return () => sub.remove();
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {

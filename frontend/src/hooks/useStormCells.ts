@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { trace } from "../lib/telemetry";
+import { fetchWithTimeout } from "../lib/api";
 
 export interface StormCell {
   type: "Feature";
@@ -27,9 +28,9 @@ export function useStormCells() {
 
   return useQuery({
     queryKey: ["storms", serverUrl],
-    queryFn: (): Promise<StormCellCollection> =>
+    queryFn: ({ signal }): Promise<StormCellCollection> =>
       trace("api.fetchStormCells", async (span) => {
-        const r = await fetch(`${serverUrl}/api/storms`);
+        const r = await fetchWithTimeout(`${serverUrl}/api/storms`, {}, signal);
         span.setAttribute("http.status_code", r.status);
         if (!r.ok) throw new Error(`storms fetch ${r.status}`);
         const json = (await r.json()) as StormCellCollection;
@@ -37,6 +38,7 @@ export function useStormCells() {
         return json;
       }),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
     staleTime: 60_000,
   });
 }

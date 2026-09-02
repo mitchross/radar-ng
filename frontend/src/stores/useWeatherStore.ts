@@ -3,6 +3,15 @@ import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, MapProjection, P
 import type { LocationMode, SelectedPlace } from "../types/location";
 import { DEFAULTS, RADAR, SELF_HOSTED } from "../lib/constants";
 import { getString, setString } from "../lib/storage";
+import {
+  parseMapProjection,
+  parseMapStyle,
+  parsePalette,
+  parseServerUrl,
+  parseTimelineMode,
+  parseViewMode,
+  type ViewMode,
+} from "../lib/persistedPrefs";
 import type { AppearanceMode } from "../theme/weatherClearTheme";
 
 interface WeatherState {
@@ -18,7 +27,6 @@ interface WeatherState {
   radarOpacity: number;
   radarVisible: boolean;
   activeLayer: LayerType;
-  visibleOverlays: Set<LayerType>;
   temperatureUnit: TemperatureUnit;
   mapStyle: MapStyle;
   mapProjection: MapProjection;
@@ -28,7 +36,7 @@ interface WeatherState {
   // overwhelm the radar view for casual users; opt-in via this flag.
   extrasVisible: boolean;
   serverUrl: string;
-  viewMode: "simple" | "advanced";
+  viewMode: ViewMode;
   appearanceMode: AppearanceMode;
 
   setFrames: (frames: RadarFrame[]) => void;
@@ -41,7 +49,6 @@ interface WeatherState {
   setDevicePlace: (place: SelectedPlace | null) => void;
   useDeviceLocation: () => void;
   setRadarOpacity: (opacity: number) => void;
-  setRadarVisible: (visible: boolean) => void;
   setTemperatureUnit: (unit: TemperatureUnit) => void;
   setMapStyle: (style: MapStyle) => void;
   setMapProjection: (projection: MapProjection) => void;
@@ -49,11 +56,9 @@ interface WeatherState {
   setTimelineMode: (mode: TimelineMode) => void;
   toggleExtras: () => void;
   setActiveLayer: (layer: LayerType) => void;
-  toggleOverlay: (layer: LayerType) => void;
   setServerUrl: (url: string) => void;
-  setViewMode: (mode: "simple" | "advanced") => void;
+  setViewMode: (mode: ViewMode) => void;
   setAppearanceMode: (mode: AppearanceMode) => void;
-  nextFrame: () => void;
 }
 
 function parseLocationMode(value: string): LocationMode {
@@ -107,17 +112,18 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   radarOpacity: RADAR.DEFAULT_OPACITY,
   radarVisible: true,
   activeLayer: "radar" as LayerType,
-  visibleOverlays: new Set<LayerType>(),
   temperatureUnit: "fahrenheit",
-  mapStyle: (getString("mapStyle", "light") as MapStyle),
-  mapProjection: (getString("mapProjection", "flat") as MapProjection),
-  activePalette: (getString("activePalette", "classic") as Palette),
+  // Persisted strings are parsed, not cast: a stale/garbage value would otherwise
+  // index MAP_STYLES_SELFHOSTED[undefined] and throw at WeatherMap mount.
+  mapStyle: parseMapStyle(getString("mapStyle", "light")),
+  mapProjection: parseMapProjection(getString("mapProjection", "flat")),
+  activePalette: parsePalette(getString("activePalette", "classic")),
   // Default to "forecast" so the timeline shows past + nowcast + HRRR future
   // as one merged stream out of the box. Less UI to flip, less to explain.
-  timelineMode: (getString("timelineMode", "forecast") as TimelineMode),
+  timelineMode: parseTimelineMode(getString("timelineMode", "forecast")),
   extrasVisible: getString("extrasVisible", "0") === "1",
-  serverUrl: getString("serverUrl", SELF_HOSTED.DEFAULT_URL),
-  viewMode: (getString("viewMode", "simple") as "simple" | "advanced"),
+  serverUrl: parseServerUrl(getString("serverUrl", SELF_HOSTED.DEFAULT_URL), SELF_HOSTED.DEFAULT_URL),
+  viewMode: parseViewMode(getString("viewMode", "simple")),
   appearanceMode: parseAppearanceMode(getString("appearanceMode", "system")),
 
   setFrames: (frames) => set({ frames }),
@@ -142,7 +148,6 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     set({ locationMode: "device" });
   },
   setRadarOpacity: (opacity) => set({ radarOpacity: opacity }),
-  setRadarVisible: (visible) => set({ radarVisible: visible }),
   setTemperatureUnit: (unit) => set({ temperatureUnit: unit }),
   setMapStyle: (style) => {
     setString("mapStyle", style);
@@ -166,15 +171,10 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     return { extrasVisible: next };
   }),
   setActiveLayer: (layer) => set({ activeLayer: layer }),
-  toggleOverlay: (layer) => set((s) => {
-    const next = new Set(s.visibleOverlays);
-    if (next.has(layer)) next.delete(layer);
-    else next.add(layer);
-    return { visibleOverlays: next };
-  }),
   setServerUrl: (url) => {
-    setString("serverUrl", url);
-    set({ serverUrl: url });
+    const next = parseServerUrl(url, get().serverUrl);
+    setString("serverUrl", next);
+    set({ serverUrl: next });
   },
   setViewMode: (mode) => {
     setString("viewMode", mode);
@@ -183,10 +183,5 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setAppearanceMode: (mode) => {
     setString("appearanceMode", mode);
     set({ appearanceMode: mode });
-  },
-  nextFrame: () => {
-    const { frames, currentFrameIndex } = get();
-    if (frames.length === 0) return;
-    set({ currentFrameIndex: (currentFrameIndex + 1) % frames.length });
   },
 }));

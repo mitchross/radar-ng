@@ -11,7 +11,7 @@ export function useRadarNowcast() {
 
   return useQuery({
     queryKey: ["radar-nowcast", latitude, longitude, serverUrl],
-    queryFn: () => fetchRadarNowcast(serverUrl, latitude!, longitude!),
+    queryFn: ({ signal }) => fetchRadarNowcast(serverUrl, latitude!, longitude!, signal),
     enabled: latitude !== null && longitude !== null,
     refetchInterval: REFRESH_MS,
     staleTime: REFRESH_MS,

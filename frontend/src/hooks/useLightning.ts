@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { trace } from "../lib/telemetry";
+import { fetchWithTimeout } from "../lib/api";
 
 interface LightningStrike {
   type: "Feature";
@@ -21,9 +22,9 @@ export function useLightning() {
 
   return useQuery({
     queryKey: ["lightning", serverUrl],
-    queryFn: (): Promise<LightningCollection> =>
+    queryFn: ({ signal }): Promise<LightningCollection> =>
       trace("api.fetchLightning", async (span) => {
-        const r = await fetch(`${serverUrl}/api/lightning`);
+        const r = await fetchWithTimeout(`${serverUrl}/api/lightning`, {}, signal);
         span.setAttribute("http.status_code", r.status);
         if (!r.ok) throw new Error(`lightning fetch ${r.status}`);
         const json = (await r.json()) as LightningCollection;
@@ -31,6 +32,8 @@ export function useLightning() {
         return json;
       }),
     refetchInterval: 10_000,
+    // Honoured only because _layout.tsx wires focusManager to AppState.
+    refetchIntervalInBackground: false,
     staleTime: 8_000,
   });
 }

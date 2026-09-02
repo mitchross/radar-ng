@@ -2,8 +2,9 @@
  * Inspector/eyedropper client — asks the self-hosted tile-server for the
  * interpolated layer value at a point.
  */
-import type { LayerType, Palette } from "../types/weather";
+import type { LayerType } from "../types/weather";
 import { trace } from "./telemetry";
+import { fetchWithTimeout } from "./api";
 
 export interface InspectReading {
   ok: boolean;
@@ -19,6 +20,7 @@ interface InspectOptions {
   timestamp: string;
   lat: number;
   lon: number;
+  signal?: AbortSignal;
 }
 
 export async function inspectPoint(opts: InspectOptions): Promise<InspectReading> {
@@ -27,7 +29,7 @@ export async function inspectPoint(opts: InspectOptions): Promise<InspectReading
     async (span) => {
       try {
         const url = `${opts.serverUrl}/api/inspect/${opts.layer}/${encodeURIComponent(opts.timestamp)}/${opts.lat}/${opts.lon}`;
-        const resp = await fetch(url);
+        const resp = await fetchWithTimeout(url, {}, opts.signal);
         span.setAttribute("http.status_code", resp.status);
         if (resp.ok) {
           const json = await resp.json();
@@ -103,14 +105,4 @@ function describeDBZ(dbz: number): string {
   if (dbz < 45) return "Heavy";
   if (dbz < 55) return "Intense";
   return "Extreme";
-}
-
-/** Unused for now; kept for when the eyedropper moves to tile-URL-based sampling. */
-export function gridUrlFor(
-  serverUrl: string,
-  layer: LayerType,
-  timestamp: string,
-  _palette: Palette,
-): string {
-  return `${serverUrl}/data/grids/${layer}/${encodeURIComponent(timestamp)}.bin`;
 }

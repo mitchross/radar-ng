@@ -26,6 +26,9 @@ const LAYER_LABEL: Record<LayerType, string> = {
   ozone: "OZONE",
 };
 
+// Playback ticks at 750 ms; one /api/inspect per tick was a fetch storm.
+const INSPECT_DEBOUNCE_MS = 300;
+
 export interface PinnedPoint {
   lat: number;
   lon: number;
@@ -41,36 +44,47 @@ export function EyedropperPin({ pinned, onClear }: Props) {
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
+  const isPlaying = useWeatherStore((s) => s.isPlaying);
 
   const [reading, setReading] = useState<InspectReading | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const frame = frames[currentFrameIndex];
+  // Key on the timestamp, not the frame object: every manifest poll rebuilds the frame array.
+  const frameTimestamp = frames[currentFrameIndex]?.timestamp ?? null;
 
   useEffect(() => {
-    if (!pinned || !frame) {
+    if (!pinned || !frameTimestamp) {
       setReading(null);
       return;
     }
-    let cancelled = false;
-    setLoading(true);
-    inspectPoint({
-      serverUrl,
-      layer: activeLayer,
-      timestamp: frame.timestamp,
-      lat: pinned.lat,
-      lon: pinned.lon,
-    })
-      .then((r) => {
-        if (!cancelled) setReading(r);
+    // Keep the last reading on screen while frames tick by; refetch once paused.
+    if (isPlaying) {
+      setLoading(false);
+      return;
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      setLoading(true);
+      inspectPoint({
+        serverUrl,
+        layer: activeLayer,
+        timestamp: frameTimestamp,
+        lat: pinned.lat,
+        lon: pinned.lon,
+        signal: ctrl.signal,
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+        .then((r) => {
+          if (!ctrl.signal.aborted) setReading(r);
+        })
+        .finally(() => {
+          if (!ctrl.signal.aborted) setLoading(false);
+        });
+    }, INSPECT_DEBOUNCE_MS);
     return () => {
-      cancelled = true;
+      clearTimeout(timer);
+      ctrl.abort();
     };
-  }, [pinned, activeLayer, frame, serverUrl]);
+  }, [pinned, activeLayer, frameTimestamp, serverUrl, isPlaying]);
 
   if (!pinned) return null;
 

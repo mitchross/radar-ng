@@ -21,12 +21,13 @@ export function useStormTilePrefetch() {
 
   const query = useQuery({
     queryKey: ["storm-prefetch", serverUrl, latitude, longitude, activePalette],
-    queryFn: () => fetchStormPrefetchPlan(
+    queryFn: ({ signal }) => fetchStormPrefetchPlan(
       serverUrl,
       latitude as number,
       longitude as number,
       activePalette,
       PREFETCH_ZOOM,
+      signal,
     ),
     enabled: extrasVisible && latitude != null && longitude != null,
     staleTime: 5 * 60_000,
