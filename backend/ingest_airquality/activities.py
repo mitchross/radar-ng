@@ -95,10 +95,7 @@ def _state_path() -> Path:
 
 def _grib_url(run_id: str, product: str) -> str:
     date_str, cycle = run_id.split("_")
-    return (
-        f"{AQM_BASE}/{date_str}/{cycle}/"
-        f"aqm.t{cycle}z.{product}.{date_str}.227.grib2"
-    )
+    return f"{AQM_BASE}/{date_str}/{cycle}/aqm.t{cycle}z.{product}.{date_str}.227.grib2"
 
 
 def _find_latest_run_sync(client: httpx.Client) -> str | None:
@@ -213,19 +210,29 @@ def _write_palette_tiles(
     if grid.source_crs is None and lats.ndim == 1 and lats[0] > lats[-1]:
         data = np.flipud(data)
         lats = lats[::-1]
-    elif grid.source_crs is not None and source_y is not None and source_y[0] > source_y[-1]:
+    elif (
+        grid.source_crs is not None
+        and source_y is not None
+        and source_y[0] > source_y[-1]
+    ):
         data = np.flipud(data)
         lats = np.flipud(lats)
         lons = np.flipud(lons)
         source_y = source_y[::-1]
     out_dirs = {pname: str(tile_base / layer / pname / path) for pname in color_tables}
     return render_frame_palettes(
-        data, lats, lons, color_tables, out_dirs, ZOOM_LEVELS,
+        data,
+        lats,
+        lons,
+        color_tables,
+        out_dirs,
+        ZOOM_LEVELS,
         source_crs=grid.source_crs,
         source_x=grid.source_x,
         source_y=source_y,
         nodata_value=None,
         min_valid_weight=1.0,
+        renderer=os.environ.get("TILE_RENDERER", "legacy"),
     )
 
 
@@ -239,7 +246,9 @@ def _render_per_palette(
 ) -> list[str]:
     """All-or-nothing across palettes, mirroring the HRRR frame gate."""
     color_tables = {
-        name: tables[color_key] for name, tables in palette_tables.items() if tables.get(color_key)
+        name: tables[color_key]
+        for name, tables in palette_tables.items()
+        if tables.get(color_key)
     }
     if not color_tables:
         return []
@@ -460,7 +469,9 @@ def _publish_run_sync(
             state_dir=state_dir or STATE_DIR,
             frames=frames,
             layer_metadata={
-                "title": "AQM PM2.5 (US AQI)" if layer == "air-quality" else "AQM ozone",
+                "title": "AQM PM2.5 (US AQI)"
+                if layer == "air-quality"
+                else "AQM ozone",
                 "kind": "model_guidance",
                 "run_id": run_id,
                 "complete": True,

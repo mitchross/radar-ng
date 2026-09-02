@@ -39,7 +39,9 @@ STEP_MIN = int(os.environ.get("NOWCAST_STEP_MIN", "5"))
 # cannot fit (common immediately after an empty-volume/cold start).
 N_INPUT_FRAMES = max(3, int(os.environ.get("NOWCAST_INPUT_FRAMES", "4")))
 GRID_INPUT_LAYER = os.environ.get("NOWCAST_GRID_INPUT_LAYER", "radar-nowcast-input")
-ALLOW_PERSISTENCE_FALLBACK = os.environ.get("NOWCAST_ALLOW_PERSISTENCE_FALLBACK", "0") == "1"
+ALLOW_PERSISTENCE_FALLBACK = (
+    os.environ.get("NOWCAST_ALLOW_PERSISTENCE_FALLBACK", "0") == "1"
+)
 MAX_INPUT_GAP_MIN = float(os.environ.get("NOWCAST_MAX_INPUT_GAP_MIN", "6"))
 # The science grid is ~2 km after its bounded downsample. z6 is its honest
 # display ceiling; z7 added 4x work while only magnifying interpolated pixels.
@@ -61,7 +63,9 @@ class NowcastResult:
     duration_s: float = 0.0
 
 
-def _load_grid(meta_path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict] | None:
+def _load_grid(
+    meta_path: Path,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict] | None:
     try:
         meta = json.loads(meta_path.read_text())
         h = int(meta["height"])
@@ -100,7 +104,9 @@ def _persistence_fallback(frames: list[np.ndarray], n_leadtimes: int) -> np.ndar
     return np.repeat(last[np.newaxis, :, :], n_leadtimes, axis=0).astype(np.float32)
 
 
-def _write_nowcast_status(status: str, *, reason: str | None = None, detail: str | None = None) -> None:
+def _write_nowcast_status(
+    status: str, *, reason: str | None = None, detail: str | None = None
+) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     body = {
         "status": status,
@@ -108,7 +114,9 @@ def _write_nowcast_status(status: str, *, reason: str | None = None, detail: str
         "detail": detail,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    fd, tmp_name = tempfile.mkstemp(prefix=".nowcast-status.", suffix=".tmp", dir=str(STATE_DIR))
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=".nowcast-status.", suffix=".tmp", dir=str(STATE_DIR)
+    )
     try:
         with os.fdopen(fd, "w") as fh:
             json.dump(body, fh, separators=(",", ":"), sort_keys=True)
@@ -151,17 +159,25 @@ def _run_nowcast(
         nowcaster = nowcasts.get_method("sprog")
         try:
             forecast = nowcaster(
-                stack[-3:, :, :], uv, lead_steps,
-                n_cascade_levels=6, precip_thr=5.0,
+                stack[-3:, :, :],
+                uv,
+                lead_steps,
+                n_cascade_levels=6,
+                precip_thr=5.0,
             )
         except TypeError:
             forecast = nowcaster(
-                stack[-3:, :, :], uv, lead_steps,
-                n_cascade_levels=6, R_thr=5.0,
+                stack[-3:, :, :],
+                uv,
+                lead_steps,
+                n_cascade_levels=6,
+                R_thr=5.0,
             )
     except Exception as exc:  # noqa: BLE001
         log.warning("pysteps_failed", extra={"err": str(exc)})
-        return _degraded_result(frames, lead_steps, reason="pysteps_failed", detail=str(exc))
+        return _degraded_result(
+            frames, lead_steps, reason="pysteps_failed", detail=str(exc)
+        )
     forecast = np.asarray(forecast, dtype=np.float32)
     forecast = np.where(np.isnan(forecast), -9999.0, forecast)
     _write_nowcast_status("ok")
@@ -172,18 +188,29 @@ def _nowcast_tile_path(anchor_ts: str, valid_ts: str) -> str:
     return f"runs/{anchor_ts}/{valid_ts}"
 
 
-def _render_frame(tile_base: Path, palette_tables: dict[str, dict], tile_path: str, data: np.ndarray, lats: np.ndarray, lons: np.ndarray) -> list[str]:
+def _render_frame(
+    tile_base: Path,
+    palette_tables: dict[str, dict],
+    tile_path: str,
+    data: np.ndarray,
+    lats: np.ndarray,
+    lons: np.ndarray,
+) -> list[str]:
     """Render one leadtime's tile pyramid. Manifest publishing happens once
     per RUN (replace_layer_manifest in nowcast_run), not per frame — so a
     half-finished run is never visible to the app, and frames from previous
     anchor runs don't pile up in the manifest.
     """
     color_tables = {
-        pname: tables["reflectivity"] for pname, tables in palette_tables.items() if tables.get("reflectivity")
+        pname: tables["reflectivity"]
+        for pname, tables in palette_tables.items()
+        if tables.get("reflectivity")
     }
     if not color_tables:
         return []
-    out_dirs = {pname: str(tile_base / "nowcast" / pname / tile_path) for pname in color_tables}
+    out_dirs = {
+        pname: str(tile_base / "nowcast" / pname / tile_path) for pname in color_tables
+    }
     result = render_frame_palettes(
         data,
         lats,
@@ -193,6 +220,7 @@ def _render_frame(tile_base: Path, palette_tables: dict[str, dict], tile_path: s
         ZOOM_LEVELS,
         nodata_value=-9999.0,
         min_valid_weight=1.0,
+        renderer=os.environ.get("TILE_RENDERER", "legacy"),
     )
     return result.rendered_palettes
 
@@ -265,7 +293,9 @@ async def nowcast_run() -> NowcastResult:
         input_interval_min = float(np.median(np.asarray(intervals)))
         return (True, latest_iso, grids, meta_used, input_interval_min)
 
-    ok, latest_iso, grids, meta_used, input_interval_min = await asyncio.to_thread(_setup)
+    ok, latest_iso, grids, meta_used, input_interval_min = await asyncio.to_thread(
+        _setup
+    )
     if not ok:
         return NowcastResult(ran=False, anchor_ts=latest_iso)
 
@@ -274,14 +304,22 @@ async def nowcast_run() -> NowcastResult:
     # commonly ~2 minutes; passing the integer count mislabeled a 2-minute
     # forecast step as 5 minutes. Fractional requested timesteps preserve the
     # public 5-minute timeline against the measured input cadence.
-    lead_steps = [((index + 1) * STEP_MIN) / input_interval_min for index in range(n_lead)]
-    activity.heartbeat({"phase": "pysteps", "input_frames": len(grids), "leadtimes": n_lead})
+    lead_steps = [
+        ((index + 1) * STEP_MIN) / input_interval_min for index in range(n_lead)
+    ]
+    activity.heartbeat(
+        {"phase": "pysteps", "input_frames": len(grids), "leadtimes": n_lead}
+    )
     forecast = await run_sync_with_heartbeat(
         _run_nowcast,
         grids,
         lead_steps,
         heartbeat_every=30,
-        heartbeat_details=lambda: {"phase": "pysteps", "input_frames": len(grids), "leadtimes": n_lead},
+        heartbeat_details=lambda: {
+            "phase": "pysteps",
+            "input_frames": len(grids),
+            "leadtimes": n_lead,
+        },
     )
     forecast, method = forecast
     if forecast is None:
@@ -294,8 +332,13 @@ async def nowcast_run() -> NowcastResult:
 
     h = meta_used["height"]
     w = meta_used["width"]
-    lats_arr = np.linspace(meta_used["lat_max"], meta_used["lat_min"], h, dtype=np.float64)
-    lons_arr = np.linspace(meta_used["lon_min"], meta_used["lon_max"], w, dtype=np.float64)
+    lats_arr = np.linspace(
+        meta_used["lat_max"], meta_used["lat_min"], h, dtype=np.float64
+    )
+    lons_arr = np.linspace(
+        meta_used["lon_min"], meta_used["lon_max"], w, dtype=np.float64
+    )
+
     def _load_palette_tables() -> dict[str, dict]:
         tables: dict[str, dict] = {}
         for name in get_palette_names():
@@ -361,18 +404,20 @@ async def nowcast_run() -> NowcastResult:
             rendered_palettes.update(palettes)
             rendered_timestamps.append(ts)
             point_grid_files.append(grid_file)
-            manifest_frames.append({
-                "timestamp": ts,
-                "path": tile_path,
-                "source": "mrms-nowcast",
-                "kind": "nowcast",
-                "issued_at": latest_dt.isoformat(),
-                "lead_minutes": (i + 1) * STEP_MIN,
-                "input_interval_minutes": round(input_interval_min, 3),
-                "method": method,
-                "spatial_resolution_km": resolution_km,
-                "max_zoom": max(ZOOM_LEVELS),
-            })
+            manifest_frames.append(
+                {
+                    "timestamp": ts,
+                    "path": tile_path,
+                    "source": "mrms-nowcast",
+                    "kind": "nowcast",
+                    "issued_at": latest_dt.isoformat(),
+                    "lead_minutes": (i + 1) * STEP_MIN,
+                    "input_interval_minutes": round(input_interval_min, 3),
+                    "method": method,
+                    "spatial_resolution_km": resolution_km,
+                    "max_zoom": max(ZOOM_LEVELS),
+                }
+            )
         else:
             for palette in palettes:
                 shutil.rmtree(

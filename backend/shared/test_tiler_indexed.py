@@ -382,6 +382,54 @@ def test_indexed_tiles_share_idat_and_are_indexed_pngs(tmp_path):
         assert png.stat().st_size < 256 * 256
 
 
+def test_legacy_renderer_is_a_marker_validated_rollback_path(tmp_path):
+    palettes = _load_palettes()
+    tables = {"classic": palettes["classic"]["reflectivity"]}
+    data, lats, lons = _synthetic_reflectivity()
+    output = tmp_path / "classic"
+
+    first = render_frame_palettes(
+        data,
+        lats,
+        lons,
+        tables,
+        {"classic": str(output)},
+        [4],
+        renderer="legacy",
+    )
+    assert first.outcomes["classic"].status is PublishStatus.CREATED
+    assert first.counts["classic"] > 0
+    assert tiler.is_complete_pyramid(output)
+    assert Image.open(next(output.rglob("*.png"))).mode == "RGBA"
+
+    retry = render_frame_palettes(
+        data,
+        lats,
+        lons,
+        tables,
+        {"classic": str(output)},
+        [4],
+        renderer="legacy",
+    )
+    assert retry.outcomes["classic"].status is PublishStatus.EXISTING_VALID
+    assert retry.counts == first.counts
+
+
+def test_unknown_renderer_fails_closed(tmp_path):
+    palettes = _load_palettes()
+    data, lats, lons = _synthetic_reflectivity()
+    with pytest.raises(ValueError, match="unknown tile renderer"):
+        render_frame_palettes(
+            data,
+            lats,
+            lons,
+            {"classic": palettes["classic"]["reflectivity"]},
+            {"classic": str(tmp_path / "classic")},
+            [4],
+            renderer="typo",
+        )
+
+
 def test_projected_continuous_grid_matches_physical_bilinear_reference(tmp_path):
     import scipy.ndimage
     from pyproj import Transformer

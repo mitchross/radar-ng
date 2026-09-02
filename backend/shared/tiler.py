@@ -1362,18 +1362,59 @@ def render_frame_palettes(
     category_map: dict[int, str] | None = None,
     nodata_value: float | None = None,
     min_valid_weight: float = 1.0,
+    renderer: str = "indexed",
     **kwargs,
 ) -> MultiPaletteRenderResult:
-    """Sample/classify once per tile and publish every palette's pyramid.
+    """Render and atomically publish every palette's pyramid.
 
     `color_tables[palette]` is a `ranges` table (or a `categories` table when
     `category_map` is given); only palettes present in `output_dirs` render.
-    Range products use physical-value bilinear resampling with explicit nodata
-    policy. Category products use nearest sampling and never interpolate IDs.
+    ``renderer="indexed"`` samples continuous physical values once per tile
+    (or categorical IDs with nearest-neighbour), then derives every palette by
+    replacing PNG palette chunks. ``renderer="legacy"`` preserves the old
+    colourise-first RGBA sampling as a production rollback path while using
+    the same marker-validated publication protocol.
     """
     if not output_dirs:
         return MultiPaletteRenderResult(outcomes={})
     tables = {p: color_tables[p] for p in output_dirs}
+    if renderer == "legacy":
+        outcomes: dict[str, PalettePublishOutcome] = {}
+        for palette, output_dir in output_dirs.items():
+            if category_map is None:
+                rgba = apply_color_table(data, tables[palette])
+            else:
+                rgba = apply_categorical_color_table(
+                    data,
+                    tables[palette]["categories"],
+                    category_map,
+                )
+
+            def _render_legacy(
+                staging: dict[str, str],
+                *,
+                palette_name: str = palette,
+                palette_rgba: np.ndarray = rgba,
+            ) -> int:
+                return render_tiles(
+                    palette_rgba,
+                    lats,
+                    lons,
+                    staging[palette_name],
+                    zoom_levels,
+                    **kwargs,
+                )
+
+            result = _render_and_publish_atomic(
+                {palette: output_dir},
+                _render_legacy,
+            )
+            outcomes[palette] = result.outcomes[palette]
+        return MultiPaletteRenderResult(outcomes=outcomes)
+    if renderer != "indexed":
+        raise ValueError(
+            f"unknown tile renderer {renderer!r}; expected 'legacy' or 'indexed'"
+        )
     if category_map is not None:
         model = build_categorical_class_model(tables, category_map)
         idx = model.classify(data)

@@ -49,7 +49,9 @@ NOWCAST_SCIENCE_GRID_MAX_CELLS = int(
 
 
 # Defaults — used when the workflow doesn't pass overrides.
-DEFAULT_MRMS_PREFIX = os.environ.get("MRMS_PREFIX", "CONUS/MergedBaseReflectivityQC_00.50")
+DEFAULT_MRMS_PREFIX = os.environ.get(
+    "MRMS_PREFIX", "CONUS/MergedBaseReflectivityQC_00.50"
+)
 DEFAULT_LAYER_NAME = os.environ.get("LAYER_NAME", "radar")
 
 log = get_logger("ingest-mrms-activities")
@@ -65,6 +67,7 @@ class IngestMrmsArgs:
     ingest-mrms CronJob; the radar-composite schedule overrides both
     fields to point at the full-atmosphere composite product.
     """
+
     mrms_prefix: str = DEFAULT_MRMS_PREFIX
     layer_name: str = DEFAULT_LAYER_NAME
 
@@ -159,7 +162,11 @@ def _download_and_decode_sync(
         lon_row = np.where(lon_row > 180.0, lon_row - 360.0, lon_row)
         if hasattr(data, "filled"):
             data = data.filled(np.nan)
-        return data.astype(np.float32), lat_col.astype(np.float64), lon_row.astype(np.float64)
+        return (
+            data.astype(np.float32),
+            lat_col.astype(np.float64),
+            lon_row.astype(np.float64),
+        )
     finally:
         gz_path.unlink(missing_ok=True)
         grib_path.unlink(missing_ok=True)
@@ -187,7 +194,10 @@ def _render_all_palettes(
     layer_name: str,
 ) -> list[str]:
     """Sample values once per tile, then publish every palette."""
-    out_dirs = {pname: str(tile_base / layer_name / pname / timestamp) for pname in palette_tables}
+    out_dirs = {
+        pname: str(tile_base / layer_name / pname / timestamp)
+        for pname in palette_tables
+    }
     result = render_frame_palettes(
         data,
         lats_arr,
@@ -197,6 +207,7 @@ def _render_all_palettes(
         ZOOM_LEVELS,
         nodata_value=None,
         min_valid_weight=1.0,
+        renderer=os.environ.get("TILE_RENDERER", "legacy"),
     )
     return result.rendered_palettes
 
@@ -297,7 +308,9 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
 
     def _grids() -> None:
         try:
-            write_grid(inp.layer_name, timestamp, grid_data, lats_arr, lons_arr, unit="dBZ")
+            write_grid(
+                inp.layer_name, timestamp, grid_data, lats_arr, lons_arr, unit="dBZ"
+            )
         except Exception as exc:  # noqa: BLE001
             log.warning("grid_dump_failed", extra={"err": str(exc)})
         # Only base reflectivity owns storms.json. The composite schedule runs
@@ -305,11 +318,19 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
         # timestamps, making motion vectors jump between products.
         if inp.layer_name == "radar":
             try:
-                write_storms_json(Path(STATE_DIR), grid_data, lats_arr, lons_arr, timestamp)
+                write_storms_json(
+                    Path(STATE_DIR), grid_data, lats_arr, lons_arr, timestamp
+                )
             except Exception as exc:  # noqa: BLE001
                 log.warning("storm_detect_failed", extra={"err": str(exc)})
 
-    activity.heartbeat({"phase": "render", "timestamp": timestamp, "palettes": list(palette_tables.keys())})
+    activity.heartbeat(
+        {
+            "phase": "render",
+            "timestamp": timestamp,
+            "palettes": list(palette_tables.keys()),
+        }
+    )
 
     def _render_all() -> list[str]:
         # One in-process pass samples physical values once per tile; every
@@ -400,7 +421,14 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
             "kind": "observation",
         },
     )
-    log.info("frame_done", extra={"layer": inp.layer_name, "timestamp": timestamp, "duration_s": round(duration, 1)})
+    log.info(
+        "frame_done",
+        extra={
+            "layer": inp.layer_name,
+            "timestamp": timestamp,
+            "duration_s": round(duration, 1),
+        },
+    )
 
     return ProcessFrameResult(
         key=inp.key,
@@ -447,6 +475,8 @@ async def mrms_cleanup(inp: CleanupInput) -> CleanupResult:
                     shutil.rmtree(ts_dir, ignore_errors=True)
                     removed += 1
         grids_removed = cleanup_old_grids()
-        return CleanupResult(tile_dirs_removed=removed, grid_files_removed=grids_removed)
+        return CleanupResult(
+            tile_dirs_removed=removed, grid_files_removed=grids_removed
+        )
 
     return await asyncio.to_thread(_go)
