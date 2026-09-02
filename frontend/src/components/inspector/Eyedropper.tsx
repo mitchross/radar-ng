@@ -5,9 +5,10 @@
  * temperature/wind, shows "—" otherwise.
  */
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Marker } from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { DEFAULTS } from "../../lib/constants";
 import { cumulus } from "../../lib/cumulusTheme";
 import { formatReading, inspectPoint, type InspectReading } from "../../lib/inspector";
 import type { LayerType } from "../../types/weather";
@@ -86,15 +87,20 @@ export function EyedropperPin({ pinned, onClear }: Props) {
     };
   }, [pinned, activeLayer, frameTimestamp, serverUrl, isPlaying]);
 
-  if (!pinned) return null;
+  // Always mounted: the Marker is a native child of <Map>, so it hides (opacity 0,
+  // parked at the last pin) instead of unmounting to keep the child count constant.
+  const lastPinRef = useRef<PinnedPoint>({ lat: DEFAULTS.LATITUDE, lon: DEFAULTS.LONGITUDE });
+  if (pinned) lastPinRef.current = pinned;
+  const shown = pinned ?? lastPinRef.current;
+  const hidden = pinned == null;
 
   const readout = loading ? "…" : reading ? formatReading(activeLayer, reading) : "\u2014";
   const sourceLabel = reading?.source === "grid" ? "Grid" : "N/A";
 
   return (
     <>
-      <Marker lngLat={[pinned.lon, pinned.lat]} anchor="bottom">
-        <View style={styles.markerWrap} pointerEvents="none">
+      <Marker lngLat={[shown.lon, shown.lat]} anchor="bottom">
+        <View style={[styles.markerWrap, hidden ? styles.hidden : null]} pointerEvents="none">
           <View style={styles.marker}>
             <Text style={styles.markerText}>{readout}</Text>
           </View>
@@ -103,7 +109,12 @@ export function EyedropperPin({ pinned, onClear }: Props) {
         </View>
       </Marker>
 
-      <View style={styles.panel} pointerEvents="box-none">
+      <View
+        style={[styles.panel, hidden ? styles.hidden : null]}
+        pointerEvents={hidden ? "none" : "box-none"}
+        accessibilityElementsHidden={hidden}
+        importantForAccessibility={hidden ? "no-hide-descendants" : "auto"}
+      >
         <View style={styles.panelHeader}>
           <Text style={styles.panelKicker}>{LAYER_LABEL[activeLayer]}</Text>
           <TouchableOpacity onPress={onClear} hitSlop={8} style={styles.closeBtn}>
@@ -113,7 +124,7 @@ export function EyedropperPin({ pinned, onClear }: Props) {
         <Text style={styles.panelValue}>{readout}</Text>
         <View style={styles.panelMeta}>
           <Text style={styles.panelMetaText}>
-            {pinned.lat.toFixed(4)}, {pinned.lon.toFixed(4)}
+            {shown.lat.toFixed(4)}, {shown.lon.toFixed(4)}
           </Text>
           <Text style={styles.panelSource}>{sourceLabel}</Text>
         </View>
@@ -125,6 +136,7 @@ export function EyedropperPin({ pinned, onClear }: Props) {
 const MARKER_BG = "rgba(139,124,255,0.95)";
 
 const styles = StyleSheet.create({
+  hidden: { opacity: 0 },
   markerWrap: { alignItems: "center" },
   marker: {
     backgroundColor: MARKER_BG,

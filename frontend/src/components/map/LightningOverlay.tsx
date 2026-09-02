@@ -2,16 +2,22 @@
  * Lightning strikes overlay — renders the rolling 15-min buffer from the
  * self-hosted backend as yellow/white dots on the map. Fresh strikes (<60s)
  * pulse, older strikes fade toward transparent.
+ *
+ * Always mounted; renders an empty collection (and stops polling) while
+ * `extrasVisible` is off so the map's native child count never churns.
  */
 import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useLightning } from "../../hooks/useLightning";
+import { useWeatherStore } from "../../stores/useWeatherStore";
+import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 export function LightningOverlay() {
-  const { data } = useLightning();
-  if (!data || data.features.length === 0) return null;
+  const extrasVisible = useWeatherStore((s) => s.extrasVisible);
+  const { data } = useLightning(extrasVisible);
+  const geojson = extrasVisible && data ? (data as GeoJSON.FeatureCollection) : EMPTY_FEATURE_COLLECTION;
 
   return (
-    <GeoJSONSource id="lightning-src" data={data as GeoJSON.FeatureCollection}>
+    <GeoJSONSource id="lightning-src" data={geojson}>
       {/* Halo (soft pulse) for fresh strikes */}
       <Layer
         type="circle"

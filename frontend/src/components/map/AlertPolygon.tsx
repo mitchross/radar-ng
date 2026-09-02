@@ -9,7 +9,9 @@
  * Severity still drives color (Extreme/Severe/Moderate/Minor).
  */
 import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
+import { useMemo } from "react";
 import { useAlerts } from "../../hooks/useAlerts";
+import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 const SEVERITY_FILL: Record<string, string> = {
   Extreme: "rgba(211, 47, 47, 0.30)",
@@ -35,26 +37,26 @@ function classifyEvent(event: string): "warning" | "watch" | "advisory" | "state
   return "statement";
 }
 
+// Always mounted (empty collection when there are no alerts) — see lib/emptyGeoJSON.
 export function AlertPolygon() {
   const { data: alertData } = useAlerts();
 
-  if (!alertData || alertData.features.length === 0) return null;
-
-  const alertsWithGeometry = alertData.features.filter((f) => f.geometry !== null);
-  if (alertsWithGeometry.length === 0) return null;
-
-  const geojson: GeoJSON.FeatureCollection = {
-    type: "FeatureCollection",
-    features: alertsWithGeometry.map((alert) => ({
-      type: "Feature" as const,
-      geometry: alert.geometry!,
-      properties: {
-        severity: alert.properties.severity,
-        event: alert.properties.event,
-        kind: classifyEvent(alert.properties.event),
-      },
-    })),
-  };
+  const geojson = useMemo<GeoJSON.FeatureCollection>(() => {
+    const withGeometry = alertData?.features.filter((f) => f.geometry !== null) ?? [];
+    if (withGeometry.length === 0) return EMPTY_FEATURE_COLLECTION;
+    return {
+      type: "FeatureCollection",
+      features: withGeometry.map((alert) => ({
+        type: "Feature" as const,
+        geometry: alert.geometry!,
+        properties: {
+          severity: alert.properties.severity,
+          event: alert.properties.event,
+          kind: classifyEvent(alert.properties.event),
+        },
+      })),
+    };
+  }, [alertData]);
 
   const fillOpacityByKind = [
     "match",

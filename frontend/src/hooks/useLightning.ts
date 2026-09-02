@@ -16,12 +16,13 @@ interface LightningCollection {
   retention_min?: number;
 }
 
-/** Rolling 15-min lightning GeoJSON from the self-hosted server. */
-export function useLightning() {
+/** Rolling 15-min lightning GeoJSON from the self-hosted server. `enabled` gates polling (extras toggle). */
+export function useLightning(enabled = true) {
   const serverUrl = useWeatherStore((s) => s.serverUrl);
 
   return useQuery({
     queryKey: ["lightning", serverUrl],
+    enabled,
     queryFn: ({ signal }): Promise<LightningCollection> =>
       trace("api.fetchLightning", async (span) => {
         const r = await fetchWithTimeout(`${serverUrl}/api/lightning`, {}, signal);

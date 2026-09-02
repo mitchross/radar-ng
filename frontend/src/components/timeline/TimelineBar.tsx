@@ -42,6 +42,7 @@ export function TimelineBar() {
   const togglePlaying = useWeatherStore((s) => s.togglePlaying);
   const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
+  const setPlaybackWindow = useWeatherStore((s) => s.setPlaybackWindow);
 
   const [zoom, setZoom] = useState<Zoom>("1h");
 
@@ -64,6 +65,14 @@ export function TimelineBar() {
     if (e < s) e = s;
     return { startIdx: s, endIdx: e };
   }, [frames, zoom, nowSec]);
+
+  // Publish the zoom window so the raster carousel prefetches the frames playback
+  // will visit (incl. the loop wrap). Cleared on unmount so it can't go stale.
+  useEffect(() => {
+    if (frames.length === 0) return;
+    setPlaybackWindow({ start: startIdx, end: endIdx });
+  }, [startIdx, endIdx, frames.length, setPlaybackWindow]);
+  useEffect(() => () => setPlaybackWindow(null), [setPlaybackWindow]);
 
   // Snap current frame into zoom window when switching
   useEffect(() => {

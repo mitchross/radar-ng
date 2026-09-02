@@ -2,16 +2,22 @@
  * Storm cell markers — red/orange diamonds at the centroid of each
  * connected-component region ≥40dBZ in the live MRMS field. Size scales by
  * area, color by peak intensity.
+ *
+ * Always mounted; renders an empty collection (and stops polling) while
+ * `extrasVisible` is off so the map's native child count never churns.
  */
 import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useStormCells } from "../../hooks/useStormCells";
+import { useWeatherStore } from "../../stores/useWeatherStore";
+import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 export function StormCellsOverlay() {
-  const { data } = useStormCells();
-  if (!data || data.features.length === 0) return null;
+  const extrasVisible = useWeatherStore((s) => s.extrasVisible);
+  const { data } = useStormCells(extrasVisible);
+  const geojson = extrasVisible && data ? (data as GeoJSON.FeatureCollection) : EMPTY_FEATURE_COLLECTION;
 
   return (
-    <GeoJSONSource id="storms-src" data={data as GeoJSON.FeatureCollection}>
+    <GeoJSONSource id="storms-src" data={geojson}>
       {/* Halo — soft glow sized by area_km2 */}
       <Layer
         type="circle"

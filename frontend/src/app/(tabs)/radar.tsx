@@ -42,7 +42,6 @@ export default function RadarScreen() {
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
-  const extrasVisible = useWeatherStore((s) => s.extrasVisible);
 
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
   const [selectedTropical, setSelectedTropical] = useState<TropicalStormDetails | null>(null);
@@ -73,14 +72,14 @@ export default function RadarScreen() {
         {activeLayer === "cloud" && <WeatherLayerOverlay layerId="cloud" opacity={0.65} />}
         {activeLayer === "air-quality" && <WeatherLayerOverlay layerId="air-quality" opacity={0.75} />}
         {activeLayer === "ozone" && <WeatherLayerOverlay layerId="ozone" opacity={0.75} />}
+        {/* Always mounted: each overlay renders an empty collection / hidden pin when
+            it has nothing to show, so the map's native child count never churns. */}
         <AlertPolygon />
         <TropicalOverlay onSelect={setSelectedTropical} />
-        {/* Storm-cell + lightning dots are noisy for casual users.
-            Gated behind extrasVisible (off by default). */}
-        {extrasVisible && <StormCellsOverlay />}
-        {extrasVisible && <LightningOverlay />}
+        <StormCellsOverlay />
+        <LightningOverlay />
         <LayerLocationMarker />
-        {pinned && <EyedropperPin pinned={pinned} onClear={() => setPinned(null)} />}
+        <EyedropperPin pinned={pinned} onClear={() => setPinned(null)} />
       </WeatherMap>
 
       {/* Top safe area — close button only. Alerts live on the Alerts tab. */}

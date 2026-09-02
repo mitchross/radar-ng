@@ -94,6 +94,21 @@ describe("useWeatherStore", () => {
     expect(setString).toHaveBeenCalledWith("locationMode", "device");
   });
 
+  it("starts with no playback window and publishes one from the timeline", () => {
+    expect(useWeatherStore.getState().playbackWindow).toBeNull();
+    useWeatherStore.getState().setPlaybackWindow({ start: 3, end: 9 });
+    expect(useWeatherStore.getState().playbackWindow).toEqual({ start: 3, end: 9 });
+    useWeatherStore.getState().setPlaybackWindow(null);
+    expect(useWeatherStore.getState().playbackWindow).toBeNull();
+  });
+
+  it("setPlaybackWindow keeps the same reference for an equal window (no re-render churn)", () => {
+    useWeatherStore.getState().setPlaybackWindow({ start: 0, end: 5 });
+    const first = useWeatherStore.getState().playbackWindow;
+    useWeatherStore.getState().setPlaybackWindow({ start: 0, end: 5 });
+    expect(useWeatherStore.getState().playbackWindow).toBe(first);
+  });
+
   it("setActiveLayer changes active layer", () => {
     useWeatherStore.getState().setActiveLayer("temperature");
     expect(useWeatherStore.getState().activeLayer).toBe("temperature");

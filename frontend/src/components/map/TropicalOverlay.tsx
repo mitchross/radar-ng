@@ -6,6 +6,7 @@
  */
 import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useTropical } from "../../hooks/useTropical";
+import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 export interface TropicalStormDetails {
   stormId: string;
@@ -22,12 +23,15 @@ export function TropicalOverlay({
   onSelect?: (storm: TropicalStormDetails) => void;
 }) {
   const { data } = useTropical();
-  if (!data || data.features.length === 0) return null;
+  // Always mounted (empty collection off-season) — see lib/emptyGeoJSON.
+  const geojson = data && data.features.length > 0
+    ? (data as GeoJSON.FeatureCollection)
+    : EMPTY_FEATURE_COLLECTION;
 
   return (
     <GeoJSONSource
       id="tropical-src"
-      data={data as GeoJSON.FeatureCollection}
+      data={geojson}
       hitbox={{ top: 28, right: 28, bottom: 28, left: 28 }}
       onPress={(event) => {
         event.stopPropagation();
