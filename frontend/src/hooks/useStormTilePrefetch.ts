@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchStormPrefetchPlan } from "../lib/api";
 import { logEvent } from "../lib/telemetry";
+import { telemetryErrorType } from "../lib/telemetryPrivacy";
 import { useWeatherStore } from "../stores/useWeatherStore";
 
 const PREFETCH_ZOOM = 6;
@@ -74,7 +75,7 @@ export function useStormTilePrefetch() {
               () => {},
               (_pack, error) => {
                 logEvent("warn", "storm tile prefetch failed", {
-                  "prefetch.error": error.message,
+                  "error.type": telemetryErrorType(error),
                   "prefetch.lead_minutes": region.lead_minutes,
                 });
               },
@@ -92,7 +93,7 @@ export function useStormTilePrefetch() {
 
     syncNativePacks().catch((error: unknown) => {
       logEvent("warn", "storm tile prefetch unavailable", {
-        "prefetch.error": error instanceof Error ? error.message : String(error),
+        "error.type": telemetryErrorType(error),
       });
     });
     return () => {

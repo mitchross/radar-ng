@@ -33,13 +33,49 @@ describe("useWeatherStore", () => {
     expect(setString).toHaveBeenCalledWith("appearanceMode", "dark");
   });
 
-  it("setFrames updates frames", () => {
+  it("publishes frames and selected index in one coherent store update", () => {
     const frames = [
       { time: 1000, timestamp: "1970-01-01T00:16:40Z", path: "/a" },
       { time: 2000, timestamp: "1970-01-01T00:33:20Z", path: "/b" },
     ];
-    useWeatherStore.getState().setFrames(frames);
+    const snapshots: Array<{ frameCount: number; currentFrameIndex: number }> = [];
+    const unsubscribe = useWeatherStore.subscribe((state) => {
+      snapshots.push({ frameCount: state.frames.length, currentFrameIndex: state.currentFrameIndex });
+    });
+
+    useWeatherStore.getState().setFrameTimeline(frames, 1);
+    unsubscribe();
+
     expect(useWeatherStore.getState().frames).toEqual(frames);
+    expect(useWeatherStore.getState().currentFrameIndex).toBe(1);
+    expect(snapshots).toEqual([{ frameCount: 2, currentFrameIndex: 1 }]);
+  });
+
+  it("preserves selected wall-clock time when a manifest refresh shifts indices", () => {
+    const before = [
+      { time: 1000, timestamp: "1970-01-01T00:16:40Z", path: "/a" },
+      { time: 2000, timestamp: "1970-01-01T00:33:20Z", path: "/b" },
+    ];
+    const after = [
+      { time: 500, timestamp: "1970-01-01T00:08:20Z", path: "/new" },
+      ...before,
+    ];
+    useWeatherStore.getState().setFrameTimeline(before, 0);
+    useWeatherStore.getState().setFrameTimeline(after, 2);
+
+    expect(useWeatherStore.getState().currentFrameIndex).toBe(1);
+    expect(useWeatherStore.getState().frames[1].time).toBe(1000);
+  });
+
+  it("resets the selected index when a manifest publishes no frames", () => {
+    useWeatherStore.getState().setFrameTimeline(
+      [{ time: 1000, timestamp: "1970-01-01T00:16:40Z", path: "/a" }],
+      0,
+    );
+    useWeatherStore.getState().setFrameTimeline([], -1);
+
+    expect(useWeatherStore.getState().frames).toEqual([]);
+    expect(useWeatherStore.getState().currentFrameIndex).toBe(-1);
   });
 
   it("togglePlaying flips isPlaying", () => {

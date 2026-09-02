@@ -118,6 +118,18 @@ describe("fetchSelfHostedManifest", () => {
     expect(result).toEqual(manifest);
     expect(calledUrl()).toBe("http://localhost:8080/api/manifest.json");
   });
+
+  it("rejects malformed network manifests", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ layers: { radar: { timestamps: "not-an-array" } } }),
+    });
+
+    await expect(fetchSelfHostedManifest("http://localhost:8080")).rejects.toThrow(
+      "Invalid radar manifest",
+    );
+  });
 });
 
 describe("fetchStormPrefetchPlan", () => {

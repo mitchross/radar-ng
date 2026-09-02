@@ -1,5 +1,6 @@
 import { API, SELF_HOSTED } from "./constants";
 import { trace } from "./telemetry";
+import { parseSelfHostedManifest } from "./manifest";
 import type {
   OpenMeteoResponse,
   RadarNowcastResponse,
@@ -48,7 +49,6 @@ export async function fetchForecast(
       if (!res.ok) throw new Error(`Forecast error: ${res.status}`);
       return res.json();
     },
-    { "geo.lat": lat, "geo.lon": lon },
   );
 }
 
@@ -70,7 +70,6 @@ export async function fetchRadarNowcast(
       span.setAttribute("radar.nowcast.status", body.status);
       return body;
     },
-    { "geo.lat": lat, "geo.lon": lon },
   );
 }
 
@@ -92,7 +91,6 @@ export async function fetchAlerts(
       if (!res.ok) throw new Error(`NWS API error: ${res.status}`);
       return res.json();
     },
-    { "geo.lat": lat, "geo.lon": lon },
   );
 }
 
@@ -104,7 +102,7 @@ export async function fetchSelfHostedManifest(
     const res = await fetchWithTimeout(`${serverUrl}${SELF_HOSTED.MANIFEST_PATH}`, {}, signal);
     span.setAttribute("http.status_code", res.status);
     if (!res.ok) throw new Error(`Tile server error: ${res.status}`);
-    return res.json();
+    return parseSelfHostedManifest(await res.json());
   });
 }
 

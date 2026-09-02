@@ -14,6 +14,7 @@ import {
 } from "../lib/persistedPrefs";
 import type { AppearanceMode } from "../theme/weatherClearTheme";
 import type { PlaybackWindow } from "../lib/radarCarousel";
+import { resnapFrameIndex } from "../lib/frameIndex";
 
 interface WeatherState {
   frames: RadarFrame[];
@@ -43,7 +44,7 @@ interface WeatherState {
   viewMode: ViewMode;
   appearanceMode: AppearanceMode;
 
-  setFrames: (frames: RadarFrame[]) => void;
+  setFrameTimeline: (frames: RadarFrame[], fallbackIndex: number) => void;
   setCurrentFrameIndex: (index: number) => void;
   setIsPlaying: (playing: boolean) => void;
   togglePlaying: () => void;
@@ -132,7 +133,20 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   viewMode: parseViewMode(getString("viewMode", "simple")),
   appearanceMode: parseAppearanceMode(getString("appearanceMode", "system")),
 
-  setFrames: (frames) => set({ frames }),
+  setFrameTimeline: (frames, fallbackIndex) =>
+    set((state) => {
+      if (frames.length === 0) return { frames, currentFrameIndex: -1 };
+
+      const previousTime = state.frames[state.currentFrameIndex]?.time ?? null;
+      const preservedIndex = previousTime === null
+        ? -1
+        : resnapFrameIndex(frames, state.currentFrameIndex, previousTime);
+      const safeFallback = fallbackIndex >= 0 && fallbackIndex < frames.length ? fallbackIndex : 0;
+      return {
+        frames,
+        currentFrameIndex: preservedIndex === -1 ? safeFallback : preservedIndex,
+      };
+    }),
   setCurrentFrameIndex: (index) => set({ currentFrameIndex: index }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   togglePlaying: () => set((s) => ({ isPlaying: !s.isPlaying })),

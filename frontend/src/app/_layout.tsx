@@ -4,6 +4,7 @@ import "../lib/animatedFix";
 // Telemetry must be imported next so OTEL providers are registered before
 // any component code runs fetch() or starts a span.
 import { logEvent } from "../lib/telemetry";
+import { telemetryErrorType, telemetryQueryFamily } from "../lib/telemetryPrivacy";
 
 import { Stack } from "expo-router";
 import {
@@ -48,14 +49,15 @@ const queryClient = new QueryClient({
   },
   queryCache: new QueryCache({
     onError: (err, query) => {
-      logEvent("error", `query failed: ${(err as Error).message}`, {
-        "query.key": JSON.stringify(query.queryKey),
+      logEvent("error", "query failed", {
+        "query.family": telemetryQueryFamily(query.queryKey),
+        "error.type": telemetryErrorType(err),
       });
     },
   }),
   mutationCache: new MutationCache({
     onError: (err) => {
-      logEvent("error", `mutation failed: ${(err as Error).message}`);
+      logEvent("error", "mutation failed", { "error.type": telemetryErrorType(err) });
     },
   }),
 });
