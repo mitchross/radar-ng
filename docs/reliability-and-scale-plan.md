@@ -122,6 +122,26 @@ Why each box:
   release with 32–64 shards and a fresh co-located Postgres is a cheap
   migration because all durable state lives outside Temporal history.
 
+### Where the bytes live (and what a node needs)
+
+Radar tiles are small. The big files are the static basemaps, and they belong
+on the NAS, not in Longhorn on one node.
+
+| Data | Size | Home after Phase 3 | Per-node disk |
+|---|---|---|---|
+| Radar/nowcast/HRRR/AQ tiles | ~7 GiB, 4–12 h retention, self-cleaning | RustFS bucket on the NAS | tile-server cache only, ≤ 10 GiB, disposable |
+| Grids | ~7 GiB today, ~1 GiB after keep-last-4 | RustFS bucket | none |
+| Manifest, state, alerts, push tokens | < 100 MiB | Postgres (kopiur-backed) | Longhorn, 10 Gi |
+| Open-Meteo model data | ~6 GiB rolling | Longhorn RWO (the writer needs ext4; NFS fails with errno 95) | 30 Gi on one node, as today |
+| CONUS basemap PMTiles | up to 50 GiB, static | NAS share (same static-PV pattern as VersaTiles), or retire it and use the VersaTiles planet already on the NAS | none |
+| VersaTiles planet | 62 GiB, static | already on the NAS over SMB | none |
+
+No node needs more than ~40 Gi for radar-ng (Postgres + Open-Meteo + a tile
+cache), and only one node holds the Open-Meteo volume. The NAS holds
+everything large. Failure mode: NAS down → new frames cannot publish and the
+tile-servers serve what they have cached; that is the same blast radius as
+today's single node, minus the part where serving also dies.
+
 Bridge option, not the destination: switch the `tiles` PVC to Longhorn RWX so
 several tile-servers can read it from other nodes with zero code change. It
 adds an NFS share-manager as a new single point of failure and puts NFS
@@ -227,6 +247,11 @@ frame < 10 s, nowcast run < 90 s, worker CPU halves.
    roles that only write to S3/Postgres lose their `podAffinity` and schedule
    anywhere.
 6. Push tokens and alert state move to Postgres; the `alerts` role runs 2 replicas.
+7. Basemap: move the PMTiles archive to the NAS share (bootstrap Job writes
+   there once, marker file skips re-download, same as VersaTiles) so the
+   `pmtiles` Longhorn volume and the `basemap`↔Job co-location go away.
+   Decide whether the Protomaps CONUS extract is still needed next to the
+   VersaTiles planet.
 
 Storage model after this phase: Longhorn holds Postgres (10 Gi, kopiur-backed)
 and the Open-Meteo data volume; RustFS holds every tile and grid; nothing in
