@@ -5,10 +5,13 @@ delayed run is picked up promptly). OverlapPolicy.SKIP guards against a
 slow run piling up while a long forecast pass is still in flight.
 
 Pipeline:
-  1. Find latest available HRRR run (HEAD f01 file)
-  2. If new (not in ProcessedSet): process forecast hours 1..horizon
-     (18 default, 48 for 00z/06z/12z/18z extended runs)
-  3. Mark run processed
+  1. Find latest available HRRR run (HEAD f01 file), or the run we already
+     published partially if it is still young enough to finish
+  2. If not marked processed: process forecast hours 1..horizon
+     (18 default, 48 for 00z/06z/12z/18z extended runs). Hours already on
+     disk return immediately; hours NOAA hasn't uploaded yet come back empty.
+  3. Publish the consecutive f01.. prefix (`complete: false` until it spans
+     the horizon); mark the run processed only once it is complete
   4. Cleanup old HRRR-layer tiles + grids
 """
 
@@ -33,11 +36,18 @@ with workflow.unsafe.imports_passed_through():
         hrrr_mark_processed,
         hrrr_publish_run,
         hrrr_process_forecast_hour,
+        publishable_prefix,
     )
 
 
 RETENTION_HOURS = 12
-FORECAST_CONCURRENCY = 8
+# Whole-CONUS pyramids for 3 palettes per hour; 4 keeps the render pool from starving the
+# worker's other activities (the legacy single-pod worker has 4 activity slots).
+FORECAST_CONCURRENCY = 4
+# One hour = ~15 s subset download + ~1-3 min render. Already-rendered hours return in ms.
+HOUR_START_TO_CLOSE = timedelta(minutes=8)
+HOUR_SCHEDULE_TO_CLOSE = timedelta(minutes=12)
+HOUR_HEARTBEAT_TIMEOUT = timedelta(seconds=90)
 
 _DEFAULT_RETRY = RetryPolicy(
     initial_interval=timedelta(seconds=1),
@@ -45,11 +55,13 @@ _DEFAULT_RETRY = RetryPolicy(
     maximum_interval=timedelta(seconds=100),
     maximum_attempts=5,
 )
+# Missing hours are not errors (the activity returns empty, no retry), so two
+# attempts only cover genuine transport/render faults.
 _FORECAST_RETRY = RetryPolicy(
     initial_interval=timedelta(seconds=2),
     backoff_coefficient=2.0,
     maximum_interval=timedelta(seconds=120),
-    maximum_attempts=3,
+    maximum_attempts=2,
 )
 
 
@@ -61,6 +73,7 @@ class IngestHrrrResult:
     cleanup: HrrrCleanupResult | None = None
     layers_per_hour: list[list[str]] = field(default_factory=list)
     published_layers: list[str] = field(default_factory=list)
+    complete: bool = False
 
 
 @workflow.defn(name="IngestHrrrWorkflow")
@@ -100,20 +113,17 @@ class IngestHrrrWorkflow:
                 try:
                     return await workflow.execute_activity(
                         hrrr_process_forecast_hour, args=[find.run_id, fhr],
-                        start_to_close_timeout=timedelta(minutes=20),
-                        # Total budget across retries + queue wait. Without it,
-                        # 3 × 20-min attempts can pin one run while the SKIP
-                        # overlap policy drops every newer trigger — same
-                        # failure mode fixed in ingest_mrms.
-                        schedule_to_close_timeout=timedelta(minutes=30),
-                        heartbeat_timeout=timedelta(seconds=180),
+                        start_to_close_timeout=HOUR_START_TO_CLOSE,
+                        # Total budget across retries + queue wait, so a stuck hour
+                        # cannot pin the run while OverlapPolicy.SKIP drops newer fires.
+                        schedule_to_close_timeout=HOUR_SCHEDULE_TO_CLOSE,
+                        heartbeat_timeout=HOUR_HEARTBEAT_TIMEOUT,
                         retry_policy=_FORECAST_RETRY,
                     )
                 except ActivityError:
-                    # One sick forecast hour must not fail the run and cancel
-                    # its siblings mid-render (asyncio.gather propagates the
-                    # first error). The gap self-heals: the next HRRR run
-                    # (≤1 h away) supersedes this valid time anyway.
+                    # One sick forecast hour must not fail the run and cancel its
+                    # siblings mid-render (asyncio.gather propagates the first error).
+                    # The next 15-min fire re-polls the same run and only that hour re-renders.
                     workflow.logger.warning(
                         "HRRR f%02d failed after retries for run %s — continuing without it",
                         fhr, find.run_id,
@@ -123,16 +133,16 @@ class IngestHrrrWorkflow:
         results = await asyncio.gather(*(process_hour(fhr) for fhr in range(1, horizon + 1)))
         results = sorted(results, key=lambda r: r.fhr)
         layers_per_hour = [r.rendered_layers for r in results]
-        succeeded = sum(1 for r in results if r.rendered_layers)
+        # Progressive publication: advertise f01..fN as far as reflectivity exists
+        # consecutively. NOAA uploads hours over ~30-60 min; a gap or a pending
+        # hour ends the prefix and the next fire extends it.
+        prefix = len(publishable_prefix(results))
+        complete = prefix == horizon
 
-        if succeeded != horizon or any(
-            "radar-hrrr" not in result.rendered_layers for result in results
-        ):
-            # Never expose a mixed or partial run. Immutable run paths can be
-            # retried safely; the prior complete manifest remains live.
-            workflow.logger.error(
-                "HRRR run %s incomplete: %d/%d reflectivity hours; not publishing",
-                find.run_id, succeeded, horizon,
+        if prefix == 0:
+            workflow.logger.info(
+                "HRRR run %s has no publishable hours yet (f01 pending); not publishing",
+                find.run_id,
             )
             cleanup = await self._cleanup()
             return IngestHrrrResult(
@@ -163,20 +173,29 @@ class IngestHrrrWorkflow:
                 layers_per_hour=layers_per_hour,
             )
 
-        await workflow.execute_activity(
-            hrrr_mark_processed, find.run_id,
-            start_to_close_timeout=timedelta(seconds=30),
-            retry_policy=_DEFAULT_RETRY,
-        )
+        if complete:
+            # Only a complete run is "processed"; a partial one is re-polled by
+            # the next fire (the finder prefers it while it is < 3 h old).
+            await workflow.execute_activity(
+                hrrr_mark_processed, find.run_id,
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=_DEFAULT_RETRY,
+            )
+        else:
+            workflow.logger.info(
+                "HRRR run %s published partially: %d/%d hours; will extend on the next fire",
+                find.run_id, prefix, horizon,
+            )
 
         cleanup = await self._cleanup()
         return IngestHrrrResult(
             run_id=find.run_id,
             skipped_already_processed=False,
-            forecast_hours_processed=succeeded,
+            forecast_hours_processed=prefix,
             cleanup=cleanup,
             layers_per_hour=layers_per_hour,
             published_layers=published_layers,
+            complete=complete,
         )
 
     async def _cleanup(self) -> HrrrCleanupResult:

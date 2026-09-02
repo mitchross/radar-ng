@@ -38,6 +38,8 @@ TMP_ROOT = Path(os.environ.get("HRRR_TMP_ROOT", "/tmp/hrrr_work"))
 FORECAST_HOURS = int(os.environ.get("FORECAST_HOURS", "18"))
 EXTENDED_FORECAST_HOURS = int(os.environ.get("EXTENDED_FORECAST_HOURS", "48"))
 EXTENDED_RUNS = {0, 6, 12, 18}
+# Keep polling a partially published run this long before a newer run may supersede it.
+INCOMPLETE_RUN_MAX_AGE = timedelta(hours=3)
 # HRRR is a 3 km model. z6 is its honest display ceiling; higher zooms were
 # interpolated pixels and dominated the forecast fanout.
 ZOOM_LEVELS = [4, 5, 6]
@@ -184,6 +186,30 @@ def _head_status(client: httpx.Client, url: str) -> int:
     return client.head(url, timeout=10).raise_for_status().status_code  # type: ignore[union-attr]
 
 
+def _horizon_for_run(run_id: str) -> int:
+    _, run_hour = run_id.split("_")
+    return EXTENDED_FORECAST_HOURS if int(run_hour) in EXTENDED_RUNS else FORECAST_HOURS
+
+
+def _run_init_time(run_id: str) -> datetime:
+    return datetime.strptime(run_id, "%Y%m%d_%H").replace(tzinfo=timezone.utc)
+
+
+def _resume_incomplete_run(manifest: dict, now: datetime) -> str | None:
+    """Return the published-but-incomplete radar-hrrr run if it is still worth finishing."""
+    layer = manifest.get("layers", {}).get("radar-hrrr") or {}
+    run_id = layer.get("run_id")
+    if not run_id or layer.get("complete", True):
+        return None
+    try:
+        issued = _run_init_time(str(run_id))
+    except ValueError:
+        return None
+    if now - issued > INCOMPLETE_RUN_MAX_AGE:
+        return None
+    return str(run_id)
+
+
 def _find_latest_run_sync(client: httpx.Client) -> str | None:
     now = datetime.now(timezone.utc)
     for hours_ago in range(0, 12):
@@ -291,8 +317,12 @@ def _download_subset_sync(
     try:
         records = _get_idx_sync(client, idx_url)
     except httpx.HTTPError:
-        # Full download fallback
+        # No .idx yet (or transport error): fall back to the whole file. A 404 there
+        # means NOAA hasn't uploaded the hour — pending, not an error, so no retry.
         resp = client.get(base_url, timeout=300)
+        if resp.status_code == 404:
+            log.info("hour_pending", extra={"run_id": f"{date_str}_{run_hour}", "fhr": fhr})
+            return None
         resp.raise_for_status()
         out = tmp_dir / f"hrrr_f{fhr:02d}.grib2"
         out.write_bytes(resp.content)
@@ -433,9 +463,7 @@ def _render_per_palette(
 
 
 def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_tables: dict[str, dict], tile_base: Path) -> list[str]:
-    date_str, run_hour = run_id.split("_")
-    run_dt = datetime.strptime(f"{date_str}{run_hour}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
-    ts = (run_dt + timedelta(hours=fhr)).isoformat()
+    ts = (_run_init_time(run_id) + timedelta(hours=fhr)).isoformat()
     tile_path = f"runs/{run_id}/{ts}"
     rendered: list[str] = []
 
@@ -542,6 +570,29 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
     return rendered
 
 
+def _required_layers(palette_tables: dict[str, dict]) -> set[str]:
+    """Layers an hour must have on disk before it counts as already rendered."""
+    if ENABLED_LAYERS == {"radar-hrrr"}:
+        return {"radar-hrrr"}
+    return {
+        layer for layer, color_key in LAYER_COLOR_KEYS.items()
+        if any(color_key in tables for tables in palette_tables.values())
+    }
+
+
+def _existing_rendered_layers(tile_base: Path, tile_path: str, palette_tables: dict[str, dict]) -> list[str]:
+    """Layers whose final pyramid exists (non-empty) for every palette that defines them."""
+    existing: list[str] = []
+    for layer, color_key in LAYER_COLOR_KEYS.items():
+        palettes = [name for name, tables in palette_tables.items() if color_key in tables]
+        if not palettes:
+            continue
+        dirs = [tile_base / layer / pname / tile_path for pname in palettes]
+        if all(d.is_dir() and any(d.iterdir()) for d in dirs):
+            existing.append(layer)
+    return existing
+
+
 def _load_palette_tables() -> dict[str, dict]:
     out: dict[str, dict] = {}
     for name in get_palette_names():
@@ -564,6 +615,11 @@ async def hrrr_find_latest_run() -> FindRunResult:
             run_id = _find_latest_run_sync(client)
         if run_id is None:
             return FindRunResult(run_id=None, already_processed=False)
+        # A newer run's f01 must not abandon a run we have half-published; finish it first.
+        resume = _resume_incomplete_run(read_manifest_file(STATE_DIR), datetime.now(timezone.utc))
+        if resume is not None and resume != run_id:
+            log.info("resuming_incomplete_run", extra={"run_id": resume, "latest": run_id})
+            run_id = resume
         state = ProcessedSet(_state_path(), max_entries=200)
         return FindRunResult(run_id=run_id, already_processed=run_id in state)
 
@@ -573,8 +629,7 @@ async def hrrr_find_latest_run() -> FindRunResult:
 @activity.defn(name="hrrr_horizon_for_run")
 async def hrrr_horizon_for_run(run_id: str) -> int:
     """Return forecast horizon (1..N) for the given run."""
-    _, run_hour = run_id.split("_")
-    return EXTENDED_FORECAST_HOURS if int(run_hour) in EXTENDED_RUNS else FORECAST_HOURS
+    return _horizon_for_run(run_id)
 
 
 @activity.defn(name="hrrr_process_forecast_hour")
@@ -584,18 +639,36 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
     palette_tables = _load_palette_tables()
     tile_base = Path(TILE_DIR)
     date_str, run_hour = run_id.split("_")
-    tmp_dir = _current_activity_tmp_dir("hrrr", run_id, f"f{fhr:02d}")
     needed = ["refc"] if ENABLED_LAYERS == {"radar-hrrr"} else list(IDX_MATCHERS.keys())
-    run_dt = datetime.strptime(f"{date_str}{run_hour}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
-    valid_timestamp = (run_dt + timedelta(hours=fhr)).isoformat()
+    valid_timestamp = (_run_init_time(run_id) + timedelta(hours=fhr)).isoformat()
 
+    # Idempotent resume: run paths are immutable, so tiles already on disk ARE the result.
+    # Re-rendering would only be thrown away on EEXIST by render_tiles_atomic.
+    existing = await asyncio.to_thread(
+        _existing_rendered_layers, tile_base, f"runs/{run_id}/{valid_timestamp}", palette_tables
+    )
+    if _required_layers(palette_tables) <= set(existing):
+        log.info("hour_resumed", extra={"run_id": run_id, "fhr": fhr, "rendered": existing})
+        return ForecastHourResult(
+            fhr=fhr,
+            rendered_layers=existing,
+            duration_s=round(time.time() - started, 2),
+            valid_timestamp=valid_timestamp,
+        )
+
+    tmp_dir = _current_activity_tmp_dir("hrrr", run_id, f"f{fhr:02d}")
     activity.heartbeat({"phase": "download", "fhr": fhr})
 
     def _download() -> Path | None:
         with httpx.Client() as client:
             return _download_subset_sync(client, date_str, run_hour, fhr, needed, tmp_dir)
 
-    grib_path = await asyncio.to_thread(_download)
+    # Heartbeat during the download too: the full-file fallback (~130 MB) outlives heartbeat_timeout.
+    grib_path = await run_sync_with_heartbeat(
+        _download,
+        heartbeat_every=30,
+        heartbeat_details=lambda: {"phase": "download", "run_id": run_id, "fhr": fhr},
+    )
     if grib_path is None or not grib_path.exists():
         shutil.rmtree(tmp_dir, ignore_errors=True)
         return ForecastHourResult(
@@ -634,30 +707,42 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
     )
 
 
+def publishable_prefix(results: list[ForecastHourResult]) -> list[ForecastHourResult]:
+    """Longest run of hours f01, f02, ... that all have reflectivity tiles on disk."""
+    by_fhr = {result.fhr: result for result in results}
+    prefix: list[ForecastHourResult] = []
+    fhr = 1
+    while fhr in by_fhr and "radar-hrrr" in by_fhr[fhr].rendered_layers:
+        prefix.append(by_fhr[fhr])
+        fhr += 1
+    return prefix
+
+
 def _publish_hrrr_run_sync(
     run_id: str,
     results: list[ForecastHourResult],
     palette_tables: dict[str, dict],
     *,
     state_dir: str | Path | None = None,
+    horizon: int | None = None,
 ) -> list[str]:
-    """Commit only a complete, consecutive HRRR run to the public manifest."""
-    ordered = sorted(results, key=lambda result: result.fhr)
-    if not ordered or [result.fhr for result in ordered] != list(
-        range(1, len(ordered) + 1)
-    ):
+    """Publish the consecutive f01.. prefix of a run; `complete` flips once it spans the horizon.
+
+    Frames are advertised only for hours whose every palette rendered, so a partial
+    manifest is still never a mixed or half-written one.
+    """
+    ordered = publishable_prefix(results)
+    if not ordered:
         return []
-    if any("radar-hrrr" not in result.rendered_layers for result in ordered):
-        return []
+    horizon = horizon if horizon is not None else _horizon_for_run(run_id)
+    complete = len(ordered) >= horizon
 
     complete_layers = set(ordered[0].rendered_layers)
     for result in ordered[1:]:
         complete_layers.intersection_update(result.rendered_layers)
 
     published: list[str] = []
-    run_issued_at = datetime.strptime(run_id, "%Y%m%d_%H").replace(
-        tzinfo=timezone.utc
-    ).isoformat()
+    run_issued_at = _run_init_time(run_id).isoformat()
     for layer in sorted(complete_layers):
         color_key = LAYER_COLOR_KEYS.get(layer)
         if color_key is None:
@@ -693,7 +778,7 @@ def _publish_hrrr_run_sync(
                 else f"HRRR {layer}",
                 "kind": "model_guidance",
                 "run_id": run_id,
-                "complete": True,
+                "complete": complete,
             },
         )
         published.append(layer)
@@ -704,7 +789,7 @@ def _publish_hrrr_run_sync(
 async def hrrr_publish_run(
     run_id: str, results: list[ForecastHourResult]
 ) -> list[str]:
-    """Publish a coherent immutable model run after every required hour exists."""
+    """Publish whatever consecutive prefix of the run exists; the workflow marks it processed only when complete."""
     palette_tables = await asyncio.to_thread(_load_palette_tables)
     return await asyncio.to_thread(
         _publish_hrrr_run_sync, run_id, results, palette_tables
