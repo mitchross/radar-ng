@@ -76,7 +76,7 @@ Other live facts:
 | MRMS and nowcast | Fresh during the audit | Main observation path is working now |
 | HRRR radar | Missing from the public manifest | Phase 0 has not passed |
 | HRRR failure | Future 404s are now pending, but NOAA reports REFC as `shortName=refc`; the display-name selector silently renders zero layers | Match the stable short name and fail loudly when mandatory REFC is absent |
-| Schedules | Live scheduler `USER_TIMER` tasks for alerts, cleanup, and Open-Meteo were found in Temporal's timer DLQ; a scoped replay restored their future timers | Watchdog preserves continuity but cannot repair a dead-lettered durable timer |
+| Schedules | Live scheduler `USER_TIMER` tasks for alerts, cleanup, and Open-Meteo were found in Temporal's timer DLQ; a scoped replay restored them, followed by uninterrupted five-minute alerts and natural 18:00/19:00 UTC cleanup and Open-Meteo fires | Watchdog preserves continuity but cannot repair a dead-lettered durable timer |
 | Temporal | One history shard, one replica per service, single Postgres | A known control-plane failure domain |
 | Push/workflow API | `DISABLE_WORKFLOW_ROUTES=1`; all workers use `PUSH_DISABLED=1` | Deliberately off; not a production-ready feature |
 | Public manifest | ~119 KB raw, ~4.8 KB through Cloudflare compression, ~0.3 s sample | Bandwidth is not the first problem |
@@ -276,8 +276,10 @@ The 2026-09-02 recovery merged only timer-DLQ messages 0–6, the smallest prefi
 covering Radar's three live stuck schedulers. Five messages remain because the
 next prefix includes two live News schedules. Coordinate that cleanup
 separately; never purge a timer DLQ without reading and matching every entry to
-its current workflow. A healthy gate requires natural schedule fires, not only
-watchdog-triggered runs.
+its current workflow. The repair has already produced uninterrupted natural
+five-minute alert fires and natural cleanup/Open-Meteo fires at 18:00 and 19:00
+UTC without adding a DLQ entry. Keep observing; this proves recovery, not the
+full 24-hour Gate 0 window.
 
 Rollback through a Git revert to the last safe image, but preserve the bounded
 timeouts, catch-up windows, watchdog, and freshness alerts. Never restore the
