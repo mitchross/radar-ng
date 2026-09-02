@@ -8,6 +8,14 @@ export interface RadarStatus {
   tone: RadarStatusTone;
 }
 
+export function radarButtonAccessibilityLabel(
+  status: RadarStatus,
+  headline?: string,
+): string {
+  const detail = headline?.trim();
+  return `Open full radar. ${status.accessibilityLabel}${detail ? `. ${detail}` : ""}`;
+}
+
 interface RadarStatusInput {
   frameTimeSeconds: number | null;
   refreshFailed: boolean;

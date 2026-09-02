@@ -1,4 +1,7 @@
-import { radarStatus } from "../../src/lib/radarStatus";
+import {
+  radarButtonAccessibilityLabel,
+  radarStatus,
+} from "../../src/lib/radarStatus";
 
 const NOW = Date.parse("2026-09-02T21:00:00Z");
 const secondsAgo = (seconds: number) => Math.floor(NOW / 1000) - seconds;
@@ -65,5 +68,18 @@ describe("radarStatus", () => {
       loading: false,
       nowMilliseconds: NOW,
     }).label).toBe("LIVE");
+  });
+
+  it("keeps status in the button label when a weather headline is present", () => {
+    const status = radarStatus({
+      frameTimeSeconds: secondsAgo(30 * 60),
+      refreshFailed: false,
+      loading: false,
+      nowMilliseconds: NOW,
+    });
+
+    expect(radarButtonAccessibilityLabel(status, "Rain arriving soon")).toBe(
+      "Open full radar. Radar updated 30 minutes ago. Rain arriving soon",
+    );
   });
 });

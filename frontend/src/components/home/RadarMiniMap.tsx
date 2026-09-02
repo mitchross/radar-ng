@@ -11,7 +11,10 @@ import { Camera, Layer, Map, RasterSource } from "@maplibre/maplibre-react-nativ
 import { useRouter } from "expo-router";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS } from "../../lib/constants";
-import { radarStatus } from "../../lib/radarStatus";
+import {
+  radarButtonAccessibilityLabel,
+  radarStatus,
+} from "../../lib/radarStatus";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
 import { pickNowFrameIndex, useManifestQuery } from "../../hooks/useManifest";
 import { usePatchedMapStyle } from "../map/WeatherMap";
@@ -127,9 +130,9 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
       </View>
 
       {/* Data freshness badge */}
-      <View style={styles.liveBadge}>
-        <View style={[styles.liveDot, { backgroundColor: statusColor }]} />
-        <Text style={[styles.liveText, { color: statusColor }]}>{status.label}</Text>
+      <View style={styles.statusBadge}>
+        <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+        <Text style={styles.statusText}>{status.label}</Text>
       </View>
 
       {/* footer label */}
@@ -146,7 +149,7 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Open full radar. ${headline ?? status.accessibilityLabel}`}
+        accessibilityLabel={radarButtonAccessibilityLabel(status, headline)}
         style={styles.hitArea}
         onPress={() => router.push("/radar")}
       />
@@ -212,20 +215,22 @@ function createStyles(theme: WeatherClearTheme) {
     borderRadius: 3,
     backgroundColor: theme.colors.accent,
   },
-  liveBadge: {
+  statusBadge: {
     position: "absolute",
     top: 10,
     left: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    // A near-opaque scrim keeps the white status readable over any map tile.
+    backgroundColor: "rgba(0,0,0,0.88)",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
   },
-  liveDot: { width: 6, height: 6, borderRadius: 3 },
-  liveText: {
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: {
+    color: "#ffffff",
     fontSize: 10,
     fontFamily: theme.typography.uiBold,
     letterSpacing: 1.4,
