@@ -70,6 +70,10 @@ _RETRYABLE_RPC_CODES = frozenset(
         RPCStatusCode.ABORTED,
         RPCStatusCode.INTERNAL,
         RPCStatusCode.UNKNOWN,
+        # A create can observe ALREADY_EXISTS immediately before a concurrent
+        # delete wins. The following update then sees NOT_FOUND; retry the
+        # whole create-or-update reconciliation so the next pass can create.
+        RPCStatusCode.NOT_FOUND,
     }
 )
 
@@ -264,6 +268,45 @@ class ScheduleSeedError(RuntimeError):
         super().__init__(f"schedule reconciliation failed for: {schedule_ids}")
 
 
+async def _schedules_semantically_equal(
+    client: Client,
+    current: Schedule,
+    desired: Schedule,
+) -> bool:
+    """Compare Schedule meaning after SDK payload encoding and normalization.
+
+    A Schedule decoded from Temporal contains raw Payload objects and marks
+    its action as ``_from_raw``; direct dataclass equality therefore reports
+    a false difference from the equivalent declarative Python inputs. The SDK
+    protobuf form removes that representational difference.
+    """
+    return await current._to_proto(client) == await desired._to_proto(client)
+
+
+async def _update_for_current_description(
+    client: Client,
+    inp: ScheduleUpdateInput,
+    desired: Schedule,
+) -> ScheduleUpdate | None:
+    """Build an update from the callback's current state, or return no-op.
+
+    Temporal supplies the description used for this update attempt. Copying
+    state here, rather than from a separate pre-update describe, preserves the
+    latest pause, note, action limit, and remaining-action count visible to the
+    SDK callback. Returning ``None`` prevents an UpdateSchedule mutation when
+    the declarative action/spec/policy already match.
+    """
+    current = inp.description.schedule
+    desired_with_current_state = dataclasses.replace(desired, state=current.state)
+    if await _schedules_semantically_equal(
+        client,
+        current,
+        desired_with_current_state,
+    ):
+        return None
+    return ScheduleUpdate(schedule=desired_with_current_state)
+
+
 async def _apply(client: Client, s: ScheduleDef, spec: Schedule) -> None:
     """Create-or-update one schedule, preserving live paused state."""
     try:
@@ -271,22 +314,26 @@ async def _apply(client: Client, s: ScheduleDef, spec: Schedule) -> None:
         print(f"[seed] created schedule {s.schedule_id}")
     except ScheduleAlreadyRunningError:
         handle = client.get_schedule_handle(s.schedule_id)
+        update_required = False
 
-        def _update(
+        async def _update(
             inp: ScheduleUpdateInput, desired: Schedule = spec
-        ) -> ScheduleUpdate:
-            # Preserve the live state (paused flag + note): replacing the
-            # whole Schedule with the desired spec silently UN-paused
-            # schedules on every worker restart/deploy — pausing radar
-            # ingest during an incident didn't survive the next rollout.
-            return ScheduleUpdate(
-                schedule=dataclasses.replace(
-                    desired, state=inp.description.schedule.state
-                )
+        ) -> ScheduleUpdate | None:
+            nonlocal update_required
+            update = await _update_for_current_description(
+                client,
+                inp,
+                desired,
             )
+            # The SDK contract allows repeated callback invocation during
+            # conflict handling. Reflect the last callback decision rather
+            # than remembering a stale earlier one.
+            update_required = update is not None
+            return update
 
         await handle.update(_update, rpc_timeout=_RPC_TIMEOUT)
-        print(f"[seed] updated schedule {s.schedule_id}")
+        outcome = "updated" if update_required else "unchanged"
+        print(f"[seed] {outcome} schedule {s.schedule_id}")
 
 
 async def _apply_isolated(client: Client, schedule: ScheduleDef) -> Exception | None:

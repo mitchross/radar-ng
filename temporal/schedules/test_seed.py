@@ -1,10 +1,17 @@
 import asyncio
+import dataclasses
+import inspect
 import unittest
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from temporalio.client import ScheduleAlreadyRunningError, ScheduleState
+from temporalio.client import (
+    Client,
+    Schedule,
+    ScheduleAlreadyRunningError,
+    ScheduleState,
+)
 from temporalio.service import RPCError, RPCStatusCode
 
 from temporal.schedules import seed
@@ -26,19 +33,26 @@ def _rpc_error(
 
 
 class _ExistingScheduleHandle:
-    def __init__(self, state: ScheduleState) -> None:
-        self.state = state
+    def __init__(self, schedules: Schedule | list[Schedule]) -> None:
+        self.schedules = schedules if isinstance(schedules, list) else [schedules]
         self.updated_schedule = None
+        self.callback_results = []
+        self.update_calls = 0
         self.mutations: list[str] = []
 
     async def update(self, callback, **_kwargs):
-        self.mutations.append("update")
-        update = callback(
-            SimpleNamespace(
-                description=SimpleNamespace(schedule=SimpleNamespace(state=self.state))
+        self.update_calls += 1
+        update = None
+        for schedule in self.schedules:
+            update = callback(
+                SimpleNamespace(description=SimpleNamespace(schedule=schedule))
             )
-        )
-        self.updated_schedule = update.schedule
+            if inspect.isawaitable(update):
+                update = await update
+            self.callback_results.append(update)
+        if update is not None:
+            self.mutations.append("update")
+            self.updated_schedule = update.schedule
 
     async def describe(self, **_kwargs):
         self.mutations.append("describe")
@@ -49,9 +63,12 @@ class _ExistingScheduleHandle:
         raise AssertionError("seeding must not delete schedules")
 
 
-class _ExistingScheduleClient:
-    def __init__(self, state: ScheduleState) -> None:
-        self.schedule_handle = _ExistingScheduleHandle(state)
+class _ExistingScheduleClient(Client):
+    def __init__(self, schedules: Schedule | list[Schedule]) -> None:
+        # Schedule._to_proto needs the SDK data converter and namespace but no
+        # service RPC for these tests.
+        super().__init__(object())
+        self.schedule_handle = _ExistingScheduleHandle(schedules)
         self.workflow_lookups = 0
 
     async def create_schedule(self, *_args, **_kwargs):
@@ -63,6 +80,12 @@ class _ExistingScheduleClient:
     def get_workflow_handle(self, _workflow_id: str):
         self.workflow_lookups += 1
         raise AssertionError("seeding must not inspect or terminate workflows")
+
+
+async def _server_round_trip(schedule: Schedule) -> Schedule:
+    """Return the raw-payload representation produced by a server describe."""
+    sdk_client = Client(object())
+    return Schedule._from_proto(await schedule._to_proto(sdk_client))
 
 
 class ScheduleDefinitionTests(unittest.TestCase):
@@ -128,29 +151,115 @@ class ScheduleDefinitionTests(unittest.TestCase):
 
 
 class ScheduleApplyTests(unittest.IsolatedAsyncioTestCase):
-    async def test_existing_schedule_update_preserves_operator_state(self):
+    async def test_semantic_equality_normalizes_server_payloads(self):
+        definition = _definition("equivalent")
+        definition.workflow_input = [{"key": "value"}]
+        desired = seed._spec_for(definition)
+        live_state = ScheduleState(note="keep", paused=True)
+        current = await _server_round_trip(
+            dataclasses.replace(desired, state=live_state)
+        )
+
+        self.assertNotEqual(current, dataclasses.replace(desired, state=live_state))
+        self.assertTrue(
+            await seed._schedules_semantically_equal(
+                Client(object()),
+                current,
+                dataclasses.replace(desired, state=current.state),
+            )
+        )
+
+    async def test_matching_existing_schedule_is_a_noop(self):
+        definition = _definition("already-desired")
+        desired = seed._spec_for(definition)
         live_state = ScheduleState(
             note="incident pause",
             paused=True,
             limited_actions=True,
             remaining_actions=3,
         )
-        client = _ExistingScheduleClient(live_state)
-        definition = _definition("existing")
+        current = await _server_round_trip(
+            dataclasses.replace(desired, state=live_state)
+        )
+        client = _ExistingScheduleClient(current)
 
-        await seed._apply(client, definition, seed._spec_for(definition))
+        await seed._apply(client, definition, desired)
+
+        self.assertEqual(client.schedule_handle.update_calls, 1)
+        self.assertEqual(client.schedule_handle.callback_results, [None])
+        self.assertIsNone(client.schedule_handle.updated_schedule)
+        self.assertEqual(client.schedule_handle.mutations, [])
+
+    async def test_existing_schedule_update_preserves_operator_state(self):
+        definition = _definition("existing")
+        desired = seed._spec_for(definition)
+        live_state = ScheduleState(
+            note="incident pause",
+            paused=True,
+            limited_actions=True,
+            remaining_actions=3,
+        )
+        drifted = dataclasses.replace(
+            desired,
+            policy=dataclasses.replace(
+                desired.policy,
+                catchup_window=timedelta(hours=2),
+            ),
+            state=live_state,
+        )
+        client = _ExistingScheduleClient(await _server_round_trip(drifted))
+
+        await seed._apply(client, definition, desired)
 
         self.assertEqual(client.schedule_handle.updated_schedule.state, live_state)
         self.assertEqual(client.schedule_handle.mutations, ["update"])
         self.assertEqual(client.workflow_lookups, 0)
 
+    async def test_update_callback_uses_each_current_operator_state(self):
+        definition = _definition("concurrent-state")
+        desired = seed._spec_for(definition)
+        drifted_policy = dataclasses.replace(
+            desired.policy,
+            catchup_window=timedelta(hours=2),
+        )
+        first_state = ScheduleState(note="first", paused=False)
+        latest_state = ScheduleState(
+            note="operator changed state",
+            paused=True,
+            limited_actions=True,
+            remaining_actions=1,
+        )
+        descriptions = [
+            await _server_round_trip(
+                dataclasses.replace(
+                    desired,
+                    policy=drifted_policy,
+                    state=state,
+                )
+            )
+            for state in (first_state, latest_state)
+        ]
+        client = _ExistingScheduleClient(descriptions)
+
+        await seed._apply(client, definition, desired)
+
+        self.assertEqual(
+            [
+                result.schedule.state
+                for result in client.schedule_handle.callback_results
+            ],
+            [first_state, latest_state],
+        )
+        self.assertEqual(client.schedule_handle.updated_schedule.state, latest_state)
+
     async def test_reconciliation_has_no_destructive_recovery_helpers(self):
         self.assertFalse(hasattr(seed, "_recreate_wedged"))
         self.assertFalse(hasattr(seed, "_terminate_stale_actions"))
 
-        client = _ExistingScheduleClient(ScheduleState())
         definition = _definition("no-destructive-recovery")
-        await seed._apply(client, definition, seed._spec_for(definition))
+        desired = seed._spec_for(definition)
+        client = _ExistingScheduleClient(await _server_round_trip(desired))
+        await seed._apply(client, definition, desired)
 
         self.assertNotIn("delete", client.schedule_handle.mutations)
         self.assertNotIn("describe", client.schedule_handle.mutations)
@@ -235,6 +344,50 @@ class SeedIsolationTests(unittest.IsolatedAsyncioTestCase):
             {"transient": 2, "permanent": 1, "healthy": 1},
         )
         self.assertEqual(set(raised.exception.failures), {"permanent"})
+
+    async def test_already_exists_then_update_not_found_retries_as_create(self):
+        definition = _definition("delete-race")
+        calls: list[str] = []
+
+        class Handle:
+            async def update(self, _callback, **_kwargs):
+                calls.append("update-not-found")
+                raise _rpc_error(RPCStatusCode.NOT_FOUND)
+
+            async def delete(self, **_kwargs):
+                raise AssertionError("race recovery must not delete")
+
+        class RaceClient(Client):
+            def __init__(self):
+                super().__init__(object())
+                self.create_calls = 0
+                self.handle = Handle()
+
+            async def create_schedule(self, *_args, **_kwargs):
+                self.create_calls += 1
+                calls.append("create")
+                if self.create_calls == 1:
+                    raise ScheduleAlreadyRunningError()
+
+            def get_schedule_handle(self, _schedule_id):
+                calls.append("get-schedule-handle")
+                return self.handle
+
+            def get_workflow_handle(self, _workflow_id):
+                raise AssertionError("race recovery must not terminate")
+
+        with patch.object(seed, "SCHEDULES", [definition]):
+            await seed.seed_with_retry(
+                RaceClient(),
+                max_attempts=2,
+                base_delay=0,
+                max_delay=0,
+            )
+
+        self.assertEqual(
+            calls,
+            ["create", "get-schedule-handle", "update-not-found", "create"],
+        )
 
     async def test_timeout_exhaustion_never_deletes_or_terminates(self):
         definition = _definition("timed-out")

@@ -82,7 +82,22 @@ across schedules, with bounded retries for transient Temporal failures. One
 bad Schedule is reported in an aggregate failure without preventing the other
 definitions from converging, and reconciliation failure never prevents the
 worker from starting or continuing task-queue polling. Updates preserve the
-live Schedule state, including an operator pause and note.
+live Schedule state, including an operator pause, note, action limit, and
+remaining-action count. Existing definitions are compared in their normalized
+SDK protobuf form, so a matching definition returns a no-op from the update
+callback instead of issuing a redundant `UpdateSchedule` mutation. If a
+concurrent delete lands between create reporting `ALREADY_EXISTS` and the
+update describe, the resulting `NOT_FOUND` retries the whole create-or-update
+reconciliation with the same bounded policy.
+
+The Temporal Python SDK update callback supplies the freshest description
+available to that update attempt, and Radar derives the replacement state only
+from that callback input. Temporal Python SDK 1.30 does not expose a Schedule
+conflict token or atomic compare-and-swap through `ScheduleHandle.update`, so
+an operator change racing the final server update can still win or be
+overwritten when declarative configuration genuinely differs. The no-op path
+eliminates that window when configuration already matches; after an actual
+definition rollout, operators should verify incident pause/action-limit state.
 
 The stall watchdog is an observer, not a recovery controller. It only calls
 `describe`. A Schedule whose next action is more than two intervals overdue,
