@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSelfHostedManifest } from "../lib/api";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { DEFAULTS } from "../lib/constants";
-import { getString, setString } from "../lib/storage";
-import { resnapFrameIndex } from "../lib/frameIndex";
+import { cacheManifestIfChanged, readCachedManifest } from "../lib/manifestCache";
 import type { RadarFrame, SelfHostedManifest } from "../types/weather";
 
 /**
@@ -96,19 +95,6 @@ export function pickNowFrameIndex(frames: RadarFrame[]): number {
   return best;
 }
 
-const MANIFEST_CACHE_KEY = "manifest-cache-v2";
-
-function readCachedManifest(serverUrl: string): SelfHostedManifest | undefined {
-  const cached = getString(MANIFEST_CACHE_KEY, "");
-  if (!cached) return undefined;
-  try {
-    const parsed = JSON.parse(cached) as { serverUrl?: string; manifest?: SelfHostedManifest };
-    return parsed.serverUrl === serverUrl ? parsed.manifest : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * The one manifest query. Radar tab, home mini-map and Settings all observe
  * this key, so one 30 s poll feeds all three (react-query dedupes by key).
@@ -119,7 +105,7 @@ export function useManifestQuery() {
     queryKey: ["manifest", serverUrl],
     queryFn: async ({ signal }) => {
       const manifest = await fetchSelfHostedManifest(serverUrl, signal);
-      setString(MANIFEST_CACHE_KEY, JSON.stringify({ serverUrl, manifest }));
+      cacheManifestIfChanged(serverUrl, manifest);
       return manifest;
     },
     initialData: () => readCachedManifest(serverUrl),
@@ -132,7 +118,7 @@ export function useManifestQuery() {
 
 /** Manifest query + writes the active layer's frame list into the store. Mount once (radar tab). */
 export function useManifest() {
-  const setFrames = useWeatherStore((s) => s.setFrames);
+  const setFrameTimeline = useWeatherStore((s) => s.setFrameTimeline);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
@@ -146,31 +132,20 @@ export function useManifest() {
   );
 
   useEffect(() => {
-    setFrames(frames);
-  }, [frames, setFrames]);
+    // One Zustand transaction keeps consumers from observing new frames with
+    // an index that still belongs to the previous manifest.
+    setFrameTimeline(frames, pickNowFrameIndex(frames));
+  }, [frames, setFrameTimeline]);
 
-  // Wall-clock time of the frame on screen. Frame identity across polls is
-  // `time`, not index: a poll that prunes the head shifts every index.
-  const shownTimeRef = useRef<number | null>(null);
-
+  // Some navigation actions intentionally publish -1 as a request to snap to
+  // now. Read the latest store value so a manifest update handled by the
+  // atomic transaction above cannot be overwritten by a stale effect closure.
   useEffect(() => {
     if (frames.length === 0) return;
-    const idx = useWeatherStore.getState().currentFrameIndex;
-    const byTime = resnapFrameIndex(frames, idx, shownTimeRef.current);
-    const next = byTime === -1 ? pickNowFrameIndex(frames) : byTime;
-    shownTimeRef.current = frames[next]?.time ?? null;
-    if (next !== idx) setCurrentFrameIndex(next);
-  }, [frames, setCurrentFrameIndex]);
-
-  // Scrub / tick / explicit -1 reset: remember what's showing, and snap an
-  // uninitialised or out-of-range index to "now".
-  useEffect(() => {
-    if (frames.length === 0) return;
-    if (currentFrameIndex === -1 || currentFrameIndex >= frames.length) {
+    const index = useWeatherStore.getState().currentFrameIndex;
+    if (index < 0 || index >= frames.length) {
       setCurrentFrameIndex(pickNowFrameIndex(frames));
-      return;
     }
-    shownTimeRef.current = frames[currentFrameIndex].time;
   }, [frames, currentFrameIndex, setCurrentFrameIndex]);
 
   return query;

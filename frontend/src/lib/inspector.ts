@@ -3,7 +3,7 @@
  * interpolated layer value at a point.
  */
 import type { LayerType } from "../types/weather";
-import { trace } from "./telemetry";
+import { recordSpanError, trace } from "./telemetry";
 import { fetchWithTimeout } from "./api";
 
 export interface InspectReading {
@@ -46,15 +46,13 @@ export async function inspectPoint(opts: InspectOptions): Promise<InspectReading
           };
         }
       } catch (err) {
-        span.recordException(err as Error);
+        recordSpanError(span, err);
       }
       return { ok: false, value: null, unit: "", source: "unavailable", reason: "no_source" };
     },
     {
       "inspector.layer": opts.layer,
       "inspector.timestamp": opts.timestamp,
-      "geo.lat": opts.lat,
-      "geo.lon": opts.lon,
     },
   );
 }

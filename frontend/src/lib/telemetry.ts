@@ -33,6 +33,11 @@ import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import {
+  privacySafeAttributes,
+  telemetryErrorType,
+  type TelemetryAttributes,
+} from "./telemetryPrivacy";
 
 const OTLP_BASE = process.env.EXPO_PUBLIC_OTLP_BASE as string | undefined;
 const TELEMETRY_ENABLED =
@@ -76,15 +81,9 @@ if (TELEMETRY_ENABLED && OTLP_BASE) {
 const tracer: Tracer = otelTrace.getTracer("radar-ng-mobile");
 const logger = logs.getLogger("radar-ng-mobile");
 
-function privacySafeAttributes(
-  attributes?: Record<string, string | number | boolean>,
-): Record<string, string | number | boolean> | undefined {
-  if (!attributes) return undefined;
-  return Object.fromEntries(
-    Object.entries(attributes).filter(([key]) =>
-      !/(^|[._-])(lat|latitude|lon|lng|longitude|coordinates?)$/i.test(key)
-    ),
-  );
+export function recordSpanError(span: Span, error: unknown): void {
+  span.setAttribute("error.type", telemetryErrorType(error));
+  span.setStatus({ code: SpanStatusCode.ERROR });
 }
 
 // Wrap an async operation in a span. Records exceptions and sets status
@@ -92,7 +91,7 @@ function privacySafeAttributes(
 export async function trace<T>(
   name: string,
   fn: (span: Span) => Promise<T>,
-  attributes?: Record<string, string | number | boolean>,
+  attributes?: TelemetryAttributes,
 ): Promise<T> {
   const span = tracer.startSpan(name, { attributes: privacySafeAttributes(attributes) });
   try {
@@ -101,11 +100,9 @@ export async function trace<T>(
       () => fn(span),
     );
   } catch (err) {
-    span.recordException(err as Error);
-    span.setStatus({
-      code: SpanStatusCode.ERROR,
-      message: (err as Error).message,
-    });
+    // Free-form exception messages/stacks can contain request URLs and exact
+    // coordinates. Export a bounded error type instead.
+    recordSpanError(span, err);
     throw err;
   } finally {
     span.end();
@@ -124,7 +121,7 @@ const severityMap: Record<Severity, SeverityNumber> = {
 export function logEvent(
   severity: Severity,
   body: string,
-  attributes?: Record<string, string | number | boolean>,
+  attributes?: TelemetryAttributes,
 ) {
   if (!TELEMETRY_ENABLED) return;
   logger.emit({
@@ -149,11 +146,9 @@ const errorUtils = (globalThis as unknown as { ErrorUtils?: GlobalErrorUtils })
 if (TELEMETRY_ENABLED && errorUtils?.getGlobalHandler && errorUtils?.setGlobalHandler) {
   const prev = errorUtils.getGlobalHandler();
   errorUtils.setGlobalHandler((err, isFatal) => {
-    const e = err as Error;
-    logEvent("error", e?.message ?? String(err), {
+    logEvent("error", "uncaught application error", {
       "error.fatal": Boolean(isFatal),
-      "error.stack": e?.stack ?? "",
-      "error.name": e?.name ?? "Error",
+      "error.type": telemetryErrorType(err),
     });
     prev(err, isFatal);
   });
