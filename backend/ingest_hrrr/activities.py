@@ -69,7 +69,7 @@ IDX_MATCHERS = {
 }
 
 VAR_SELECTORS = {
-    "refc": {"name": "Composite reflectivity", "typeOfLevel": "atmosphere"},
+    "refc": {"shortName": "refc", "typeOfLevel": "atmosphere"},
     "t2m": {"name": "2 metre temperature", "typeOfLevel": "heightAboveGround", "level": 2},
     "dpt2m": {"name": "2 metre dewpoint temperature", "typeOfLevel": "heightAboveGround", "level": 2},
     "cape": {"name": "Convective available potential energy", "typeOfLevel": "surface"},
@@ -468,12 +468,13 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
     rendered: list[str] = []
 
     r = _extract_variable(grib_path, VAR_SELECTORS["refc"])
-    if r:
-        d = r.data
-        palettes = _render_per_palette(tile_base, "radar-hrrr", tile_path, d, r, palette_tables, "reflectivity")
-        if palettes:
-            rendered.append("radar-hrrr")
-            _safe_grid_dump("radar-hrrr", ts, d, r, "dBZ")
+    if r is None:
+        raise RuntimeError("required HRRR variable refc is missing from downloaded GRIB")
+    d = r.data
+    palettes = _render_per_palette(tile_base, "radar-hrrr", tile_path, d, r, palette_tables, "reflectivity")
+    if palettes:
+        rendered.append("radar-hrrr")
+        _safe_grid_dump("radar-hrrr", ts, d, r, "dBZ")
 
     # Radar is the latency-critical product. Production defaults to this fast
     # path; secondary layers can be re-enabled explicitly once their separate
@@ -557,10 +558,14 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
     if precip and pgrid is not None:
         h, w = next(iter(precip.values())).shape
         cat = np.zeros((h, w), dtype=np.int32)
-        if "crain" in precip: cat[precip["crain"] > 0] = 1
-        if "csnow" in precip: cat[precip["csnow"] > 0] = 2
-        if "cfrzr" in precip: cat[precip["cfrzr"] > 0] = 3
-        if "cicep" in precip: cat[precip["cicep"] > 0] = 4
+        if "crain" in precip:
+            cat[precip["crain"] > 0] = 1
+        if "csnow" in precip:
+            cat[precip["csnow"] > 0] = 2
+        if "cfrzr" in precip:
+            cat[precip["cfrzr"] > 0] = 3
+        if "cicep" in precip:
+            cat[precip["cicep"] > 0] = 4
         ptype_map = {1: "rain", 2: "snow", 3: "freezing_rain", 4: "ice_pellets"}
         palettes = _render_per_palette(tile_base, "precip-type", tile_path, cat, pgrid, palette_tables, "precip_type",
                                        categorical=True, categories_map=ptype_map)

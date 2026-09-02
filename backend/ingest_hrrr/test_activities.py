@@ -4,11 +4,62 @@ import sys
 import types
 from pathlib import Path
 
+import numpy as np
+import pytest
+
 
 def import_activities_without_pygrib(monkeypatch):
     monkeypatch.setitem(sys.modules, "pygrib", types.SimpleNamespace())
     sys.modules.pop("backend.ingest_hrrr.activities", None)
     return importlib.import_module("backend.ingest_hrrr.activities")
+
+
+def test_refc_selector_matches_current_noaa_metadata(monkeypatch, tmp_path):
+    activities = import_activities_without_pygrib(monkeypatch)
+
+    class Message:
+        name = "Maximum/Composite radar reflectivity"
+        shortName = "refc"
+        typeOfLevel = "atmosphere"
+        values = np.array([[10.0, 20.0], [30.0, 40.0]])
+
+        @staticmethod
+        def latlons():
+            return (
+                np.array([[40.0, 40.0], [39.0, 39.0]]),
+                np.array([[-90.0, -89.0], [-90.0, -89.0]]),
+            )
+
+    class GribFile(list):
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        activities.pygrib,
+        "open",
+        lambda _path: GribFile([Message()]),
+        raising=False,
+    )
+    monkeypatch.setattr(activities, "_extract_native_projection", lambda *_args: None)
+
+    grid = activities._extract_variable(tmp_path / "hrrr.grib2", activities.VAR_SELECTORS["refc"])
+
+    assert grid is not None
+    assert grid.data.tolist() == [[10.0, 20.0], [30.0, 40.0]]
+
+
+def test_missing_required_refc_fails_forecast_hour(monkeypatch, tmp_path):
+    activities = import_activities_without_pygrib(monkeypatch)
+    monkeypatch.setattr(activities, "_extract_variable", lambda *_args: None)
+
+    with pytest.raises(RuntimeError, match="required HRRR variable refc"):
+        activities._process_forecast_hour_sync(
+            tmp_path / "hrrr.grib2",
+            "20260715_12",
+            1,
+            {},
+            tmp_path / "tiles",
+        )
 
 
 def test_activity_tmp_dir_is_unique_per_attempt(monkeypatch, tmp_path):
