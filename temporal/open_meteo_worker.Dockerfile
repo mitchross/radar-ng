@@ -1,21 +1,29 @@
 # syntax=docker/dockerfile:1.7
-# radar-ng open-meteo Temporal worker.
+# radar-ng's unified Open-Meteo image.
 #
-# Lives in a separate pod from the main radar-ng-temporal-worker because its
-# base image is `ghcr.io/open-meteo/open-meteo` (Swift runtime + the
-# openmeteo-api binary at /app/openmeteo-api). We layer Python + temporalio
-# on top so this worker can register a single activity that subprocess-execs
-# the Swift binary.
+# The Open-Meteo API pod and its dedicated Temporal sync worker run this same
+# artifact. It starts as the worker by default; the API pod overrides the
+# command with `/app/openmeteo-api serve ...`. Keeping both roles on one
+# digest prevents the serving binary and sync CLI from drifting apart.
 #
 # This worker polls task_queue=radar-ng-open-meteo. The workflow schedules
 # `open_meteo_sync` on that dedicated queue so the generic worker cannot take it.
 
-# Pinned: this worker subprocess-execs /app/openmeteo-api from the base
-# image, so a broken upstream :latest breaks the sync activity silently at
-# build time (1.5.3 shipped missing libparquet-glib — 2026-07-02 outage).
-# Renovate bumps this tag; keep it in lockstep with deployment-open-meteo's
-# serve image in the gitops repo.
-FROM ghcr.io/open-meteo/open-meteo:1.5.2
+# Pin both the release and manifest digest. A tag-only bump can silently change
+# the binary or its shared-library closure (1.5.3 shipped without
+# libparquet-glib and caused the 2026-07-02 outage).
+FROM ghcr.io/open-meteo/open-meteo:1.5.6@sha256:4e30cdc550702e7ebe3a27d61a6640e94a5d70798e58392361dab06e6210df35
+
+# This derivative contains radar-ng's MIT-licensed worker code and the
+# AGPL-3.0-only Open-Meteo distribution. Record the immutable base explicitly;
+# the release workflow repeats these annotations because metadata-action
+# supplies labels at build time.
+LABEL org.opencontainers.image.licenses="MIT AND AGPL-3.0-only" \
+      org.opencontainers.image.base.name="ghcr.io/open-meteo/open-meteo:1.5.6" \
+      org.opencontainers.image.base.digest="sha256:4e30cdc550702e7ebe3a27d61a6640e94a5d70798e58392361dab06e6210df35" \
+      org.opencontainers.image.title="radar-ng-open-meteo-worker" \
+      org.opencontainers.image.description="Open-Meteo API with the radar-ng Temporal sync worker" \
+      org.opencontainers.image.source="https://github.com/mitchross/radar-ng"
 
 USER root
 
@@ -61,15 +69,16 @@ COPY temporal/open_meteo_worker.py      /workspace/temporal/open_meteo_worker.py
 ENV PYTHONPATH=/workspace
 ENV PYTHONUNBUFFERED=1
 
+# Open-Meteo resolves its data directory as ./data. Return to the upstream
+# working directory so direct `sync` and `serve` invocations use /app/data;
+# PYTHONPATH keeps the worker modules importable from here.
+WORKDIR /app
+
 # Switch back to the open-meteo image's non-root user (uid 999).
 USER openmeteo
 
-# Clear the upstream image's ENTRYPOINT (`./openmeteo-api`) — without
-# this, our CMD becomes args TO that entrypoint and the container fails
-# at startup with `exec: ./openmeteo-api: stat ./openmeteo-api: no such
-# file or directory` (because our WORKDIR is /workspace, not /app where
-# the binary lives). The activity invokes the binary by absolute path
-# (OPENMETEO_BIN env, default /app/openmeteo-api) so we don't need the
-# entrypoint at all.
+# Clear the upstream image's ENTRYPOINT (`./openmeteo-api`) so the default
+# CMD starts Python instead of becoming arguments to the Open-Meteo CLI. The
+# activity and API deployment invoke the Swift binary by absolute path.
 ENTRYPOINT []
 CMD ["python3", "-m", "temporal.open_meteo_worker"]

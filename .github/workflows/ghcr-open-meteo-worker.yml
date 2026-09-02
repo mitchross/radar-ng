@@ -87,6 +87,10 @@ jobs:
           file: temporal/open_meteo_worker.Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.licenses=MIT AND AGPL-3.0-only
+            org.opencontainers.image.base.name=ghcr.io/open-meteo/open-meteo:1.5.6
+            org.opencontainers.image.base.digest=sha256:4e30cdc550702e7ebe3a27d61a6640e94a5d70798e58392361dab06e6210df35
           cache-from: type=gha
           cache-to: type=gha,mode=max

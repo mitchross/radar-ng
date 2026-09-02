@@ -1,0 +1,105 @@
+name: ci · open-meteo image
+
+on:
+  pull_request:
+    paths:
+      - 'temporal/open_meteo_worker.py'
+      - 'temporal/open_meteo_worker.Dockerfile'
+      - 'temporal/requirements.txt'
+      - 'backend/open_meteo_sync/**'
+      - 'backend/shared/logger.py'
+      - '.github/workflows/ci-open-meteo-image.yml'
+      - '.github/workflows/ghcr-open-meteo-worker.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: open-meteo-image-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE: radar-ng-open-meteo-worker:ci
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build without publishing
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: temporal/open_meteo_worker.Dockerfile
+          load: true
+          push: false
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=ci-open-meteo-image
+          cache-to: type=gha,mode=max,scope=ci-open-meteo-image
+
+      - name: Verify executable and shared libraries
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh "$IMAGE" -ec '
+            test -x /app/openmeteo-api
+            links="$(ldd /app/openmeteo-api)"
+            printf "%s\n" "$links"
+            if printf "%s\n" "$links" | grep -F "not found"; then
+              exit 1
+            fi
+          '
+
+      - name: Verify OCI license and base provenance
+        run: |
+          set -euo pipefail
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}' "$IMAGE")" = \
+            'MIT AND AGPL-3.0-only'
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.base.name" }}' "$IMAGE")" = \
+            'ghcr.io/open-meteo/open-meteo:1.5.6'
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.base.digest" }}' "$IMAGE")" = \
+            'sha256:4e30cdc550702e7ebe3a27d61a6640e94a5d70798e58392361dab06e6210df35'
+
+      - name: Verify sync CLI
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /app/openmeteo-api "$IMAGE" sync --help |
+            grep -F 'Download the open-meteo weather database'
+
+      - name: Verify Temporal activity imports
+        run: >-
+          docker run --rm --entrypoint python3 "$IMAGE" -c
+          'import temporalio;
+          from temporalio import activity;
+          from backend.open_meteo_sync.activities import open_meteo_sync;
+          import temporal.open_meteo_worker;
+          assert callable(open_meteo_sync)'
+
+      - name: Verify serve starts
+        run: |
+          set -euo pipefail
+          container="open-meteo-serve-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'docker rm --force "$container" >/dev/null 2>&1 || true' EXIT
+
+          docker run --detach --name "$container" \
+            --publish 127.0.0.1:18080:8080 \
+            --entrypoint /app/openmeteo-api \
+            "$IMAGE" serve --env production --hostname 0.0.0.0 --port 8080
+
+          # An empty data volume can legitimately make forecast routes non-2xx.
+          # The image contract is that the process stays up and opens its port.
+          for _ in {1..30}; do
+            if [ "$(docker inspect --format '{{.State.Running}}' "$container")" != "true" ]; then
+              docker logs "$container"
+              exit 1
+            fi
+            if timeout 1 bash -c '</dev/tcp/127.0.0.1/18080' 2>/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          docker logs "$container"
+          exit 1
