@@ -21,7 +21,11 @@ import numpy as np
 from temporalio import activity
 
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
-from backend.shared.grid_dump import prune_grid_layer, write_grid
+from backend.shared.grid_dump import (
+    finalize_grid_generation,
+    prune_grid_generations,
+    write_grid,
+)
 from backend.shared.logger import get_logger
 from backend.shared.manifest import replace_layer_manifest
 from backend.shared.palettes import get_palette_names, load_palette
@@ -191,11 +195,16 @@ def _nowcast_tile_path(anchor_ts: str, valid_ts: str) -> str:
     return f"runs/{anchor_ts}/{valid_ts}"
 
 
-def _prune_nowcast_point_grids(frame_count: int) -> int:
-    """Retain two complete point-grid runs under the shared layer lock."""
-    return prune_grid_layer(
+def _nowcast_grid_key(anchor_ts: str, valid_ts: str) -> str:
+    return f"runs/{anchor_ts}/{valid_ts}"
+
+
+def _prune_nowcast_point_grids(active_generation: str) -> int:
+    """Retain whole point-grid runs, including the manifest's active run."""
+    return prune_grid_generations(
         "nowcast",
-        keep=POINT_GRID_RETENTION_RUNS * max(0, frame_count),
+        keep=POINT_GRID_RETENTION_RUNS,
+        active_generation=active_generation,
     )
 
 
@@ -395,6 +404,7 @@ async def nowcast_run() -> NowcastResult:
             heartbeat_details=lambda i=i: {"phase": "render", "leadtime": i},
         )
         if set(palettes) == expected_palettes:
+            grid_key = _nowcast_grid_key(latest_iso, ts)
             grid_file = await asyncio.to_thread(
                 write_grid,
                 "nowcast",
@@ -405,6 +415,7 @@ async def nowcast_run() -> NowcastResult:
                 "dBZ",
                 -9999.0,
                 POINT_GRID_MAX_CELLS,
+                grid_key=grid_key,
             )
             if not grid_file:
                 for palette in palettes:
@@ -419,6 +430,7 @@ async def nowcast_run() -> NowcastResult:
                 {
                     "timestamp": ts,
                     "path": tile_path,
+                    "grid_key": grid_key,
                     "source": "mrms-nowcast",
                     "kind": "nowcast",
                     "issued_at": latest_dt.isoformat(),
@@ -442,6 +454,10 @@ async def nowcast_run() -> NowcastResult:
             raise RuntimeError(
                 f"nowcast incomplete: rendered {len(rendered_timestamps)}/{n_lead} leadtimes"
             )
+        # Completion makes this run eligible for whole-generation retention.
+        # It happens before the manifest boundary so the old manifest remains
+        # fully readable if this process stops anywhere above the atomic swap.
+        finalize_grid_generation("nowcast", latest_iso)
         # One atomic swap: this run's frames replace ALL previous nowcast
         # frames in the manifest. Old tile dirs stay on disk until the
         # cleanup sweep removes them, but the app never sees them again.
@@ -464,7 +480,7 @@ async def nowcast_run() -> NowcastResult:
         # unlink `.grid.lock`, another writer's committed generation, or its
         # metadata temporary. Keep two full runs so a concurrent/newer writer
         # cannot evict point grids that the just-published manifest references.
-        _prune_nowcast_point_grids(len(rendered_timestamps))
+        _prune_nowcast_point_grids(latest_iso)
         state = ProcessedSet(STATE_DIR / "nowcast.json", max_entries=100)
         state.add(latest_iso)
 

@@ -1423,6 +1423,119 @@ def _publication_identities(
     }
 
 
+def _frame_render_contract(
+    *,
+    renderer: str,
+    color_tables: Mapping[str, dict],
+    category_map: dict[int, str] | None = None,
+    nodata_value: float | None = None,
+    min_valid_weight: float = 1.0,
+) -> tuple[str, object, object, ClassModel | None]:
+    tables = dict(color_tables)
+    semantic_policy: object
+    policy: object
+    model: ClassModel | None = None
+    if renderer == "legacy":
+        algorithm = "rgba-bilinear-v1"
+        semantic_policy = (
+            {"kind": "categorical", "category_map": category_map}
+            if category_map is not None
+            else {
+                "kind": "continuous",
+                "nodata_value": nodata_value,
+                "min_valid_weight": min_valid_weight,
+            }
+        )
+        policy = {
+            "sampling": "bilinear-rgba",
+            "category_map": category_map,
+            "png_compress_level": 1,
+        }
+    elif renderer == "indexed" and category_map is not None:
+        algorithm = "category-nearest-v1"
+        model = build_categorical_class_model(tables, category_map)
+        semantic_policy = {"kind": "categorical", "category_map": category_map}
+        policy = {
+            "sampling": "nearest",
+            "category_map": category_map,
+            "model_remap": model.remap,
+            "png_compress_level": PNG_COMPRESS_LEVEL,
+        }
+    elif renderer == "indexed":
+        algorithm = "physical-bilinear-classify-v1"
+        model = build_class_model(tables)
+        semantic_policy = {
+            "kind": "continuous",
+            "nodata_value": nodata_value,
+            "min_valid_weight": min_valid_weight,
+        }
+        policy = {
+            "sampling": "bilinear",
+            "nodata_value": nodata_value,
+            "min_valid_weight": min_valid_weight,
+            "model_edges": model.edges,
+            "model_remap": model.remap,
+            "png_compress_level": PNG_COMPRESS_LEVEL,
+        }
+    else:
+        raise ValueError(
+            f"unknown tile renderer {renderer!r}; expected 'legacy' or 'indexed'"
+        )
+    return algorithm, semantic_policy, policy, model
+
+
+def frame_pyramid_identity_is_compatible(
+    identity: PyramidIdentity,
+    *,
+    renderer: str,
+    source_id: str,
+    color_tables: Mapping[str, dict],
+    palette_name: str,
+    zoom_levels: list[int],
+    tile_size: int = 256,
+    category_map: dict[int, str] | None = None,
+    nodata_value: float | None = None,
+    min_valid_weight: float = 1.0,
+) -> bool:
+    """Validate a stored marker against today's frame-render contract.
+
+    Resume callers do not have the source grid yet, so they cannot recompute
+    its content or coordinate digests. They *can* require the stable source
+    ID, a known renderer/algorithm pair, and every current render semantic.
+    Bind the stored source/grid digests into an otherwise-current expected
+    identity, then use the same exact/cross-renderer rules as publication.
+    """
+    if palette_name not in color_tables:
+        return False
+    tables = dict(color_tables)
+    algorithm, semantic_policy, policy, _ = _frame_render_contract(
+        renderer=renderer,
+        color_tables=tables,
+        category_map=category_map,
+        nodata_value=nodata_value,
+        min_valid_weight=min_valid_weight,
+    )
+
+    expected = PyramidIdentity(
+        renderer=renderer,
+        algorithm=algorithm,
+        source_id=source_id,
+        source_digest=identity.source_digest,
+        grid_spec_digest=identity.grid_spec_digest,
+        palette_name=palette_name,
+        palette_digest=_stable_digest(tables[palette_name]),
+        tile_spec_digest=_stable_digest(
+            {
+                "tile_size": int(tile_size),
+                "zoom_levels": [int(zoom) for zoom in zoom_levels],
+            }
+        ),
+        semantic_digest=_stable_digest(semantic_policy),
+        policy_digest=_stable_digest(policy),
+    )
+    return identity == expected or identity.is_renderer_compatible_with(expected)
+
+
 def _tile_paths(path: Path) -> set[str]:
     return {str(tile.relative_to(path)) for tile in path.rglob("*.png")}
 
@@ -2090,30 +2203,21 @@ def render_frame_palettes(
         "source_x": kwargs.get("source_x"),
         "source_y": kwargs.get("source_y"),
     }
+    algorithm, semantic_policy, policy, model = _frame_render_contract(
+        renderer=renderer,
+        color_tables=tables,
+        category_map=category_map,
+        nodata_value=nodata_value,
+        min_valid_weight=min_valid_weight,
+    )
+    identities = _publication_identities(
+        renderer=renderer,
+        algorithm=algorithm,
+        semantic_policy=semantic_policy,
+        policy=policy,
+        **identity_args,
+    )
     if renderer == "legacy":
-        semantic_policy = (
-            {
-                "kind": "categorical",
-                "category_map": category_map,
-            }
-            if category_map is not None
-            else {
-                "kind": "continuous",
-                "nodata_value": nodata_value,
-                "min_valid_weight": min_valid_weight,
-            }
-        )
-        identities = _publication_identities(
-            renderer="legacy",
-            algorithm="rgba-bilinear-v1",
-            semantic_policy=semantic_policy,
-            policy={
-                "sampling": "bilinear-rgba",
-                "category_map": category_map,
-                "png_compress_level": 1,
-            },
-            **identity_args,
-        )
 
         def _render_legacy(staging: dict[str, str]) -> dict[str, int]:
             counts: dict[str, int] = {}
@@ -2142,28 +2246,9 @@ def render_frame_palettes(
             identities,
             lock_root=publication_lock_root,
         )
-    if renderer != "indexed":
-        raise ValueError(
-            f"unknown tile renderer {renderer!r}; expected 'legacy' or 'indexed'"
-        )
+    assert model is not None
     if category_map is not None:
-        model = build_categorical_class_model(tables, category_map)
         idx = model.classify(data)
-        identities = _publication_identities(
-            renderer="indexed",
-            algorithm="category-nearest-v1",
-            semantic_policy={
-                "kind": "categorical",
-                "category_map": category_map,
-            },
-            policy={
-                "sampling": "nearest",
-                "category_map": category_map,
-                "model_remap": model.remap,
-                "png_compress_level": PNG_COMPRESS_LEVEL,
-            },
-            **identity_args,
-        )
         return _render_and_publish_atomic(
             output_dirs,
             lambda staging: render_indexed_tiles(
@@ -2178,25 +2263,6 @@ def render_frame_palettes(
             identities,
             lock_root=publication_lock_root,
         )
-    model = build_class_model(tables)
-    identities = _publication_identities(
-        renderer="indexed",
-        algorithm="physical-bilinear-classify-v1",
-        semantic_policy={
-            "kind": "continuous",
-            "nodata_value": nodata_value,
-            "min_valid_weight": min_valid_weight,
-        },
-        policy={
-            "sampling": "bilinear",
-            "nodata_value": nodata_value,
-            "min_valid_weight": min_valid_weight,
-            "model_edges": model.edges,
-            "model_remap": model.remap,
-            "png_compress_level": PNG_COMPRESS_LEVEL,
-        },
-        **identity_args,
-    )
     return _render_and_publish_atomic(
         output_dirs,
         lambda staging: render_continuous_tiles(

@@ -381,9 +381,22 @@ and validity-aware.
 Grid publication is serialized per layer. The writer fsyncs its immutable data
 generation before replacing the metadata pointer; shared pruning takes the
 same lock, preserves `.grid.lock` and live metadata temporaries, and gives
-unreferenced generations a rolling-upgrade grace period. Nowcast point-grid
-retention must call that shared path rather than walking and unlinking the
-directory itself.
+unreferenced generations a rolling-upgrade grace period. Directory fsync
+ignores only the platform's explicit unsupported-operation errors; storage
+errors such as `EIO` fail publication. Creating the first layer or a nested run
+also fsyncs every new directory and its previously existing ancestor.
+
+Nowcast point grids are immutable per anchor run at
+`nowcast/runs/<anchor>/<valid-time>`. Each manifest frame carries that relative
+`grid_key`, while the API still resolves timestamp-only schema-v2 frames from
+older workers. A completed run receives a durable generation marker, and
+retention removes only whole completed generations while explicitly protecting
+the manifest's active run and the newest run. It never counts the newest
+`2 * frame_count` timestamps across overlapping runs. This is an additive
+schema-v2 field, not a schema bump, but rollout is ordered: deploy the API reader
+before any nowcast writer that emits `grid_key`. For rollback, restore the
+timestamp-only writer, wait for it to publish a legacy-addressed run, and only
+then roll back the reader.
 
 Tile pyramids use a create-only `.render-complete-v2.json` marker that binds
 renderer and algorithm, stable source ID plus source-content digest,
@@ -394,6 +407,13 @@ renderer-neutral semantics also match; an unknown algorithm or changed
 category/nodata policy fails closed. Tiles and the marker receive strict file
 fsyncs, directories are synced in order, and every newly created ancestor is
 synced through the stable layer root after final rename.
+
+HRRR's download-skipping resume path applies that same contract without
+pretending it can recompute an unavailable source grid: every palette marker
+must be coherent and match the stable source ID, a known current/rollback
+renderer-algorithm pair, current palette content, tile size and zoom set,
+product semantics, and the current renderer policy where applicable. A stale
+z4-z5 pyramid therefore cannot be advertised with today's z6 ceiling.
 
 An unmarked tree or the old `.render-complete.json` marker is not complete. A
 retry renders the requested output to staging and adopts the old tree only when

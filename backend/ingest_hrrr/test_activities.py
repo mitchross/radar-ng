@@ -292,8 +292,13 @@ def _touch_pyramid(
     layer: str,
     palette: str,
     tile_path: str,
+    color_table: dict,
     *,
     renderer: str = "legacy",
+    algorithm: str | None = None,
+    palette_payload: dict | None = None,
+    zoom_levels: list[int] | None = None,
+    semantic_policy: dict | None = None,
 ) -> None:
     from backend.shared import tiler
 
@@ -306,7 +311,8 @@ def _touch_pyramid(
         {"4/3/5.png"},
         tiler.PyramidIdentity(
             renderer=renderer,
-            algorithm=(
+            algorithm=algorithm
+            or (
                 "rgba-bilinear-v1"
                 if renderer == "legacy"
                 else "physical-bilinear-classify-v1"
@@ -315,10 +321,30 @@ def _touch_pyramid(
             source_digest="fixture-source",
             grid_spec_digest="fixture-grid",
             palette_name=palette,
-            palette_digest=f"fixture-palette-{palette}",
-            tile_spec_digest="fixture-tiles",
-            semantic_digest="fixture-semantics",
-            policy_digest="fixture-policy",
+            palette_digest=tiler._stable_digest(palette_payload or color_table),
+            tile_spec_digest=tiler._stable_digest(
+                {
+                    "tile_size": 256,
+                    "zoom_levels": zoom_levels or [4, 5, 6],
+                }
+            ),
+            semantic_digest=tiler._stable_digest(
+                semantic_policy
+                or {
+                    "kind": "continuous",
+                    "nodata_value": None,
+                    "min_valid_weight": 1.0,
+                }
+            ),
+            policy_digest=tiler._stable_digest(
+                {
+                    "sampling": "bilinear-rgba",
+                    "category_map": None,
+                    "png_compress_level": 1,
+                }
+                if renderer == "legacy"
+                else {"fixture": "foreign-renderer-policy"}
+            ),
         ),
     )
 
@@ -330,7 +356,13 @@ def test_existing_rendered_layers_requires_every_palette(monkeypatch, tmp_path):
 
     assert activities._existing_rendered_layers(tmp_path, tile_path, palettes) == []
 
-    _touch_pyramid(tmp_path, "radar-hrrr", "classic", tile_path)
+    _touch_pyramid(
+        tmp_path,
+        "radar-hrrr",
+        "classic",
+        tile_path,
+        palettes["classic"]["reflectivity"],
+    )
     assert activities._existing_rendered_layers(tmp_path, tile_path, palettes) == []
 
     # An empty final dir (interrupted rename target) does not count as rendered.
@@ -344,7 +376,13 @@ def test_existing_rendered_layers_requires_every_palette(monkeypatch, tmp_path):
     unmarked.write_bytes(b"png")
     assert activities._existing_rendered_layers(tmp_path, tile_path, palettes) == []
 
-    _touch_pyramid(tmp_path, "radar-hrrr", "vivid", tile_path)
+    _touch_pyramid(
+        tmp_path,
+        "radar-hrrr",
+        "vivid",
+        tile_path,
+        palettes["vivid"]["reflectivity"],
+    )
     assert activities._existing_rendered_layers(tmp_path, tile_path, palettes) == [
         "radar-hrrr"
     ]
@@ -407,7 +445,13 @@ def test_process_forecast_hour_resumes_from_existing_tiles(monkeypatch, tmp_path
 
     tile_path = "runs/20260715_12/2026-07-15T13:00:00+00:00"
     for palette in palettes:
-        _touch_pyramid(tile_base, "radar-hrrr", palette, tile_path)
+        _touch_pyramid(
+            tile_base,
+            "radar-hrrr",
+            palette,
+            tile_path,
+            palettes[palette]["reflectivity"],
+        )
 
     result = _run_activity(activities.hrrr_process_forecast_hour, "20260715_12", 1)
 
@@ -428,6 +472,7 @@ def test_existing_rendered_layers_accepts_complete_foreign_renderer_set(
             "radar-hrrr",
             palette,
             tile_path,
+            palettes[palette]["reflectivity"],
             renderer="indexed",
         )
 
@@ -440,13 +485,55 @@ def test_existing_rendered_layers_rejects_mixed_renderer_set(monkeypatch, tmp_pa
     activities = import_activities_without_pygrib(monkeypatch)
     palettes = {"classic": {"reflectivity": {}}, "vivid": {"reflectivity": {}}}
     tile_path = "runs/20260715_12/2026-07-15T13:00:00+00:00"
-    _touch_pyramid(tmp_path, "radar-hrrr", "classic", tile_path)
+    _touch_pyramid(
+        tmp_path,
+        "radar-hrrr",
+        "classic",
+        tile_path,
+        palettes["classic"]["reflectivity"],
+    )
     _touch_pyramid(
         tmp_path,
         "radar-hrrr",
         "vivid",
         tile_path,
+        palettes["vivid"]["reflectivity"],
         renderer="indexed",
+    )
+
+    assert activities._existing_rendered_layers(tmp_path, tile_path, palettes) == []
+
+
+@pytest.mark.parametrize(
+    "marker_overrides",
+    [
+        {"algorithm": "future-render-v9"},
+        {"zoom_levels": [4, 5]},
+        {"palette_payload": {"ranges": [], "no_data_below": -999}},
+        {
+            "semantic_policy": {
+                "kind": "continuous",
+                "nodata_value": -9999.0,
+                "min_valid_weight": 1.0,
+            }
+        },
+    ],
+    ids=["unknown-algorithm", "old-zoom", "old-palette", "old-semantics"],
+)
+def test_existing_rendered_layers_rejects_noncurrent_render_contract(
+    monkeypatch, tmp_path, marker_overrides
+):
+    activities = import_activities_without_pygrib(monkeypatch)
+    monkeypatch.setenv("TILE_RENDERER", "legacy")
+    palettes = {"classic": {"reflectivity": {}}}
+    tile_path = "runs/20260715_12/2026-07-15T13:00:00+00:00"
+    _touch_pyramid(
+        tmp_path,
+        "radar-hrrr",
+        "classic",
+        tile_path,
+        palettes["classic"]["reflectivity"],
+        **marker_overrides,
     )
 
     assert activities._existing_rendered_layers(tmp_path, tile_path, palettes) == []

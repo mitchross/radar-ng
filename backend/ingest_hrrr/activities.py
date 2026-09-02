@@ -35,6 +35,7 @@ from backend.shared.state import ProcessedSet
 from backend.shared.tiler import (
     MultiPaletteRenderResult,
     complete_pyramid_identity,
+    frame_pyramid_identity_is_compatible,
     render_frame_palettes,
     tile_renderer_for_role,
 )
@@ -135,6 +136,13 @@ LAYER_COLOR_KEYS = {
     "precip-type": "precip_type",
     "precip-accum": "precip_accum",
     "cloud": "cloud_cover",
+}
+
+PRECIP_TYPE_CATEGORIES = {
+    1: "rain",
+    2: "snow",
+    3: "freezing_rain",
+    4: "ice_pellets",
 }
 
 
@@ -671,7 +679,6 @@ def _process_forecast_hour_sync(
             cat[precip["cfrzr"] > 0] = 3
         if "cicep" in precip:
             cat[precip["cicep"] > 0] = 4
-        ptype_map = {1: "rain", 2: "snow", 3: "freezing_rain", 4: "ice_pellets"}
         palettes = _render_per_palette(
             tile_base,
             "precip-type",
@@ -681,7 +688,7 @@ def _process_forecast_hour_sync(
             palette_tables,
             "precip_type",
             categorical=True,
-            categories_map=ptype_map,
+            categories_map=PRECIP_TYPE_CATEGORIES,
         )
         if palettes:
             rendered.append("precip-type")
@@ -703,17 +710,16 @@ def _required_layers(palette_tables: dict[str, dict]) -> set[str]:
 def _existing_rendered_layers(
     tile_base: Path, tile_path: str, palette_tables: dict[str, dict]
 ) -> list[str]:
-    """Layers with one coherent, marker-validated pyramid per palette.
-
-    Renderer identity is deliberately not required to match today's flag: an
-    immutable hour completed by the other renderer remains safe during
-    rollback. Mixed renderers or sources never count as resumable.
-    """
+    """Layers with a coherent pyramid set matching today's render contract."""
     existing: list[str] = []
+    renderer = tile_renderer_for_role("hrrr")
     for layer, color_key in LAYER_COLOR_KEYS.items():
-        palettes = [
-            name for name, tables in palette_tables.items() if color_key in tables
-        ]
+        color_tables = {
+            name: tables[color_key]
+            for name, tables in palette_tables.items()
+            if color_key in tables
+        }
+        palettes = list(color_tables)
         if not palettes:
             continue
         dirs = [tile_base / layer / pname / tile_path for pname in palettes]
@@ -740,7 +746,22 @@ def _existing_rendered_layers(
                 identity.palette_name == palette
                 for identity, palette in zip(bound, palettes, strict=True)
             )
-            and bound[0].source_id == f"hrrr:{layer}:{tile_path}"
+            and all(
+                frame_pyramid_identity_is_compatible(
+                    identity,
+                    renderer=renderer,
+                    source_id=f"hrrr:{layer}:{tile_path}",
+                    color_tables=color_tables,
+                    palette_name=palette,
+                    zoom_levels=ZOOM_LEVELS,
+                    category_map=(
+                        PRECIP_TYPE_CATEGORIES if layer == "precip-type" else None
+                    ),
+                    nodata_value=None,
+                    min_valid_weight=1.0,
+                )
+                for identity, palette in zip(bound, palettes, strict=True)
+            )
         ):
             existing.append(layer)
     return existing
