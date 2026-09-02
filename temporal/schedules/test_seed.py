@@ -1,6 +1,8 @@
 import asyncio
+import contextlib
 import dataclasses
 import inspect
+import io
 import unittest
 from datetime import timedelta
 from types import SimpleNamespace
@@ -267,6 +269,55 @@ class ScheduleApplyTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SeedIsolationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reconciliation_stdout_does_not_leak_exception_payloads(self):
+        transient = _definition("transient-secret")
+        permanent = _definition("permanent-secret")
+
+        async def apply(_client, definition, _spec):
+            if definition is transient:
+                raise RPCError(
+                    "Bearer super-secret-token",
+                    RPCStatusCode.UNAVAILABLE,
+                    b"private rpc details",
+                )
+            raise RuntimeError("password=hunter2")
+
+        output = io.StringIO()
+        with (
+            patch.object(seed, "SCHEDULES", [transient, permanent]),
+            patch.object(seed, "_apply", side_effect=apply),
+            contextlib.redirect_stdout(output),
+        ):
+            with self.assertRaises(seed.ScheduleSeedError):
+                await seed.seed_with_retry(object(), max_attempts=1)
+
+        rendered = output.getvalue()
+        for field in (
+            "event=TEMPORAL_SCHEDULE_RECONCILIATION_RETRY",
+            "schedule_id=transient-secret",
+            "error=RPCError[UNAVAILABLE]",
+            "attempt=1/1",
+            "event=TEMPORAL_SCHEDULE_RECONCILIATION_ERROR",
+            "schedule_id=permanent-secret",
+            "error=RuntimeError",
+            "retryable=false",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, rendered)
+        for secret in (
+            "super-secret-token",
+            "private rpc details",
+            "hunter2",
+        ):
+            with self.subTest(secret=secret):
+                self.assertNotIn(secret, rendered)
+
+    def test_safe_error_label_rejects_untrusted_status_objects(self):
+        class PayloadError(RuntimeError):
+            status = SimpleNamespace(name="secret-from-payload")
+
+        self.assertEqual(seed.safe_error_label(PayloadError("hidden")), "PayloadError")
+
     async def test_one_failure_does_not_block_other_schedules(self):
         bad = _definition("bad")
         good = _definition("good")

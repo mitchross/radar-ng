@@ -62,6 +62,7 @@ from backend.tile_cleanup.activities import tile_cleanup_sweep
 # does not import or register it.
 from temporal.schedules.seed import SCHEDULES
 from temporal.schedules.seed import ScheduleSeedError
+from temporal.schedules.seed import safe_error_label
 from temporal.schedules.seed import seed_with_retry as seed_schedules
 from temporal.schedules.watchdog import watch_schedules
 from temporal.shared.health import health_file_loop
@@ -242,13 +243,6 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
         return default
 
 
-def _failure_label(failure: Exception) -> str:
-    """Return a concise error label without logging exception payload data."""
-    label = type(failure).__name__
-    status_name = getattr(getattr(failure, "status", None), "name", None)
-    return f"{label}[{status_name}]" if status_name else label
-
-
 async def _reconcile_schedules(client: Client) -> None:
     """Reconcile definitions without making worker polling depend on success."""
     logger.info("reconciling schedules in background…")
@@ -260,7 +254,7 @@ async def _reconcile_schedules(client: Client) -> None:
         schedule_ids = sorted(exc.failures)
         rendered_ids = ",".join(schedule_ids)
         rendered_errors = ",".join(
-            f"{schedule_id}:{_failure_label(exc.failures[schedule_id])}"
+            f"{schedule_id}:{safe_error_label(exc.failures[schedule_id])}"
             for schedule_id in schedule_ids
         )
         logger.bind(
@@ -276,7 +270,7 @@ async def _reconcile_schedules(client: Client) -> None:
             rendered_errors,
         )
     except Exception as exc:  # noqa: BLE001 - polling must survive reconciliation bugs
-        failure_label = _failure_label(exc)
+        failure_label = safe_error_label(exc)
         logger.bind(
             event="TEMPORAL_SCHEDULE_RECONCILIATION_FAILED",
             schedule_ids=[],

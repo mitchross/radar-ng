@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 from loguru import logger
 from temporalio.client import Client
 
-from temporal.schedules.seed import ScheduleDef
+from temporal.schedules.seed import ScheduleDef, safe_error_label
 
 CHECK_EVERY = timedelta(seconds=60)
 RPC_TIMEOUT = timedelta(seconds=15)
@@ -140,10 +140,18 @@ async def _check_one(
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 - the observer must outlive an RPC failure
+        error = safe_error_label(exc)
         logger.bind(
             event="TEMPORAL_SCHEDULE_OBSERVATION_FAILED",
             schedule_id=schedule.schedule_id,
-        ).warning("schedule observation failed: {!r}", exc)
+            error=error,
+            operator_action="inspect_schedule_observation",
+        ).warning(
+            "event=TEMPORAL_SCHEDULE_OBSERVATION_FAILED schedule_id={} "
+            "error={} operator_action=inspect_schedule_observation",
+            schedule.schedule_id,
+            error,
+        )
 
 
 async def check_schedules_once(

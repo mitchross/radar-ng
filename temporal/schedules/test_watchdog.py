@@ -1,10 +1,12 @@
 import asyncio
+import io
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from loguru import logger as loguru_logger
+from temporalio.service import RPCError, RPCStatusCode
 
 from temporal.schedules import watchdog
 from temporal.schedules.seed import ScheduleDef
@@ -314,6 +316,38 @@ class CheckScheduleTests(unittest.IsolatedAsyncioTestCase):
 
 
 class WatchLoopTests(unittest.IsolatedAsyncioTestCase):
+    async def test_observation_failure_default_log_does_not_leak_payload(self):
+        failure = RPCError(
+            "token=super-secret",
+            RPCStatusCode.DEADLINE_EXCEEDED,
+            b"private rpc detail bytes",
+        )
+        broken = _Handle([], fail=failure)
+        rendered = io.StringIO()
+        sink_id = loguru_logger.add(rendered, level="WARNING")
+
+        try:
+            await watchdog.check_schedules_once(
+                _Client({"broken": broken}),
+                [_def("broken")],
+                {},
+                now=NOW,
+            )
+        finally:
+            loguru_logger.remove(sink_id)
+
+        output = rendered.getvalue()
+        for field in (
+            "event=TEMPORAL_SCHEDULE_OBSERVATION_FAILED",
+            "schedule_id=broken",
+            "error=RPCError[DEADLINE_EXCEEDED]",
+            "operator_action=inspect_schedule_observation",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, output)
+        self.assertNotIn("super-secret", output)
+        self.assertNotIn("private rpc detail", output)
+
     async def test_one_blocked_describe_does_not_block_another_schedule(self):
         slow = _BlockingHandle([NOW + TWO_MIN])
         fast = _Handle([NOW + TWO_MIN])

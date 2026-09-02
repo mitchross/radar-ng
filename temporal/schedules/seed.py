@@ -76,6 +76,19 @@ _RETRYABLE_RPC_CODES = frozenset(
         RPCStatusCode.NOT_FOUND,
     }
 )
+_SAFE_RPC_STATUS_CODES = frozenset(RPCStatusCode)
+
+
+def safe_error_label(failure: Exception) -> str:
+    """Return an actionable label without rendering exception payload data."""
+    label = type(failure).__name__
+    if (
+        isinstance(failure, RPCError)
+        and isinstance(failure.status, RPCStatusCode)
+        and failure.status in _SAFE_RPC_STATUS_CODES
+    ):
+        return f"{label}[{failure.status.name}]"
+    return label
 
 
 @dataclass
@@ -402,15 +415,17 @@ async def seed_with_retry(
                 retry.append(schedule)
                 retry_failures[schedule.schedule_id] = exc
                 print(
-                    f"[seed] transient RPC error ({exc.status.name}) on "
-                    f"{schedule.schedule_id}, attempt {attempt}/{max_attempts}: "
-                    f"{exc.message!r}"
+                    "event=TEMPORAL_SCHEDULE_RECONCILIATION_RETRY "
+                    f"schedule_id={schedule.schedule_id} "
+                    f"error={safe_error_label(exc)} "
+                    f"attempt={attempt}/{max_attempts} retryable=true"
                 )
             else:
                 permanent_failures[schedule.schedule_id] = exc
                 print(
-                    f"[seed] permanent reconciliation error on "
-                    f"{schedule.schedule_id}: {exc!r}"
+                    "event=TEMPORAL_SCHEDULE_RECONCILIATION_ERROR "
+                    f"schedule_id={schedule.schedule_id} "
+                    f"error={safe_error_label(exc)} retryable=false"
                 )
 
         if not retry:
