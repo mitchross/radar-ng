@@ -21,12 +21,12 @@ import numpy as np
 from temporalio import activity
 
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
-from backend.shared.grid_dump import write_grid
+from backend.shared.grid_dump import prune_grid_layer, write_grid
 from backend.shared.logger import get_logger
 from backend.shared.manifest import replace_layer_manifest
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
-from backend.shared.tiler import render_frame_palettes
+from backend.shared.tiler import render_frame_palettes, tile_renderer_for_role
 
 
 GRID_DIR = Path(os.environ.get("GRID_DIR", "/data/grids"))
@@ -50,6 +50,9 @@ ZOOM_LEVELS = [4, 5, 6]
 # user location without decoding colorized tiles. Keep these much smaller
 # than the seven-million-cell science inputs used by pySTEPS itself.
 POINT_GRID_MAX_CELLS = int(os.environ.get("NOWCAST_POINT_GRID_MAX_CELLS", "900000"))
+# Retain the published run plus one complete rollback/debug generation. The
+# shared prune helper also preserves recent writer orphans and its lock inode.
+POINT_GRID_RETENTION_RUNS = 2
 
 log = get_logger("nowcast-activities")
 
@@ -188,6 +191,14 @@ def _nowcast_tile_path(anchor_ts: str, valid_ts: str) -> str:
     return f"runs/{anchor_ts}/{valid_ts}"
 
 
+def _prune_nowcast_point_grids(frame_count: int) -> int:
+    """Retain two complete point-grid runs under the shared layer lock."""
+    return prune_grid_layer(
+        "nowcast",
+        keep=POINT_GRID_RETENTION_RUNS * max(0, frame_count),
+    )
+
+
 def _render_frame(
     tile_base: Path,
     palette_tables: dict[str, dict],
@@ -220,7 +231,9 @@ def _render_frame(
         ZOOM_LEVELS,
         nodata_value=-9999.0,
         min_valid_weight=1.0,
-        renderer=os.environ.get("TILE_RENDERER", "legacy"),
+        renderer=tile_renderer_for_role("nowcast"),
+        source_id=f"nowcast:{tile_path}",
+        publication_lock_root=tile_base / "nowcast",
     )
     return result.rendered_palettes
 
@@ -353,7 +366,6 @@ async def nowcast_run() -> NowcastResult:
     palette_tables = await asyncio.to_thread(_load_palette_tables)
     rendered_palettes: set[str] = set()
     rendered_timestamps: list[str] = []
-    point_grid_files: list[str] = []
     manifest_frames: list[dict] = []
     expected_palettes = {
         name for name, tables in palette_tables.items() if tables.get("reflectivity")
@@ -403,7 +415,6 @@ async def nowcast_run() -> NowcastResult:
                 continue
             rendered_palettes.update(palettes)
             rendered_timestamps.append(ts)
-            point_grid_files.append(grid_file)
             manifest_frames.append(
                 {
                     "timestamp": ts,
@@ -448,16 +459,12 @@ async def nowcast_run() -> NowcastResult:
                 "run_id": latest_iso,
             },
         )
-        # The manifest swap is the publication boundary. The endpoint samples
-        # that complete run in one request, so older point grids can go after
-        # the swap without exposing a partially written new series.
-        point_dir = GRID_DIR / "nowcast"
-        keep = {f"{timestamp}.meta.json" for timestamp in rendered_timestamps}
-        keep.update(Path(path).name for path in point_grid_files)
-        if point_dir.exists():
-            for path in point_dir.iterdir():
-                if path.is_file() and path.name not in keep:
-                    path.unlink(missing_ok=True)
+        # The manifest swap is the publication boundary. Retention must still
+        # go through the shared layer lock: an ad-hoc directory sweep could
+        # unlink `.grid.lock`, another writer's committed generation, or its
+        # metadata temporary. Keep two full runs so a concurrent/newer writer
+        # cannot evict point grids that the just-published manifest references.
+        _prune_nowcast_point_grids(len(rendered_timestamps))
         state = ProcessedSet(STATE_DIR / "nowcast.json", max_entries=100)
         state.add(latest_iso)
 

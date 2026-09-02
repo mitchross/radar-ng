@@ -31,7 +31,7 @@ from backend.shared.manifest import update_manifest_file
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
 from backend.shared.storms import write_storms_json
-from backend.shared.tiler import render_frame_palettes
+from backend.shared.tiler import render_frame_palettes, tile_renderer_for_role
 
 
 MRMS_BASE = "https://noaa-mrms-pds.s3.amazonaws.com"
@@ -207,7 +207,9 @@ def _render_all_palettes(
         ZOOM_LEVELS,
         nodata_value=None,
         min_valid_weight=1.0,
-        renderer=os.environ.get("TILE_RENDERER", "legacy"),
+        renderer=tile_renderer_for_role("mrms"),
+        source_id=f"mrms:{layer_name}:{timestamp}",
+        publication_lock_root=tile_base / layer_name,
     )
     return result.rendered_palettes
 

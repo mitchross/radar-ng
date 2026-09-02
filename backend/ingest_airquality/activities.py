@@ -37,7 +37,11 @@ from backend.shared.logger import get_logger
 from backend.shared.manifest import read_manifest_file, replace_layer_manifest
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
-from backend.shared.tiler import MultiPaletteRenderResult, render_frame_palettes
+from backend.shared.tiler import (
+    MultiPaletteRenderResult,
+    render_frame_palettes,
+    tile_renderer_for_role,
+)
 
 
 AQM_BASE = "https://noaa-nws-naqfc-pds.s3.amazonaws.com/AQMv7/CS"
@@ -232,7 +236,9 @@ def _write_palette_tiles(
         source_y=source_y,
         nodata_value=None,
         min_valid_weight=1.0,
-        renderer=os.environ.get("TILE_RENDERER", "legacy"),
+        renderer=tile_renderer_for_role("aux"),
+        source_id=f"aqm:{layer}:{path}",
+        publication_lock_root=tile_base / layer,
     )
 
 

@@ -51,3 +51,36 @@ def test_nowcast_tile_path_is_scoped_to_anchor_run():
 
     assert first != later
     assert first.endswith(f"/{valid}")
+
+
+def test_point_grid_retention_uses_shared_locked_pruner(monkeypatch):
+    calls: list[tuple[str, int]] = []
+
+    def prune(layer: str, keep: int) -> int:
+        calls.append((layer, keep))
+        return 7
+
+    monkeypatch.setattr(activities, "prune_grid_layer", prune)
+
+    assert activities._prune_nowcast_point_grids(12) == 7
+    assert calls == [("nowcast", activities.POINT_GRID_RETENTION_RUNS * 12)]
+
+
+def test_point_grid_retention_keep_zero_still_preserves_lock(tmp_path, monkeypatch):
+    from backend.shared import grid_dump
+
+    monkeypatch.setattr(grid_dump, "GRID_DIR", str(tmp_path))
+    monkeypatch.setattr(activities, "prune_grid_layer", grid_dump.prune_grid_layer)
+    lats = np.linspace(50.0, 20.0, 4)
+    lons = np.linspace(-100.0, -90.0, 4)
+    grid_dump.write_grid(
+        "nowcast",
+        "2026-09-02T12:00:00+00:00",
+        np.ones((4, 4), dtype=np.float32),
+        lats,
+        lons,
+        unit="dBZ",
+    )
+
+    assert activities._prune_nowcast_point_grids(0) == 2
+    assert (tmp_path / "nowcast" / grid_dump._LAYER_LOCK_FILE).is_file()

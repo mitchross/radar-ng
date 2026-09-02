@@ -13,6 +13,7 @@ Two pipelines share the tile geometry code:
 from __future__ import annotations
 
 import errno
+import fcntl
 import hashlib
 import io
 import json
@@ -22,7 +23,8 @@ import shutil
 import threading
 import uuid
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -388,6 +390,9 @@ def render_tiles_atomic(
     lons: np.ndarray,
     output_dir: str,
     zoom_levels: list[int],
+    *,
+    source_id: str = "direct-legacy-rgba-grid",
+    publication_lock_root: str | Path | None = None,
     **kwargs,
 ) -> int:
     """render_tiles, but the pyramid appears atomically at `output_dir`.
@@ -401,34 +406,36 @@ def render_tiles_atomic(
     directory, the new staging tree is discarded. Forecast runs therefore use
     run-versioned paths instead of rewriting a valid-time directory in place.
     """
-    final = Path(output_dir)
-    tmp = final.parent / f".{final.name}.tmp-{uuid.uuid4().hex}"
-    try:
-        count = render_tiles(
+    identities = _publication_identities(
+        renderer="legacy",
+        algorithm="rgba-bilinear-v1",
+        source_id=source_id,
+        source_data=rgba,
+        lats=lats,
+        lons=lons,
+        palette_payloads={"rgba": {"precolorized": True}},
+        zoom_levels=zoom_levels,
+        tile_size=int(kwargs.get("tile_size", 256)),
+        source_crs=kwargs.get("source_crs"),
+        source_x=kwargs.get("source_x"),
+        source_y=kwargs.get("source_y"),
+        semantic_policy={"kind": "precolorized-rgba"},
+        policy={"sampling": "bilinear-rgba", "png_compress_level": 1},
+    )
+    result = _render_and_publish_atomic(
+        {"rgba": output_dir},
+        lambda staging: render_tiles(
             rgba=rgba,
             lats=lats,
             lons=lons,
-            output_dir=str(tmp),
+            output_dir=staging["rgba"],
             zoom_levels=zoom_levels,
             **kwargs,
-        )
-    except BaseException:
-        shutil.rmtree(tmp, ignore_errors=True)
-        raise
-    if count == 0:
-        # Fully transparent frame → nothing was written, no dir to publish.
-        shutil.rmtree(tmp, ignore_errors=True)
-        return 0
-    try:
-        os.rename(tmp, final)
-    except OSError as exc:
-        if exc.errno not in (errno.EEXIST, errno.ENOTEMPTY):
-            shutil.rmtree(tmp, ignore_errors=True)
-            raise
-        # Another retry/activity won the publish race. The winner is already a
-        # complete immutable pyramid, so never create a delete/rename 404 gap.
-        shutil.rmtree(tmp, ignore_errors=True)
-    return count
+        ),
+        identities,
+        lock_root=publication_lock_root,
+    )
+    return result.counts["rgba"]
 
 
 # ---------- render once: tile geometry cache ----------
@@ -450,6 +457,34 @@ TILE_GEOMETRY_CACHE_ENTRIES = _bounded_int_env(
     1_000_000,
 )
 PNG_COMPRESS_LEVEL = _bounded_int_env("TILE_PNG_COMPRESS_LEVEL", 6, 0, 9)
+
+_RENDERER_ROLES = frozenset({"mrms", "nowcast", "hrrr", "aux"})
+
+
+def tile_renderer_for_role(role: str) -> str:
+    """Resolve the renderer under the single-role canary contract.
+
+    ``TILE_RENDERER=indexed`` is intentionally insufficient on its own. The
+    deployment must also name exactly one activity role with
+    ``TILE_RENDERER_CANARY_ROLE``. This keeps an all-in-one/legacy worker from
+    enabling the new renderer for MRMS, HRRR, AQM, and nowcast at once.
+    """
+    if role not in _RENDERER_ROLES:
+        raise ValueError(f"unknown tile renderer role {role!r}")
+    renderer = os.environ.get("TILE_RENDERER", "legacy").strip().lower()
+    if renderer not in {"legacy", "indexed"}:
+        raise ValueError(
+            f"unknown TILE_RENDERER={renderer!r}; expected 'legacy' or 'indexed'"
+        )
+    if renderer == "legacy":
+        return renderer
+    canary_role = os.environ.get("TILE_RENDERER_CANARY_ROLE", "").strip().lower()
+    if canary_role not in _RENDERER_ROLES:
+        raise ValueError(
+            "TILE_RENDERER=indexed requires TILE_RENDERER_CANARY_ROLE="
+            f"<one of {sorted(_RENDERER_ROLES)}>"
+        )
+    return "indexed" if role == canary_role else "legacy"
 
 
 def _array_fingerprint(values: np.ndarray) -> tuple[tuple[int, ...], str, bytes]:
@@ -1110,6 +1145,8 @@ def render_continuous_tiles(
 class PublishStatus(str, Enum):
     CREATED = "created"
     EXISTING_VALID = "existing_valid"
+    EXISTING_COMPATIBLE = "existing_compatible"
+    ADOPTED = "adopted"
     EMPTY = "empty"
 
 
@@ -1134,7 +1171,256 @@ class MultiPaletteRenderResult:
         ]
 
 
-_PYRAMID_COMPLETE_FILE = ".render-complete.json"
+_PYRAMID_COMPLETE_FILE = ".render-complete-v2.json"
+_PREVIOUS_PYRAMID_COMPLETE_FILE = ".render-complete.json"
+_PYRAMID_MARKER_SCHEMA = 2
+_IDENTITY_FIELDS = frozenset(
+    {
+        "renderer",
+        "algorithm",
+        "source_id",
+        "source_digest",
+        "grid_spec_digest",
+        "palette_name",
+        "palette_digest",
+        "tile_spec_digest",
+        "semantic_digest",
+        "policy_digest",
+    }
+)
+_DIRECTORY_FSYNC_UNSUPPORTED = {
+    errno.EINVAL,
+    getattr(errno, "ENOTSUP", errno.EINVAL),
+}
+
+_CROSS_RENDERER_COMPATIBILITY = frozenset(
+    {
+        frozenset(
+            {
+                ("legacy", "rgba-bilinear-v1"),
+                ("indexed", "physical-bilinear-classify-v1"),
+            }
+        ),
+        frozenset(
+            {
+                ("legacy", "rgba-bilinear-v1"),
+                ("indexed", "category-nearest-v1"),
+            }
+        ),
+    }
+)
+
+
+@dataclass(frozen=True)
+class PyramidIdentity:
+    """Inputs that make an immutable palette pyramid reproducible."""
+
+    renderer: str
+    algorithm: str
+    source_id: str
+    source_digest: str
+    grid_spec_digest: str
+    palette_name: str
+    palette_digest: str
+    tile_spec_digest: str
+    semantic_digest: str
+    policy_digest: str
+
+    def to_document(self) -> dict[str, str]:
+        return {name: str(getattr(self, name)) for name in sorted(_IDENTITY_FIELDS)}
+
+    @classmethod
+    def from_document(cls, document: object) -> PyramidIdentity:
+        if not isinstance(document, dict) or set(document) != _IDENTITY_FIELDS:
+            raise ValueError("invalid pyramid identity fields")
+        values = {name: document[name] for name in _IDENTITY_FIELDS}
+        if not all(isinstance(value, str) and value for value in values.values()):
+            raise ValueError("pyramid identity values must be non-empty strings")
+        return cls(**values)
+
+    def is_renderer_compatible_with(self, expected: PyramidIdentity) -> bool:
+        """Whether a known foreign renderer already won the same logical frame."""
+        algorithms = frozenset(
+            {
+                (self.renderer, self.algorithm),
+                (expected.renderer, expected.algorithm),
+            }
+        )
+        return (
+            self.renderer != expected.renderer
+            and algorithms in _CROSS_RENDERER_COMPATIBILITY
+            and all(
+                getattr(self, field) == getattr(expected, field)
+                for field in (
+                    "source_id",
+                    "source_digest",
+                    "grid_spec_digest",
+                    "palette_name",
+                    "palette_digest",
+                    "tile_spec_digest",
+                    "semantic_digest",
+                )
+            )
+        )
+
+
+@dataclass(frozen=True)
+class PyramidInspection:
+    tile_count: int
+    tile_paths: set[str]
+    identity: PyramidIdentity
+
+
+class UnboundPyramidError(RuntimeError):
+    """A non-empty pre-v2 pyramid that needs exact staged adoption."""
+
+
+class PyramidIdentityConflict(RuntimeError):
+    """A complete immutable path belongs to different render inputs."""
+
+
+def _array_content_digest(values: np.ndarray) -> str:
+    """Hash an array without forcing a full copy of flipped/strided grids."""
+    array = np.asarray(values)
+    digest = hashlib.sha256()
+    digest.update(
+        json.dumps(
+            {"dtype": array.dtype.str, "shape": list(array.shape)},
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+    )
+    if array.flags.c_contiguous:
+        digest.update(memoryview(array).cast("B"))
+    elif array.ndim == 0:
+        digest.update(array.tobytes())
+    else:
+        row_bytes = max(1, int(array[0].size * array.dtype.itemsize))
+        rows = max(1, (4 * 1024 * 1024) // row_bytes)
+        for start in range(0, array.shape[0], rows):
+            chunk = np.ascontiguousarray(array[start : start + rows])
+            digest.update(memoryview(chunk).cast("B"))
+    return digest.hexdigest()
+
+
+def _stable_json_value(value: object) -> object:
+    if isinstance(value, np.ndarray):
+        return {
+            "array_digest": _array_content_digest(value),
+            "dtype": value.dtype.str,
+            "shape": list(value.shape),
+        }
+    if isinstance(value, np.generic):
+        return _stable_json_value(value.item())
+    if isinstance(value, bytes):
+        return {"bytes": value.hex()}
+    if isinstance(value, Mapping):
+        return {
+            str(key): _stable_json_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_stable_json_value(item) for item in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return {"float": repr(value)}
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _stable_digest(value: object) -> str:
+    encoded = json.dumps(
+        _stable_json_value(value),
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _grid_spec_digest(
+    data: np.ndarray,
+    lats: np.ndarray,
+    lons: np.ndarray,
+    *,
+    source_crs: object | None,
+    source_x: np.ndarray | None,
+    source_y: np.ndarray | None,
+) -> str:
+    values = np.asarray(data)
+    if values.ndim < 2:
+        raise ValueError("tile source grid must have height and width dimensions")
+    spec = _grid_spec(
+        values.shape[0],
+        values.shape[1],
+        np.asarray(lats),
+        np.asarray(lons),
+        source_crs,
+        source_x,
+        source_y,
+        "bilinear",
+    )
+    # Sampling belongs to the semantic/render policy digests, not coordinate
+    # identity, so a rollback can recognize a known foreign-renderer winner.
+    return _stable_digest(
+        {
+            "kind": spec.kind,
+            "height": spec.height,
+            "width": spec.width,
+            "lat_bounds": spec.lat_bounds,
+            "lon_bounds": spec.lon_bounds,
+            "coordinate_identity": spec.coordinate_identity,
+        }
+    )
+
+
+def _publication_identities(
+    *,
+    renderer: str,
+    algorithm: str,
+    source_id: str,
+    source_data: np.ndarray,
+    lats: np.ndarray,
+    lons: np.ndarray,
+    palette_payloads: Mapping[str, object],
+    zoom_levels: list[int],
+    tile_size: int,
+    source_crs: object | None,
+    source_x: np.ndarray | None,
+    source_y: np.ndarray | None,
+    semantic_policy: object,
+    policy: object,
+) -> dict[str, PyramidIdentity]:
+    if not source_id:
+        raise ValueError("source_id must be a non-empty stable frame identity")
+    source_digest = _array_content_digest(source_data)
+    grid_digest = _grid_spec_digest(
+        source_data,
+        lats,
+        lons,
+        source_crs=source_crs,
+        source_x=source_x,
+        source_y=source_y,
+    )
+    tile_spec_digest = _stable_digest(
+        {"tile_size": int(tile_size), "zoom_levels": [int(z) for z in zoom_levels]}
+    )
+    semantic_digest = _stable_digest(semantic_policy)
+    policy_digest = _stable_digest(policy)
+    return {
+        palette: PyramidIdentity(
+            renderer=renderer,
+            algorithm=algorithm,
+            source_id=source_id,
+            source_digest=source_digest,
+            grid_spec_digest=grid_digest,
+            palette_name=palette,
+            palette_digest=_stable_digest(payload),
+            tile_spec_digest=tile_spec_digest,
+            semantic_digest=semantic_digest,
+            policy_digest=policy_digest,
+        )
+        for palette, payload in palette_payloads.items()
+    }
 
 
 def _tile_paths(path: Path) -> set[str]:
@@ -1146,23 +1432,131 @@ def _tile_path_digest(paths: set[str]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _write_completion_marker(path: Path, paths: set[str]) -> None:
+def _tile_content_digest(path: Path, paths: set[str]) -> str:
+    digest = hashlib.sha256()
+    for relative in sorted(paths):
+        encoded = relative.encode()
+        digest.update(len(encoded).to_bytes(4, "big"))
+        digest.update(encoded)
+        tile = path / relative
+        digest.update(tile.stat().st_size.to_bytes(8, "big"))
+        with tile.open("rb") as handle:
+            while chunk := handle.read(1024 * 1024):
+                digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _fsync_file(fd: int) -> None:
+    """Durably flush a regular file; publication cannot weaken this guarantee."""
+    os.fsync(fd)
+
+
+def _fsync_directory(path: Path) -> None:
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError as exc:
+        if exc.errno not in _DIRECTORY_FSYNC_UNSUPPORTED:
+            raise
+        return
+    try:
+        try:
+            os.fsync(fd)
+        except OSError as exc:
+            if exc.errno not in _DIRECTORY_FSYNC_UNSUPPORTED:
+                raise
+    finally:
+        os.close(fd)
+
+
+def _fsync_directory_chain(path: Path, ancestor: Path) -> None:
+    """Persist newly created parent entries through a known shared ancestor."""
+    current = path.resolve(strict=False)
+    ancestor = ancestor.resolve(strict=False)
+    while True:
+        _fsync_directory(current)
+        if current == ancestor or current.parent == current:
+            return
+        current = current.parent
+
+
+def _durable_mkdir(path: Path) -> None:
+    """Create a directory tree and persist each new ancestor entry."""
+    path = path.absolute()
+    ancestor = path
+    while not ancestor.exists() and ancestor.parent != ancestor:
+        ancestor = ancestor.parent
+    path.mkdir(parents=True, exist_ok=True)
+    _fsync_directory_chain(path, ancestor)
+
+
+def _fsync_pyramid(path: Path, paths: set[str]) -> None:
+    directories = {path}
+    for relative in paths:
+        tile = path / relative
+        with tile.open("rb") as handle:
+            _fsync_file(handle.fileno())
+        parent = tile.parent
+        while parent != path:
+            directories.add(parent)
+            parent = parent.parent
+    for directory in sorted(
+        directories, key=lambda item: len(item.parts), reverse=True
+    ):
+        _fsync_directory(directory)
+
+
+def _fsync_bound_publication(path: Path, durability_root: Path) -> None:
+    """Finish a prior publisher's possibly interrupted directory commit."""
+    _fsync_directory(path)
+    _fsync_directory_chain(path.parent, durability_root)
+
+
+def _write_completion_marker(
+    path: Path,
+    paths: set[str],
+    identity: PyramidIdentity,
+) -> None:
     marker = path / _PYRAMID_COMPLETE_FILE
-    marker.write_text(
+    body = (
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": _PYRAMID_MARKER_SCHEMA,
                 "tile_count": len(paths),
                 "tile_path_digest": _tile_path_digest(paths),
+                "tile_content_digest": _tile_content_digest(path, paths),
+                "identity": identity.to_document(),
             },
+            separators=(",", ":"),
             sort_keys=True,
         )
         + "\n"
-    )
+    ).encode()
+    temporary = path / f".{_PYRAMID_COMPLETE_FILE}.tmp-{uuid.uuid4().hex}"
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(body)
+            handle.flush()
+            _fsync_file(handle.fileno())
+        try:
+            # Linking a fully synced temporary is atomic and create-only. A
+            # rolling worker can never overwrite another worker's identity.
+            os.link(temporary, marker)
+        except FileExistsError:
+            if marker.read_bytes() != body:
+                raise PyramidIdentityConflict(
+                    f"completion marker already binds a different identity: {marker}"
+                )
+        _fsync_directory(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+        _fsync_directory(path)
 
 
-def _inspect_complete_pyramid(path: Path) -> tuple[int, set[str]]:
-    """Validate a pyramid published by the render-once protocol."""
+def _inspect_complete_pyramid(
+    path: Path,
+    expected_identity: PyramidIdentity | None = None,
+) -> PyramidInspection:
+    """Validate content and identity for a v2 immutable pyramid."""
     if not path.is_dir():
         raise RuntimeError(f"published pyramid is not a directory: {path}")
     paths = _tile_paths(path)
@@ -1170,14 +1564,26 @@ def _inspect_complete_pyramid(path: Path) -> tuple[int, set[str]]:
         raise RuntimeError(f"published pyramid has no PNG tiles: {path}")
     marker = path / _PYRAMID_COMPLETE_FILE
     if not marker.is_file():
-        raise RuntimeError(f"published pyramid has no completion marker: {path}")
+        previous = path / _PREVIOUS_PYRAMID_COMPLETE_FILE
+        detail = (
+            f"legacy completion marker {previous.name!r}"
+            if previous.exists()
+            else "no identity-bound completion marker"
+        )
+        raise UnboundPyramidError(
+            f"published pyramid has {detail} and requires adoption: {path}"
+        )
     try:
         document = json.loads(marker.read_text())
-        if document["schema_version"] != 1:
-            raise ValueError("unsupported schema")
+        schema = int(document["schema_version"])
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"invalid pyramid completion marker: {marker}") from exc
+    if schema != _PYRAMID_MARKER_SCHEMA:
+        raise RuntimeError(f"unsupported pyramid completion schema {schema}: {marker}")
+    try:
         marked = int(document["tile_count"])
         marked_digest = str(document["tile_path_digest"])
-    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+    except (KeyError, TypeError, ValueError) as exc:
         raise RuntimeError(f"invalid pyramid completion marker: {marker}") from exc
     if marked != len(paths):
         raise RuntimeError(
@@ -1185,117 +1591,353 @@ def _inspect_complete_pyramid(path: Path) -> tuple[int, set[str]]:
         )
     if marked_digest != _tile_path_digest(paths):
         raise RuntimeError(f"pyramid completion path mismatch at {path}")
-    return len(paths), paths
-
-
-def is_complete_pyramid(path: str | Path) -> bool:
-    """Return whether `path` is a marker-validated immutable pyramid."""
     try:
-        _inspect_complete_pyramid(Path(path))
+        marked_content_digest = str(document["tile_content_digest"])
+        identity = PyramidIdentity.from_document(document["identity"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"invalid pyramid completion marker: {marker}") from exc
+    if marked_content_digest != _tile_content_digest(path, paths):
+        raise RuntimeError(f"pyramid completion content mismatch at {path}")
+    if expected_identity is not None and identity != expected_identity:
+        raise PyramidIdentityConflict(
+            "pyramid identity mismatch at "
+            f"{path}: existing renderer={identity.renderer!r} "
+            f"algorithm={identity.algorithm!r}, expected "
+            f"renderer={expected_identity.renderer!r} "
+            f"algorithm={expected_identity.algorithm!r}"
+        )
+    return PyramidInspection(len(paths), paths, identity)
+
+
+def complete_pyramid_identity(path: str | Path) -> PyramidIdentity | None:
+    """Return a validated v2 identity, or ``None`` for absent/unbound trees."""
+    try:
+        return _inspect_complete_pyramid(Path(path)).identity
     except (OSError, RuntimeError):
-        return False
-    return True
+        return None
+
+
+def is_complete_pyramid(path: str | Path, *, renderer: str | None = None) -> bool:
+    """Return whether `path` is a content- and identity-validated v2 pyramid."""
+    identity = complete_pyramid_identity(path)
+    return identity is not None and (renderer is None or identity.renderer == renderer)
+
+
+_PUBLICATION_LOCK_STRIPES = 64
+
+
+def _canonical_publication_finals(finals: Mapping[str, Path]) -> dict[str, Path]:
+    canonical = {name: path.resolve(strict=False) for name, path in finals.items()}
+    items = list(canonical.items())
+    for index, (name, path) in enumerate(items):
+        for other_name, other in items[index + 1 :]:
+            if path == other or path in other.parents or other in path.parents:
+                raise ValueError(
+                    "palette outputs must be distinct, non-nested paths: "
+                    f"{name}={path}, {other_name}={other}"
+                )
+    return canonical
+
+
+@contextmanager
+def _publication_group_lock(
+    finals: Mapping[str, Path], lock_root: str | Path | None = None
+) -> Iterator[dict[str, Path]]:
+    """Serialize canonical output paths under a stable bounded lock pool."""
+    canonical = _canonical_publication_finals(finals)
+    if lock_root is not None:
+        root = Path(lock_root).resolve(strict=False)
+        roots = {name: root for name in finals}
+    else:
+        # The fallback is deterministic for each final and stays above the
+        # timestamp/run directory. Production integrations pass the durable
+        # layer root explicitly so retention can never replace a lock inode.
+        roots = {name: final.parent.parent for name, final in canonical.items()}
+    lock_paths: set[Path] = set()
+    for name, final in canonical.items():
+        root = roots[name]
+        if root not in final.parents:
+            raise ValueError(f"publication lock root must contain every output: {root}")
+        lock_dir = root / ".render-publish-locks"
+        _durable_mkdir(lock_dir)
+        stripe = int.from_bytes(hashlib.sha256(str(final).encode()).digest()[:2], "big")
+        stripe %= _PUBLICATION_LOCK_STRIPES
+        lock_paths.add(lock_dir / f"{stripe:02x}.lock")
+
+    with ExitStack() as stack:
+        handles = [stack.enter_context(path.open("a+b")) for path in sorted(lock_paths)]
+        for handle in handles:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield roots
+        finally:
+            for handle in reversed(handles):
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _unbound_matches_staging(
+    final: Path,
+    staging_path: Path,
+    staging: PyramidInspection,
+) -> bool:
+    paths = _tile_paths(final)
+    return paths == staging.tile_paths and _tile_content_digest(
+        final, paths
+    ) == _tile_content_digest(staging_path, staging.tile_paths)
 
 
 def _render_and_publish_atomic(
     output_dirs: dict[str, str],
-    render: Callable[[dict[str, str]], int],
+    render: Callable[[dict[str, str]], int | Mapping[str, int]],
+    identities: Mapping[str, PyramidIdentity],
+    *,
+    lock_root: str | Path | None = None,
 ) -> MultiPaletteRenderResult:
-    """Stage missing palettes, then publish each immutable pyramid safely.
+    """Stage unresolved palettes, then publish or exactly adopt them safely.
 
     POSIX cannot atomically rename directories under several palette parents;
     the manifest remains the group visibility gate. Each individual pyramid is
-    atomic, EEXIST is accepted only after complete-content validation, and a
-    partial rename failure leaves only complete but unadvertised directories
-    that the next retry can converge on.
+    atomic. An identity-bound v2 winner is reused only for the same render
+    inputs. A pre-marker/schema-v1 tree is never trusted from shape: it is
+    adopted only when a fresh deterministic staging render has exactly the
+    same tile paths and PNG bytes. A full foreign-renderer winner may be reused so rollback does
+    not rewrite immutable paths, but mixed/partial foreign sets fail closed.
     """
     if not output_dirs:
         return MultiPaletteRenderResult(outcomes={})
+    if set(output_dirs) != set(identities):
+        raise ValueError("every output palette requires one publication identity")
     finals = {name: Path(path) for name, path in output_dirs.items()}
-    outcomes: dict[str, PalettePublishOutcome] = {}
-    reference_paths: set[str] | None = None
+    _canonical_publication_finals(finals)
+    with _publication_group_lock(finals, lock_root) as durability_roots:
+        outcomes: dict[str, PalettePublishOutcome] = {}
+        bound: dict[str, PyramidInspection] = {}
+        unresolved: dict[str, Path] = {}
 
-    for name, final in finals.items():
-        if not final.exists():
-            continue
-        count, paths = _inspect_complete_pyramid(final)
-        if reference_paths is not None and paths != reference_paths:
-            raise RuntimeError("existing palette pyramids have different tile paths")
-        reference_paths = paths
-        outcomes[name] = PalettePublishOutcome(PublishStatus.EXISTING_VALID, count)
-
-    missing = {name: final for name, final in finals.items() if name not in outcomes}
-    if not missing:
-        return MultiPaletteRenderResult(outcomes=outcomes)
-    staging = {
-        name: final.parent / f".{final.name}.tmp-{uuid.uuid4().hex}"
-        for name, final in missing.items()
-    }
-
-    def _discard_staging() -> None:
-        for tmp in staging.values():
-            shutil.rmtree(tmp, ignore_errors=True)
-
-    try:
-        count = render({name: str(path) for name, path in staging.items()})
-        if count == 0:
-            if outcomes:
-                raise RuntimeError("existing pyramid conflicts with newly empty render")
-            _discard_staging()
-            return MultiPaletteRenderResult(
-                outcomes={
-                    name: PalettePublishOutcome(PublishStatus.EMPTY, 0)
-                    for name in output_dirs
-                },
-            )
-
-        staged_paths: set[str] | None = None
-        for tmp in staging.values():
-            paths = _tile_paths(tmp)
-            if len(paths) != count:
-                raise RuntimeError(
-                    f"staged pyramid tile count mismatch at {tmp}: expected={count}, actual={len(paths)}"
-                )
-            if staged_paths is not None and paths != staged_paths:
-                raise RuntimeError("staged palette pyramids have different tile paths")
-            staged_paths = paths
-            _write_completion_marker(tmp, paths)
-        assert staged_paths is not None
-        if reference_paths is not None and staged_paths != reference_paths:
-            raise RuntimeError(
-                "existing and newly rendered palette pyramids have different tile paths"
-            )
-        reference_paths = staged_paths
-
-        for name, final in missing.items():
-            tmp = staging[name]
+        for name, final in finals.items():
+            if not final.exists():
+                unresolved[name] = final
+                continue
             try:
-                os.rename(tmp, final)
-            except OSError as exc:
-                if exc.errno not in (errno.EEXIST, errno.ENOTEMPTY):
-                    raise
-                # A concurrent winner using this publication protocol writes
-                # the marker before its atomic rename. Do not mistake an
-                # unrelated or half-built pre-existing directory for success.
-                existing_count, existing_paths = _inspect_complete_pyramid(final)
-                if existing_paths != reference_paths:
-                    raise RuntimeError(
-                        f"concurrent pyramid has different tile paths: {final}"
-                    ) from exc
-                shutil.rmtree(tmp, ignore_errors=True)
-                outcomes[name] = PalettePublishOutcome(
-                    PublishStatus.EXISTING_VALID,
-                    existing_count,
-                )
+                inspection = _inspect_complete_pyramid(final)
+            except UnboundPyramidError:
+                unresolved[name] = final
             else:
-                outcomes[name] = PalettePublishOutcome(PublishStatus.CREATED, count)
-    except BaseException:
-        _discard_staging()
-        raise
+                _fsync_bound_publication(final, durability_roots[name])
+                bound[name] = inspection
 
-    return MultiPaletteRenderResult(
-        outcomes={name: outcomes[name] for name in output_dirs}
-    )
+        if len(bound) == len(finals):
+            if all(bound[name].identity == identities[name] for name in finals):
+                return MultiPaletteRenderResult(
+                    outcomes={
+                        name: PalettePublishOutcome(
+                            PublishStatus.EXISTING_VALID,
+                            bound[name].tile_count,
+                        )
+                        for name in output_dirs
+                    }
+                )
+            render_specs = {
+                (
+                    inspection.identity.renderer,
+                    inspection.identity.algorithm,
+                    inspection.identity.source_id,
+                    inspection.identity.source_digest,
+                    inspection.identity.grid_spec_digest,
+                    inspection.identity.tile_spec_digest,
+                    inspection.identity.semantic_digest,
+                    inspection.identity.policy_digest,
+                )
+                for inspection in bound.values()
+            }
+            expected_specs = {
+                (
+                    identity.renderer,
+                    identity.algorithm,
+                    identity.source_id,
+                    identity.source_digest,
+                    identity.grid_spec_digest,
+                    identity.tile_spec_digest,
+                    identity.semantic_digest,
+                    identity.policy_digest,
+                )
+                for identity in identities.values()
+            }
+            compatible = all(
+                bound[name].identity.is_renderer_compatible_with(identities[name])
+                for name in finals
+            )
+            if (
+                compatible
+                and len(render_specs) == 1
+                and len(expected_specs) == 1
+                and next(iter(render_specs))[0] != next(iter(expected_specs))[0]
+            ):
+                return MultiPaletteRenderResult(
+                    outcomes={
+                        name: PalettePublishOutcome(
+                            PublishStatus.EXISTING_COMPATIBLE,
+                            bound[name].tile_count,
+                        )
+                        for name in output_dirs
+                    }
+                )
+            raise PyramidIdentityConflict(
+                "complete palette set has mixed or incompatible render identities"
+            )
+
+        # Filling around a foreign-renderer winner could produce one logical
+        # frame with mixed algorithms. Only exact current identities may be
+        # combined with newly published palettes.
+        for name, inspection in bound.items():
+            if inspection.identity != identities[name]:
+                raise PyramidIdentityConflict(
+                    f"partial palette set contains an incompatible pyramid: {finals[name]}"
+                )
+            outcomes[name] = PalettePublishOutcome(
+                PublishStatus.EXISTING_VALID,
+                inspection.tile_count,
+            )
+
+        staging = {
+            name: final.parent / f".{final.name}.tmp-{uuid.uuid4().hex}"
+            for name, final in unresolved.items()
+        }
+
+        def _discard_staging() -> None:
+            for temporary in staging.values():
+                shutil.rmtree(temporary, ignore_errors=True)
+
+        try:
+            rendered = render({name: str(path) for name, path in staging.items()})
+            if isinstance(rendered, Mapping):
+                if set(rendered) != set(staging):
+                    raise RuntimeError("renderer did not report every staged palette")
+                counts = {name: int(rendered[name]) for name in staging}
+            else:
+                counts = {name: int(rendered) for name in staging}
+
+            staged: dict[str, PyramidInspection] = {}
+            for name, temporary in staging.items():
+                count = counts[name]
+                if count < 0:
+                    raise RuntimeError("renderer returned a negative tile count")
+                paths = _tile_paths(temporary)
+                if len(paths) != count:
+                    raise RuntimeError(
+                        "staged pyramid tile count mismatch at "
+                        f"{temporary}: expected={count}, actual={len(paths)}"
+                    )
+                if count == 0:
+                    if finals[name].exists():
+                        raise RuntimeError(
+                            "existing unbound pyramid conflicts with an empty render: "
+                            f"{finals[name]}"
+                        )
+                    continue
+                _fsync_pyramid(temporary, paths)
+                _write_completion_marker(temporary, paths, identities[name])
+                staged[name] = _inspect_complete_pyramid(
+                    temporary,
+                    identities[name],
+                )
+
+            # Decide every action before mutating any existing tree. This
+            # avoids partially adopting a legacy set when a later palette is
+            # incomplete or belongs to another source.
+            actions: dict[str, tuple[str, PyramidInspection | None]] = {}
+            for name, final in unresolved.items():
+                if counts[name] == 0:
+                    actions[name] = ("empty", None)
+                    continue
+                if not final.exists():
+                    actions[name] = ("create", None)
+                    continue
+                try:
+                    winner = _inspect_complete_pyramid(final)
+                except UnboundPyramidError:
+                    if not _unbound_matches_staging(final, staging[name], staged[name]):
+                        raise PyramidIdentityConflict(
+                            "pre-marker pyramid differs from the deterministic "
+                            f"staging render and cannot be adopted: {final}"
+                        )
+                    actions[name] = ("adopt", None)
+                else:
+                    if winner.identity != identities[name]:
+                        raise PyramidIdentityConflict(
+                            f"concurrent pyramid has incompatible identity: {final}"
+                        )
+                    actions[name] = ("existing", winner)
+
+            for name, final in unresolved.items():
+                action, winner = actions[name]
+                temporary = staging[name]
+                if action == "empty":
+                    shutil.rmtree(temporary, ignore_errors=True)
+                    outcomes[name] = PalettePublishOutcome(PublishStatus.EMPTY, 0)
+                    continue
+                if action == "adopt":
+                    paths = _tile_paths(final)
+                    _fsync_pyramid(final, paths)
+                    _write_completion_marker(final, paths, identities[name])
+                    adopted = _inspect_complete_pyramid(final, identities[name])
+                    _fsync_bound_publication(final, durability_roots[name])
+                    shutil.rmtree(temporary, ignore_errors=True)
+                    outcomes[name] = PalettePublishOutcome(
+                        PublishStatus.ADOPTED,
+                        adopted.tile_count,
+                    )
+                    continue
+                if action == "existing":
+                    assert winner is not None
+                    shutil.rmtree(temporary, ignore_errors=True)
+                    outcomes[name] = PalettePublishOutcome(
+                        PublishStatus.EXISTING_VALID,
+                        winner.tile_count,
+                    )
+                    continue
+                try:
+                    os.rename(temporary, final)
+                except OSError as exc:
+                    if exc.errno not in (errno.EEXIST, errno.ENOTEMPTY):
+                        raise
+                    # A pre-v2 worker does not take the group lock. Its atomic
+                    # winner is adoptable only after exact byte comparison.
+                    try:
+                        winner = _inspect_complete_pyramid(final, identities[name])
+                    except UnboundPyramidError:
+                        if not _unbound_matches_staging(
+                            final,
+                            temporary,
+                            staged[name],
+                        ):
+                            raise PyramidIdentityConflict(
+                                f"concurrent pre-marker pyramid differs: {final}"
+                            ) from exc
+                        paths = _tile_paths(final)
+                        _fsync_pyramid(final, paths)
+                        _write_completion_marker(final, paths, identities[name])
+                        winner = _inspect_complete_pyramid(final, identities[name])
+                        _fsync_bound_publication(final, durability_roots[name])
+                        status = PublishStatus.ADOPTED
+                    else:
+                        status = PublishStatus.EXISTING_VALID
+                    shutil.rmtree(temporary, ignore_errors=True)
+                    outcomes[name] = PalettePublishOutcome(status, winner.tile_count)
+                else:
+                    _fsync_directory_chain(final.parent, durability_roots[name])
+                    created = _inspect_complete_pyramid(final, identities[name])
+                    outcomes[name] = PalettePublishOutcome(
+                        PublishStatus.CREATED,
+                        created.tile_count,
+                    )
+        except BaseException:
+            _discard_staging()
+            raise
+
+        return MultiPaletteRenderResult(
+            outcomes={name: outcomes[name] for name in output_dirs}
+        )
 
 
 def render_indexed_tiles_atomic(
@@ -1305,6 +1947,9 @@ def render_indexed_tiles_atomic(
     output_dirs: dict[str, str],
     luts: dict[str, np.ndarray],
     zoom_levels: list[int],
+    *,
+    source_id: str = "direct-indexed-grid",
+    publication_lock_root: str | Path | None = None,
     **kwargs,
 ) -> MultiPaletteRenderResult:
     """render_indexed_tiles with render_tiles_atomic publish semantics per palette.
@@ -1314,6 +1959,25 @@ def render_indexed_tiles_atomic(
     published that immutable path and the staging tree is discarded. A crash
     or a fully transparent frame publishes nothing for any palette.
     """
+    identities = _publication_identities(
+        renderer="indexed",
+        algorithm="class-index-nearest-v1",
+        source_id=source_id,
+        source_data=idx,
+        lats=lats,
+        lons=lons,
+        palette_payloads={name: luts[name] for name in output_dirs},
+        zoom_levels=zoom_levels,
+        tile_size=int(kwargs.get("tile_size", 256)),
+        source_crs=kwargs.get("source_crs"),
+        source_x=kwargs.get("source_x"),
+        source_y=kwargs.get("source_y"),
+        semantic_policy={"kind": "preclassified-categorical-index"},
+        policy={
+            "sampling": "nearest",
+            "png_compress_level": PNG_COMPRESS_LEVEL,
+        },
+    )
     return _render_and_publish_atomic(
         output_dirs,
         lambda staging: render_indexed_tiles(
@@ -1325,6 +1989,8 @@ def render_indexed_tiles_atomic(
             zoom_levels,
             **kwargs,
         ),
+        identities,
+        lock_root=publication_lock_root,
     )
 
 
@@ -1335,8 +2001,38 @@ def render_continuous_tiles_atomic(
     output_dirs: dict[str, str],
     model: ClassModel,
     zoom_levels: list[int],
+    *,
+    source_id: str = "direct-continuous-grid",
+    publication_lock_root: str | Path | None = None,
     **kwargs,
 ) -> MultiPaletteRenderResult:
+    identities = _publication_identities(
+        renderer="indexed",
+        algorithm="physical-bilinear-classify-v1",
+        source_id=source_id,
+        source_data=data,
+        lats=lats,
+        lons=lons,
+        palette_payloads={name: model.luts[name] for name in output_dirs},
+        zoom_levels=zoom_levels,
+        tile_size=int(kwargs.get("tile_size", 256)),
+        source_crs=kwargs.get("source_crs"),
+        source_x=kwargs.get("source_x"),
+        source_y=kwargs.get("source_y"),
+        semantic_policy={
+            "kind": "continuous",
+            "nodata_value": kwargs.get("nodata_value"),
+            "min_valid_weight": kwargs.get("min_valid_weight", 1.0),
+        },
+        policy={
+            "sampling": "bilinear",
+            "nodata_value": kwargs.get("nodata_value"),
+            "min_valid_weight": kwargs.get("min_valid_weight", 1.0),
+            "model_edges": model.edges,
+            "model_remap": model.remap,
+            "png_compress_level": PNG_COMPRESS_LEVEL,
+        },
+    )
     return _render_and_publish_atomic(
         output_dirs,
         lambda staging: render_continuous_tiles(
@@ -1348,6 +2044,8 @@ def render_continuous_tiles_atomic(
             zoom_levels,
             **kwargs,
         ),
+        identities,
+        lock_root=publication_lock_root,
     )
 
 
@@ -1363,6 +2061,8 @@ def render_frame_palettes(
     nodata_value: float | None = None,
     min_valid_weight: float = 1.0,
     renderer: str = "indexed",
+    source_id: str = "unspecified-frame",
+    publication_lock_root: str | Path | None = None,
     **kwargs,
 ) -> MultiPaletteRenderResult:
     """Render and atomically publish every palette's pyramid.
@@ -1378,39 +2078,70 @@ def render_frame_palettes(
     if not output_dirs:
         return MultiPaletteRenderResult(outcomes={})
     tables = {p: color_tables[p] for p in output_dirs}
+    identity_args = {
+        "source_id": source_id,
+        "source_data": data,
+        "lats": lats,
+        "lons": lons,
+        "palette_payloads": tables,
+        "zoom_levels": zoom_levels,
+        "tile_size": int(kwargs.get("tile_size", 256)),
+        "source_crs": kwargs.get("source_crs"),
+        "source_x": kwargs.get("source_x"),
+        "source_y": kwargs.get("source_y"),
+    }
     if renderer == "legacy":
-        outcomes: dict[str, PalettePublishOutcome] = {}
-        for palette, output_dir in output_dirs.items():
-            if category_map is None:
-                rgba = apply_color_table(data, tables[palette])
-            else:
-                rgba = apply_categorical_color_table(
-                    data,
-                    tables[palette]["categories"],
-                    category_map,
-                )
+        semantic_policy = (
+            {
+                "kind": "categorical",
+                "category_map": category_map,
+            }
+            if category_map is not None
+            else {
+                "kind": "continuous",
+                "nodata_value": nodata_value,
+                "min_valid_weight": min_valid_weight,
+            }
+        )
+        identities = _publication_identities(
+            renderer="legacy",
+            algorithm="rgba-bilinear-v1",
+            semantic_policy=semantic_policy,
+            policy={
+                "sampling": "bilinear-rgba",
+                "category_map": category_map,
+                "png_compress_level": 1,
+            },
+            **identity_args,
+        )
 
-            def _render_legacy(
-                staging: dict[str, str],
-                *,
-                palette_name: str = palette,
-                palette_rgba: np.ndarray = rgba,
-            ) -> int:
-                return render_tiles(
-                    palette_rgba,
+        def _render_legacy(staging: dict[str, str]) -> dict[str, int]:
+            counts: dict[str, int] = {}
+            for palette, output_dir in staging.items():
+                if category_map is None:
+                    rgba = apply_color_table(data, tables[palette])
+                else:
+                    rgba = apply_categorical_color_table(
+                        data,
+                        tables[palette]["categories"],
+                        category_map,
+                    )
+                counts[palette] = render_tiles(
+                    rgba,
                     lats,
                     lons,
-                    staging[palette_name],
+                    output_dir,
                     zoom_levels,
                     **kwargs,
                 )
+            return counts
 
-            result = _render_and_publish_atomic(
-                {palette: output_dir},
-                _render_legacy,
-            )
-            outcomes[palette] = result.outcomes[palette]
-        return MultiPaletteRenderResult(outcomes=outcomes)
+        return _render_and_publish_atomic(
+            output_dirs,
+            _render_legacy,
+            identities,
+            lock_root=publication_lock_root,
+        )
     if renderer != "indexed":
         raise ValueError(
             f"unknown tile renderer {renderer!r}; expected 'legacy' or 'indexed'"
@@ -1418,24 +2149,67 @@ def render_frame_palettes(
     if category_map is not None:
         model = build_categorical_class_model(tables, category_map)
         idx = model.classify(data)
-        return render_indexed_tiles_atomic(
-            idx,
-            lats,
-            lons,
+        identities = _publication_identities(
+            renderer="indexed",
+            algorithm="category-nearest-v1",
+            semantic_policy={
+                "kind": "categorical",
+                "category_map": category_map,
+            },
+            policy={
+                "sampling": "nearest",
+                "category_map": category_map,
+                "model_remap": model.remap,
+                "png_compress_level": PNG_COMPRESS_LEVEL,
+            },
+            **identity_args,
+        )
+        return _render_and_publish_atomic(
             output_dirs,
-            model.luts,
-            zoom_levels,
-            **kwargs,
+            lambda staging: render_indexed_tiles(
+                idx,
+                lats,
+                lons,
+                staging,
+                model.luts,
+                zoom_levels,
+                **kwargs,
+            ),
+            identities,
+            lock_root=publication_lock_root,
         )
     model = build_class_model(tables)
-    return render_continuous_tiles_atomic(
-        data,
-        lats,
-        lons,
+    identities = _publication_identities(
+        renderer="indexed",
+        algorithm="physical-bilinear-classify-v1",
+        semantic_policy={
+            "kind": "continuous",
+            "nodata_value": nodata_value,
+            "min_valid_weight": min_valid_weight,
+        },
+        policy={
+            "sampling": "bilinear",
+            "nodata_value": nodata_value,
+            "min_valid_weight": min_valid_weight,
+            "model_edges": model.edges,
+            "model_remap": model.remap,
+            "png_compress_level": PNG_COMPRESS_LEVEL,
+        },
+        **identity_args,
+    )
+    return _render_and_publish_atomic(
         output_dirs,
-        model,
-        zoom_levels,
-        nodata_value=nodata_value,
-        min_valid_weight=min_valid_weight,
-        **kwargs,
+        lambda staging: render_continuous_tiles(
+            data,
+            lats,
+            lons,
+            staging,
+            model,
+            zoom_levels,
+            nodata_value=nodata_value,
+            min_valid_weight=min_valid_weight,
+            **kwargs,
+        ),
+        identities,
+        lock_root=publication_lock_root,
     )

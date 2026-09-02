@@ -378,23 +378,70 @@ of visible pixels, proving that the choice matters but not which policy is
 scientifically right for every product. Nodata interpolation must be explicit
 and validity-aware.
 
-Also fix the grid-pruning race: pruning can remove a just-fsynced generation
-before its metadata pointer commits. Serialize write/prune per layer or protect
-recent orphans with a grace period. Treat an existing final directory as valid
-only when its completion marker and tile count pass validation.
+Grid publication is serialized per layer. The writer fsyncs its immutable data
+generation before replacing the metadata pointer; shared pruning takes the
+same lock, preserves `.grid.lock` and live metadata temporaries, and gives
+unreferenced generations a rolling-upgrade grace period. Nowcast point-grid
+retention must call that shared path rather than walking and unlinking the
+directory itself.
 
-Release behind `TILE_RENDERER=legacy|indexed`. Required tests:
+Tile pyramids use a create-only `.render-complete-v2.json` marker that binds
+renderer and algorithm, stable source ID plus source-content digest,
+coordinate-grid spec, palette name/content, tile spec, renderer-neutral
+product semantics, render policy, and the paths and exact bytes of every PNG.
+Known legacy/indexed algorithm pairs may recognize one another only when the
+renderer-neutral semantics also match; an unknown algorithm or changed
+category/nodata policy fails closed. Tiles and the marker receive strict file
+fsyncs, directories are synced in order, and every newly created ancestor is
+synced through the stable layer root after final rename.
+
+An unmarked tree or the old `.render-complete.json` marker is not complete. A
+retry renders the requested output to staging and adopts the old tree only when
+every relative PNG path and encoded byte matches. A partial, recompressed, or
+otherwise different tree fails closed and remains unbound. Migration writes
+the versioned v2 sidecar without replacing the legacy marker, so rolling
+workers cannot overwrite the winner's identity. The v2 marker then binds the
+existing files' exact bytes. Canonical output paths use bounded lock stripes
+under a non-retention layer root; subset/full palette calls share locks,
+symlink aliases cannot create a second lock namespace, and cleanup never
+deletes a live lock inode.
+
+The GitOps canary contract is deliberately two-key and single-role:
+
+1. The default is `TILE_RENDERER=legacy`. `TILE_RENDERER=indexed` without a
+   valid `TILE_RENDERER_CANARY_ROLE` fails configuration validation.
+2. Set `TILE_RENDERER_CANARY_ROLE` to exactly one of `mrms`, `nowcast`, `hrrr`,
+   or `aux`; begin with `mrms`. On an all-in-one worker every other activity
+   role still resolves to legacy.
+3. Every pod able to poll the selected role queue must run the same image and
+   the same two values. Inventory and drain pinned/running executions and old
+   pollers before changing them; never let legacy and indexed builds race for
+   the same role and immutable path.
+4. Verify the role queue, worker build IDs, marker renderer, tile decode, RSS,
+   render latency, and advertised-pyramid checks before selecting another
+   role. Change only one role per observation window.
+5. Roll back by draining the selected role's indexed activities, setting
+   `TILE_RENDERER=legacy` on all of its pollers, and verifying the replacement
+   pollers before resuming the queue. Complete indexed pyramids remain honest,
+   immutable winners and may continue serving; new frame paths render legacy.
+   A full foreign-renderer set is reusable, but a partial/mixed set fails
+   closed. Never delete a marker or overwrite a published tree as rollback.
+
+Required tests:
 
 - Real MRMS, nowcast, projected HRRR/AQ, and categorical golden fixtures.
 - Analytical ramps for threshold placement and nodata edges.
 - Palette path-set equality and at least one tile per advertised palette.
 - Cache collision, eviction, concurrent fill, cancellation, failed rename,
-  duplicate renderer, and write/prune race injection.
+  duplicate/mixed renderer, semantic-policy mismatch, unknown algorithms,
+  exact legacy/v1 adoption, truncated-tree rejection, marker/content tamper,
+  lock-alias/overlap, strict fsync failure, and write/prune race injection.
 - Physical MapLibre decode check for indexed PNG transparency.
 
 Exit: production canary keeps MRMS under 10 s and nowcast under 90 s, uses
-bounded cache/RSS, and advertises zero empty or partial pyramids. Rollback is a
-single flag change; keep the legacy renderer until the canary passes.
+bounded cache/RSS, and advertises zero empty or partial pyramids. Keep the
+legacy renderer until the canary passes; rollback is the controlled role flag
+change above, not an in-place rewrite of immutable output.
 
 ### Gate 3 — separate compute, storage, and serving
 

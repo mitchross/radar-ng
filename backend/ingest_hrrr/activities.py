@@ -34,8 +34,9 @@ from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
 from backend.shared.tiler import (
     MultiPaletteRenderResult,
-    is_complete_pyramid,
+    complete_pyramid_identity,
     render_frame_palettes,
+    tile_renderer_for_role,
 )
 
 
@@ -493,7 +494,9 @@ def _write_palette_tiles(
         source_y=source_y,
         nodata_value=None,
         min_valid_weight=1.0,
-        renderer=os.environ.get("TILE_RENDERER", "legacy"),
+        renderer=tile_renderer_for_role("hrrr"),
+        source_id=f"hrrr:{layer}:{path}",
+        publication_lock_root=tile_base / layer,
     )
 
 
@@ -700,7 +703,12 @@ def _required_layers(palette_tables: dict[str, dict]) -> set[str]:
 def _existing_rendered_layers(
     tile_base: Path, tile_path: str, palette_tables: dict[str, dict]
 ) -> list[str]:
-    """Layers with a marker-validated pyramid for every defined palette."""
+    """Layers with one coherent, marker-validated pyramid per palette.
+
+    Renderer identity is deliberately not required to match today's flag: an
+    immutable hour completed by the other renderer remains safe during
+    rollback. Mixed renderers or sources never count as resumable.
+    """
     existing: list[str] = []
     for layer, color_key in LAYER_COLOR_KEYS.items():
         palettes = [
@@ -709,7 +717,31 @@ def _existing_rendered_layers(
         if not palettes:
             continue
         dirs = [tile_base / layer / pname / tile_path for pname in palettes]
-        if all(is_complete_pyramid(d) for d in dirs):
+        identities = [complete_pyramid_identity(path) for path in dirs]
+        if any(identity is None for identity in identities):
+            continue
+        bound = [identity for identity in identities if identity is not None]
+        shared = {
+            (
+                identity.renderer,
+                identity.algorithm,
+                identity.source_id,
+                identity.source_digest,
+                identity.grid_spec_digest,
+                identity.tile_spec_digest,
+                identity.semantic_digest,
+                identity.policy_digest,
+            )
+            for identity in bound
+        }
+        if (
+            len(shared) == 1
+            and all(
+                identity.palette_name == palette
+                for identity, palette in zip(bound, palettes, strict=True)
+            )
+            and bound[0].source_id == f"hrrr:{layer}:{tile_path}"
+        ):
             existing.append(layer)
     return existing
 

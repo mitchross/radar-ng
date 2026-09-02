@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import errno
 import json
+import shutil
 import struct
 import threading
 import time
@@ -414,6 +415,187 @@ def test_legacy_renderer_is_a_marker_validated_rollback_path(tmp_path):
     assert retry.outcomes["classic"].status is PublishStatus.EXISTING_VALID
     assert retry.counts == first.counts
 
+    # Marker loss/state rollback is not trusted by shape alone. A fresh legacy
+    # staging render must match before the old tree receives a v2 marker.
+    (output / tiler._PYRAMID_COMPLETE_FILE).unlink()
+    adopted = render_frame_palettes(
+        data,
+        lats,
+        lons,
+        tables,
+        {"classic": str(output)},
+        [4],
+        renderer="legacy",
+    )
+    assert adopted.outcomes["classic"].status is PublishStatus.ADOPTED
+    assert tiler.is_complete_pyramid(output, renderer="legacy")
+
+
+def test_rollback_reuses_full_indexed_winner_without_claiming_legacy(tmp_path):
+    palettes = _load_palettes()
+    tables = {name: palettes[name]["reflectivity"] for name in ("classic", "muted")}
+    data, lats, lons = _synthetic_reflectivity()
+    outputs = {name: str(tmp_path / name) for name in tables}
+    render_frame_palettes(
+        data,
+        lats,
+        lons,
+        tables,
+        outputs,
+        [4],
+        renderer="indexed",
+        source_id="mrms:radar:fixture",
+    )
+    before = {
+        name: next(Path(path).rglob("*.png")).read_bytes()
+        for name, path in outputs.items()
+    }
+
+    rollback = render_frame_palettes(
+        data,
+        lats,
+        lons,
+        tables,
+        outputs,
+        [4],
+        renderer="legacy",
+        source_id="mrms:radar:fixture",
+    )
+
+    assert {outcome.status for outcome in rollback.outcomes.values()} == {
+        PublishStatus.EXISTING_COMPATIBLE
+    }
+    for name, path in outputs.items():
+        identity = tiler.complete_pyramid_identity(path)
+        assert identity is not None and identity.renderer == "indexed"
+        assert next(Path(path).rglob("*.png")).read_bytes() == before[name]
+
+
+def test_foreign_renderer_rejects_changed_categorical_semantics(tmp_path):
+    table = _load_palettes()["classic"]["precip_type"]
+    data = np.ones((64, 64), dtype=np.int16)
+    lats = np.linspace(40.0, 45.0, 64)
+    lons = np.linspace(-90.0, -85.0, 64)
+    output = {"classic": str(tmp_path / "classic")}
+    render_frame_palettes(
+        data,
+        lats,
+        lons,
+        {"classic": table},
+        output,
+        [4],
+        renderer="indexed",
+        category_map={1: "rain"},
+        source_id="nowcast:fixture",
+    )
+
+    with pytest.raises(tiler.PyramidIdentityConflict, match="incompatible"):
+        render_frame_palettes(
+            data,
+            lats,
+            lons,
+            {"classic": table},
+            output,
+            [4],
+            renderer="legacy",
+            category_map={1: "snow"},
+            source_id="nowcast:fixture",
+        )
+
+
+def test_foreign_renderer_rejects_unknown_algorithm_identity(tmp_path):
+    table = _load_palettes()["classic"]["reflectivity"]
+    data, lats, lons = _synthetic_reflectivity()
+    output = tmp_path / "classic"
+    render_frame_palettes(
+        data,
+        lats,
+        lons,
+        {"classic": table},
+        {"classic": str(output)},
+        [4],
+        renderer="indexed",
+        source_id="mrms:fixture",
+    )
+    marker = output / tiler._PYRAMID_COMPLETE_FILE
+    document = json.loads(marker.read_text())
+    document["identity"]["renderer"] = "future"
+    document["identity"]["algorithm"] = "unknown-v99"
+    marker.write_text(json.dumps(document))
+
+    with pytest.raises(tiler.PyramidIdentityConflict, match="incompatible"):
+        render_frame_palettes(
+            data,
+            lats,
+            lons,
+            {"classic": table},
+            {"classic": str(output)},
+            [4],
+            renderer="legacy",
+            source_id="mrms:fixture",
+        )
+
+
+def test_partial_foreign_renderer_set_fails_closed(tmp_path):
+    palettes = _load_palettes()
+    tables = {name: palettes[name]["reflectivity"] for name in ("classic", "muted")}
+    data, lats, lons = _synthetic_reflectivity()
+    outputs = {name: str(tmp_path / name) for name in tables}
+    render_frame_palettes(
+        data,
+        lats,
+        lons,
+        {"classic": tables["classic"]},
+        {"classic": outputs["classic"]},
+        [4],
+        renderer="indexed",
+        source_id="mrms:radar:fixture",
+    )
+
+    with pytest.raises(tiler.PyramidIdentityConflict, match="partial palette set"):
+        render_frame_palettes(
+            data,
+            lats,
+            lons,
+            tables,
+            outputs,
+            [4],
+            renderer="legacy",
+            source_id="mrms:radar:fixture",
+        )
+    assert not Path(outputs["muted"]).exists()
+
+
+@pytest.mark.parametrize("changed", ["source", "grid", "palette"])
+def test_bound_identity_rejects_changed_render_inputs(tmp_path, changed):
+    table = _load_palettes()["classic"]["reflectivity"]
+    data, lats, lons = _synthetic_reflectivity()
+    output = {"classic": str(tmp_path / "classic")}
+    render_frame_palettes(
+        data,
+        lats,
+        lons,
+        {"classic": table},
+        output,
+        [4],
+        source_id="source-a",
+    )
+    retry_lats = lats + 0.01 if changed == "grid" else lats
+    retry_table = json.loads(json.dumps(table))
+    if changed == "palette":
+        retry_table["ranges"][0]["rgba"][0] ^= 1
+
+    with pytest.raises(tiler.PyramidIdentityConflict):
+        render_frame_palettes(
+            data,
+            retry_lats,
+            lons,
+            {"classic": retry_table},
+            output,
+            [4],
+            source_id="source-b" if changed == "source" else "source-a",
+        )
+
 
 def test_unknown_renderer_fails_closed(tmp_path):
     palettes = _load_palettes()
@@ -428,6 +610,24 @@ def test_unknown_renderer_fails_closed(tmp_path):
             [4],
             renderer="typo",
         )
+
+
+def test_indexed_renderer_requires_one_named_canary_role(monkeypatch):
+    monkeypatch.setenv("TILE_RENDERER", "indexed")
+    monkeypatch.delenv("TILE_RENDERER_CANARY_ROLE", raising=False)
+    with pytest.raises(ValueError, match="CANARY_ROLE"):
+        tiler.tile_renderer_for_role("mrms")
+
+    monkeypatch.setenv("TILE_RENDERER_CANARY_ROLE", "mrms")
+    assert tiler.tile_renderer_for_role("mrms") == "indexed"
+    assert tiler.tile_renderer_for_role("hrrr") == "legacy"
+
+
+def test_legacy_renderer_ignores_stale_canary_role(monkeypatch):
+    monkeypatch.setenv("TILE_RENDERER", "legacy")
+    monkeypatch.setenv("TILE_RENDERER_CANARY_ROLE", "mrms")
+    assert tiler.tile_renderer_for_role("mrms") == "legacy"
+    assert tiler.tile_renderer_for_role("nowcast") == "legacy"
 
 
 def test_projected_continuous_grid_matches_physical_bilinear_reference(tmp_path):
@@ -687,12 +887,194 @@ def test_atomic_multi_palette_publishes_each_pyramid_without_tmp_leftover(tmp_pa
     for p, out in outs.items():
         out = Path(out)
         assert out.is_dir() and list(out.glob("*/*/*.png"))
-        assert (out / tiler._PYRAMID_COMPLETE_FILE).is_file()
+        marker = json.loads((out / tiler._PYRAMID_COMPLETE_FILE).read_text())
+        assert marker["schema_version"] == 2
+        assert marker["identity"]["renderer"] == "indexed"
+        assert marker["identity"]["palette_name"] == p
+        assert marker["identity"]["semantic_digest"]
+        assert marker["tile_content_digest"]
         assert not list(out.parent.glob(f".{out.name}.tmp-*"))
         tile = _decode(next(out.glob("*/*/*.png")))
         opaque = tile[:, :, 3] > 0
         assert opaque.any()
         assert np.all(tile[opaque] == luts[p][1])
+
+
+def test_publish_orders_tile_marker_and_parent_directory_durability(
+    tmp_path, monkeypatch
+):
+    idx, luts, lats, lons = _index_frame()
+    output = tmp_path / "radar" / "classic" / "ts"
+    events: list[tuple[str, Path]] = []
+    real_sync_tree = tiler._fsync_pyramid
+    real_write_marker = tiler._write_completion_marker
+    real_rename = tiler.os.rename
+    real_sync_directory = tiler._fsync_directory
+
+    def sync_tree(path, paths):
+        events.append(("tiles", Path(path)))
+        return real_sync_tree(path, paths)
+
+    def write_marker(path, paths, identity):
+        events.append(("marker", Path(path)))
+        return real_write_marker(path, paths, identity)
+
+    def rename(source, destination):
+        source = Path(source)
+        assert (source / tiler._PYRAMID_COMPLETE_FILE).is_file()
+        events.append(("rename", Path(destination)))
+        return real_rename(source, destination)
+
+    def sync_directory(path):
+        events.append(("directory", Path(path)))
+        return real_sync_directory(path)
+
+    monkeypatch.setattr(tiler, "_fsync_pyramid", sync_tree)
+    monkeypatch.setattr(tiler, "_write_completion_marker", write_marker)
+    monkeypatch.setattr(tiler.os, "rename", rename)
+    monkeypatch.setattr(tiler, "_fsync_directory", sync_directory)
+
+    render_indexed_tiles_atomic(
+        idx,
+        lats,
+        lons,
+        {"classic": str(output)},
+        {"classic": luts["classic"]},
+        [4],
+    )
+
+    kinds = [kind for kind, _ in events]
+    assert kinds.index("tiles") < kinds.index("marker") < kinds.index("rename")
+    rename_index = kinds.index("rename")
+    assert ("directory", output.parent) in events[rename_index + 1 :]
+    assert ("directory", output.parent.parent) in events[:rename_index]
+
+
+def test_retry_finishes_parent_sync_after_post_rename_failure(tmp_path, monkeypatch):
+    idx, luts, lats, lons = _index_frame()
+    output = tmp_path / "radar" / "classic" / "ts"
+    real_sync_chain = tiler._fsync_directory_chain
+    failed = False
+    post_rename_syncs = 0
+
+    def fail_once(path, ancestor):
+        nonlocal failed, post_rename_syncs
+        if Path(path) == output.parent:
+            post_rename_syncs += 1
+            if not failed:
+                failed = True
+                raise OSError(errno.EIO, "simulated parent fsync failure")
+        return real_sync_chain(path, ancestor)
+
+    monkeypatch.setattr(tiler, "_fsync_directory_chain", fail_once)
+    args = (
+        idx,
+        lats,
+        lons,
+        {"classic": str(output)},
+        {"classic": luts["classic"]},
+        [4],
+    )
+    with pytest.raises(OSError, match="parent fsync failure"):
+        render_indexed_tiles_atomic(*args)
+    assert tiler.is_complete_pyramid(output, renderer="indexed")
+
+    retry = render_indexed_tiles_atomic(*args)
+    assert retry.outcomes["classic"].status is PublishStatus.EXISTING_VALID
+    assert post_rename_syncs == 2
+
+
+def test_regular_file_fsync_errors_are_never_suppressed(monkeypatch):
+    def fail(_fd):
+        raise OSError(errno.EINVAL, "simulated file fsync failure")
+
+    monkeypatch.setattr(tiler.os, "fsync", fail)
+    with pytest.raises(OSError, match="file fsync failure"):
+        tiler._fsync_file(123)
+
+
+def test_overlapping_palette_sets_share_a_publication_lock(tmp_path):
+    classic = tmp_path / "a" / "frame"
+    alias = tmp_path / "alias"
+    alias.symlink_to(tmp_path, target_is_directory=True)
+    aliased_classic = alias / "a" / "frame"
+    finals = {"classic": classic, "muted": tmp_path / "b" / "frame"}
+    acquired = threading.Event()
+
+    def acquire_subset():
+        with tiler._publication_group_lock({"classic": aliased_classic}):
+            acquired.set()
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with tiler._publication_group_lock(finals):
+            future = pool.submit(acquire_subset)
+            assert not acquired.wait(0.1)
+        future.result(timeout=5)
+    assert acquired.is_set()
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_invalid_overlapping_output_paths_fail_before_mutation(tmp_path, nested):
+    idx, luts, lats, lons = _index_frame()
+    first = tmp_path / "output"
+    second = first / "nested" if nested else first
+
+    with pytest.raises(ValueError, match="distinct, non-nested"):
+        render_indexed_tiles_atomic(
+            idx,
+            lats,
+            lons,
+            {"classic": str(first), "muted": str(second)},
+            luts,
+            [4],
+        )
+    assert not first.exists()
+    assert not (tmp_path / ".render-publish-locks").exists()
+
+
+def test_publication_lock_root_must_be_a_strict_output_ancestor(tmp_path):
+    idx, luts, lats, lons = _index_frame()
+    output = tmp_path / "output"
+
+    with pytest.raises(ValueError, match="lock root"):
+        render_indexed_tiles_atomic(
+            idx,
+            lats,
+            lons,
+            {"classic": str(output)},
+            {"classic": luts["classic"]},
+            [4],
+            publication_lock_root=output,
+        )
+    assert not output.exists()
+
+
+def test_atomic_helpers_allow_palette_payload_supersets(tmp_path):
+    idx, luts, lats, lons = _index_frame()
+    indexed = render_indexed_tiles_atomic(
+        idx,
+        lats,
+        lons,
+        {"classic": str(tmp_path / "indexed")},
+        luts,
+        [4],
+    )
+    assert indexed.counts["classic"] > 0
+
+    tables = {
+        name: _load_palettes()[name]["reflectivity"] for name in ("classic", "muted")
+    }
+    model = build_class_model(tables)
+    data = np.where(idx, 20.0, np.nan)
+    continuous = tiler.render_continuous_tiles_atomic(
+        data,
+        lats,
+        lons,
+        {"classic": str(tmp_path / "continuous")},
+        model,
+        [4],
+    )
+    assert continuous.counts["classic"] > 0
 
 
 def test_atomic_multi_palette_rejects_incomplete_existing_dir(tmp_path):
@@ -743,6 +1125,178 @@ def test_completion_marker_detects_same_count_path_tamper(tmp_path):
         )
 
 
+def test_completion_marker_detects_tile_content_tamper(tmp_path):
+    idx, luts, lats, lons = _index_frame()
+    out = tmp_path / "radar" / "classic" / "ts"
+    render_indexed_tiles_atomic(
+        idx,
+        lats,
+        lons,
+        {"classic": str(out)},
+        {"classic": luts["classic"]},
+        [4],
+    )
+    tile = next(out.rglob("*.png"))
+    body = bytearray(tile.read_bytes())
+    body[-1] ^= 1
+    tile.write_bytes(body)
+
+    assert not tiler.is_complete_pyramid(out)
+    with pytest.raises(RuntimeError, match="content mismatch"):
+        render_indexed_tiles_atomic(
+            idx,
+            lats,
+            lons,
+            {"classic": str(out)},
+            {"classic": luts["classic"]},
+            [4],
+        )
+
+
+def test_exact_unmarked_pyramid_is_adopted_after_staged_rerender(tmp_path):
+    idx, luts, lats, lons = _index_frame()
+    outs = {p: str(tmp_path / "radar" / p / "ts") for p in luts}
+    first = render_indexed_tiles_atomic(idx, lats, lons, outs, luts, [4])
+    for output in outs.values():
+        (Path(output) / tiler._PYRAMID_COMPLETE_FILE).unlink()
+
+    adopted = render_indexed_tiles_atomic(idx, lats, lons, outs, luts, [4])
+
+    assert adopted.counts == first.counts
+    assert {outcome.status for outcome in adopted.outcomes.values()} == {
+        PublishStatus.ADOPTED
+    }
+    assert all(tiler.is_complete_pyramid(path) for path in outs.values())
+
+
+def test_partial_unmarked_pyramid_is_not_adopted(tmp_path):
+    idx, luts, lats, lons = _index_frame()
+    output = tmp_path / "radar" / "classic" / "ts"
+    render_indexed_tiles_atomic(
+        idx,
+        lats,
+        lons,
+        {"classic": str(output)},
+        {"classic": luts["classic"]},
+        [4, 5],
+    )
+    (output / tiler._PYRAMID_COMPLETE_FILE).unlink()
+    next(output.rglob("*.png")).unlink()
+
+    with pytest.raises(tiler.PyramidIdentityConflict, match="cannot be adopted"):
+        render_indexed_tiles_atomic(
+            idx,
+            lats,
+            lons,
+            {"classic": str(output)},
+            {"classic": luts["classic"]},
+            [4, 5],
+        )
+    assert not (output / tiler._PYRAMID_COMPLETE_FILE).exists()
+
+
+def test_schema_v1_marker_requires_exact_adoption(tmp_path):
+    idx, luts, lats, lons = _index_frame()
+    output = tmp_path / "radar" / "classic" / "ts"
+    result = render_indexed_tiles_atomic(
+        idx,
+        lats,
+        lons,
+        {"classic": str(output)},
+        {"classic": luts["classic"]},
+        [4],
+    )
+    paths = tiler._tile_paths(output)
+    (output / tiler._PYRAMID_COMPLETE_FILE).unlink()
+    previous = output / tiler._PREVIOUS_PYRAMID_COMPLETE_FILE
+    previous.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                # A legacy marker is not an authority. Exact staged bytes are,
+                # so stale metadata must neither bless nor block migration.
+                "tile_count": len(paths) + 99,
+                "tile_path_digest": "stale",
+            }
+        )
+    )
+
+    adopted = render_indexed_tiles_atomic(
+        idx,
+        lats,
+        lons,
+        {"classic": str(output)},
+        {"classic": luts["classic"]},
+        [4],
+    )
+
+    assert adopted.counts == result.counts
+    assert adopted.outcomes["classic"].status is PublishStatus.ADOPTED
+    marker = json.loads((output / tiler._PYRAMID_COMPLETE_FILE).read_text())
+    assert marker["schema_version"] == 2
+    assert previous.exists()
+
+
+def test_schema_v1_marker_cannot_bless_a_partial_tree(tmp_path):
+    idx, luts, lats, lons = _index_frame()
+    output = tmp_path / "radar" / "classic" / "ts"
+    render_indexed_tiles_atomic(
+        idx,
+        lats,
+        lons,
+        {"classic": str(output)},
+        {"classic": luts["classic"]},
+        [4, 5],
+    )
+    (output / tiler._PYRAMID_COMPLETE_FILE).unlink()
+    (output / tiler._PREVIOUS_PYRAMID_COMPLETE_FILE).write_text(
+        json.dumps({"schema_version": 1, "tile_count": 999})
+    )
+    next(output.rglob("*.png")).unlink()
+
+    with pytest.raises(tiler.PyramidIdentityConflict, match="cannot be adopted"):
+        render_indexed_tiles_atomic(
+            idx,
+            lats,
+            lons,
+            {"classic": str(output)},
+            {"classic": luts["classic"]},
+            [4, 5],
+        )
+    assert not (output / tiler._PYRAMID_COMPLETE_FILE).exists()
+
+
+def test_identity_marker_is_create_only(tmp_path):
+    idx, luts, lats, lons = _index_frame()
+    output = tmp_path / "radar" / "classic" / "ts"
+    render_indexed_tiles_atomic(
+        idx,
+        lats,
+        lons,
+        {"classic": str(output)},
+        {"classic": luts["classic"]},
+        [4],
+    )
+    marker = output / tiler._PYRAMID_COMPLETE_FILE
+    before = marker.read_bytes()
+    identity = tiler.complete_pyramid_identity(output)
+    assert identity is not None
+    conflicting = tiler.PyramidIdentity(
+        **{
+            **identity.to_document(),
+            "source_id": "different-source",
+        }
+    )
+
+    with pytest.raises(tiler.PyramidIdentityConflict, match="different identity"):
+        tiler._write_completion_marker(
+            output,
+            tiler._tile_paths(output),
+            conflicting,
+        )
+    assert marker.read_bytes() == before
+
+
 def test_atomic_partial_publish_converges_on_retry(tmp_path, monkeypatch):
     idx, luts, lats, lons = _index_frame()
     outs = {p: str(tmp_path / "radar" / p / "2026-07-01T12:08:00+00:00") for p in luts}
@@ -782,7 +1336,7 @@ def test_atomic_eexist_requires_winner_completion_marker(tmp_path, monkeypatch):
         raise OSError(errno.ENOTEMPTY, "simulated publish race", str(dst_path))
 
     monkeypatch.setattr(tiler.os, "rename", incomplete_winner)
-    with pytest.raises(RuntimeError, match="no completion marker"):
+    with pytest.raises(tiler.PyramidIdentityConflict, match="differs"):
         render_indexed_tiles_atomic(
             idx,
             lats,
@@ -792,6 +1346,36 @@ def test_atomic_eexist_requires_winner_completion_marker(tmp_path, monkeypatch):
             [4],
         )
     assert not list(Path(outs["classic"]).parent.glob(".*.tmp-*"))
+
+
+def test_atomic_eexist_exact_pre_marker_winner_is_adopted(tmp_path, monkeypatch):
+    idx, luts, lats, lons = _index_frame()
+    output = tmp_path / "radar" / "classic" / "ts"
+    real_rename = tiler.os.rename
+
+    def legacy_winner(source, destination):
+        source_path, destination_path = Path(source), Path(destination)
+        destination_path.mkdir(parents=True)
+        for tile in source_path.rglob("*.png"):
+            target = destination_path / tile.relative_to(source_path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(tile, target)
+        raise OSError(errno.ENOTEMPTY, "simulated legacy winner", str(destination))
+
+    monkeypatch.setattr(tiler.os, "rename", legacy_winner)
+    result = render_indexed_tiles_atomic(
+        idx,
+        lats,
+        lons,
+        {"classic": str(output)},
+        {"classic": luts["classic"]},
+        [4],
+    )
+    monkeypatch.setattr(tiler.os, "rename", real_rename)
+
+    assert result.outcomes["classic"].status is PublishStatus.ADOPTED
+    assert tiler.is_complete_pyramid(output, renderer="indexed")
+    assert not list(output.parent.glob(".*.tmp-*"))
 
 
 def test_atomic_multi_palette_transparent_frame_publishes_nothing(tmp_path):
@@ -804,9 +1388,8 @@ def test_atomic_multi_palette_transparent_frame_publishes_nothing(tmp_path):
     assert {outcome.status for outcome in result.outcomes.values()} == {
         PublishStatus.EMPTY
     }
-    assert not (tmp_path / "radar").exists() or not list(
-        (tmp_path / "radar").rglob("*")
-    )
+    assert all(not Path(output).exists() for output in outs.values())
+    assert not list((tmp_path / "radar").rglob(".*.tmp-*"))
 
 
 def test_atomic_multi_palette_cleans_all_staging_on_failure(tmp_path, monkeypatch):
