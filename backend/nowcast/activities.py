@@ -26,7 +26,7 @@ from backend.shared.logger import get_logger
 from backend.shared.manifest import replace_layer_manifest
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
-from backend.shared.tiler import apply_color_table, render_tiles_atomic
+from backend.shared.tiler import render_frame_palettes
 
 
 GRID_DIR = Path(os.environ.get("GRID_DIR", "/data/grids"))
@@ -178,20 +178,23 @@ def _render_frame(tile_base: Path, palette_tables: dict[str, dict], tile_path: s
     half-finished run is never visible to the app, and frames from previous
     anchor runs don't pile up in the manifest.
     """
-    rendered: list[str] = []
-    for pname, tables in palette_tables.items():
-        entry = tables.get("reflectivity")
-        if not entry:
-            continue
-        rgba = apply_color_table(data, entry)
-        out_dir = str(tile_base / "nowcast" / pname / tile_path)
-        count = render_tiles_atomic(
-            rgba=rgba, lats=lats, lons=lons,
-            output_dir=out_dir, zoom_levels=ZOOM_LEVELS,
-        )
-        if count > 0:
-            rendered.append(pname)
-    return rendered
+    color_tables = {
+        pname: tables["reflectivity"] for pname, tables in palette_tables.items() if tables.get("reflectivity")
+    }
+    if not color_tables:
+        return []
+    out_dirs = {pname: str(tile_base / "nowcast" / pname / tile_path) for pname in color_tables}
+    result = render_frame_palettes(
+        data,
+        lats,
+        lons,
+        color_tables,
+        out_dirs,
+        ZOOM_LEVELS,
+        nodata_value=-9999.0,
+        min_valid_weight=1.0,
+    )
+    return result.rendered_palettes
 
 
 @activity.defn(name="nowcast_run")

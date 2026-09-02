@@ -37,7 +37,7 @@ from backend.shared.logger import get_logger
 from backend.shared.manifest import read_manifest_file, replace_layer_manifest
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
-from backend.shared.tiler import apply_color_table, render_tiles_atomic
+from backend.shared.tiler import MultiPaletteRenderResult, render_frame_palettes
 
 
 AQM_BASE = "https://noaa-nws-naqfc-pds.s3.amazonaws.com/AQMv7/CS"
@@ -203,29 +203,29 @@ def _grid_from_message(grb: object, geometry: _Grid | None = None) -> _Grid:
 
 
 def _write_palette_tiles(
-    tile_base: Path, layer: str, palette: str, path: str, rgba: np.ndarray, grid: _Grid
-) -> int:
+    tile_base: Path, layer: str, path: str, grid: _Grid, color_tables: dict[str, dict]
+) -> MultiPaletteRenderResult:
+    """Orient once, then sample/classify once per tile for every palette."""
+    data = grid.data
     lats = grid.lats
     lons = grid.lons
     source_y = grid.source_y
     if grid.source_crs is None and lats.ndim == 1 and lats[0] > lats[-1]:
-        rgba = np.flipud(rgba)
+        data = np.flipud(data)
         lats = lats[::-1]
     elif grid.source_crs is not None and source_y is not None and source_y[0] > source_y[-1]:
-        rgba = np.flipud(rgba)
+        data = np.flipud(data)
         lats = np.flipud(lats)
         lons = np.flipud(lons)
         source_y = source_y[::-1]
-    out_dir = str(tile_base / layer / palette / path)
-    return render_tiles_atomic(
-        rgba=rgba,
-        lats=lats,
-        lons=lons,
-        output_dir=out_dir,
-        zoom_levels=ZOOM_LEVELS,
+    out_dirs = {pname: str(tile_base / layer / pname / path) for pname in color_tables}
+    return render_frame_palettes(
+        data, lats, lons, color_tables, out_dirs, ZOOM_LEVELS,
         source_crs=grid.source_crs,
         source_x=grid.source_x,
         source_y=source_y,
+        nodata_value=None,
+        min_valid_weight=1.0,
     )
 
 
@@ -238,18 +238,16 @@ def _render_per_palette(
     color_key: str,
 ) -> list[str]:
     """All-or-nothing across palettes, mirroring the HRRR frame gate."""
-    rendered: list[str] = []
-    expected = {name for name, tables in palette_tables.items() if color_key in tables}
-    for pname, tables in palette_tables.items():
-        entry = tables.get(color_key)
-        if not entry:
-            continue
-        rgba = apply_color_table(grid.data, entry)
-        if _write_palette_tiles(tile_base, layer, pname, tile_path, rgba, grid) > 0:
-            rendered.append(pname)
-    if set(rendered) != expected:
-        for pname in rendered:
-            shutil.rmtree(tile_base / layer / pname / tile_path, ignore_errors=True)
+    color_tables = {
+        name: tables[color_key] for name, tables in palette_tables.items() if tables.get(color_key)
+    }
+    if not color_tables:
+        return []
+    result = _write_palette_tiles(tile_base, layer, tile_path, grid, color_tables)
+    rendered = result.rendered_palettes
+    if set(rendered) != set(color_tables):
+        # Empty products are not advertised; mixed publication raises and is
+        # retried without deleting any complete immutable winner.
         return []
     return rendered
 

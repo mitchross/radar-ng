@@ -28,7 +28,7 @@ from backend.shared.logger import get_logger
 from backend.shared.manifest import read_manifest_file, replace_layer_manifest, update_manifest_file
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
-from backend.shared.tiler import apply_categorical_color_table, apply_color_table, render_tiles_atomic
+from backend.shared.tiler import MultiPaletteRenderResult, is_complete_pyramid, render_frame_palettes
 
 
 HRRR_BASE = "https://noaa-hrrr-bdp-pds.s3.amazonaws.com"
@@ -409,28 +409,31 @@ def _safe_grid_dump(layer: str, ts: str, data: np.ndarray, grid: ExtractedGrid, 
         log.warning("grid_dump_failed", extra={"layer": layer, "err": str(exc)})
 
 
-def _write_palette_tiles(tile_base: Path, layer: str, palette: str, path: str, rgba: np.ndarray, grid: ExtractedGrid) -> int:
+def _write_palette_tiles(
+    tile_base: Path, layer: str, path: str, data: np.ndarray, grid: ExtractedGrid,
+    color_tables: dict[str, dict], category_map: dict[int, str] | None = None,
+) -> MultiPaletteRenderResult:
+    """Orient once, then sample/classify once per tile for every palette."""
     lats = grid.lats
     lons = grid.lons
     source_y = grid.source_y
     if grid.source_crs is None and lats.ndim == 1 and lats[0] > lats[-1]:
-        rgba = np.flipud(rgba)
+        data = np.flipud(data)
         lats = lats[::-1]
     elif grid.source_crs is not None and source_y is not None and source_y[0] > source_y[-1]:
-        rgba = np.flipud(rgba)
+        data = np.flipud(data)
         lats = np.flipud(lats)
         lons = np.flipud(lons)
         source_y = source_y[::-1]
-    out_dir = str(tile_base / layer / palette / path)
-    return render_tiles_atomic(
-        rgba=rgba,
-        lats=lats,
-        lons=lons,
-        output_dir=out_dir,
-        zoom_levels=ZOOM_LEVELS,
+    out_dirs = {pname: str(tile_base / layer / pname / path) for pname in color_tables}
+    return render_frame_palettes(
+        data, lats, lons, color_tables, out_dirs, ZOOM_LEVELS,
+        category_map=category_map,
         source_crs=grid.source_crs,
         source_x=grid.source_x,
         source_y=source_y,
+        nodata_value=None,
+        min_valid_weight=1.0,
     )
 
 
@@ -439,25 +442,20 @@ def _render_per_palette(
     palette_tables: dict[str, dict], color_key: str, *,
     categorical: bool = False, categories_map: dict[int, str] | None = None,
 ) -> list[str]:
-    rendered: list[str] = []
-    expected = {
-        name for name, tables in palette_tables.items() if color_key in tables
+    color_tables = {
+        name: tables[color_key] for name, tables in palette_tables.items() if tables.get(color_key)
     }
-    for pname, tables in palette_tables.items():
-        entry = tables.get(color_key)
-        if not entry:
-            continue
-        if categorical:
-            if categories_map is None:
-                continue
-            rgba = apply_categorical_color_table(data, entry["categories"], categories_map)
-        else:
-            rgba = apply_color_table(data, entry)
-        if _write_palette_tiles(tile_base, layer, pname, ts, rgba, grid) > 0:
-            rendered.append(pname)
-    if set(rendered) != expected:
-        for pname in rendered:
-            shutil.rmtree(tile_base / layer / pname / ts, ignore_errors=True)
+    if not color_tables or (categorical and categories_map is None):
+        return []
+    result = _write_palette_tiles(
+        tile_base, layer, ts, data, grid, color_tables,
+        category_map=categories_map if categorical else None,
+    )
+    rendered = result.rendered_palettes
+    if set(rendered) != set(color_tables):
+        # Empty products are not advertised. A mixed publish cannot be
+        # returned: the shared publisher raises so Temporal can retry and
+        # converge without deleting immutable winners.
         return []
     return rendered
 
@@ -586,14 +584,14 @@ def _required_layers(palette_tables: dict[str, dict]) -> set[str]:
 
 
 def _existing_rendered_layers(tile_base: Path, tile_path: str, palette_tables: dict[str, dict]) -> list[str]:
-    """Layers whose final pyramid exists (non-empty) for every palette that defines them."""
+    """Layers with a marker-validated pyramid for every defined palette."""
     existing: list[str] = []
     for layer, color_key in LAYER_COLOR_KEYS.items():
         palettes = [name for name, tables in palette_tables.items() if color_key in tables]
         if not palettes:
             continue
         dirs = [tile_base / layer / pname / tile_path for pname in palettes]
-        if all(d.is_dir() and any(d.iterdir()) for d in dirs):
+        if all(is_complete_pyramid(d) for d in dirs):
             existing.append(layer)
     return existing
 
@@ -647,8 +645,7 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
     needed = ["refc"] if ENABLED_LAYERS == {"radar-hrrr"} else list(IDX_MATCHERS.keys())
     valid_timestamp = (_run_init_time(run_id) + timedelta(hours=fhr)).isoformat()
 
-    # Idempotent resume: run paths are immutable, so tiles already on disk ARE the result.
-    # Re-rendering would only be thrown away on EEXIST by render_tiles_atomic.
+    # Idempotent resume: marker-validated run paths are immutable and complete.
     existing = await asyncio.to_thread(
         _existing_rendered_layers, tile_base, f"runs/{run_id}/{valid_timestamp}", palette_tables
     )

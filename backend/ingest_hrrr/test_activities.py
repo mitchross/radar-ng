@@ -270,9 +270,13 @@ def test_download_non_404_errors_still_raise(monkeypatch, tmp_path):
 
 
 def _touch_pyramid(tile_base: Path, layer: str, palette: str, tile_path: str) -> None:
+    from backend.shared import tiler
+
+    root = tile_base / layer / palette / tile_path
     tile = tile_base / layer / palette / tile_path / "4" / "3" / "5.png"
-    tile.parent.mkdir(parents=True)
+    tile.parent.mkdir(parents=True, exist_ok=True)
     tile.write_bytes(b"png")
+    tiler._write_completion_marker(root, {"4/3/5.png"})
 
 
 def test_existing_rendered_layers_requires_every_palette(monkeypatch, tmp_path):
@@ -286,7 +290,14 @@ def test_existing_rendered_layers_requires_every_palette(monkeypatch, tmp_path):
     assert activities._existing_rendered_layers(tmp_path, tile_path, palettes) == []
 
     # An empty final dir (interrupted rename target) does not count as rendered.
-    (tmp_path / "radar-hrrr" / "vivid" / tile_path).mkdir(parents=True)
+    vivid = tmp_path / "radar-hrrr" / "vivid" / tile_path
+    vivid.mkdir(parents=True)
+    assert activities._existing_rendered_layers(tmp_path, tile_path, palettes) == []
+
+    # Nor does a non-empty directory without a completion marker.
+    unmarked = vivid / "4" / "3" / "5.png"
+    unmarked.parent.mkdir(parents=True)
+    unmarked.write_bytes(b"png")
     assert activities._existing_rendered_layers(tmp_path, tile_path, palettes) == []
 
     _touch_pyramid(tmp_path, "radar-hrrr", "vivid", tile_path)
