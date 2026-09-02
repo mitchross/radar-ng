@@ -108,10 +108,18 @@ _rate_buckets: OrderedDict[str, tuple[float, float]] = OrderedDict()
 
 
 def _client_key(request: Request) -> str:
+    # Caddy APPENDS to X-Forwarded-For, so only the last hop is trustworthy;
+    # the first hop is client-controlled and would let one client dodge its bucket.
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
-        return forwarded.split(",", 1)[0].strip()
+        return forwarded.rsplit(",", 1)[-1].strip() or "unknown"
     return request.client.host if request.client else "unknown"
+
+
+def _route_label(request: Request) -> str:
+    """Route template for metrics labels; raw URLs would make cardinality unbounded."""
+    path = getattr(request.scope.get("route"), "path", None)
+    return str(path) if path else "unmatched"
 
 
 @app.middleware("http")
@@ -138,11 +146,10 @@ async def request_controls(request: Request, call_next):
     else:
         response = await call_next(request)
 
-    route = request.scope.get("route")
-    path = getattr(route, "path", request.url.path)
-    key = (request.method, str(path), response.status_code)
+    path = _route_label(request)
+    key = (request.method, path, response.status_code)
     _request_counts[key] += 1
-    duration_key = (request.method, str(path))
+    duration_key = (request.method, path)
     _request_duration_sums[duration_key] += time.perf_counter() - started
     return response
 
@@ -174,9 +181,21 @@ def _grid_binary_path(meta_path: Path, meta: dict) -> Path:
     return meta_path.parent / meta_path.name.replace(".meta.json", ".bin")
 
 
+_manifest_last_good: dict[str, object] = {"body": None}
+
+
 def _build_manifest() -> dict:
-    """Read the pre-rendered manifest body from STATE_DIR/manifest.json."""
-    return read_manifest_file(STATE_DIR)
+    """Read STATE_DIR/manifest.json; on a read error serve the last good copy or 503."""
+    try:
+        body = read_manifest_file(STATE_DIR)
+    except (OSError, ValueError) as exc:
+        last_good = _manifest_last_good.get("body")
+        if isinstance(last_good, dict):
+            log.warning("manifest read failed (%r); serving last good copy", exc)
+            return last_good
+        raise HTTPException(503, "manifest unavailable") from exc
+    _manifest_last_good["body"] = body
+    return body
 
 
 def _layer_age_seconds(manifest: dict, layer_name: str, now: float | None = None) -> int | None:

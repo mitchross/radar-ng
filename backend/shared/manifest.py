@@ -34,10 +34,15 @@ def manifest_path(state_dir: str | Path | None = None) -> Path:
 
 
 def read_manifest_file(state_dir: str | Path | None = None) -> dict[str, Any]:
+    """Read the manifest; a missing file is empty, any other failure raises.
+
+    Callers hold the write lock and rewrite the file with what this returns,
+    so swallowing an EIO/short read here would wipe every layer's history.
+    """
     path = manifest_path(state_dir)
     try:
         body = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except FileNotFoundError:
         return empty_manifest()
     if not isinstance(body, dict) or not isinstance(body.get("layers"), dict):
         return empty_manifest()
