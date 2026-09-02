@@ -11,6 +11,7 @@ import { Camera, Layer, Map, RasterSource } from "@maplibre/maplibre-react-nativ
 import { useRouter } from "expo-router";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS } from "../../lib/constants";
+import { radarStatus } from "../../lib/radarStatus";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
 import { pickNowFrameIndex, useManifestQuery } from "../../hooks/useManifest";
 import { usePatchedMapStyle } from "../map/WeatherMap";
@@ -33,7 +34,7 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
   const lon = useWeatherStore((s) => s.longitude) ?? DEFAULTS.LONGITUDE;
   const patchedStyle = usePatchedMapStyle(serverUrl, "light");
 
-  const { data: manifest } = useManifestQuery();
+  const { data: manifest, dataUpdatedAt, isError, isPending } = useManifestQuery();
 
   // Match the dedicated Radar tab's observed MRMS source first. Composite is
   // only a compatibility fallback for clusters that still publish it.
@@ -54,6 +55,26 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
   const nowFrameIndex = pickNowFrameIndex(frames);
   const nowFrame = nowFrameIndex >= 0 ? frames[nowFrameIndex] : null;
   const radarUrl = nowFrame ? buildSelfHostedTileUrl(serverUrl, layerKey as LayerType, nowFrame.path, activePalette) : null;
+  // Tracking dataUpdatedAt makes a successful no-change poll rerender this
+  // clock-derived badge instead of leaving LIVE frozen during an ingest stall.
+  const statusNow = dataUpdatedAt > 0 ? Math.max(Date.now(), dataUpdatedAt) : Date.now();
+  const status = radarStatus({
+    frameTimeSeconds: nowFrame?.time ?? null,
+    refreshFailed: isError,
+    loading: isPending,
+    nowMilliseconds: statusNow,
+  });
+  const statusColor = {
+    live: theme.colors.success,
+    stale: theme.colors.warning,
+    offline: theme.colors.destructive,
+    unavailable: theme.colors.textFaint,
+  }[status.tone];
+  const fallbackHeadline = nowFrame
+    ? "Tap to open full radar"
+    : status.tone === "unavailable" && status.label !== "LOADING"
+      ? "Radar unavailable"
+      : "Loading…";
 
   return (
     <View style={styles.wrap}>
@@ -105,10 +126,10 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
         <View style={styles.pinDot} />
       </View>
 
-      {/* LIVE badge */}
+      {/* Data freshness badge */}
       <View style={styles.liveBadge}>
-        <View style={styles.liveDot} />
-        <Text style={styles.liveText}>LIVE</Text>
+        <View style={[styles.liveDot, { backgroundColor: statusColor }]} />
+        <Text style={[styles.liveText, { color: statusColor }]}>{status.label}</Text>
       </View>
 
       {/* footer label */}
@@ -116,7 +137,7 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
         <View style={{ flex: 1 }}>
           <Text style={styles.footerLabel}>RADAR</Text>
           <Text style={styles.footerTitle} numberOfLines={1}>
-            {headline ?? (nowFrame ? "Tap to open full radar" : "Loading…")}
+            {headline ?? fallbackHeadline}
           </Text>
         </View>
         <View style={styles.chevronBox}>
@@ -125,7 +146,7 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Open full radar. ${headline ?? (nowFrame ? "Live radar available" : "Radar loading")}`}
+        accessibilityLabel={`Open full radar. ${headline ?? status.accessibilityLabel}`}
         style={styles.hitArea}
         onPress={() => router.push("/radar")}
       />
@@ -203,9 +224,8 @@ function createStyles(theme: WeatherClearTheme) {
     paddingVertical: 3,
     borderRadius: 8,
   },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.colors.success },
+  liveDot: { width: 6, height: 6, borderRadius: 3 },
   liveText: {
-    color: theme.colors.success,
     fontSize: 10,
     fontFamily: theme.typography.uiBold,
     letterSpacing: 1.4,
