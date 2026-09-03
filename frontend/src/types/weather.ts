@@ -108,6 +108,7 @@ export interface NWSAlert {
     onset: string | null;
     effective: string;
     expires: string;
+    ends: string | null;
     areaDesc: string;
     senderName: string | null;
   };

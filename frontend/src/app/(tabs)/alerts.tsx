@@ -2,7 +2,7 @@
  * Cumulus Alerts tab — Redesigned for Editorial Light.
  * NWS active alerts list with Simple/Advanced gating.
  */
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ScrollView, View, Text, StyleSheet, Pressable, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -11,6 +11,8 @@ import { useAlerts } from "../../hooks/useAlerts";
 import { useLocation } from "../../hooks/useLocation";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
+import { getAlertEndTime } from "../../lib/alertLifecycle";
+import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { getAlertsScreenState } from "../../lib/weatherPresentation";
 import { ScreenState } from "../../components/ui/WeatherClearUI";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
@@ -26,13 +28,36 @@ export default function AlertsScreen() {
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const viewMode = useWeatherStore((s) => s.viewMode);
-  const { data, isLoading, isError, refetch, isFetching, dataUpdatedAt } = useAlerts();
+  const {
+    data,
+    isLoading,
+    isPending,
+    refetch,
+    dataUpdatedAt,
+    alertStatus,
+  } = useAlerts();
+  const [refreshing, setRefreshing] = useState(false);
   const alerts = data?.features ?? [];
   const isAdv = viewMode === "advanced";
-  const presentation = getAlertsScreenState({ data, isLoading, isError });
+  const presentation = getAlertsScreenState({
+    data,
+    isLoading,
+    isPending,
+    freshness: alertStatus.kind,
+  });
   const gradient = theme.dark
     ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
     : CONDITION_GRADIENTS.storm;
+  const refresh = useCallback(async () => {
+    await runOnlineRefresh(async () => {
+      setRefreshing(true);
+      try {
+        await refetch();
+      } finally {
+        setRefreshing(false);
+      }
+    });
+  }, [refetch]);
 
   return (
     <LinearGradient
@@ -45,7 +70,9 @@ export default function AlertsScreen() {
           <View>
             <Text style={styles.kicker}>ACTIVE ALERTS</Text>
             <Text style={styles.title}>
-              {presentation.kind === "error"
+              {presentation.kind === "loading"
+                ? "Checking"
+                : presentation.kind === "error"
                 ? "Unavailable"
                 : alerts.length > 0
                   ? `${alerts.length} active`
@@ -55,7 +82,9 @@ export default function AlertsScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Refresh weather alerts"
-            onPress={() => refetch()}
+            accessibilityState={{ disabled: alertStatus.kind === "offline" }}
+            disabled={alertStatus.kind === "offline"}
+            onPress={refresh}
             style={styles.refresh}
           >
             <Text style={styles.refreshText}>↻</Text>
@@ -68,8 +97,8 @@ export default function AlertsScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={isFetching}
-              onRefresh={refetch}
+              refreshing={refreshing}
+              onRefresh={refresh}
               tintColor={theme.colors.text}
               colors={[theme.colors.accent]}
             />
@@ -85,20 +114,36 @@ export default function AlertsScreen() {
           {presentation.kind === "error" ? (
             <ScreenState
               kind="error"
-              title="Alerts unavailable"
-              message="The National Weather Service could not be reached."
-              actionLabel="Try again"
-              onAction={() => refetch()}
+              title={alertStatus.kind === "offline"
+                ? "Alerts offline"
+                : alertStatus.kind === "stale"
+                  ? "Alert update failed"
+                  : "Alerts unavailable"}
+              message={alertStatus.accessibilityLabel}
+              actionLabel={alertStatus.kind === "offline" ? undefined : "Try again"}
+              onAction={alertStatus.kind === "offline" ? undefined : refresh}
             />
           ) : null}
           {presentation.kind === "empty" ? <EmptyState isAdv={isAdv} polledAt={dataUpdatedAt} /> : null}
-          {presentation.kind === "content" ? alerts.map((alert) => (
-            <AlertCard
-              key={alert.id}
-              alert={alert}
-              onPress={() => router.push(`/alert/${encodeURIComponent(alert.id)}` as any)}
-            />
-          )) : null}
+          {presentation.kind === "content" ? (
+            <>
+              {alertStatus.kind !== "current" ? (
+                <View style={styles.statusCard}>
+                  <Text style={styles.statusLabel}>{alertStatus.label}</Text>
+                  <Text accessibilityRole="alert" style={styles.statusText}>
+                    {alertStatus.accessibilityLabel}
+                  </Text>
+                </View>
+              ) : null}
+              {alerts.map((alert) => (
+                <AlertCard
+                  key={alert.id}
+                  alert={alert}
+                  onPress={() => router.push(`/alert/${encodeURIComponent(alert.id)}` as any)}
+                />
+              ))}
+            </>
+          ) : null}
           <View style={{ height: 120 }} />
         </ScrollView>
       </SafeAreaView>
@@ -110,8 +155,9 @@ function AlertCard({ alert, onPress }: { alert: NWSAlert; onPress: () => void })
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const color = severityColor(alert.properties.severity, theme);
-  const expires = new Date(alert.properties.expires);
-  const expiresLabel = expires.toLocaleString([], {
+  const endTime = getAlertEndTime(alert);
+  if (endTime === null) return null;
+  const expiresLabel = new Date(endTime).toLocaleString([], {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -250,6 +296,28 @@ function createStyles(theme: WeatherClearTheme) {
 
   scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 140 },
   muted: { color: cumulus.inkMuted, textAlign: "center", paddingVertical: 20, fontFamily: cumulusFonts.ui },
+  statusCard: {
+    marginBottom: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: theme.colors.warning,
+  },
+  statusLabel: {
+    color: theme.colors.warning,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    fontFamily: cumulusFonts.mono,
+  },
+  statusText: {
+    color: cumulus.inkDim,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+    fontFamily: cumulusFonts.ui,
+  },
 
   card: {
     flexDirection: "row",

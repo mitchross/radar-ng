@@ -12,6 +12,7 @@ import { useForecast } from "../../hooks/useForecast";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useLocation } from "../../hooks/useLocation";
 import { activeLocationLabel, activeLocationName } from "../../lib/locationLabel";
+import { getAlertEndTime } from "../../lib/alertLifecycle";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import {
@@ -59,7 +60,9 @@ export default function HomeScreen() {
     isFetching,
     refetch,
   } = useForecast();
-  const { data: alertData } = useAlerts();
+  const { data: alertData, alertStatus } = useAlerts();
+  const firstAlert = alertData?.features[0];
+  const firstAlertEndAt = firstAlert ? getAlertEndTime(firstAlert) : null;
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -287,27 +290,54 @@ export default function HomeScreen() {
           ) : null}
 
           {/* Active alerts */}
-          {alertData && alertData.features.length > 0 ? (
+          {firstAlert && firstAlertEndAt !== null ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`${alertData.features[0].properties.event}. Open alert details`}
+              accessibilityLabel={`${firstAlert.properties.event}. ${
+                alertStatus.kind === "current" ? "" : `${alertStatus.accessibilityLabel} `
+              }Open alert details`}
               style={styles.alertCard}
               onPress={() =>
                 router.push({
                   pathname: "/alert/[id]",
-                  params: { id: alertData.features[0].properties.id },
+                  params: { id: firstAlert.properties.id },
                 })
               }
             >
               <View style={styles.alertIndicatorDot} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.alertTitle}>{alertData.features[0].properties.event}</Text>
+                <Text style={styles.alertTitle}>{firstAlert.properties.event}</Text>
                 <Text style={styles.alertSub} numberOfLines={1}>
                   Until{" "}
-                  {new Date(alertData.features[0].properties.expires).toLocaleTimeString([], {
+                  {new Date(firstAlertEndAt).toLocaleTimeString([], {
                     hour: "numeric",
                     minute: "2-digit",
                   })}
+                  {alertStatus.kind === "current" ? "" : ` · ${alertStatus.label}`}
+                </Text>
+              </View>
+              <Text style={styles.chevron}>{"\u203A"}</Text>
+            </Pressable>
+          ) : alertStatus.kind !== "current" ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${alertStatus.accessibilityLabel} Open weather alerts`}
+              style={styles.alertCard}
+              onPress={() => router.push("/alerts" as never)}
+            >
+              <View style={styles.alertIndicatorDot} />
+              <View style={{ flex: 1 }}>
+                <Text accessibilityRole="alert" style={styles.alertTitle}>
+                  Alert status {alertStatus.kind === "offline"
+                    ? "offline"
+                    : alertStatus.kind === "stale"
+                      ? "stale"
+                      : alertStatus.kind === "checking"
+                        ? "checking"
+                        : "unavailable"}
+                </Text>
+                <Text style={styles.alertSub} numberOfLines={2}>
+                  {alertStatus.accessibilityLabel}
                 </Text>
               </View>
               <Text style={styles.chevron}>{"\u203A"}</Text>

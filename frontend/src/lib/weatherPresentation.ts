@@ -65,10 +65,16 @@ export function describeNowcast(verdict: NowcastVerdict): string {
 export function getAlertsScreenState(input: {
   data: { features: readonly unknown[] } | undefined;
   isLoading: boolean;
-  isError: boolean;
+  isPending: boolean;
+  freshness: "current" | "checking" | "stale" | "offline" | "unavailable";
 }): { kind: "loading" | "error" | "empty" | "content" } {
   if (input.data?.features.length) return { kind: "content" };
-  if (input.data) return { kind: "empty" };
-  if (input.isLoading) return { kind: "loading" };
-  return { kind: input.isError ? "error" : "loading" };
+  if (input.data && input.freshness === "current") return { kind: "empty" };
+  if (
+    input.freshness === "checking" ||
+    (input.freshness === "current" && (input.isLoading || input.isPending))
+  ) {
+    return { kind: "loading" };
+  }
+  return { kind: "error" };
 }

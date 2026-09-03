@@ -10,6 +10,7 @@ import { Canvas, Path as SkPath, Rect as SkRect, Circle as SkCircle, Skia } from
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { getAlertEndTime } from "../../lib/alertLifecycle";
 import { ScreenState } from "../../components/ui/WeatherClearUI";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
@@ -34,7 +35,9 @@ export default function AlertDetailScreen() {
         <ScreenState
           kind="empty"
           title="Alert unavailable"
-          message="This alert is no longer active or has not been loaded."
+          message={alertData.alertStatus.kind === "current"
+            ? "This alert is no longer active or has not been loaded."
+            : alertData.alertStatus.accessibilityLabel}
           actionLabel="Go back"
           onAction={() => router.back()}
         />
@@ -45,7 +48,8 @@ export default function AlertDetailScreen() {
   const sev = severityStyle(alert.properties.severity, theme);
   const onset = formatStamp(alert.properties.onset);
   const effective = formatStamp(alert.properties.effective);
-  const expires = formatStamp(alert.properties.expires);
+  const endTime = getAlertEndTime(alert);
+  const activeUntil = formatStamp(endTime === null ? null : new Date(endTime).toISOString());
 
   return (
     <LinearGradient
@@ -59,6 +63,14 @@ export default function AlertDetailScreen() {
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
         >
+          {alertData.alertStatus.kind !== "current" ? (
+            <View style={styles.statusCard}>
+              <Text style={styles.statusLabel}>{alertData.alertStatus.label}</Text>
+              <Text accessibilityRole="alert" style={styles.statusText}>
+                {alertData.alertStatus.accessibilityLabel}
+              </Text>
+            </View>
+          ) : null}
           {/* Severity header band */}
           <LinearGradient
             colors={[`${sev.color}16`, `${sev.color}05`]}
@@ -116,7 +128,7 @@ export default function AlertDetailScreen() {
             <View style={styles.timeRow}>
               <TimeCell label="ONSET" value={onset} />
               <TimeCell label="EFFECTIVE" value={effective} />
-              <TimeCell label="EXPIRES" value={expires} accent={sev.color} />
+              <TimeCell label="ACTIVE UNTIL" value={activeUntil} accent={sev.color} />
             </View>
             <View style={styles.timeFooter}>
               <Text style={styles.timeFooterText}>
@@ -348,6 +360,29 @@ function createStyles(theme: WeatherClearTheme) {
   flex: { flex: 1 },
   scroll: { paddingBottom: 60 },
   errorContainer: { flex: 1, backgroundColor: cumulus.background },
+  statusCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: theme.colors.warning,
+  },
+  statusLabel: {
+    color: theme.colors.warning,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    fontFamily: cumulusFonts.mono,
+  },
+  statusText: {
+    color: cumulus.inkDim,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+    fontFamily: cumulusFonts.ui,
+  },
   notFound: {
     color: cumulus.inkDim,
     fontSize: 16,
