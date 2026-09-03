@@ -341,9 +341,9 @@ a queue before its poller exists.
 
 ### Gate 2 — finish render-once correctly
 
-**Status: code complete and independently reviewed in draft
-[radar-ng #41](https://github.com/mitchross/radar-ng/pull/41); rollout not
-started.**
+**Status: code complete and merge-ready in
+[radar-ng #41](https://github.com/mitchross/radar-ng/pull/41); indexed rollout
+not started. Merging keeps `TILE_RENDERER=legacy`.**
 
 Decision: v1 renders each physical field once into a uint8 class index and
 publishes **indexed PNGs** (one palette entry per class, `PLTE`/`tRNS` swapped
@@ -351,7 +351,8 @@ per palette). It is not a continuous-colour renderer; that keeps the class
 boundaries identical to the legacy colour tables (verified: zero mismatches
 across every shipped palette). Cold render of a synthetic frame drops from
 about 7.8 s / 6.9 MiB / 134 MiB peak to about 2.1 s / 0.9 MiB / 7 MiB. The
-worker suite passes (153 tests, 36 subtests) plus 21 API tests. The legacy
+exact-image worker suite passes (180 tests, 435 subtests) plus 21 API tests.
+The legacy
 renderer on that branch is byte-identical to the deployed worker (615/615
 tiles), which the adoption path requires; any change to tile sampling or to
 the Pillow/numpy/zlib stack must repeat that cross-image check before release.
