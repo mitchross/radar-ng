@@ -44,39 +44,46 @@ blocks Radar reliability work.
 
 ## 2. Where production really is today
 
-Five related PRs merged on 2026-09-02:
-
-| Area | PR | State on 2026-09-02 |
+| Area | Where | Live state |
 |---|---|---|
-| Phase 0 backend/app fixes | [radar-ng #33](https://github.com/mitchross/radar-ng/pull/33) | Merged |
-| Phase 0 GitOps/alerts/Temporal fixes | [talos #2160](https://github.com/mitchross/talos-argocd-proxmox/pull/2160) | Merged |
-| Five role worker pools | [talos #2161](https://github.com/mitchross/talos-argocd-proxmox/pull/2161) | Merged and live at `v1.1.25`; routing remains on legacy |
-| Shared VersaTiles production styles | [radar-ng #34](https://github.com/mitchross/radar-ng/pull/34) | Merged; old Radar basemap kept for device rollback |
+| Phase 0 backend/app fixes | [radar-ng #33](https://github.com/mitchross/radar-ng/pull/33), [talos #2160](https://github.com/mitchross/talos-argocd-proxmox/pull/2160) | Live |
+| Five role worker pools | [talos #2161](https://github.com/mitchross/talos-argocd-proxmox/pull/2161), [#2176](https://github.com/mitchross/talos-argocd-proxmox/pull/2176) | All six WorkerDeployments on `v1.1.27`; schedules still route to legacy `radar-ng` |
+| HRRR REFC selector fix | [radar-ng #36](https://github.com/mitchross/radar-ng/pull/36) | Live; the natural run publishes all 18 hourly frames |
+| Open-Meteo unified serve/sync image | [radar-ng #42](https://github.com/mitchross/radar-ng/pull/42), [talos #2183](https://github.com/mitchross/talos-argocd-proxmox/pull/2183) | Live at `v1.1.9`, one `Recreate` pod, 2/2 |
+| Timer-DLQ alert and runbook | [talos #2178](https://github.com/mitchross/talos-argocd-proxmox/pull/2178) | Live; five inventoried DLQ messages remain (News schedules, not Radar) |
+| Temporal replay and observe-only schedule supervision | [radar-ng #50](https://github.com/mitchross/radar-ng/pull/50), [#46](https://github.com/mitchross/radar-ng/pull/46) | Merged; final worker `v1.1.29` is published, rollout pending, queue routing unchanged |
+| App truthfulness: mini-map status, connectivity, manifest validation, privacy | [radar-ng #39](https://github.com/mitchross/radar-ng/pull/39), [#44](https://github.com/mitchross/radar-ng/pull/44), [#47](https://github.com/mitchross/radar-ng/pull/47) | Merged; ships with the next app build |
+| Alert freshness (stale empty cache is "checking", not "all clear") | [radar-ng #48](https://github.com/mitchross/radar-ng/pull/48) | Merged; ships with the next app build |
+| Shared VersaTiles production styles | [radar-ng #34](https://github.com/mitchross/radar-ng/pull/34) | Merged; old Radar basemap kept until the device gate |
 | Constant-child raster carousel | [radar-ng #35](https://github.com/mitchross/radar-ng/pull/35) | Merged behind `CAROUSEL_WINDOW=1` |
+| Wired two-replica Longhorn tier | [talos #2181](https://github.com/mitchross/talos-argocd-proxmox/pull/2181), node tags [#2191](https://github.com/mitchross/talos-argocd-proxmox/pull/2191) | Class and Omni tag intent merged; live Longhorn node tags and the disposable failure canary remain |
+| Dedicated 32-shard Radar Temporal | [talos #2192](https://github.com/mitchross/talos-argocd-proxmox/pull/2192) | Draft; deploys empty, blocked on the wired tier |
+| Render once (indexed PNG) | [radar-ng #41](https://github.com/mitchross/radar-ng/pull/41) | Draft; reviewed head, tests green, rollout plan in the PR |
 
-The stale Argo render cleared on a fresh repo-server render without an operator
-restart. Production now has the legacy worker plus all five role
-WorkerDeployments at `v1.1.25`, and the PodMonitor scrapes all six. Both
-workflow and activity pollers are present on every role queue.
+Production runs the legacy worker plus all five role WorkerDeployments on the
+same image, the PodMonitor scrapes all six, and both workflow and activity
+pollers are present on every role queue. The logical Temporal namespace
+`radar-ng` exists on the shared server with 7-day retention; Radar clients
+still use `default`. Argo can report `Synced` on a stale render after a merge;
+the fix is the documented `argocd.argoproj.io/refresh=hard` annotation, never a
+manual workload patch.
 
-Argo is still `OutOfSync/Healthy`: admission adds WorkerDeployment defaults
-(`minReadySeconds`, `progressDeadlineSeconds`, and port protocol), while Git
-omits them. Argo server-side-applies the same six resources every five minutes.
-Declare those stable defaults in Git; do not hide arbitrary WorkerDeployment
-differences.
+Argo is currently `Synced/Healthy`; the WorkerDeployment admission-default
+self-heal loop is fixed. Keep the stable defaults declared in Git and do not
+hide arbitrary WorkerDeployment differences.
 
 **Do not switch schedules to role queues yet.** The new pools are healthy but
-idle, HRRR is absent, alert polling still needs watchdog recovery, and all
-shared RWO mounts keep every pool on one node.
+idle. The observe-only image must first reach all six workers and soak while
+schedules stay on legacy. Shared RWO mounts also keep every pool on one node.
 
 Other live facts:
 
 | Signal | Current evidence | Meaning |
 |---|---|---|
 | MRMS and nowcast | Fresh during the audit | Main observation path is working now |
-| HRRR radar | Missing from the public manifest | Phase 0 has not passed |
-| HRRR failure | Future 404s are now pending, but NOAA reports REFC as `shortName=refc`; the display-name selector silently renders zero layers | Match the stable short name and fail loudly when mandatory REFC is absent |
-| Schedules | Live scheduler `USER_TIMER` tasks for alerts, cleanup, and Open-Meteo were found in Temporal's timer DLQ; a scoped replay restored them, followed by uninterrupted five-minute alerts and natural 18:00/19:00 UTC cleanup and Open-Meteo fires | Watchdog preserves continuity but cannot repair a dead-lettered durable timer |
+| HRRR radar | A natural run published a full consecutive forecast prefix | The REFC selector repair is live and proven |
+| HRRR failure handling | Future 404s remain pending; mandatory REFC absence now fails visibly instead of silently publishing zero layers | Keep the stable `shortName=refc` selector and regression coverage |
+| Schedules | Radar schedules fire naturally; five inventoried timer-DLQ messages remain outside the active Radar schedules | The observe-only watchdog alerts but deliberately does not mutate Temporal state |
 | Temporal | One history shard, one replica per service, single Postgres | A known control-plane failure domain |
 | Push/workflow API | `DISABLE_WORKFLOW_ROUTES=1`; all workers use `PUSH_DISABLED=1` | Deliberately off; not a production-ready feature |
 | Public manifest | ~119 KB raw, ~4.8 KB through Cloudflare compression, ~0.3 s sample | Bandwidth is not the first problem |
@@ -258,7 +265,10 @@ the edge rather than one unrelated in-memory limiter per replica.
 
 ### Gate 0 — make the merged safety work real
 
-**Status: merged and live, but not passed.**
+**Status: everything below is live; only the 24-hour observation window is
+still open.** The WorkerDeployment self-heal loop is fixed, HRRR publishes a
+full natural run on `v1.1.27`, worker liveness, SDK metrics, alerts, and the
+watchdog are scraped, and Open-Meteo runs the unified image.
 
 1. Stop the WorkerDeployment default-field self-heal loop and prove Argo stays
    `Synced/Healthy` for at least 15 minutes.
@@ -294,9 +304,10 @@ The pools are `mrms`, `nowcast`, `hrrr`, `aux`, and `alerts`. They isolate CPU,
 memory, and task slots, but their shared RWO mounts still force them onto the
 same node. This phase is process isolation, not high availability.
 
-1. Replay representative production histories against the new worker image and
-   use Temporal patch/version markers for Workflow-code changes.
-2. Deploy the observe-only Schedule image to legacy and all five role pools,
+1. Keep the merged release gate green: replay every retained versioned
+   synthetic history and use Temporal patch/version markers for Workflow-code
+   changes. Never store production histories in the repository.
+2. Deploy worker `v1.1.29` to legacy and all five role pools,
    verify the same digest on all six, and keep every isolated pool at
    `SKIP_SCHEDULE_SEED=1`.
 3. Inventory every queue producer and consumer: the five role queues, legacy
@@ -307,13 +318,14 @@ same node. This phase is process isolation, not high availability.
 5. Check node headroom. During overlap, requested memory can reach roughly
    94–96% on the only eligible node; reduce overlap or right-size from observed
    use before creating eviction pressure.
-6. Keep legacy as the sole seeder/watchdog during the initial cutover
-   (`SEED_SCHEDULES=1`, `SKIP_SCHEDULE_SEED=0`); leave
-   `SKIP_SCHEDULE_SEED=1` on all five isolated pools. Do not transfer seeding
-   to `aux` in this change.
-7. Only after the observe-only image is verified on all six workers, set
-   `USE_ISOLATED_TASK_QUEUES=1` on legacy; its seeder then rewrites every
-   schedule while the role pollers are already available.
+6. Legacy stays the only Schedule seeder and observer; every role pool keeps
+   `SKIP_SCHEDULE_SEED=1`; legacy keeps `SEED_SCHEDULES=1` and
+   `SKIP_SCHEDULE_SEED=0`. Never move seeding to a role pool.
+7. Roll the merged replay-gated, observe-only image to all six workers and let
+   it soak with schedules still on `radar-ng`. Only then flip legacy's
+   `USE_ISOLATED_TASK_QUEUES` from `0` to `1`; its one seeder rewrites every
+   schedule after destination pollers are proven. The step-by-step procedure
+   is the GitOps runbook `my-apps/development/radar-ng/RUNBOOK.md`.
 8. Before workflow routes are ever enabled, set tile-server
    `TEMPORAL_ALERTS_TASK_QUEUE=radar-ng-alerts` and verify the namespace.
 9. Verify every schedule's actual task queue and run one schedule per role.
@@ -329,12 +341,20 @@ a queue before its poller exists.
 
 ### Gate 2 — finish render-once correctly
 
-**Status: promising dirty worktree; not merge-ready.**
+**Status: code complete and independently reviewed in draft
+[radar-ng #41](https://github.com/mitchross/radar-ng/pull/41); rollout not
+started.**
 
-The current candidate changes a synthetic three-palette run from about 7.00 s
-and 6.9 MiB to 0.39 s and 0.9 MiB on tmpfs. That is directional, not a
-production benchmark. The full isolated suite has 114 passing tests, 36
-passing subtests, and five failures in the new indexed-tiler tests.
+Decision: v1 renders each physical field once into a uint8 class index and
+publishes **indexed PNGs** (one palette entry per class, `PLTE`/`tRNS` swapped
+per palette). It is not a continuous-colour renderer; that keeps the class
+boundaries identical to the legacy colour tables (verified: zero mismatches
+across every shipped palette). Cold render of a synthetic frame drops from
+about 7.8 s / 6.9 MiB / 134 MiB peak to about 2.1 s / 0.9 MiB / 7 MiB. The
+worker suite passes (153 tests, 36 subtests) plus 21 API tests. The legacy
+renderer on that branch is byte-identical to the deployed worker (615/615
+tiles), which the adoption path requires; any change to tile sampling or to
+the Pillow/numpy/zlib stack must repeat that cross-image check before release.
 
 The safe design is:
 
@@ -506,7 +526,10 @@ debugging.
 
 ### Gate 6 — replace the one-shard Temporal platform
 
-**Status: mitigated, not solved.**
+**Status: mitigated, not solved. The `radar-ng` logical namespace exists on
+the shared server; the dedicated cluster is drafted
+([talos #2192](https://github.com/mitchross/talos-argocd-proxmox/pull/2192))
+and waits on the wired storage tier.**
 
 Move Radar schedules into the existing `radar-ng` Temporal namespace first;
 that gives retention, quota, and ownership isolation, but does not isolate a
@@ -602,14 +625,16 @@ boundaries, not on every camera frame or particle.
 
 ## 10. Immediate order of work
 
-1. Land the WorkerDeployment-default fix and prove Argo stops self-healing.
-2. Land the HRRR REFC selector fix and prove a real forecast prefix publishes.
-3. Start the 24-hour Phase 0 watch, especially HRRR and overdue schedules.
-4. During that watch, fix telemetry location leakage and add frontend manifest
-   validation/CI; these do not depend on phone builds.
-5. Pass Phase 0, then cut the worker pools over with poller proof and
+1. Finish the 24-hour Phase 0 watch, especially HRRR and overdue schedules.
+2. Roll the merged replay-gated, observe-only supervision image to all six
+   workers; soak it before any queue change.
+3. Cut the worker pools over per the GitOps runbook, with poller proof and
    node-headroom checks.
-6. Repair and canary render-once behind a rollback flag.
+4. Apply the `wired-storage` node tags, prove the two-replica tier with a
+   disposable PVC, then move the shared Temporal Postgres onto it.
+5. Deploy the render-once reader, then canary the indexed writer on MRMS.
+6. Ship the accumulated frontend correctness fixes in the next app build; the
+   physical-device carousel gate remains deferred.
 7. Implement storage interfaces and shadow-write the Radar object bucket.
 8. Replicate the Radar serving plane. Harden shared maps separately only if the
    optional homelab profile remains worth operating.
