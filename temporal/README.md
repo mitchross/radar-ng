@@ -28,7 +28,8 @@ temporal/
 │   ├── register_push_token.py
 │   └── watch_storm.py
 ├── schedules/
-│   └── seed.py            # idempotent Schedule create/update on startup
+│   ├── seed.py            # isolated, idempotent Schedule reconciliation
+│   └── watchdog.py        # read-only stalled-timer observation
 ├── shared/
 │   ├── push.py            # APNS/FCM activity
 │   └── otel.py            # OTEL span/log helpers
@@ -72,3 +73,55 @@ Both run as a `RUN` step in `temporal/Dockerfile`, so every build path (GHCR
 release, backend CI, Gitea build, `backend/scripts/build-push.sh`) gates the
 exact image it produces. See `replay_fixtures/README.md` for the fixture
 contract and `docs/releasing.md` for the release-side rules.
+
+## Schedule safety model
+
+The designated seeding worker reconciles the declarative Schedule definitions
+with create/update RPCs. Reconciliation runs in the background, concurrently
+across schedules, with bounded retries for transient Temporal failures. One
+bad Schedule is reported in an aggregate failure without preventing the other
+definitions from converging, and reconciliation failure never prevents the
+worker from starting or continuing task-queue polling. Updates preserve the
+live Schedule state, including an operator pause, note, action limit, and
+remaining-action count. Existing definitions are compared in their normalized
+SDK protobuf form, so a matching definition returns a no-op from the update
+callback instead of issuing a redundant `UpdateSchedule` mutation. If a
+concurrent delete lands between create reporting `ALREADY_EXISTS` and the
+update describe, the resulting `NOT_FOUND` retries the whole create-or-update
+reconciliation with the same bounded policy.
+
+Schedule reconciliation and observation do not start until the worker passes
+namespace validation and the SDK has created its configured poller tasks.
+Temporal Python SDK 1.30 exposes `Worker.is_running` for that lifecycle boundary
+but no acknowledgement that the server has accepted a long poll; Radar waits
+for the boundary and yields once so the poller tasks enter their bridge calls.
+A validation/startup failure therefore causes no Schedule mutation, while a
+later reconciliation failure remains non-fatal to the already-running worker.
+
+The Temporal Python SDK update callback supplies the freshest description
+available to that update attempt, and Radar derives the replacement state only
+from that callback input. Temporal Python SDK 1.30 does not expose a Schedule
+conflict token or atomic compare-and-swap through `ScheduleHandle.update`, so
+an operator change racing the final server update can still win or be
+overwritten when declarative configuration genuinely differs. The no-op path
+eliminates that window when configuration already matches; after an actual
+definition rollout, operators should verify incident pause/action-limit state.
+
+The stall watchdog is an observer, not a recovery controller. It only calls
+`describe`. A Schedule whose next action is more than two intervals overdue,
+with no action running, produces a structured `CRITICAL` event named
+`TEMPORAL_SCHEDULE_STALLED`. The event includes the schedule/workflow/queue,
+the overdue timer, interval and overdue duration, and directs the operator to
+inspect the Temporal timer DLQ.
+
+The observer never calls Schedule `trigger`, `update`, or `delete`, and never
+terminates a workflow. Startup reconciliation likewise never deletes a
+Schedule or terminates a workflow to recover a timeout. Execution timeouts
+already bound stale runs; timer-DLQ repair and any exceptional destructive
+operation remain deliberate operator procedures.
+
+Repeated observations of the same schedule ID and exact overdue timer are
+suppressed only in memory for the life of one worker process. A future timer
+clears that suppression. A restart or another replica can emit the event
+again, so downstream alert routing should deduplicate it. No marker is written
+to Temporal, Postgres, a PVC, or another shared store merely to suppress logs.

@@ -296,7 +296,9 @@ same node. This phase is process isolation, not high availability.
 
 1. Replay representative production histories against the new worker image and
    use Temporal patch/version markers for Workflow-code changes.
-2. Bring up every pool with `SKIP_SCHEDULE_SEED=1`.
+2. Deploy the observe-only Schedule image to legacy and all five role pools,
+   verify the same digest on all six, and keep every isolated pool at
+   `SKIP_SCHEDULE_SEED=1`.
 3. Inventory every queue producer and consumer: the five role queues, legacy
    `radar-ng`, the `radar-ng-open-meteo` activity queue, tile-server Workflow
    routes, and any long-lived watch/lightning execution.
@@ -305,10 +307,13 @@ same node. This phase is process isolation, not high availability.
 5. Check node headroom. During overlap, requested memory can reach roughly
    94–96% on the only eligible node; reduce overlap or right-size from observed
    use before creating eviction pressure.
-6. Set legacy `SKIP_SCHEDULE_SEED=1` first so a restart cannot route schedules
-   backward.
-7. On `aux` only, set `SKIP_SCHEDULE_SEED=0`, `SEED_SCHEDULES=1`, and
-   `USE_ISOLATED_TASK_QUEUES=1`; that one seeder rewrites every schedule.
+6. Keep legacy as the sole seeder/watchdog during the initial cutover
+   (`SEED_SCHEDULES=1`, `SKIP_SCHEDULE_SEED=0`); leave
+   `SKIP_SCHEDULE_SEED=1` on all five isolated pools. Do not transfer seeding
+   to `aux` in this change.
+7. Only after the observe-only image is verified on all six workers, set
+   `USE_ISOLATED_TASK_QUEUES=1` on legacy; its seeder then rewrites every
+   schedule while the role pollers are already available.
 8. Before workflow routes are ever enabled, set tile-server
    `TEMPORAL_ALERTS_TASK_QUEUE=radar-ng-alerts` and verify the namespace.
 9. Verify every schedule's actual task queue and run one schedule per role.

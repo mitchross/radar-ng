@@ -24,13 +24,12 @@ import asyncio
 import dataclasses
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Any
 
 from temporalio.client import (
     Client,
     Schedule,
-    ScheduleActionExecutionStartWorkflow,
     ScheduleActionStartWorkflow,
     ScheduleAlreadyRunningError,
     ScheduleIntervalSpec,
@@ -46,11 +45,10 @@ from temporal.task_queues import (
     ALERTS_TASK_QUEUE,
     AUX_TASK_QUEUE,
     HRRR_TASK_QUEUE,
+    LEGACY_TASK_QUEUE,
     MRMS_TASK_QUEUE,
     NOWCAST_TASK_QUEUE,
-    LEGACY_TASK_QUEUE,
 )
-
 
 # RPC status codes worth retrying while seeding at worker startup. The
 # dominant case: a Temporal server that just (re)started has history shards
@@ -59,18 +57,37 @@ from temporal.task_queues import (
 # propagated out of _main() and killed the worker (exitCode 1), so k8s
 # crash-looped every replica until the shards settled — and any scheduled
 # run landing in that window (e.g. nowcast) could fail in the churn.
-_RETRYABLE_RPC_CODES = frozenset({
-    # The Rust SDK bridge reports some client-side "Timeout expired" calls as
-    # CANCELLED (code 1) instead of DEADLINE_EXCEEDED. Treat both as the same
-    # bounded startup transient so schedule seeding cannot crash-loop a worker.
-    RPCStatusCode.CANCELLED,
-    RPCStatusCode.UNAVAILABLE,
-    RPCStatusCode.DEADLINE_EXCEEDED,
-    RPCStatusCode.RESOURCE_EXHAUSTED,
-    RPCStatusCode.ABORTED,
-    RPCStatusCode.INTERNAL,
-    RPCStatusCode.UNKNOWN,
-})
+_RETRYABLE_RPC_CODES = frozenset(
+    {
+        # The Rust SDK bridge reports some client-side "Timeout expired" calls as
+        # CANCELLED (code 1) instead of DEADLINE_EXCEEDED. Treat both as the same
+        # bounded startup transient so schedule seeding cannot crash-loop a worker.
+        RPCStatusCode.CANCELLED,
+        RPCStatusCode.UNAVAILABLE,
+        RPCStatusCode.DEADLINE_EXCEEDED,
+        RPCStatusCode.RESOURCE_EXHAUSTED,
+        RPCStatusCode.ABORTED,
+        RPCStatusCode.INTERNAL,
+        RPCStatusCode.UNKNOWN,
+        # A create can observe ALREADY_EXISTS immediately before a concurrent
+        # delete wins. The following update then sees NOT_FOUND; retry the
+        # whole create-or-update reconciliation so the next pass can create.
+        RPCStatusCode.NOT_FOUND,
+    }
+)
+_SAFE_RPC_STATUS_CODES = frozenset(RPCStatusCode)
+
+
+def safe_error_label(failure: Exception) -> str:
+    """Return an actionable label without rendering exception payload data."""
+    label = type(failure).__name__
+    if (
+        isinstance(failure, RPCError)
+        and isinstance(failure.status, RPCStatusCode)
+        and failure.status in _SAFE_RPC_STATUS_CODES
+    ):
+        return f"{label}[{failure.status.name}]"
+    return label
 
 
 @dataclass
@@ -94,62 +111,90 @@ _FAST_JITTER = timedelta(seconds=20)
 SCHEDULES: list[ScheduleDef] = [
     # MRMS base reflectivity (QC) — every 2 min
     ScheduleDef(
-        "ingest-mrms-base", "IngestMrmsWorkflow",
+        "ingest-mrms-base",
+        "IngestMrmsWorkflow",
         max_runtime=timedelta(minutes=6),
-        workflow_input=[{"mrms_prefix": "CONUS/MergedBaseReflectivityQC_00.50", "layer_name": "radar"}],
+        workflow_input=[
+            {
+                "mrms_prefix": "CONUS/MergedBaseReflectivityQC_00.50",
+                "layer_name": "radar",
+            }
+        ],
         interval=timedelta(minutes=2),
         task_queue=MRMS_TASK_QUEUE,
-        catchup_window=_FAST_CATCHUP, jitter=_FAST_JITTER,
+        catchup_window=_FAST_CATCHUP,
+        jitter=_FAST_JITTER,
     ),
     # MRMS composite reflectivity (full atmosphere) — every 2 min
     ScheduleDef(
-        "ingest-mrms-composite", "IngestMrmsWorkflow",
+        "ingest-mrms-composite",
+        "IngestMrmsWorkflow",
         max_runtime=timedelta(minutes=6),
-        workflow_input=[{"mrms_prefix": "CONUS/MergedReflectivityComposite_00.50", "layer_name": "radar-composite"}],
+        workflow_input=[
+            {
+                "mrms_prefix": "CONUS/MergedReflectivityComposite_00.50",
+                "layer_name": "radar-composite",
+            }
+        ],
         interval=timedelta(minutes=2),
         task_queue=MRMS_TASK_QUEUE,
-        catchup_window=_FAST_CATCHUP, jitter=_FAST_JITTER,
+        catchup_window=_FAST_CATCHUP,
+        jitter=_FAST_JITTER,
     ),
     # HRRR forecast — every 15 min
     ScheduleDef(
-        "ingest-hrrr", "IngestHrrrWorkflow",
+        "ingest-hrrr",
+        "IngestHrrrWorkflow",
         max_runtime=timedelta(minutes=45),
-        interval=timedelta(minutes=15), task_queue=HRRR_TASK_QUEUE,
+        interval=timedelta(minutes=15),
+        task_queue=HRRR_TASK_QUEUE,
     ),
     # NAQFC air quality (PM2.5 + ozone) — cycles land twice daily; poll every
     # 30 min so a fresh cycle is picked up promptly. Non-new runs are a HEAD.
     ScheduleDef(
-        "ingest-airquality", "IngestAirQualityWorkflow",
+        "ingest-airquality",
+        "IngestAirQualityWorkflow",
         max_runtime=timedelta(minutes=75),
         interval=timedelta(minutes=30),
     ),
     # Lightning WS consumer — every 60 min (workflow runs activity for ~50 min)
     ScheduleDef(
-        "ingest-lightning", "IngestLightningWorkflow",
-        max_runtime=timedelta(minutes=56), interval=timedelta(minutes=60),
+        "ingest-lightning",
+        "IngestLightningWorkflow",
+        max_runtime=timedelta(minutes=56),
+        interval=timedelta(minutes=60),
     ),
     # NHC tropical cyclones — every 1 hour
     ScheduleDef(
-        "ingest-tropical", "IngestTropicalWorkflow",
-        max_runtime=timedelta(minutes=5), interval=timedelta(hours=1),
+        "ingest-tropical",
+        "IngestTropicalWorkflow",
+        max_runtime=timedelta(minutes=5),
+        interval=timedelta(hours=1),
     ),
     # pysteps nowcast — every 2 min
     ScheduleDef(
-        "nowcast", "NowcastWorkflow",
+        "nowcast",
+        "NowcastWorkflow",
         max_runtime=timedelta(minutes=12),
-        interval=timedelta(minutes=2), task_queue=NOWCAST_TASK_QUEUE,
-        catchup_window=_FAST_CATCHUP, jitter=_FAST_JITTER,
+        interval=timedelta(minutes=2),
+        task_queue=NOWCAST_TASK_QUEUE,
+        catchup_window=_FAST_CATCHUP,
+        jitter=_FAST_JITTER,
     ),
     # Tile + grid cleanup — every 1 hour
     ScheduleDef(
-        "tile-cleanup", "TileCleanupWorkflow",
-        max_runtime=timedelta(minutes=15), interval=timedelta(hours=1),
+        "tile-cleanup",
+        "TileCleanupWorkflow",
+        max_runtime=timedelta(minutes=15),
+        interval=timedelta(hours=1),
     ),
     # NWS active alerts — every 5 min
     ScheduleDef(
-        "poll-alerts", "PollAlertsWorkflow",
+        "poll-alerts",
+        "PollAlertsWorkflow",
         max_runtime=timedelta(minutes=4, seconds=30),
-        interval=timedelta(minutes=5), task_queue=ALERTS_TASK_QUEUE,
+        interval=timedelta(minutes=5),
+        task_queue=ALERTS_TASK_QUEUE,
         catchup_window=timedelta(minutes=10),
     ),
     # Open-meteo GFS sync — every 6h. The legacy CronJob used "30 */6 * * *"
@@ -157,29 +202,35 @@ SCHEDULES: list[ScheduleDef] = [
     # backfill make exact wall-clock alignment unnecessary; freshness is
     # bounded by the 6h interval regardless.
     ScheduleDef(
-        "open-meteo-sync-gfs", "OpenMeteoSyncWorkflow",
+        "open-meteo-sync-gfs",
+        "OpenMeteoSyncWorkflow",
         max_runtime=timedelta(minutes=60),
         # ncep_gfs013 (0.13° surface), NOT ncep_gfs025: open-meteo restructured
         # its S3 open-data so ncep_gfs025 now holds only upper-air/pressure-level
         # fields — surface vars (temperature_2m, dew_point_2m, …) moved to
         # ncep_gfs013. Syncing gfs025 silently fetched no surface data, which is
         # why the 7-day forecast went all-null (~2026-06-13).
-        workflow_input=[{
-            "model": "ncep_gfs013",
-            "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure,uv_index",
-            "past_days": 2,
-        }],
+        workflow_input=[
+            {
+                "model": "ncep_gfs013",
+                "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure,uv_index",
+                "past_days": 2,
+            }
+        ],
         interval=timedelta(hours=6),
     ),
     # Open-meteo HRRR sync — every 1h.
     ScheduleDef(
-        "open-meteo-sync-hrrr", "OpenMeteoSyncWorkflow",
+        "open-meteo-sync-hrrr",
+        "OpenMeteoSyncWorkflow",
         max_runtime=timedelta(minutes=55),
-        workflow_input=[{
-            "model": "ncep_hrrr_conus",
-            "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure",
-            "past_days": 1,
-        }],
+        workflow_input=[
+            {
+                "model": "ncep_hrrr_conus",
+                "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure",
+                "past_days": 1,
+            }
+        ],
         interval=timedelta(hours=1),
     ),
 ]
@@ -188,7 +239,9 @@ SCHEDULES: list[ScheduleDef] = [
 def _spec_for(s: ScheduleDef) -> Schedule:
     if s.interval is None:
         raise ValueError(f"schedule {s.schedule_id} has no interval")
-    spec = ScheduleSpec(intervals=[ScheduleIntervalSpec(every=s.interval)], jitter=s.jitter)
+    spec = ScheduleSpec(
+        intervals=[ScheduleIntervalSpec(every=s.interval)], jitter=s.jitter
+    )
     task_queue = (
         s.task_queue
         if os.environ.get("USE_ISOLATED_TASK_QUEUES") == "1"
@@ -210,24 +263,60 @@ def _spec_for(s: ScheduleDef) -> Schedule:
     )
 
 
-# Per-RPC budget for schedule operations. A healthy create/update/delete
+# Per-RPC budget for schedule operations. A healthy create/update
 # answers in well under a second; a scheduler workflow wedged server-side
 # (post cluster-rebuild state, 2026-08-25 `nowcast` incident) hangs the RPC
 # until the client's default deadline instead. A short explicit timeout turns
-# "wedged" into a detectable signal rather than a 100s+ stall per attempt.
+# the failure into a bounded reconciliation error rather than a 100s+ stall.
 _RPC_TIMEOUT = timedelta(seconds=15)
 
-# Consecutive per-schedule timeouts before we conclude the schedule's backing
-# temporal-sys-scheduler workflow is wedged and recreate it. Transient server
-# churn clears in 1-2 attempts; a wedge never does.
-_WEDGE_ATTEMPTS = 3
 
-# The Rust SDK bridge surfaces client-side deadline hits as CANCELLED
-# ("Timeout expired"), not just DEADLINE_EXCEEDED.
-_TIMEOUT_CODES = frozenset({
-    RPCStatusCode.CANCELLED,
-    RPCStatusCode.DEADLINE_EXCEEDED,
-})
+class ScheduleSeedError(RuntimeError):
+    """Aggregate failures from an otherwise isolated reconciliation pass."""
+
+    def __init__(self, failures: dict[str, Exception]) -> None:
+        self.failures = failures
+        schedule_ids = ", ".join(sorted(failures))
+        super().__init__(f"schedule reconciliation failed for: {schedule_ids}")
+
+
+async def _schedules_semantically_equal(
+    client: Client,
+    current: Schedule,
+    desired: Schedule,
+) -> bool:
+    """Compare Schedule meaning after SDK payload encoding and normalization.
+
+    A Schedule decoded from Temporal contains raw Payload objects and marks
+    its action as ``_from_raw``; direct dataclass equality therefore reports
+    a false difference from the equivalent declarative Python inputs. The SDK
+    protobuf form removes that representational difference.
+    """
+    return await current._to_proto(client) == await desired._to_proto(client)
+
+
+async def _update_for_current_description(
+    client: Client,
+    inp: ScheduleUpdateInput,
+    desired: Schedule,
+) -> ScheduleUpdate | None:
+    """Build an update from the callback's current state, or return no-op.
+
+    Temporal supplies the description used for this update attempt. Copying
+    state here, rather than from a separate pre-update describe, preserves the
+    latest pause, note, action limit, and remaining-action count visible to the
+    SDK callback. Returning ``None`` prevents an UpdateSchedule mutation when
+    the declarative action/spec/policy already match.
+    """
+    current = inp.description.schedule
+    desired_with_current_state = dataclasses.replace(desired, state=current.state)
+    if await _schedules_semantically_equal(
+        client,
+        current,
+        desired_with_current_state,
+    ):
+        return None
+    return ScheduleUpdate(schedule=desired_with_current_state)
 
 
 async def _apply(client: Client, s: ScheduleDef, spec: Schedule) -> None:
@@ -237,102 +326,59 @@ async def _apply(client: Client, s: ScheduleDef, spec: Schedule) -> None:
         print(f"[seed] created schedule {s.schedule_id}")
     except ScheduleAlreadyRunningError:
         handle = client.get_schedule_handle(s.schedule_id)
+        update_required = False
 
-        def _update(inp: ScheduleUpdateInput, desired: Schedule = spec) -> ScheduleUpdate:
-            # Preserve the live state (paused flag + note): replacing the
-            # whole Schedule with the desired spec silently UN-paused
-            # schedules on every worker restart/deploy — pausing radar
-            # ingest during an incident didn't survive the next rollout.
-            return ScheduleUpdate(
-                schedule=dataclasses.replace(desired, state=inp.description.schedule.state)
+        async def _update(
+            inp: ScheduleUpdateInput, desired: Schedule = spec
+        ) -> ScheduleUpdate | None:
+            nonlocal update_required
+            update = await _update_for_current_description(
+                client,
+                inp,
+                desired,
             )
+            # The SDK contract allows repeated callback invocation during
+            # conflict handling. Reflect the last callback decision rather
+            # than remembering a stale earlier one.
+            update_required = update is not None
+            return update
 
         await handle.update(_update, rpc_timeout=_RPC_TIMEOUT)
-        await _terminate_stale_actions(client, s, handle)
-        print(f"[seed] updated schedule {s.schedule_id}")
+        outcome = "updated" if update_required else "unchanged"
+        print(f"[seed] {outcome} schedule {s.schedule_id}")
 
 
-async def _terminate_stale_actions(client: Client, s: ScheduleDef, handle: Any) -> None:
-    """Close schedule actions that outlived the same bound used for new runs."""
-    description = await handle.describe(rpc_timeout=_RPC_TIMEOUT)
-    cutoff = datetime.now(timezone.utc) - s.max_runtime
-    for action in description.info.running_actions:
-        if not isinstance(action, ScheduleActionExecutionStartWorkflow):
-            continue
-        workflow_handle = client.get_workflow_handle(action.workflow_id)
-        workflow_description = await workflow_handle.describe(
-            rpc_timeout=_RPC_TIMEOUT
-        )
-        if workflow_description.start_time >= cutoff:
-            continue
-        try:
-            await workflow_handle.terminate(
-                reason=(
-                    f"radar-ng schedule {s.schedule_id}: execution exceeded "
-                    f"{s.max_runtime}"
-                ),
-                rpc_timeout=_RPC_TIMEOUT,
-            )
-            print(f"[seed] terminated stale action {action.workflow_id}")
-        except RPCError as exc:
-            if exc.status not in {
-                RPCStatusCode.NOT_FOUND,
-                RPCStatusCode.FAILED_PRECONDITION,
-            }:
-                raise
-
-
-async def _recreate_wedged(client: Client, s: ScheduleDef, spec: Schedule) -> None:
-    """Self-heal a schedule whose scheduler workflow no longer answers RPCs.
-
-    Observed after the 2026-08-24 cluster rebuild: every RPC against the
-    `nowcast` schedule (describe/update/delete — even from admintools) hung to
-    deadline while the other 15 schedules answered instantly, so seeding died
-    on it and crash-looped the worker 100+ times. The wedged state does not
-    clear on its own; delete + recreate is the recovery. Losing the paused
-    flag on that one schedule is acceptable — an unresponsive schedule cannot
-    report its state anyway.
-    """
-    print(f"[seed] recreating wedged schedule {s.schedule_id}…")
-    handle = client.get_schedule_handle(s.schedule_id)
+async def _apply_isolated(client: Client, schedule: ScheduleDef) -> Exception | None:
+    """Apply one definition without allowing its failure to cancel peers."""
     try:
-        await handle.delete(rpc_timeout=_RPC_TIMEOUT)
-    except RPCError as exc:
-        if exc.status == RPCStatusCode.NOT_FOUND:
-            pass  # already gone — just recreate
-        elif exc.status in _TIMEOUT_CODES:
-            # Delete rides through the same wedged workflow; terminate the
-            # backing system workflow directly, then delete the husk.
-            wf = client.get_workflow_handle(f"temporal-sys-scheduler:{s.schedule_id}")
-            try:
-                await wf.terminate(
-                    reason="radar-ng seed: schedule RPCs wedged; recreating",
-                    rpc_timeout=_RPC_TIMEOUT,
-                )
-            except RPCError as texc:
-                if texc.status != RPCStatusCode.NOT_FOUND:
-                    raise
-            try:
-                await handle.delete(rpc_timeout=_RPC_TIMEOUT)
-            except RPCError as dexc:
-                if dexc.status != RPCStatusCode.NOT_FOUND:
-                    raise
-        else:
-            raise
-    try:
-        await client.create_schedule(s.schedule_id, spec, rpc_timeout=_RPC_TIMEOUT)
-    except ScheduleAlreadyRunningError:
-        # HA race: another replica won the delete+create; converged either way.
-        print(f"[seed] schedule {s.schedule_id} already recreated by a peer")
-        return
-    print(f"[seed] recreated wedged schedule {s.schedule_id}")
+        await _apply(client, schedule, _spec_for(schedule))
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - returned to the aggregate caller
+        return exc
+    return None
+
+
+async def _seed_pass(
+    client: Client,
+    schedules: list[ScheduleDef],
+) -> dict[str, Exception]:
+    """Reconcile Schedules concurrently and return failures by Schedule ID."""
+    results = await asyncio.gather(
+        *(_apply_isolated(client, schedule) for schedule in schedules)
+    )
+    return {
+        schedule.schedule_id: result
+        for schedule, result in zip(schedules, results, strict=True)
+        if result is not None
+    }
 
 
 async def seed(client: Client) -> None:
-    """Single seeding pass over all schedules (no retries). Kept for the
-    one-off `python -m temporal.schedules.seed` debugging path."""
-    for s in SCHEDULES:
-        await _apply(client, s, _spec_for(s))
+    """Run one failure-isolated reconciliation pass for local debugging."""
+    failures = await _seed_pass(client, SCHEDULES)
+    if failures:
+        raise ScheduleSeedError(failures)
 
 
 async def seed_with_retry(
@@ -342,56 +388,61 @@ async def seed_with_retry(
     base_delay: float = 1.0,
     max_delay: float = 20.0,
 ) -> None:
-    """Seed all schedules, retrying transients and self-healing wedges.
+    """Reconcile all schedules with isolated, bounded transient retries.
 
-    Per-schedule create-or-update is idempotent, so only the schedules that
-    failed are retried on later passes. Two failure classes are handled:
-
-    - Transient RPC errors (shard warmup after a Temporal restart, etc.):
-      bounded exponential backoff, ~110s total budget, then re-raise so a
-      genuinely-down Temporal still fails startup and k8s restarts the pod.
-    - A wedged schedule (its scheduler workflow hangs every RPC to deadline,
-      forever): after _WEDGE_ATTEMPTS consecutive timeouts on the SAME
-      schedule, delete + recreate it instead of crash-looping the worker.
+    Each pass runs concurrently, so a slow or failed Schedule does not prevent
+    healthy definitions from converging. Only retryable Temporal RPC failures
+    enter a later pass. Permanent errors are retained for the final aggregate
+    error while the remaining Schedules continue. This function never
+    deletes a Schedule or terminates a workflow as a recovery mechanism.
     """
-    timeout_streak: dict[str, int] = {}
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be at least 1")
+
     pending = list(SCHEDULES)
+    permanent_failures: dict[str, Exception] = {}
     for attempt in range(1, max_attempts + 1):
-        failed: list[ScheduleDef] = []
-        last_exc: RPCError | None = None
-        for s in pending:
-            spec = _spec_for(s)
-            try:
-                await _apply(client, s, spec)
-                timeout_streak.pop(s.schedule_id, None)
-            except RPCError as exc:
-                if exc.status not in _RETRYABLE_RPC_CODES:
-                    raise
-                if exc.status in _TIMEOUT_CODES:
-                    streak = timeout_streak.get(s.schedule_id, 0) + 1
-                    timeout_streak[s.schedule_id] = streak
-                    if streak >= _WEDGE_ATTEMPTS:
-                        await _recreate_wedged(client, s, spec)
-                        timeout_streak.pop(s.schedule_id, None)
-                        continue
-                last_exc = exc
-                failed.append(s)
+        pass_failures = await _seed_pass(client, pending)
+        retry: list[ScheduleDef] = []
+        retry_failures: dict[str, Exception] = {}
+
+        for schedule in pending:
+            exc = pass_failures.get(schedule.schedule_id)
+            if exc is None:
+                continue
+            if isinstance(exc, RPCError) and exc.status in _RETRYABLE_RPC_CODES:
+                retry.append(schedule)
+                retry_failures[schedule.schedule_id] = exc
                 print(
-                    f"[seed] transient RPC error ({exc.status.name}) on "
-                    f"{s.schedule_id}, attempt {attempt}/{max_attempts}: "
-                    f"{exc.message!r}"
+                    "event=TEMPORAL_SCHEDULE_RECONCILIATION_RETRY "
+                    f"schedule_id={schedule.schedule_id} "
+                    f"error={safe_error_label(exc)} "
+                    f"attempt={attempt}/{max_attempts} retryable=true"
                 )
-        if not failed:
-            return
+            else:
+                permanent_failures[schedule.schedule_id] = exc
+                print(
+                    "event=TEMPORAL_SCHEDULE_RECONCILIATION_ERROR "
+                    f"schedule_id={schedule.schedule_id} "
+                    f"error={safe_error_label(exc)} retryable=false"
+                )
+
+        if not retry:
+            break
         if attempt == max_attempts:
-            raise last_exc if last_exc else RuntimeError("schedule seeding failed")
+            permanent_failures.update(retry_failures)
+            break
+
         delay = min(max_delay, base_delay * 2 ** (attempt - 1))
         print(
-            f"[seed] {len(failed)} schedule(s) still failing after attempt "
+            f"[seed] {len(retry)} schedule(s) still failing after attempt "
             f"{attempt}/{max_attempts}; retrying in {delay:.0f}s"
         )
         await asyncio.sleep(delay)
-        pending = failed
+        pending = retry
+
+    if permanent_failures:
+        raise ScheduleSeedError(permanent_failures)
 
 
 async def _main() -> None:

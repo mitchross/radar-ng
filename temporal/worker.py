@@ -41,8 +41,8 @@ from backend.ingest_hrrr.activities import (
     hrrr_find_latest_run,
     hrrr_horizon_for_run,
     hrrr_mark_processed,
-    hrrr_publish_run,
     hrrr_process_forecast_hour,
+    hrrr_publish_run,
 )
 from backend.ingest_lightning.activities import lightning_consume_stream
 from backend.ingest_mrms.activities import (
@@ -54,12 +54,13 @@ from backend.ingest_mrms.activities import (
 from backend.ingest_tropical.activities import tropical_fetch_and_publish
 from backend.nowcast.activities import nowcast_run
 from backend.tile_cleanup.activities import tile_cleanup_sweep
+
 # NOTE: open_meteo_sync activity is registered by the SEPARATE
 # radar-ng-open-meteo-worker pod (temporal/open_meteo_worker.py) — its
 # base image carries the Swift binary. Temporal dispatches the activity
 # to whichever worker has it registered, so this worker intentionally
 # does not import or register it.
-from temporal.schedules.seed import SCHEDULES
+from temporal.schedules.seed import SCHEDULES, ScheduleSeedError, safe_error_label
 from temporal.schedules.seed import seed_with_retry as seed_schedules
 from temporal.schedules.watchdog import watch_schedules
 from temporal.shared.health import health_file_loop
@@ -89,9 +90,9 @@ from temporal.workflows import (
     WatchStormWorkflow,
 )
 
-
 DEFAULT_MAX_CONCURRENT_ACTIVITIES = 4
 DEFAULT_MAX_CONCURRENT_ACTIVITY_TASK_POLLS = 2
+WORKER_START_POLL_SECONDS = 0.01
 
 
 ALL_ACTIVITIES = [
@@ -224,7 +225,9 @@ def _runtime_from_env() -> Runtime | None:
     bind = os.environ.get("TEMPORAL_METRICS_BIND", "0.0.0.0:9464")
     if bind.strip().lower() == "off":
         return None
-    return Runtime(telemetry=TelemetryConfig(metrics=PrometheusConfig(bind_address=bind)))
+    return Runtime(
+        telemetry=TelemetryConfig(metrics=PrometheusConfig(bind_address=bind))
+    )
 
 
 def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
@@ -238,6 +241,114 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
         return default
 
 
+async def _reconcile_schedules(client: Client) -> None:
+    """Reconcile definitions without making worker polling depend on success."""
+    logger.info("reconciling schedules in background…")
+    try:
+        await seed_schedules(client)
+    except asyncio.CancelledError:
+        raise
+    except ScheduleSeedError as exc:
+        schedule_ids = sorted(exc.failures)
+        rendered_ids = ",".join(schedule_ids)
+        rendered_errors = ",".join(
+            f"{schedule_id}:{safe_error_label(exc.failures[schedule_id])}"
+            for schedule_id in schedule_ids
+        )
+        logger.bind(
+            event="TEMPORAL_SCHEDULE_RECONCILIATION_FAILED",
+            schedule_ids=schedule_ids,
+            errors=rendered_errors,
+            operator_action="inspect_schedule_reconciliation",
+        ).critical(
+            "event=TEMPORAL_SCHEDULE_RECONCILIATION_FAILED "
+            "schedule_ids={} errors={} "
+            "operator_action=inspect_schedule_reconciliation",
+            rendered_ids,
+            rendered_errors,
+        )
+    except Exception as exc:  # noqa: BLE001 - polling must survive reconciliation bugs
+        failure_label = safe_error_label(exc)
+        logger.bind(
+            event="TEMPORAL_SCHEDULE_RECONCILIATION_FAILED",
+            schedule_ids=[],
+            errors=f"unexpected:{failure_label}",
+            operator_action="inspect_schedule_reconciliation",
+        ).critical(
+            "event=TEMPORAL_SCHEDULE_RECONCILIATION_FAILED "
+            "schedule_ids=unknown errors=unexpected:{} "
+            "operator_action=inspect_schedule_reconciliation",
+            failure_label,
+        )
+    else:
+        logger.info("schedule reconciliation complete")
+
+
+async def _wait_for_worker_pollers(
+    worker: Worker,
+    worker_task: asyncio.Task[None],
+) -> bool:
+    """Wait until validated Worker startup has created its poller tasks.
+
+    Temporal Python SDK 1.30 sets ``is_running`` after namespace validation,
+    then creates every configured poller task without another await. Once this
+    coroutine can observe that state, one event-loop yield lets those tasks
+    enter their bridge poll calls before control-plane work begins.
+
+    The SDK does not expose a stronger acknowledgement that the server has
+    accepted a long poll. A worker that exits during startup is propagated and
+    no background control-plane work is started.
+    """
+    while True:
+        if worker_task.done():
+            await worker_task
+            return False
+        if worker.is_running:
+            await asyncio.sleep(0)
+            if worker_task.done():
+                await worker_task
+                return False
+            return True
+        await asyncio.sleep(WORKER_START_POLL_SECONDS)
+
+
+async def _run_worker(
+    worker: Worker,
+    client: Client,
+    *,
+    should_seed: bool,
+) -> None:
+    """Run pollers while supervising non-fatal control-plane background work."""
+    worker_task = asyncio.create_task(worker.run(), name="temporal-worker")
+    background: list[asyncio.Task[None]] = []
+    try:
+        if not await _wait_for_worker_pollers(worker, worker_task):
+            return
+
+        background.append(
+            asyncio.create_task(health_file_loop(client), name="health-file")
+        )
+        if should_seed:
+            background.append(
+                asyncio.create_task(
+                    _reconcile_schedules(client), name="schedule-reconciliation"
+                )
+            )
+            background.append(
+                asyncio.create_task(
+                    watch_schedules(client, SCHEDULES), name="schedule-watchdog"
+                )
+            )
+
+        await worker_task
+    finally:
+        for task in background:
+            task.cancel()
+        if not worker_task.done():
+            worker_task.cancel()
+        await asyncio.gather(worker_task, *background, return_exceptions=True)
+
+
 async def _main() -> None:
     target = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
     namespace = os.environ.get("TEMPORAL_NAMESPACE", "default")
@@ -245,7 +356,10 @@ async def _main() -> None:
 
     interceptor = init_tracer()
     client = await Client.connect(
-        target, namespace=namespace, interceptors=[interceptor], runtime=_runtime_from_env()
+        target,
+        namespace=namespace,
+        interceptors=[interceptor],
+        runtime=_runtime_from_env(),
     )
 
     role = os.environ.get("WORKER_ROLE", "legacy").strip().lower()
@@ -260,13 +374,10 @@ async def _main() -> None:
     # One designated pool seeds Schedules. Seeding from every role creates a
     # needless startup dependency and lets an old image race a new queue map.
     seed_setting = os.environ.get("SEED_SCHEDULES")
-    should_seed = seed_setting == "1" or (seed_setting is None and role in {"legacy", "all"})
+    should_seed = seed_setting == "1" or (
+        seed_setting is None and role in {"legacy", "all"}
+    )
     should_seed = should_seed and os.environ.get("SKIP_SCHEDULE_SEED") != "1"
-    if should_seed:
-        logger.info("seeding schedules…")
-        await seed_schedules(client)
-        logger.info("schedule seed complete")
-
     deployment_config = _deployment_config_from_env()
     max_concurrent_activities = _int_env(
         "TEMPORAL_MAX_CONCURRENT_ACTIVITIES",
@@ -319,19 +430,11 @@ async def _main() -> None:
             ),
         )
 
-    # Liveness file for the k8s probe (see temporal/shared/health.py) and, on
-    # the seeding pool only, the watchdog that kicks wedged schedules.
-    background = [asyncio.create_task(health_file_loop(client), name="health-file")]
-    if should_seed:
-        background.append(
-            asyncio.create_task(watch_schedules(client, SCHEDULES), name="schedule-watchdog")
-        )
-    try:
-        await worker.run()
-    finally:
-        for task in background:
-            task.cancel()
-        await asyncio.gather(*background, return_exceptions=True)
+    # Liveness and schedule control-plane work are background concerns: a
+    # failed reconciliation must never prevent this process from polling its
+    # task queue. The designated seeding pool also runs the read-only stall
+    # observer; it emits alerts but never mutates a Schedule.
+    await _run_worker(worker, client, should_seed=should_seed)
     logger.info("worker drained, exiting")
 
 
