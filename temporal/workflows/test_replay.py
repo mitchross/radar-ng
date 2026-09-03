@@ -173,6 +173,8 @@ class WorkflowReplayTests(unittest.TestCase):
             by_workflow.setdefault(fixture.workflow, []).append(fixture)
         self.assertEqual(set(by_workflow), set(WORKFLOW_REGISTRY))
         self.assertEqual(set(REQUIRED_SCENARIOS), set(WORKFLOW_REGISTRY))
+        labels = [fixture.label for fixture in self.fixtures]
+        self.assertEqual(len(labels), len(set(labels)), "duplicate fixture scenario")
 
         for fixture in self.fixtures:
             with self.subTest(fixture=fixture.label):
@@ -184,18 +186,22 @@ class WorkflowReplayTests(unittest.TestCase):
                 self.assertEqual(started.workflow_type.name, fixture.workflow)
 
     def test_required_scenarios_are_retained_and_prove_their_path(self) -> None:
-        for workflow, scenarios in REQUIRED_SCENARIOS.items():
-            for scenario, markers in scenarios.items():
-                matching = [
-                    f
-                    for f in self.fixtures
-                    if f.workflow == workflow and f.scenario == scenario
-                ]
-                with self.subTest(workflow=workflow, scenario=scenario):
-                    self.assertTrue(
-                        matching, "scenario missing from every retained version"
-                    )
-                    for fixture in matching:
+        by_release: dict[tuple[str, str], list[Fixture]] = {}
+        for fixture in self.fixtures:
+            by_release.setdefault((fixture.workflow, fixture.version), []).append(
+                fixture
+            )
+
+        for (workflow, version), fixtures in by_release.items():
+            required = REQUIRED_SCENARIOS[workflow]
+            present = {fixture.scenario for fixture in fixtures}
+            with self.subTest(workflow=workflow, version=version):
+                self.assertLessEqual(
+                    set(required), present, "release is missing required scenarios"
+                )
+            for fixture in fixtures:
+                if markers := required.get(fixture.scenario):
+                    with self.subTest(fixture=fixture.label):
                         self.assertLessEqual(markers, fixture.markers(), fixture.label)
 
     def test_fixtures_are_synthetic(self) -> None:
