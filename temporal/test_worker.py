@@ -103,20 +103,23 @@ _IMPORT_STUBS = {
     ),
 }
 
-for module_name, workflow_name in {
-    "temporal.workflows.ingest_airquality": "IngestAirQualityWorkflow",
-    "temporal.workflows.ingest_hrrr": "IngestHrrrWorkflow",
-    "temporal.workflows.ingest_lightning": "IngestLightningWorkflow",
-    "temporal.workflows.ingest_mrms": "IngestMrmsWorkflow",
-    "temporal.workflows.ingest_tropical": "IngestTropicalWorkflow",
-    "temporal.workflows.nowcast": "NowcastWorkflow",
-    "temporal.workflows.open_meteo_sync": "OpenMeteoSyncWorkflow",
-    "temporal.workflows.poll_alerts": "PollAlertsWorkflow",
-    "temporal.workflows.register_push_token": "RegisterPushTokenWorkflow",
-    "temporal.workflows.tile_cleanup": "TileCleanupWorkflow",
-    "temporal.workflows.watch_storm": "WatchStormWorkflow",
+for module_name, workflow_names in {
+    "temporal.workflows.ingest_airquality": ["IngestAirQualityWorkflow"],
+    "temporal.workflows.ingest_hrrr": ["IngestHrrrWorkflow"],
+    "temporal.workflows.ingest_lightning": ["IngestLightningWorkflow"],
+    "temporal.workflows.ingest_mrms": ["IngestMrmsWorkflow"],
+    "temporal.workflows.ingest_tropical": ["IngestTropicalWorkflow"],
+    "temporal.workflows.nowcast": ["NowcastWorkflow"],
+    "temporal.workflows.open_meteo_sync": ["OpenMeteoSyncWorkflow"],
+    "temporal.workflows.poll_alerts": ["PollAlertsWorkflow"],
+    "temporal.workflows.register_push_token": [
+        "DeletePushTokenWorkflow",
+        "RegisterPushTokenWorkflow",
+    ],
+    "temporal.workflows.tile_cleanup": ["TileCleanupWorkflow"],
+    "temporal.workflows.watch_storm": ["WatchStormWorkflow"],
 }.items():
-    _IMPORT_STUBS[module_name] = _stub_module(module_name, [workflow_name])
+    _IMPORT_STUBS[module_name] = _stub_module(module_name, workflow_names)
 
 with patch.dict(sys.modules, _IMPORT_STUBS):
     from temporal import worker
