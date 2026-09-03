@@ -2,10 +2,9 @@
 
 Temporal worker entrypoint, workflows, and Schedule definitions for radar-ng.
 
-This directory is the single deployable that replaces all 7 K8s CronJobs in
-the radar-ng backend. The worker process registers every workflow + activity
-on a single task queue (`radar-ng`) and runs in the `radar-ng` namespace of
-the Talos cluster as a `TemporalWorkerDeployment` CR.
+This directory contains the Temporal deployables that replace the backend
+CronJobs. The main worker supports role-specific task queues and retains an
+all-in-one `radar-ng` queue for compatibility while older executions drain.
 
 See [`ARCHITECTURE.md`](../ARCHITECTURE.md) for the orchestration design.
 
@@ -15,13 +14,18 @@ See [`ARCHITECTURE.md`](../ARCHITECTURE.md) for the orchestration design.
 temporal/
 ├── worker.py              # entrypoint — Worker(...) registration + run
 ├── workflows/             # @workflow.defn classes
+│   ├── __init__.py        # canonical workflow type registry
+│   ├── replay_fixtures/   # sanitized synthetic histories + generator
 │   ├── ingest_mrms.py
 │   ├── ingest_hrrr.py
+│   ├── ingest_airquality.py
 │   ├── ingest_lightning.py
 │   ├── ingest_tropical.py
 │   ├── nowcast.py
+│   ├── open_meteo_sync.py
 │   ├── tile_cleanup.py
 │   ├── poll_alerts.py
+│   ├── register_push_token.py
 │   └── watch_storm.py
 ├── schedules/
 │   └── seed.py            # idempotent Schedule create/update on startup
@@ -48,3 +52,23 @@ worker boots without APNS/FCM secrets — re-enable per
 
 Phase 5 (Rust hot paths for `decode_grib2` / `build_mbtiles`) deferred —
 gated on OTEL data showing them as bottlenecks.
+
+## Workflow replay safety
+
+`temporal/workflows/__init__.py` is the canonical registry used by the worker
+roles and the replay tests. It keeps compatibility-only workflow types that
+the API no longer starts but retained histories may still reference.
+
+`test_replay.py` replays every history under
+`replay_fixtures/<WorkflowType>/<version>/` through `Replayer` and requires
+the scenario set in `REQUIRED_SCENARIOS` (success, partial, activity error,
+signal, timer, push, continue-as-new where the workflow has that path).
+`test_workflow_discovery.py` finds every `@workflow.defn` class by AST and
+checks it is in the registry, in a worker role (and the legacy role), and has
+a fixture directory; it also checks schedules and API routes only start
+registered types on queues whose role registers them.
+
+Both run as a `RUN` step in `temporal/Dockerfile`, so every build path (GHCR
+release, backend CI, Gitea build, `backend/scripts/build-push.sh`) gates the
+exact image it produces. See `replay_fixtures/README.md` for the fixture
+contract and `docs/releasing.md` for the release-side rules.

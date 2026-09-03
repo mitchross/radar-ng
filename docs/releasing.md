@@ -40,8 +40,8 @@ the OCI `org.opencontainers.image.revision` label during rollout verification.
 2. Keep one release for a given image in flight at a time. Workflow concurrency
    prevents a tag-allocation race, but serial source merges keep provenance and
    rollback obvious.
-3. For workflow-code changes, confirm Temporal compatibility: replay a
-   representative history or use a reviewed patch/version marker. A normal
+3. For workflow-code changes, the replay gate below must pass; if it fails,
+   use a reviewed patch/version marker rather than editing fixtures. A normal
    unit test is not a history-compatibility proof.
 4. Confirm no unrelated backend change is being used merely to force an image
    bump. Use `workflow_dispatch` with an explicit reviewed version only when a
@@ -57,6 +57,34 @@ gh run view <run-id> --repo mitchross/radar-ng --log
 
 Read the completed workflow output for the published version. Do not predict
 the tag from the current registry state; another serialized run may be ahead.
+
+## Temporal worker replay gate
+
+`temporal/Dockerfile` runs `temporal/workflows/test_replay.py` and
+`test_workflow_discovery.py` as a build step. Every path that produces a worker
+image builds that Dockerfile, so the gate covers all of them: the GHCR release
+workflow, backend CI, the Gitea `build-temporal-worker` workflow, and
+`backend/scripts/build-push.sh`. An image cannot exist unless its own workflow
+code replays every retained synthetic history under
+`temporal/workflows/replay_fixtures/<WorkflowType>/<version>/` and every
+`@workflow.defn` class is registered, given a worker role, and covered by
+fixtures.
+
+The retag workflows never promote `temporal-worker` by default. When it is
+named explicitly they run the embedded gate inside the pulled `latest` image
+first; an image that predates the gate has no test module and fails closed.
+
+Operator actions that the repository cannot enforce:
+
+- Disable anonymous writes to `registry.vanillax.me`. `build-push.sh` and the
+  Gitea workflow publish directly, so an anonymous push from any machine would
+  bypass the gate.
+- Restrict publishing credentials for both registries to protected CI. A worker
+  image built outside these workflows has no provenance and no replay proof.
+
+After each worker release, add that release's fixtures from its image with the
+`docker run` command in `replay_fixtures/generate.py`; never regenerate an
+existing version directory.
 
 ## GitOps rollout
 
@@ -135,7 +163,7 @@ version supersedes it.
 | Symptom | Safe response |
 |---|---|
 | Release workflow failed before pushing the version | Fix/re-run the source workflow. Do not invent a tag by hand. |
-| A version is needed from `latest` | Use `ghcr-retag-from-latest.yml` only after proving `latest` has the intended OCI source revision. Retagging the wrong `latest` creates false provenance. |
+| A version is needed from `latest` | Use `ghcr-retag-from-latest.yml` only after proving `latest` has the intended OCI source revision. Retagging the wrong `latest` creates false provenance. For `temporal-worker` the workflow also runs the image's embedded replay gate and refuses images that lack it. |
 | Renovate did not open a PR yet | Confirm the GHCR tag exists, then wait for hosted Renovate or open a clean manual GitOps PR. Do not wait on the private-registry CronJob. |
 | Renovate updated only one worker reference | Do not merge. Update and verify all six worker references together. |
 | Git has the new image but Argo renders an old manifest | Request a normal refresh first. If the repo-server cache is proven stale, use `argocd.argoproj.io/refresh=hard`; never restart random workloads to repair Git cache state. |
