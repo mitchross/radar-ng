@@ -25,10 +25,20 @@ from temporalio import activity
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
 from backend.shared.grid_dump import cleanup_old_grids, write_grid
 from backend.shared.logger import get_logger
-from backend.shared.manifest import read_manifest_file, replace_layer_manifest, update_manifest_file
+from backend.shared.manifest import (
+    read_manifest_file,
+    replace_layer_manifest,
+    update_manifest_file,
+)
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
-from backend.shared.tiler import apply_categorical_color_table, apply_color_table, render_tiles_atomic
+from backend.shared.tiler import (
+    MultiPaletteRenderResult,
+    complete_pyramid_identity,
+    frame_pyramid_identity_is_compatible,
+    render_frame_palettes,
+    tile_renderer_for_role,
+)
 
 
 HRRR_BASE = "https://noaa-hrrr-bdp-pds.s3.amazonaws.com"
@@ -70,23 +80,50 @@ IDX_MATCHERS = {
 
 VAR_SELECTORS = {
     "refc": {"shortName": "refc", "typeOfLevel": "atmosphere"},
-    "t2m": {"name": "2 metre temperature", "typeOfLevel": "heightAboveGround", "level": 2},
-    "dpt2m": {"name": "2 metre dewpoint temperature", "typeOfLevel": "heightAboveGround", "level": 2},
+    "t2m": {
+        "name": "2 metre temperature",
+        "typeOfLevel": "heightAboveGround",
+        "level": 2,
+    },
+    "dpt2m": {
+        "name": "2 metre dewpoint temperature",
+        "typeOfLevel": "heightAboveGround",
+        "level": 2,
+    },
     "cape": {"name": "Convective available potential energy", "typeOfLevel": "surface"},
-    "u10": {"name": "10 metre U wind component", "typeOfLevel": "heightAboveGround", "level": 10},
-    "v10": {"name": "10 metre V wind component", "typeOfLevel": "heightAboveGround", "level": 10},
+    "u10": {
+        "name": "10 metre U wind component",
+        "typeOfLevel": "heightAboveGround",
+        "level": 10,
+    },
+    "v10": {
+        "name": "10 metre V wind component",
+        "typeOfLevel": "heightAboveGround",
+        "level": 10,
+    },
     "crain": {"name": "Categorical rain", "typeOfLevel": "surface"},
     "csnow": {"name": "Categorical snow", "typeOfLevel": "surface"},
     "cfrzr": {"name": "Categorical freezing rain", "typeOfLevel": "surface"},
     "cicep": {"name": "Categorical ice pellets", "typeOfLevel": "surface"},
-    "rh2m": {"name": "2 metre relative humidity", "typeOfLevel": "heightAboveGround", "level": 2},
+    "rh2m": {
+        "name": "2 metre relative humidity",
+        "typeOfLevel": "heightAboveGround",
+        "level": 2,
+    },
     "apcp": {"name": "Total Precipitation", "typeOfLevel": "surface"},
     "tcdc": {"name": "Total Cloud Cover", "typeOfLevel": "atmosphere"},
 }
 
 HRRR_TILE_LAYERS = [
-    "radar-hrrr", "temperature", "dewpoint", "humidity", "wind", "cape",
-    "precip-type", "precip-accum", "cloud",
+    "radar-hrrr",
+    "temperature",
+    "dewpoint",
+    "humidity",
+    "wind",
+    "cape",
+    "precip-type",
+    "precip-accum",
+    "cloud",
 ]
 
 LAYER_COLOR_KEYS = {
@@ -99,6 +136,13 @@ LAYER_COLOR_KEYS = {
     "precip-type": "precip_type",
     "precip-accum": "precip_accum",
     "cloud": "cloud_cover",
+}
+
+PRECIP_TYPE_CATEGORIES = {
+    1: "rain",
+    2: "snow",
+    3: "freezing_rain",
+    4: "ice_pellets",
 }
 
 
@@ -235,18 +279,22 @@ def _get_idx_sync(client: httpx.Client, idx_url: str) -> list[dict]:
         parts = raw.split(":")
         if len(parts) < 5:
             continue
-        records.append({
-            "num": int(parts[0]),
-            "offset": int(parts[1]),
-            "line": raw,
-            "var_name": parts[3],
-            "level": parts[4],
-            "fcst_time": parts[5] if len(parts) > 5 else "",
-        })
+        records.append(
+            {
+                "num": int(parts[0]),
+                "offset": int(parts[1]),
+                "line": raw,
+                "var_name": parts[3],
+                "level": parts[4],
+                "fcst_time": parts[5] if len(parts) > 5 else "",
+            }
+        )
     return records
 
 
-def _pick_ranges(records: list[dict], matchers: Iterable[tuple[str, ...]]) -> list[tuple[int, int | None]]:
+def _pick_ranges(
+    records: list[dict], matchers: Iterable[tuple[str, ...]]
+) -> list[tuple[int, int | None]]:
     match_list = [tuple(m) for m in matchers]
     ranges: list[tuple[int, int | None]] = []
     for i, rec in enumerate(records):
@@ -282,7 +330,9 @@ def _extract_native_projection(
             crs = Proj(projparams).crs
 
         transformer = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
-        xs, ys = transformer.transform(_normalize_lons(lons), lats.astype(np.float64, copy=False))
+        xs, ys = transformer.transform(
+            _normalize_lons(lons), lats.astype(np.float64, copy=False)
+        )
 
         h, w = lats.shape
         x0 = float(np.nanmedian(xs[:, 0]))
@@ -321,7 +371,9 @@ def _download_subset_sync(
         # means NOAA hasn't uploaded the hour — pending, not an error, so no retry.
         resp = client.get(base_url, timeout=300)
         if resp.status_code == 404:
-            log.info("hour_pending", extra={"run_id": f"{date_str}_{run_hour}", "fhr": fhr})
+            log.info(
+                "hour_pending", extra={"run_id": f"{date_str}_{run_hour}", "fhr": fhr}
+            )
             return None
         resp.raise_for_status()
         out = tmp_dir / f"hrrr_f{fhr:02d}.grib2"
@@ -401,7 +453,9 @@ def _grid_dump_axes(grid: ExtractedGrid) -> tuple[np.ndarray, np.ndarray]:
     return grid.lats[:, col].astype(np.float64), grid.lons[row, :].astype(np.float64)
 
 
-def _safe_grid_dump(layer: str, ts: str, data: np.ndarray, grid: ExtractedGrid, unit: str) -> None:
+def _safe_grid_dump(
+    layer: str, ts: str, data: np.ndarray, grid: ExtractedGrid, unit: str
+) -> None:
     try:
         lats, lons = _grid_dump_axes(grid)
         write_grid(layer, ts, data, lats, lons, unit=unit)
@@ -409,69 +463,108 @@ def _safe_grid_dump(layer: str, ts: str, data: np.ndarray, grid: ExtractedGrid, 
         log.warning("grid_dump_failed", extra={"layer": layer, "err": str(exc)})
 
 
-def _write_palette_tiles(tile_base: Path, layer: str, palette: str, path: str, rgba: np.ndarray, grid: ExtractedGrid) -> int:
+def _write_palette_tiles(
+    tile_base: Path,
+    layer: str,
+    path: str,
+    data: np.ndarray,
+    grid: ExtractedGrid,
+    color_tables: dict[str, dict],
+    category_map: dict[int, str] | None = None,
+) -> MultiPaletteRenderResult:
+    """Orient once, then sample/classify once per tile for every palette."""
     lats = grid.lats
     lons = grid.lons
     source_y = grid.source_y
     if grid.source_crs is None and lats.ndim == 1 and lats[0] > lats[-1]:
-        rgba = np.flipud(rgba)
+        data = np.flipud(data)
         lats = lats[::-1]
-    elif grid.source_crs is not None and source_y is not None and source_y[0] > source_y[-1]:
-        rgba = np.flipud(rgba)
+    elif (
+        grid.source_crs is not None
+        and source_y is not None
+        and source_y[0] > source_y[-1]
+    ):
+        data = np.flipud(data)
         lats = np.flipud(lats)
         lons = np.flipud(lons)
         source_y = source_y[::-1]
-    out_dir = str(tile_base / layer / palette / path)
-    return render_tiles_atomic(
-        rgba=rgba,
-        lats=lats,
-        lons=lons,
-        output_dir=out_dir,
-        zoom_levels=ZOOM_LEVELS,
+    out_dirs = {pname: str(tile_base / layer / pname / path) for pname in color_tables}
+    return render_frame_palettes(
+        data,
+        lats,
+        lons,
+        color_tables,
+        out_dirs,
+        ZOOM_LEVELS,
+        category_map=category_map,
         source_crs=grid.source_crs,
         source_x=grid.source_x,
         source_y=source_y,
+        nodata_value=None,
+        min_valid_weight=1.0,
+        renderer=tile_renderer_for_role("hrrr"),
+        source_id=f"hrrr:{layer}:{path}",
+        publication_lock_root=tile_base / layer,
     )
 
 
 def _render_per_palette(
-    tile_base: Path, layer: str, ts: str, data: np.ndarray, grid: ExtractedGrid,
-    palette_tables: dict[str, dict], color_key: str, *,
-    categorical: bool = False, categories_map: dict[int, str] | None = None,
+    tile_base: Path,
+    layer: str,
+    ts: str,
+    data: np.ndarray,
+    grid: ExtractedGrid,
+    palette_tables: dict[str, dict],
+    color_key: str,
+    *,
+    categorical: bool = False,
+    categories_map: dict[int, str] | None = None,
 ) -> list[str]:
-    rendered: list[str] = []
-    expected = {
-        name for name, tables in palette_tables.items() if color_key in tables
+    color_tables = {
+        name: tables[color_key]
+        for name, tables in palette_tables.items()
+        if tables.get(color_key)
     }
-    for pname, tables in palette_tables.items():
-        entry = tables.get(color_key)
-        if not entry:
-            continue
-        if categorical:
-            if categories_map is None:
-                continue
-            rgba = apply_categorical_color_table(data, entry["categories"], categories_map)
-        else:
-            rgba = apply_color_table(data, entry)
-        if _write_palette_tiles(tile_base, layer, pname, ts, rgba, grid) > 0:
-            rendered.append(pname)
-    if set(rendered) != expected:
-        for pname in rendered:
-            shutil.rmtree(tile_base / layer / pname / ts, ignore_errors=True)
+    if not color_tables or (categorical and categories_map is None):
+        return []
+    result = _write_palette_tiles(
+        tile_base,
+        layer,
+        ts,
+        data,
+        grid,
+        color_tables,
+        category_map=categories_map if categorical else None,
+    )
+    rendered = result.rendered_palettes
+    if set(rendered) != set(color_tables):
+        # Empty products are not advertised. A mixed publish cannot be
+        # returned: the shared publisher raises so Temporal can retry and
+        # converge without deleting immutable winners.
         return []
     return rendered
 
 
-def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_tables: dict[str, dict], tile_base: Path) -> list[str]:
+def _process_forecast_hour_sync(
+    grib_path: Path,
+    run_id: str,
+    fhr: int,
+    palette_tables: dict[str, dict],
+    tile_base: Path,
+) -> list[str]:
     ts = (_run_init_time(run_id) + timedelta(hours=fhr)).isoformat()
     tile_path = f"runs/{run_id}/{ts}"
     rendered: list[str] = []
 
     r = _extract_variable(grib_path, VAR_SELECTORS["refc"])
     if r is None:
-        raise RuntimeError("required HRRR variable refc is missing from downloaded GRIB")
+        raise RuntimeError(
+            "required HRRR variable refc is missing from downloaded GRIB"
+        )
     d = r.data
-    palettes = _render_per_palette(tile_base, "radar-hrrr", tile_path, d, r, palette_tables, "reflectivity")
+    palettes = _render_per_palette(
+        tile_base, "radar-hrrr", tile_path, d, r, palette_tables, "reflectivity"
+    )
     if palettes:
         rendered.append("radar-hrrr")
         _safe_grid_dump("radar-hrrr", ts, d, r, "dBZ")
@@ -486,7 +579,9 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
     if r:
         d = r.data
         d = _kelvin_to_f(d)
-        palettes = _render_per_palette(tile_base, "temperature", tile_path, d, r, palette_tables, "temperature")
+        palettes = _render_per_palette(
+            tile_base, "temperature", tile_path, d, r, palette_tables, "temperature"
+        )
         if palettes:
             rendered.append("temperature")
             _safe_grid_dump("temperature", ts, d, r, "°F")
@@ -496,7 +591,9 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
         if r:
             d = r.data
             d = _kelvin_to_f(d)
-            palettes = _render_per_palette(tile_base, "dewpoint", tile_path, d, r, palette_tables, "dewpoint")
+            palettes = _render_per_palette(
+                tile_base, "dewpoint", tile_path, d, r, palette_tables, "dewpoint"
+            )
             if palettes:
                 rendered.append("dewpoint")
 
@@ -504,14 +601,18 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
         r = _extract_variable(grib_path, VAR_SELECTORS["rh2m"])
         if r:
             d = r.data
-            palettes = _render_per_palette(tile_base, "humidity", tile_path, d, r, palette_tables, "humidity")
+            palettes = _render_per_palette(
+                tile_base, "humidity", tile_path, d, r, palette_tables, "humidity"
+            )
             if palettes:
                 rendered.append("humidity")
 
     r = _extract_variable(grib_path, VAR_SELECTORS["cape"])
     if r:
         d = r.data
-        palettes = _render_per_palette(tile_base, "cape", tile_path, d, r, palette_tables, "cape")
+        palettes = _render_per_palette(
+            tile_base, "cape", tile_path, d, r, palette_tables, "cape"
+        )
         if palettes:
             rendered.append("cape")
             _safe_grid_dump("cape", ts, d, r, "J/kg")
@@ -523,8 +624,10 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
         v_data = v.data
         u_mph = _ms_to_mph(u_data)
         v_mph = _ms_to_mph(v_data)
-        speed = np.sqrt(u_mph ** 2 + v_mph ** 2)
-        palettes = _render_per_palette(tile_base, "wind", tile_path, speed, u, palette_tables, "wind_speed")
+        speed = np.sqrt(u_mph**2 + v_mph**2)
+        palettes = _render_per_palette(
+            tile_base, "wind", tile_path, speed, u, palette_tables, "wind_speed"
+        )
         if palettes:
             rendered.append("wind")
             _safe_grid_dump("wind", ts, speed, u, "mph")
@@ -535,7 +638,15 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
     if r:
         d = r.data
         d_in = d / 25.4
-        palettes = _render_per_palette(tile_base, "precip-accum", tile_path, d_in, r, palette_tables, "precip_accum")
+        palettes = _render_per_palette(
+            tile_base,
+            "precip-accum",
+            tile_path,
+            d_in,
+            r,
+            palette_tables,
+            "precip_accum",
+        )
         if palettes:
             rendered.append("precip-accum")
             _safe_grid_dump("precip-accum", ts, d_in, r, "in")
@@ -543,7 +654,9 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
     r = _extract_variable(grib_path, VAR_SELECTORS["tcdc"])
     if r:
         d = r.data
-        palettes = _render_per_palette(tile_base, "cloud", tile_path, d, r, palette_tables, "cloud_cover")
+        palettes = _render_per_palette(
+            tile_base, "cloud", tile_path, d, r, palette_tables, "cloud_cover"
+        )
         if palettes:
             rendered.append("cloud")
             _safe_grid_dump("cloud", ts, d, r, "%")
@@ -566,9 +679,17 @@ def _process_forecast_hour_sync(grib_path: Path, run_id: str, fhr: int, palette_
             cat[precip["cfrzr"] > 0] = 3
         if "cicep" in precip:
             cat[precip["cicep"] > 0] = 4
-        ptype_map = {1: "rain", 2: "snow", 3: "freezing_rain", 4: "ice_pellets"}
-        palettes = _render_per_palette(tile_base, "precip-type", tile_path, cat, pgrid, palette_tables, "precip_type",
-                                       categorical=True, categories_map=ptype_map)
+        palettes = _render_per_palette(
+            tile_base,
+            "precip-type",
+            tile_path,
+            cat,
+            pgrid,
+            palette_tables,
+            "precip_type",
+            categorical=True,
+            categories_map=PRECIP_TYPE_CATEGORIES,
+        )
         if palettes:
             rendered.append("precip-type")
 
@@ -580,20 +701,68 @@ def _required_layers(palette_tables: dict[str, dict]) -> set[str]:
     if ENABLED_LAYERS == {"radar-hrrr"}:
         return {"radar-hrrr"}
     return {
-        layer for layer, color_key in LAYER_COLOR_KEYS.items()
+        layer
+        for layer, color_key in LAYER_COLOR_KEYS.items()
         if any(color_key in tables for tables in palette_tables.values())
     }
 
 
-def _existing_rendered_layers(tile_base: Path, tile_path: str, palette_tables: dict[str, dict]) -> list[str]:
-    """Layers whose final pyramid exists (non-empty) for every palette that defines them."""
+def _existing_rendered_layers(
+    tile_base: Path, tile_path: str, palette_tables: dict[str, dict]
+) -> list[str]:
+    """Layers with a coherent pyramid set matching today's render contract."""
     existing: list[str] = []
+    renderer = tile_renderer_for_role("hrrr")
     for layer, color_key in LAYER_COLOR_KEYS.items():
-        palettes = [name for name, tables in palette_tables.items() if color_key in tables]
+        color_tables = {
+            name: tables[color_key]
+            for name, tables in palette_tables.items()
+            if color_key in tables
+        }
+        palettes = list(color_tables)
         if not palettes:
             continue
         dirs = [tile_base / layer / pname / tile_path for pname in palettes]
-        if all(d.is_dir() and any(d.iterdir()) for d in dirs):
+        identities = [complete_pyramid_identity(path) for path in dirs]
+        if any(identity is None for identity in identities):
+            continue
+        bound = [identity for identity in identities if identity is not None]
+        shared = {
+            (
+                identity.renderer,
+                identity.algorithm,
+                identity.source_id,
+                identity.source_digest,
+                identity.grid_spec_digest,
+                identity.tile_spec_digest,
+                identity.semantic_digest,
+                identity.policy_digest,
+            )
+            for identity in bound
+        }
+        if (
+            len(shared) == 1
+            and all(
+                identity.palette_name == palette
+                for identity, palette in zip(bound, palettes, strict=True)
+            )
+            and all(
+                frame_pyramid_identity_is_compatible(
+                    identity,
+                    renderer=renderer,
+                    source_id=f"hrrr:{layer}:{tile_path}",
+                    color_tables=color_tables,
+                    palette_name=palette,
+                    zoom_levels=ZOOM_LEVELS,
+                    category_map=(
+                        PRECIP_TYPE_CATEGORIES if layer == "precip-type" else None
+                    ),
+                    nodata_value=None,
+                    min_valid_weight=1.0,
+                )
+                for identity, palette in zip(bound, palettes, strict=True)
+            )
+        ):
             existing.append(layer)
     return existing
 
@@ -621,9 +790,13 @@ async def hrrr_find_latest_run() -> FindRunResult:
         if run_id is None:
             return FindRunResult(run_id=None, already_processed=False)
         # A newer run's f01 must not abandon a run we have half-published; finish it first.
-        resume = _resume_incomplete_run(read_manifest_file(STATE_DIR), datetime.now(timezone.utc))
+        resume = _resume_incomplete_run(
+            read_manifest_file(STATE_DIR), datetime.now(timezone.utc)
+        )
         if resume is not None and resume != run_id:
-            log.info("resuming_incomplete_run", extra={"run_id": resume, "latest": run_id})
+            log.info(
+                "resuming_incomplete_run", extra={"run_id": resume, "latest": run_id}
+            )
             run_id = resume
         state = ProcessedSet(_state_path(), max_entries=200)
         return FindRunResult(run_id=run_id, already_processed=run_id in state)
@@ -647,13 +820,17 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
     needed = ["refc"] if ENABLED_LAYERS == {"radar-hrrr"} else list(IDX_MATCHERS.keys())
     valid_timestamp = (_run_init_time(run_id) + timedelta(hours=fhr)).isoformat()
 
-    # Idempotent resume: run paths are immutable, so tiles already on disk ARE the result.
-    # Re-rendering would only be thrown away on EEXIST by render_tiles_atomic.
+    # Idempotent resume: marker-validated run paths are immutable and complete.
     existing = await asyncio.to_thread(
-        _existing_rendered_layers, tile_base, f"runs/{run_id}/{valid_timestamp}", palette_tables
+        _existing_rendered_layers,
+        tile_base,
+        f"runs/{run_id}/{valid_timestamp}",
+        palette_tables,
     )
     if _required_layers(palette_tables) <= set(existing):
-        log.info("hour_resumed", extra={"run_id": run_id, "fhr": fhr, "rendered": existing})
+        log.info(
+            "hour_resumed", extra={"run_id": run_id, "fhr": fhr, "rendered": existing}
+        )
         return ForecastHourResult(
             fhr=fhr,
             rendered_layers=existing,
@@ -666,7 +843,9 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
 
     def _download() -> Path | None:
         with httpx.Client() as client:
-            return _download_subset_sync(client, date_str, run_hour, fhr, needed, tmp_dir)
+            return _download_subset_sync(
+                client, date_str, run_hour, fhr, needed, tmp_dir
+            )
 
     # Heartbeat during the download too: the full-file fallback (~130 MB) outlives heartbeat_timeout.
     grib_path = await run_sync_with_heartbeat(
@@ -703,7 +882,15 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     duration = time.time() - started
-    log.info("hour_done", extra={"run_id": run_id, "fhr": fhr, "rendered": rendered, "duration_s": round(duration, 1)})
+    log.info(
+        "hour_done",
+        extra={
+            "run_id": run_id,
+            "fhr": fhr,
+            "rendered": rendered,
+            "duration_s": round(duration, 1),
+        },
+    )
     return ForecastHourResult(
         fhr=fhr,
         rendered_layers=rendered,
@@ -791,9 +978,7 @@ def _publish_hrrr_run_sync(
 
 
 @activity.defn(name="hrrr_publish_run")
-async def hrrr_publish_run(
-    run_id: str, results: list[ForecastHourResult]
-) -> list[str]:
+async def hrrr_publish_run(run_id: str, results: list[ForecastHourResult]) -> list[str]:
     """Publish whatever consecutive prefix of the run exists; the workflow marks it processed only when complete."""
     palette_tables = await asyncio.to_thread(_load_palette_tables)
     return await asyncio.to_thread(
@@ -837,9 +1022,9 @@ async def hrrr_cleanup(retention_hours: int) -> HrrrCleanupResult:
                         if run_dir.name == current_run:
                             continue
                         try:
-                            run_dt = datetime.strptime(run_dir.name, "%Y%m%d_%H").replace(
-                                tzinfo=timezone.utc
-                            )
+                            run_dt = datetime.strptime(
+                                run_dir.name, "%Y%m%d_%H"
+                            ).replace(tzinfo=timezone.utc)
                         except ValueError:
                             continue
                         if run_dt.timestamp() < cutoff:
@@ -861,6 +1046,8 @@ async def hrrr_cleanup(retention_hours: int) -> HrrrCleanupResult:
                     shutil.rmtree(ts_dir, ignore_errors=True)
                     removed += 1
         grids_removed = cleanup_old_grids()
-        return HrrrCleanupResult(tile_dirs_removed=removed, grid_files_removed=grids_removed)
+        return HrrrCleanupResult(
+            tile_dirs_removed=removed, grid_files_removed=grids_removed
+        )
 
     return await asyncio.to_thread(_go)

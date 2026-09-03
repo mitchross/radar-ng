@@ -181,6 +181,27 @@ def _grid_binary_path(meta_path: Path, meta: dict) -> Path:
     return meta_path.parent / meta_path.name.replace(".meta.json", ".bin")
 
 
+def _grid_metadata_path(layer: str, timestamp: str, grid_key: str | None) -> Path:
+    safe_layer = "".join(ch for ch in layer if ch.isalnum() or ch in "-_")
+    if grid_key is None:
+        # Legacy manifests addressed grids by timestamp only.
+        safe_ts = "".join(ch for ch in timestamp if ch.isalnum() or ch in ":-_+.T")
+        relative = Path(safe_ts)
+    else:
+        parts = grid_key.split("/")
+        allowed = ":-_+.T"
+        if not grid_key or any(
+            not part
+            or part in {".", ".."}
+            or any(not (ch.isalnum() or ch in allowed) for ch in part)
+            for part in parts
+        ):
+            raise ValueError("invalid grid key")
+        relative = Path(*parts)
+    grid_base = Path(GRID_DIR) / safe_layer / relative
+    return grid_base.parent / f"{grid_base.name}.meta.json"
+
+
 _manifest_last_good: dict[str, object] = {"body": None}
 
 
@@ -278,15 +299,32 @@ async def get_forecast(lat: float, lon: float) -> JSONResponse:
     return _cached(data, max_age=FORECAST_TTL)
 
 
-def _sample_grid_point(layer: str, timestamp: str, lat: float, lon: float) -> dict:
+def _sample_grid_point(
+    layer: str,
+    timestamp: str,
+    lat: float,
+    lon: float,
+    *,
+    grid_key: str | None = None,
+) -> dict:
     """Bilinear-interpolate one point from a stored Float32 grid."""
-    safe_layer = "".join(ch for ch in layer if ch.isalnum() or ch in "-_")
-    safe_ts = "".join(ch for ch in timestamp if ch.isalnum() or ch in ":-_+.T")
-    grid_base = Path(GRID_DIR) / safe_layer / safe_ts
-    meta_path = grid_base.with_suffix(".meta.json")
+    try:
+        meta_path = _grid_metadata_path(layer, timestamp, grid_key)
+    except ValueError:
+        return {
+            "ok": False,
+            "reason": "grid_missing",
+            "layer": layer,
+            "timestamp": timestamp,
+        }
 
     if not meta_path.exists():
-        return {"ok": False, "reason": "grid_missing", "layer": layer, "timestamp": timestamp}
+        return {
+            "ok": False,
+            "reason": "grid_missing",
+            "layer": layer,
+            "timestamp": timestamp,
+        }
 
     try:
         meta = json.loads(meta_path.read_text())
@@ -405,7 +443,15 @@ def nowcast_point(lat: float, lon: float) -> JSONResponse:
         if not isinstance(frame, dict) or not frame.get("timestamp"):
             continue
         timestamp = str(frame["timestamp"])
-        sample = _sample_grid_point("nowcast", timestamp, grid_lat, grid_lon)
+        raw_grid_key = frame.get("grid_key")
+        grid_key = str(raw_grid_key) if isinstance(raw_grid_key, str) else None
+        sample = _sample_grid_point(
+            "nowcast",
+            timestamp,
+            grid_lat,
+            grid_lon,
+            grid_key=grid_key,
+        )
         if not sample.get("ok"):
             missing += 1
             if sample.get("reason") == "out_of_bounds":

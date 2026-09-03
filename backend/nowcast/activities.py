@@ -21,12 +21,16 @@ import numpy as np
 from temporalio import activity
 
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
-from backend.shared.grid_dump import write_grid
+from backend.shared.grid_dump import (
+    finalize_grid_generation,
+    prune_grid_generations,
+    write_grid,
+)
 from backend.shared.logger import get_logger
 from backend.shared.manifest import replace_layer_manifest
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
-from backend.shared.tiler import apply_color_table, render_tiles_atomic
+from backend.shared.tiler import render_frame_palettes, tile_renderer_for_role
 
 
 GRID_DIR = Path(os.environ.get("GRID_DIR", "/data/grids"))
@@ -39,7 +43,9 @@ STEP_MIN = int(os.environ.get("NOWCAST_STEP_MIN", "5"))
 # cannot fit (common immediately after an empty-volume/cold start).
 N_INPUT_FRAMES = max(3, int(os.environ.get("NOWCAST_INPUT_FRAMES", "4")))
 GRID_INPUT_LAYER = os.environ.get("NOWCAST_GRID_INPUT_LAYER", "radar-nowcast-input")
-ALLOW_PERSISTENCE_FALLBACK = os.environ.get("NOWCAST_ALLOW_PERSISTENCE_FALLBACK", "0") == "1"
+ALLOW_PERSISTENCE_FALLBACK = (
+    os.environ.get("NOWCAST_ALLOW_PERSISTENCE_FALLBACK", "0") == "1"
+)
 MAX_INPUT_GAP_MIN = float(os.environ.get("NOWCAST_MAX_INPUT_GAP_MIN", "6"))
 # The science grid is ~2 km after its bounded downsample. z6 is its honest
 # display ceiling; z7 added 4x work while only magnifying interpolated pixels.
@@ -48,6 +54,9 @@ ZOOM_LEVELS = [4, 5, 6]
 # user location without decoding colorized tiles. Keep these much smaller
 # than the seven-million-cell science inputs used by pySTEPS itself.
 POINT_GRID_MAX_CELLS = int(os.environ.get("NOWCAST_POINT_GRID_MAX_CELLS", "900000"))
+# Retain the published run plus one complete rollback/debug generation. The
+# shared prune helper also preserves recent writer orphans and its lock inode.
+POINT_GRID_RETENTION_RUNS = 2
 
 log = get_logger("nowcast-activities")
 
@@ -61,7 +70,9 @@ class NowcastResult:
     duration_s: float = 0.0
 
 
-def _load_grid(meta_path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict] | None:
+def _load_grid(
+    meta_path: Path,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict] | None:
     try:
         meta = json.loads(meta_path.read_text())
         h = int(meta["height"])
@@ -100,7 +111,9 @@ def _persistence_fallback(frames: list[np.ndarray], n_leadtimes: int) -> np.ndar
     return np.repeat(last[np.newaxis, :, :], n_leadtimes, axis=0).astype(np.float32)
 
 
-def _write_nowcast_status(status: str, *, reason: str | None = None, detail: str | None = None) -> None:
+def _write_nowcast_status(
+    status: str, *, reason: str | None = None, detail: str | None = None
+) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     body = {
         "status": status,
@@ -108,7 +121,9 @@ def _write_nowcast_status(status: str, *, reason: str | None = None, detail: str
         "detail": detail,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    fd, tmp_name = tempfile.mkstemp(prefix=".nowcast-status.", suffix=".tmp", dir=str(STATE_DIR))
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=".nowcast-status.", suffix=".tmp", dir=str(STATE_DIR)
+    )
     try:
         with os.fdopen(fd, "w") as fh:
             json.dump(body, fh, separators=(",", ":"), sort_keys=True)
@@ -151,17 +166,25 @@ def _run_nowcast(
         nowcaster = nowcasts.get_method("sprog")
         try:
             forecast = nowcaster(
-                stack[-3:, :, :], uv, lead_steps,
-                n_cascade_levels=6, precip_thr=5.0,
+                stack[-3:, :, :],
+                uv,
+                lead_steps,
+                n_cascade_levels=6,
+                precip_thr=5.0,
             )
         except TypeError:
             forecast = nowcaster(
-                stack[-3:, :, :], uv, lead_steps,
-                n_cascade_levels=6, R_thr=5.0,
+                stack[-3:, :, :],
+                uv,
+                lead_steps,
+                n_cascade_levels=6,
+                R_thr=5.0,
             )
     except Exception as exc:  # noqa: BLE001
         log.warning("pysteps_failed", extra={"err": str(exc)})
-        return _degraded_result(frames, lead_steps, reason="pysteps_failed", detail=str(exc))
+        return _degraded_result(
+            frames, lead_steps, reason="pysteps_failed", detail=str(exc)
+        )
     forecast = np.asarray(forecast, dtype=np.float32)
     forecast = np.where(np.isnan(forecast), -9999.0, forecast)
     _write_nowcast_status("ok")
@@ -172,26 +195,56 @@ def _nowcast_tile_path(anchor_ts: str, valid_ts: str) -> str:
     return f"runs/{anchor_ts}/{valid_ts}"
 
 
-def _render_frame(tile_base: Path, palette_tables: dict[str, dict], tile_path: str, data: np.ndarray, lats: np.ndarray, lons: np.ndarray) -> list[str]:
+def _nowcast_grid_key(anchor_ts: str, valid_ts: str) -> str:
+    return f"runs/{anchor_ts}/{valid_ts}"
+
+
+def _prune_nowcast_point_grids(active_generation: str) -> int:
+    """Retain whole point-grid runs, including the manifest's active run."""
+    return prune_grid_generations(
+        "nowcast",
+        keep=POINT_GRID_RETENTION_RUNS,
+        active_generation=active_generation,
+    )
+
+
+def _render_frame(
+    tile_base: Path,
+    palette_tables: dict[str, dict],
+    tile_path: str,
+    data: np.ndarray,
+    lats: np.ndarray,
+    lons: np.ndarray,
+) -> list[str]:
     """Render one leadtime's tile pyramid. Manifest publishing happens once
     per RUN (replace_layer_manifest in nowcast_run), not per frame — so a
     half-finished run is never visible to the app, and frames from previous
     anchor runs don't pile up in the manifest.
     """
-    rendered: list[str] = []
-    for pname, tables in palette_tables.items():
-        entry = tables.get("reflectivity")
-        if not entry:
-            continue
-        rgba = apply_color_table(data, entry)
-        out_dir = str(tile_base / "nowcast" / pname / tile_path)
-        count = render_tiles_atomic(
-            rgba=rgba, lats=lats, lons=lons,
-            output_dir=out_dir, zoom_levels=ZOOM_LEVELS,
-        )
-        if count > 0:
-            rendered.append(pname)
-    return rendered
+    color_tables = {
+        pname: tables["reflectivity"]
+        for pname, tables in palette_tables.items()
+        if tables.get("reflectivity")
+    }
+    if not color_tables:
+        return []
+    out_dirs = {
+        pname: str(tile_base / "nowcast" / pname / tile_path) for pname in color_tables
+    }
+    result = render_frame_palettes(
+        data,
+        lats,
+        lons,
+        color_tables,
+        out_dirs,
+        ZOOM_LEVELS,
+        nodata_value=-9999.0,
+        min_valid_weight=1.0,
+        renderer=tile_renderer_for_role("nowcast"),
+        source_id=f"nowcast:{tile_path}",
+        publication_lock_root=tile_base / "nowcast",
+    )
+    return result.rendered_palettes
 
 
 @activity.defn(name="nowcast_run")
@@ -262,7 +315,9 @@ async def nowcast_run() -> NowcastResult:
         input_interval_min = float(np.median(np.asarray(intervals)))
         return (True, latest_iso, grids, meta_used, input_interval_min)
 
-    ok, latest_iso, grids, meta_used, input_interval_min = await asyncio.to_thread(_setup)
+    ok, latest_iso, grids, meta_used, input_interval_min = await asyncio.to_thread(
+        _setup
+    )
     if not ok:
         return NowcastResult(ran=False, anchor_ts=latest_iso)
 
@@ -271,14 +326,22 @@ async def nowcast_run() -> NowcastResult:
     # commonly ~2 minutes; passing the integer count mislabeled a 2-minute
     # forecast step as 5 minutes. Fractional requested timesteps preserve the
     # public 5-minute timeline against the measured input cadence.
-    lead_steps = [((index + 1) * STEP_MIN) / input_interval_min for index in range(n_lead)]
-    activity.heartbeat({"phase": "pysteps", "input_frames": len(grids), "leadtimes": n_lead})
+    lead_steps = [
+        ((index + 1) * STEP_MIN) / input_interval_min for index in range(n_lead)
+    ]
+    activity.heartbeat(
+        {"phase": "pysteps", "input_frames": len(grids), "leadtimes": n_lead}
+    )
     forecast = await run_sync_with_heartbeat(
         _run_nowcast,
         grids,
         lead_steps,
         heartbeat_every=30,
-        heartbeat_details=lambda: {"phase": "pysteps", "input_frames": len(grids), "leadtimes": n_lead},
+        heartbeat_details=lambda: {
+            "phase": "pysteps",
+            "input_frames": len(grids),
+            "leadtimes": n_lead,
+        },
     )
     forecast, method = forecast
     if forecast is None:
@@ -291,8 +354,13 @@ async def nowcast_run() -> NowcastResult:
 
     h = meta_used["height"]
     w = meta_used["width"]
-    lats_arr = np.linspace(meta_used["lat_max"], meta_used["lat_min"], h, dtype=np.float64)
-    lons_arr = np.linspace(meta_used["lon_min"], meta_used["lon_max"], w, dtype=np.float64)
+    lats_arr = np.linspace(
+        meta_used["lat_max"], meta_used["lat_min"], h, dtype=np.float64
+    )
+    lons_arr = np.linspace(
+        meta_used["lon_min"], meta_used["lon_max"], w, dtype=np.float64
+    )
+
     def _load_palette_tables() -> dict[str, dict]:
         tables: dict[str, dict] = {}
         for name in get_palette_names():
@@ -307,7 +375,6 @@ async def nowcast_run() -> NowcastResult:
     palette_tables = await asyncio.to_thread(_load_palette_tables)
     rendered_palettes: set[str] = set()
     rendered_timestamps: list[str] = []
-    point_grid_files: list[str] = []
     manifest_frames: list[dict] = []
     expected_palettes = {
         name for name, tables in palette_tables.items() if tables.get("reflectivity")
@@ -337,6 +404,7 @@ async def nowcast_run() -> NowcastResult:
             heartbeat_details=lambda i=i: {"phase": "render", "leadtime": i},
         )
         if set(palettes) == expected_palettes:
+            grid_key = _nowcast_grid_key(latest_iso, ts)
             grid_file = await asyncio.to_thread(
                 write_grid,
                 "nowcast",
@@ -347,6 +415,7 @@ async def nowcast_run() -> NowcastResult:
                 "dBZ",
                 -9999.0,
                 POINT_GRID_MAX_CELLS,
+                grid_key=grid_key,
             )
             if not grid_file:
                 for palette in palettes:
@@ -357,19 +426,21 @@ async def nowcast_run() -> NowcastResult:
                 continue
             rendered_palettes.update(palettes)
             rendered_timestamps.append(ts)
-            point_grid_files.append(grid_file)
-            manifest_frames.append({
-                "timestamp": ts,
-                "path": tile_path,
-                "source": "mrms-nowcast",
-                "kind": "nowcast",
-                "issued_at": latest_dt.isoformat(),
-                "lead_minutes": (i + 1) * STEP_MIN,
-                "input_interval_minutes": round(input_interval_min, 3),
-                "method": method,
-                "spatial_resolution_km": resolution_km,
-                "max_zoom": max(ZOOM_LEVELS),
-            })
+            manifest_frames.append(
+                {
+                    "timestamp": ts,
+                    "path": tile_path,
+                    "grid_key": grid_key,
+                    "source": "mrms-nowcast",
+                    "kind": "nowcast",
+                    "issued_at": latest_dt.isoformat(),
+                    "lead_minutes": (i + 1) * STEP_MIN,
+                    "input_interval_minutes": round(input_interval_min, 3),
+                    "method": method,
+                    "spatial_resolution_km": resolution_km,
+                    "max_zoom": max(ZOOM_LEVELS),
+                }
+            )
         else:
             for palette in palettes:
                 shutil.rmtree(
@@ -383,9 +454,9 @@ async def nowcast_run() -> NowcastResult:
             raise RuntimeError(
                 f"nowcast incomplete: rendered {len(rendered_timestamps)}/{n_lead} leadtimes"
             )
-        # One atomic swap: this run's frames replace ALL previous nowcast
-        # frames in the manifest. Old tile dirs stay on disk until the
-        # cleanup sweep removes them, but the app never sees them again.
+        # Mark complete before the manifest swap so a crash here leaves the old manifest fully readable.
+        finalize_grid_generation("nowcast", latest_iso)
+        # One atomic swap replaces ALL previous nowcast frames; old tile dirs linger until the cleanup sweep.
         replace_layer_manifest(
             "nowcast",
             rendered_timestamps,
@@ -400,16 +471,9 @@ async def nowcast_run() -> NowcastResult:
                 "run_id": latest_iso,
             },
         )
-        # The manifest swap is the publication boundary. The endpoint samples
-        # that complete run in one request, so older point grids can go after
-        # the swap without exposing a partially written new series.
-        point_dir = GRID_DIR / "nowcast"
-        keep = {f"{timestamp}.meta.json" for timestamp in rendered_timestamps}
-        keep.update(Path(path).name for path in point_grid_files)
-        if point_dir.exists():
-            for path in point_dir.iterdir():
-                if path.is_file() and path.name not in keep:
-                    path.unlink(missing_ok=True)
+        # Prune under the shared layer lock only (an ad-hoc sweep could unlink .grid.lock or a committed generation);
+        # keep two full runs so a newer writer cannot evict grids this manifest references.
+        _prune_nowcast_point_grids(latest_iso)
         state = ProcessedSet(STATE_DIR / "nowcast.json", max_entries=100)
         state.add(latest_iso)
 

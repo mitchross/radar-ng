@@ -15,7 +15,6 @@ import os
 import shutil
 import time
 import xml.etree.ElementTree as ET
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -26,13 +25,13 @@ import pygrib
 from temporalio import activity
 
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
-from backend.shared.grid_dump import cleanup_old_grids, write_grid
+from backend.shared.grid_dump import cleanup_old_grids, prune_grid_layer, write_grid
 from backend.shared.logger import get_logger
 from backend.shared.manifest import update_manifest_file
 from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
 from backend.shared.storms import write_storms_json
-from backend.shared.tiler import apply_color_table, render_tiles_atomic
+from backend.shared.tiler import render_frame_palettes, tile_renderer_for_role
 
 
 MRMS_BASE = "https://noaa-mrms-pds.s3.amazonaws.com"
@@ -49,21 +48,10 @@ NOWCAST_SCIENCE_GRID_MAX_CELLS = int(
 )
 
 
-def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    try:
-        return max(minimum, int(raw))
-    except ValueError:
-        return default
-
-
-MRMS_RENDER_WORKERS = _int_env("MRMS_RENDER_WORKERS", 2)
-
-
 # Defaults — used when the workflow doesn't pass overrides.
-DEFAULT_MRMS_PREFIX = os.environ.get("MRMS_PREFIX", "CONUS/MergedBaseReflectivityQC_00.50")
+DEFAULT_MRMS_PREFIX = os.environ.get(
+    "MRMS_PREFIX", "CONUS/MergedBaseReflectivityQC_00.50"
+)
 DEFAULT_LAYER_NAME = os.environ.get("LAYER_NAME", "radar")
 
 log = get_logger("ingest-mrms-activities")
@@ -79,6 +67,7 @@ class IngestMrmsArgs:
     ingest-mrms CronJob; the radar-composite schedule overrides both
     fields to point at the full-atmosphere composite product.
     """
+
     mrms_prefix: str = DEFAULT_MRMS_PREFIX
     layer_name: str = DEFAULT_LAYER_NAME
 
@@ -173,7 +162,11 @@ def _download_and_decode_sync(
         lon_row = np.where(lon_row > 180.0, lon_row - 360.0, lon_row)
         if hasattr(data, "filled"):
             data = data.filled(np.nan)
-        return data.astype(np.float32), lat_col.astype(np.float64), lon_row.astype(np.float64)
+        return (
+            data.astype(np.float32),
+            lat_col.astype(np.float64),
+            lon_row.astype(np.float64),
+        )
     finally:
         gz_path.unlink(missing_ok=True)
         grib_path.unlink(missing_ok=True)
@@ -191,22 +184,34 @@ def _load_palette_tables() -> dict[str, dict]:
     return tables
 
 
-def _render_palette(
-    pname: str,
-    ctable: dict,
+def _render_all_palettes(
+    palette_tables: dict[str, dict],
     data: np.ndarray,
     lats_arr: np.ndarray,
     lons_arr: np.ndarray,
-    flip: bool,
     timestamp: str,
     tile_base: Path,
     layer_name: str,
-) -> int:
-    rgba = apply_color_table(data, ctable)
-    if flip:
-        rgba = np.flipud(rgba)
-    out_dir = str(tile_base / layer_name / pname / timestamp)
-    return render_tiles_atomic(rgba=rgba, lats=lats_arr, lons=lons_arr, output_dir=out_dir, zoom_levels=ZOOM_LEVELS)
+) -> list[str]:
+    """Sample values once per tile, then publish every palette."""
+    out_dirs = {
+        pname: str(tile_base / layer_name / pname / timestamp)
+        for pname in palette_tables
+    }
+    result = render_frame_palettes(
+        data,
+        lats_arr,
+        lons_arr,
+        palette_tables,
+        out_dirs,
+        ZOOM_LEVELS,
+        nodata_value=None,
+        min_valid_weight=1.0,
+        renderer=tile_renderer_for_role("mrms"),
+        source_id=f"mrms:{layer_name}:{timestamp}",
+        publication_lock_root=tile_base / layer_name,
+    )
+    return result.rendered_palettes
 
 
 def _state_path(layer_name: str) -> Path:
@@ -305,7 +310,9 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
 
     def _grids() -> None:
         try:
-            write_grid(inp.layer_name, timestamp, grid_data, lats_arr, lons_arr, unit="dBZ")
+            write_grid(
+                inp.layer_name, timestamp, grid_data, lats_arr, lons_arr, unit="dBZ"
+            )
         except Exception as exc:  # noqa: BLE001
             log.warning("grid_dump_failed", extra={"err": str(exc)})
         # Only base reflectivity owns storms.json. The composite schedule runs
@@ -313,41 +320,31 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
         # timestamps, making motion vectors jump between products.
         if inp.layer_name == "radar":
             try:
-                write_storms_json(Path(STATE_DIR), grid_data, lats_arr, lons_arr, timestamp)
+                write_storms_json(
+                    Path(STATE_DIR), grid_data, lats_arr, lons_arr, timestamp
+                )
             except Exception as exc:  # noqa: BLE001
                 log.warning("storm_detect_failed", extra={"err": str(exc)})
 
-    activity.heartbeat({"phase": "render", "timestamp": timestamp, "palettes": list(palette_tables.keys())})
+    activity.heartbeat(
+        {
+            "phase": "render",
+            "timestamp": timestamp,
+            "palettes": list(palette_tables.keys()),
+        }
+    )
 
     def _render_all() -> list[str]:
-        # Switched from ThreadPoolExecutor to ProcessPoolExecutor: the
-        # render hot path (apply_color_table → numpy boolean masks → PIL
-        # resize → PNG encode) is CPU-bound Python with intermittent GIL
-        # release. Threads gave a small win at best; processes give true
-        # per-palette parallelism. Keep the worker count explicit so a
-        # self-hosted 2-CPU pod does not oversubscribe itself during live
-        # radar ingest.
-        #
-        # Args are pickled when submitted (~60MB per palette for the dBZ
-        # array on CONUS); cost is ~1s per palette, dwarfed by the render
-        # itself. fork() on Linux would let us copy-on-write share the
-        # array, but ProcessPoolExecutor uses spawn-or-fork per platform
-        # and we don't need to fight that — pickling is fine here.
-        rendered: list[str] = []
-        max_workers = max(1, min(len(palette_tables), MRMS_RENDER_WORKERS))
-        with ProcessPoolExecutor(max_workers=max_workers) as pool:
-            futures = {
-                pool.submit(_render_palette, pname, ctable, data, lats_arr, lons_arr, flip, timestamp, tile_base, inp.layer_name): pname
-                for pname, ctable in palette_tables.items()
-            }
-            for fut in futures:
-                pname = futures[fut]
-                try:
-                    if fut.result() > 0:
-                        rendered.append(pname)
-                except Exception as exc:  # noqa: BLE001
-                    log.error("palette_render_failed", extra={"palette": pname, "err": str(exc)})
-        return rendered
+        # Sample once per tile; each palette is a PLTE/tRNS rewrite. Failures reach Temporal so a retry converges.
+        return _render_all_palettes(
+            palette_tables,
+            grid_data,
+            lats_arr,
+            lons_arr,
+            timestamp,
+            tile_base,
+            inp.layer_name,
+        )
 
     try:
         rendered_palettes = await run_sync_with_heartbeat(
@@ -365,11 +362,8 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
         shutil.rmtree(tmp_dir, ignore_errors=True)
     expected_palettes = set(palette_tables)
     if set(rendered_palettes) != expected_palettes:
-        # A frame is publishable only when every advertised palette exists.
-        # Remove successful partials so a retry can cleanly win the immutable
-        # path instead of inheriting a permanently incomplete frame.
-        for palette in rendered_palettes:
-            shutil.rmtree(tile_base / inp.layer_name / palette / timestamp, ignore_errors=True)
+        # A fully transparent frame publishes no palettes and is not
+        # advertised. Rendering failures raise above and are retried instead.
         log.error(
             "frame_incomplete",
             extra={
@@ -402,6 +396,8 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
             "dBZ",
             max_cells=NOWCAST_SCIENCE_GRID_MAX_CELLS,
         )
+        # 24.5 MB every 2 min; nowcast only ever reads the newest N, so prune at write time.
+        await asyncio.to_thread(prune_grid_layer, "radar-nowcast-input")
 
     duration = time.time() - started
     await asyncio.to_thread(
@@ -424,7 +420,14 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
             "kind": "observation",
         },
     )
-    log.info("frame_done", extra={"layer": inp.layer_name, "timestamp": timestamp, "duration_s": round(duration, 1)})
+    log.info(
+        "frame_done",
+        extra={
+            "layer": inp.layer_name,
+            "timestamp": timestamp,
+            "duration_s": round(duration, 1),
+        },
+    )
 
     return ProcessFrameResult(
         key=inp.key,
@@ -471,6 +474,8 @@ async def mrms_cleanup(inp: CleanupInput) -> CleanupResult:
                     shutil.rmtree(ts_dir, ignore_errors=True)
                     removed += 1
         grids_removed = cleanup_old_grids()
-        return CleanupResult(tile_dirs_removed=removed, grid_files_removed=grids_removed)
+        return CleanupResult(
+            tile_dirs_removed=removed, grid_files_removed=grids_removed
+        )
 
     return await asyncio.to_thread(_go)
