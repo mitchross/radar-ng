@@ -20,11 +20,10 @@ const CARPLAY_FILES = [
   "MainSceneDelegate.swift",
 ];
 
-// NOTE: `com.apple.developer.carplay-maps` is intentionally NOT added here.
-// Apple does not grant it to individual developer accounts, and Xcode auto-
-// signing aborts if the entitlement is in the .entitlements file but missing
-// from the dev portal. `scripts/carplay-resign.sh` injects it post-archive
-// at codesign time for sideload builds intended for the actual car.
+// Device builds need Apple's CarPlay navigation capability in BOTH the app's
+// entitlements and provisioning profile. Do not inject it into ordinary phone
+// builds or claim post-archive re-signing bypasses provisioning validation.
+// See docs/carplay-watch-setup.md for supported device and simulator setup.
 
 // Declare BOTH the iPhone window scene and the CarPlay template scene. On
 // iOS 13+, presence of UIApplicationSceneManifest puts the app into

@@ -60,9 +60,9 @@ export default function RadarScreen() {
       <WeatherMap
         onLongPress={(lat, lon) => setPinned({ lat, lon })}
         onCameraChanged={(c) => {
-          camera.lon.value = c.lon;
-          camera.lat.value = c.lat;
-          camera.zoom.value = c.zoom;
+          camera.lon.set(c.lon);
+          camera.lat.set(c.lat);
+          camera.zoom.set(c.zoom);
         }}
       >
         {(activeLayer === "radar" || activeLayer === "radar-hrrr") && <RadarOverlay />}

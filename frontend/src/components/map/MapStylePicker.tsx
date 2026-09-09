@@ -1,222 +1,69 @@
-/**
- * Apple-Weather-style map theme picker: 3 style tiles (light / dark /
- * satellite) with a flat-vs-globe projection toggle above. Reads/writes
- * mapStyle + mapProjection in the Zustand store.
- *
- * Note: MapLibre React Native does not expose the native globe projection
- * prop here yet. The preference persists for forward compatibility.
- */
+import { BottomSheet, RNHostView } from "@expo/ui";
 import { useMemo } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { View, Text, StyleSheet, Pressable, useWindowDimensions } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
-import type { MapStyle, MapProjection } from "../../types/weather";
+import type { MapStyle } from "../../types/weather";
 
-interface Props {
-  visible: boolean;
-  onClose: () => void;
-}
-
-const STYLE_TILES: { id: MapStyle; label: string; gradient: [string, string] }[] = [
-  { id: "light", label: "Light", gradient: ["#F3F6FB", "#D4DEEC"] },
-  { id: "dark", label: "Dark", gradient: ["#2A3142", "#0E1320"] },
-  { id: "satellite", label: "Satellite", gradient: ["#1d3b5c", "#25603f"] },
+const STYLES: { id: MapStyle; label: string; detail: string; color: string }[] = [
+  { id: "light", label: "Light", detail: "Roads and place names", color: "#e8ece5" },
+  { id: "dark", label: "Dark", detail: "Low-light viewing", color: "#263342" },
+  { id: "satellite", label: "Satellite", detail: "Aerial imagery", color: "#385346" },
 ];
 
-const PROJ_TOGGLES: { id: MapProjection; label: string }[] = [
-  { id: "flat", label: "Flat" },
-  { id: "globe", label: "Globe" },
-];
-
-export function MapStylePicker({ visible, onClose }: Props) {
+export function MapStylePicker({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { width } = useWindowDimensions();
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const setMapStyle = useWeatherStore((s) => s.setMapStyle);
-  const mapProjection = useWeatherStore((s) => s.mapProjection);
-  const setMapProjection = useWeatherStore((s) => s.setMapProjection);
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  if (!visible) return null;
-
   return (
-    <>
-      <Pressable
-        style={styles.scrim}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Close map style picker"
-      />
-      <View style={styles.card} accessibilityRole="summary">
-        <Text style={styles.title}>Map style</Text>
-
-        <View style={styles.projRow}>
-          {PROJ_TOGGLES.map((p) => {
-            const active = mapProjection === p.id;
-            return (
-              <Pressable
-                key={p.id}
-                onPress={() => setMapProjection(p.id)}
-                style={({ pressed }) => [
-                  styles.projBtn,
-                  active ? styles.projBtnActive : null,
-                  pressed ? styles.controlPressed : null,
-                ]}
-                accessibilityRole="radio"
-                accessibilityLabel={`${p.label} map projection`}
-                accessibilityState={{ checked: active }}
-              >
-                <Text style={[styles.projLabel, active ? styles.projLabelActive : null]}>
-                  {p.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+      <BottomSheet isPresented={visible} onDismiss={onClose} containerColor={theme.colors.surface}>
+        <RNHostView matchContents>
+        <View style={[styles.content, { width: width - 64 }]}>
+          <View style={styles.header}>
+            <Text accessibilityRole="header" style={styles.title}>Map style</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close map style picker" onPress={onClose} style={styles.done}>
+              <Text style={styles.doneText}>Done</Text>
+            </Pressable>
+          </View>
+          {STYLES.map((option) => (
+            <Pressable
+              key={option.id}
+              accessibilityRole="radio"
+              accessibilityLabel={`${option.label} map style`}
+              accessibilityState={{ checked: mapStyle === option.id }}
+              onPress={() => { setMapStyle(option.id); onClose(); }}
+              style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.colors.surfaceMuted }]}
+            >
+              <View style={[styles.swatch, { backgroundColor: option.color }]} />
+              <View style={styles.copy}>
+                <Text style={styles.label}>{option.label}</Text>
+                <Text style={styles.detail}>{option.detail}</Text>
+              </View>
+              {mapStyle === option.id ? <Text style={styles.check}>✓</Text> : null}
+            </Pressable>
+          ))}
         </View>
-
-        <View style={styles.tileRow}>
-          {STYLE_TILES.map((t) => {
-            const active = mapStyle === t.id;
-            return (
-              <Pressable
-                key={t.id}
-                onPress={() => {
-                  setMapStyle(t.id);
-                  onClose();
-                }}
-                style={({ pressed }) => [
-                  styles.tileCol,
-                  pressed ? styles.controlPressed : null,
-                ]}
-                accessibilityRole="radio"
-                accessibilityLabel={`${t.label} map style`}
-                accessibilityState={{ checked: active }}
-              >
-                <LinearGradient
-                  colors={t.gradient}
-                  style={[styles.tile, active ? styles.tileActive : null]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  {active ? <View style={styles.activeDot} /> : null}
-                </LinearGradient>
-                <Text style={[styles.tileLabel, active ? styles.tileLabelActive : null]}>
-                  {t.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {mapProjection === "globe" ? (
-          <Text style={styles.note}>
-            Globe projection renders flat until MapLibre RN exposes the native toggle.
-          </Text>
-        ) : null}
-      </View>
-    </>
+        </RNHostView>
+      </BottomSheet>
   );
 }
 
 function createStyles(theme: WeatherClearTheme) {
   return StyleSheet.create({
-  scrim: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    zIndex: 30,
-    backgroundColor: theme.colors.scrim,
-  },
-  card: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 220,
-    zIndex: 31,
-    backgroundColor: theme.colors.surface,
-    borderRadius: 22,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
-  },
-  title: {
-    color: theme.colors.text,
-    fontFamily: theme.typography.uiBold,
-    fontSize: 15,
-    fontWeight: "700",
-    marginBottom: 12,
-  },
-  projRow: {
-    flexDirection: "row",
-    backgroundColor: theme.colors.surfaceMuted,
-    borderRadius: 10,
-    padding: 3,
-    marginBottom: 14,
-  },
-  projBtn: {
-    flex: 1,
-    paddingVertical: 7,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 8,
-    minHeight: 44,
-  },
-  projBtnActive: {
-    backgroundColor: theme.colors.accent,
-  },
-  projLabel: {
-    color: theme.colors.textSecondary,
-    fontSize: 12,
-    fontFamily: theme.typography.uiSemibold,
-  },
-  projLabelActive: { color: "#fff" },
-
-  tileRow: { flexDirection: "row", gap: 10 },
-  tileCol: { flex: 1, minHeight: 44, alignItems: "center" },
-  tile: {
-    width: "100%",
-    aspectRatio: 1,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: "transparent",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tileActive: {
-    borderColor: theme.colors.accent,
-  },
-  activeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: theme.colors.accent,
-    borderWidth: 2,
-    borderColor: "#fff",
-  },
-  tileLabel: {
-    color: theme.colors.textSecondary,
-    fontSize: 12,
-    marginTop: 6,
-    fontWeight: "500",
-    fontFamily: theme.typography.uiMedium,
-  },
-  tileLabelActive: { color: theme.colors.text, fontWeight: "700" },
-
-  note: {
-    color: theme.colors.textMuted,
-    fontSize: 10,
-    lineHeight: 14,
-    marginTop: 10,
-    textAlign: "center",
-  },
-  controlPressed: { opacity: 0.7 },
+    content: { paddingBottom: theme.spacing.xl },
+    header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: theme.spacing.sm },
+    title: { color: theme.colors.text, fontFamily: theme.typography.uiSemibold, fontSize: 22 },
+    done: { minHeight: 44, minWidth: 60, alignItems: "center", justifyContent: "center" },
+    doneText: { color: theme.colors.accent, fontFamily: theme.typography.uiSemibold, fontSize: 17 },
+    row: { flexDirection: "row", alignItems: "center", gap: theme.spacing.lg, minHeight: 72, borderRadius: theme.radii.md, paddingHorizontal: theme.spacing.md },
+    swatch: { width: 42, height: 42, borderRadius: theme.radii.md, borderCurve: "continuous", borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border },
+    copy: { flex: 1, gap: 4 },
+    label: { color: theme.colors.text, fontFamily: theme.typography.uiMedium, fontSize: 17 },
+    detail: { color: theme.colors.textSecondary, fontFamily: theme.typography.ui, fontSize: 13 },
+    check: { color: theme.colors.accent, fontSize: 22, fontWeight: "600" },
   });
 }

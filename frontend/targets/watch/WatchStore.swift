@@ -12,7 +12,11 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var radarFrame: WatchRadarFrame?
     @Published var radarErrorMessage: String?
     @Published var isRadarLoading = false
+    @Published var locationNotice: String?
+    @Published var updatedAt: Date?
 
+    private var requestedLocation = false
+    private var pendingLocationRefresh = false
     private let clManager = CLLocationManager()
     private let fallback = CLLocationCoordinate2D(latitude: 42.9634, longitude: -85.6681)
 
@@ -23,15 +27,27 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     func refresh() async {
+        guard !isLoading else { return }
         isLoading = true
         isRadarLoading = true
         defer {
             isLoading = false
             isRadarLoading = false
+            if pendingLocationRefresh {
+                pendingLocationRefresh = false
+                Task { await self.refresh() }
+            }
         }
-        if location == nil {
-            clManager.requestWhenInUseAuthorization()
-            clManager.requestLocation()
+        if location == nil && !requestedLocation {
+            requestedLocation = true
+            switch clManager.authorizationStatus {
+            case .authorizedAlways, .authorizedWhenInUse:
+                clManager.requestLocation()
+            case .notDetermined:
+                clManager.requestWhenInUseAuthorization()
+            default:
+                locationNotice = "Showing Grand Rapids"
+            }
         }
         let coord = location ?? fallback
         async let forecastResult = Self.capture { try await WatchAPI.fetchForecast(lat: coord.latitude, lon: coord.longitude) }
@@ -42,6 +58,7 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
         case .success(let forecast):
             self.forecast = forecast
             self.errorMessage = nil
+            self.updatedAt = Date()
         case .failure(let error):
             self.errorMessage = error.localizedDescription
         }
@@ -81,12 +98,36 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let coord = locations.last?.coordinate else { return }
         Task { @MainActor in
+            let previous = self.location
             self.location = coord
-            await self.refresh()
+            self.locationNotice = nil
+            if previous == nil || CLLocation(latitude: previous!.latitude, longitude: previous!.longitude)
+                .distance(from: CLLocation(latitude: coord.latitude, longitude: coord.longitude)) > 2000 {
+                if self.isLoading {
+                    self.pendingLocationRefresh = true
+                } else {
+                    await self.refresh()
+                }
+            }
+        }
+    }
+
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        Task { @MainActor in
+            guard self.requestedLocation else { return }
+            if status == .authorizedAlways || status == .authorizedWhenInUse {
+                if self.location == nil { self.clManager.requestLocation() }
+            } else if status == .denied || status == .restricted {
+                self.locationNotice = "Showing Grand Rapids"
+            }
         }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        Task { @MainActor in await self.refresh() }
+        Task { @MainActor in
+            // A denied/failed location must never recursively trigger more requests.
+            self.locationNotice = "Showing Grand Rapids"
+        }
     }
 }

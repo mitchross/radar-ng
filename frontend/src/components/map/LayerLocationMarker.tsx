@@ -12,6 +12,7 @@ import { Marker } from "@maplibre/maplibre-react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { useForecast } from "../../hooks/useForecast";
+import { displayTemperature } from "../../lib/temperature";
 import { activeLocationLabel } from "../../lib/locationLabel";
 import { cumulus, getWindDirection } from "../../lib/cumulusTheme";
 import { inspectPoint, type InspectReading } from "../../lib/inspector";
@@ -55,11 +56,10 @@ export function LayerLocationMarker() {
 
   return (
     <Marker lngLat={[longitude, latitude]} anchor="bottom">
-      <View style={styles.wrap} pointerEvents="none">
+      <View style={styles.wrap} pointerEvents="none" accessibilityLabel={label}>
         <View style={styles.pill}>{body}</View>
         <View style={styles.tail} />
         <View style={styles.dot} />
-        <Text style={styles.label}>{label}</Text>
       </View>
     </Marker>
   );
@@ -106,13 +106,7 @@ function renderBody(
 
   const t = forecast?.current?.temperature_2m;
   if (t == null) return <Text style={styles.value}>{"\u2014"}</Text>;
-  // Tile-server's /api/forecast already returns Fahrenheit (open-meteo
-  // upstream is configured with `temperature_unit=fahrenheit`). Home tab
-  // does the same passthrough \u2014 earlier `t * 9/5 + 32` here was a double
-  // conversion that displayed 131\u00b0 for what should read 55\u00b0. The `unit`
-  // store flag is currently cosmetic; honoring it requires a server-side
-  // unit param, out of scope here.
-  return <Text style={styles.value}>{Math.round(t)}</Text>;
+  return <Text style={styles.value}>{displayTemperature(t, unit)}°</Text>;
 }
 
 const PILL_BG = "rgba(255,255,255,0.98)";
@@ -159,14 +153,6 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 3,
-  },
-  label: {
-    marginTop: 2,
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#1a2030",
-    textShadowColor: "rgba(255,255,255,0.8)",
-    textShadowRadius: 3,
   },
   value: {
     fontSize: 18,

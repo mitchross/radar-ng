@@ -19,6 +19,7 @@ export function getForecastScreenState(input: {
 export type NowcastVerdict =
   | { kind: "unavailable" }
   | { kind: "dry" }
+  | { kind: "light" }
   | { kind: "raining"; peakMinute: number; endMinute: number }
   | {
       kind: "starting";
@@ -33,7 +34,7 @@ export function getNowcastVerdict(
   if (!values?.length) return { kind: "unavailable" };
 
   const startMinute = values.findIndex((value) => value > 0.08);
-  if (startMinute < 0) return { kind: "dry" };
+  if (startMinute < 0) return { kind: values.some((value) => value > 0) ? "light" : "dry" };
 
   const peakMinute = values.reduce(
     (best, value, index) => (value > values[best] ? index : best),
@@ -55,6 +56,8 @@ export function describeNowcast(verdict: NowcastVerdict): string {
       return "Next hour precipitation forecast unavailable.";
     case "dry":
       return "No rain expected for the next hour.";
+    case "light":
+      return "Light precipitation possible during the next hour.";
     case "raining":
       return `Raining now, peaks at ${verdict.peakMinute} minutes, and ends near ${verdict.endMinute} minutes.`;
     case "starting":

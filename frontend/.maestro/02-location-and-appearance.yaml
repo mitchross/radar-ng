@@ -1,0 +1,42 @@
+appId: com.vanillax.radar-ng
+name: iOS city selection and preferences survive relaunch
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- tapOn: "Settings"
+- tapOn: "Search city"
+- eraseText
+- inputText: "Chicago"
+- extendedWaitUntil:
+    visible: "Use Chicago, Illinois.*"
+    timeout: 20000
+- tapOn: "Use Chicago, Illinois.*"
+- tapOn: "Home"
+- extendedWaitUntil:
+    visible: "Choose weather location. Current location: Chicago.*"
+    timeout: 30000
+- takeScreenshot: chicago-home
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Choose weather location. Current location: Chicago.*"
+    timeout: 30000
+- tapOn: "Settings"
+- scrollUntilVisible:
+    element: "Dark"
+    direction: DOWN
+- tapOn: "Dark"
+- takeScreenshot: dark-settings
+- tapOn: "Home"
+- takeScreenshot: dark-home
+- stopApp
+- launchApp
+- assertVisible: "Home"
+- takeScreenshot: dark-relaunch
+- tapOn: "Settings"
+- scrollUntilVisible:
+    element: "System"
+    direction: DOWN
+- tapOn: "System"

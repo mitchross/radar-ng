@@ -17,23 +17,36 @@ struct ForecastPage: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
+                    if let notice = store.locationNotice {
+                        Label(notice, systemImage: "location.slash")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    if store.forecast != nil, store.errorMessage != nil {
+                        Label("Saved forecast", systemImage: "wifi.slash")
+                            .font(.caption2).foregroundStyle(.orange)
+                    }
                     if let alert = store.alerts.first {
                         AlertBadge(alert: alert)
                     }
                     if let f = store.forecast {
                         CurrentCard(current: f.current)
-                        NowcastCard(minutely: f.minutely_15)
-                        HourlyRow(hourly: f.hourly)
+                        NowcastCard(minutely: f.minutely_15, currentTime: f.current.time)
+                        HourlyRow(hourly: f.hourly, currentTime: f.current.time)
                         DailyList(daily: f.daily)
                     } else if store.isLoading {
                         ProgressView().padding(.top, 30)
                     } else if let err = store.errorMessage {
                         Text(err).font(.footnote).foregroundStyle(.secondary)
                     }
+                    Button("Refresh weather", systemImage: "arrow.clockwise") {
+                        Task { await store.refresh() }
+                    }
+                    .disabled(store.isLoading)
+                    .accessibilityIdentifier("watch-forecast-refresh")
                 }
                 .padding(.horizontal, 6)
             }
-            .navigationTitle("Radar")
+            .navigationTitle("Forecast")
             .refreshable { await store.refresh() }
         }
     }
@@ -45,7 +58,7 @@ struct CurrentCard: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("\(Int(current.temperature_2m.rounded()))°")
                 .font(.system(size: 52, weight: .thin, design: .rounded))
-            Text(current.weather_code.map { WeatherCodes.label($0) } ?? "—")
+            Text(current.weather_code.map { WeatherCodes.label($0) } ?? "Conditions unavailable")
                 .font(.footnote).foregroundStyle(.secondary)
             HStack(spacing: 10) {
                 if let wind = current.wind_speed_10m {
@@ -57,17 +70,18 @@ struct CurrentCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 14))
     }
 }
 
 struct NowcastCard: View {
     let minutely: Forecast.Minutely?
+    let currentTime: String
     var body: some View {
-        let values = minutely?.precipitation.prefix(60).map { $0 } ?? []
+        let values = WatchForecastPresentation.nextHour(minutely, currentTime: currentTime)
         let peak = values.max() ?? 0
         VStack(alignment: .leading, spacing: 6) {
-            Text(peak > 0 ? "RAIN IN NEXT HOUR" : "NO RAIN NEXT HOUR")
+            Text(values.isEmpty ? "RAIN DATA UNAVAILABLE" : peak > 0 ? "RAIN IN NEXT HOUR" : "NO RAIN NEXT HOUR")
                 .font(.caption2).bold().foregroundStyle(Color(red: 0.55, green: 0.49, blue: 1.0))
             GeometryReader { geo in
                 HStack(alignment: .bottom, spacing: 1) {
@@ -83,20 +97,22 @@ struct NowcastCard: View {
             .frame(height: 28)
         }
         .padding(10)
-        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 14))
     }
 }
 
 struct HourlyRow: View {
     let hourly: Forecast.Hourly
+    let currentTime: String
     var body: some View {
-        let items = zip(hourly.time, zip(hourly.temperature_2m, hourly.weather_code)).prefix(12)
+        let items = zip(hourly.time, zip(hourly.temperature_2m, hourly.weather_code))
+            .filter { $0.0 >= String(currentTime.prefix(13)) + ":00" }.prefix(12)
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, triple in
                     VStack(spacing: 2) {
-                        Text(shortHour(triple.0)).font(.caption2).foregroundStyle(.secondary)
-                        Image(systemName: triple.1.1.map { WeatherCodes.sfSymbol($0) } ?? "questionmark")
+                        Text(WatchForecastPresentation.shortHour(triple.0)).font(.caption2).foregroundStyle(.secondary)
+                        Image(systemName: triple.1.1.map { WeatherCodes.sfSymbol($0) } ?? "questionmark.circle")
                             .font(.footnote)
                         Text("\(Int(triple.1.0.rounded()))°").font(.caption2)
                     }
@@ -106,24 +122,17 @@ struct HourlyRow: View {
         }
     }
 
-    private func shortHour(_ iso: String) -> String {
-        let df = ISO8601DateFormatter()
-        df.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let d = df.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return "" }
-        let out = DateFormatter()
-        out.dateFormat = "ha"
-        return out.string(from: d).lowercased()
-    }
+
 }
 
 struct DailyList: View {
     let daily: Forecast.Daily
     var body: some View {
         VStack(spacing: 4) {
-            ForEach(0..<min(daily.time.count, 5), id: \.self) { i in
+            ForEach(0..<min(daily.time.count, daily.weather_code.count, daily.temperature_2m_min.count, daily.temperature_2m_max.count, 5), id: \.self) { i in
                 HStack {
-                    Text(dayOfWeek(daily.time[i])).font(.caption2).frame(width: 40, alignment: .leading)
-                    Image(systemName: daily.weather_code[i].map { WeatherCodes.sfSymbol($0) } ?? "questionmark")
+                    Text(WatchForecastPresentation.dayOfWeek(daily.time[i])).font(.caption2).frame(width: 40, alignment: .leading)
+                    Image(systemName: daily.weather_code[i].map { WeatherCodes.sfSymbol($0) } ?? "questionmark.circle")
                         .font(.footnote)
                     Spacer()
                     Text("\(Int(daily.temperature_2m_min[i].rounded()))° / \(Int(daily.temperature_2m_max[i].rounded()))°")
@@ -132,14 +141,9 @@ struct DailyList: View {
             }
         }
         .padding(10)
-        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 14))
     }
-    private func dayOfWeek(_ iso: String) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-        guard let d = f.date(from: iso) else { return iso }
-        let o = DateFormatter(); o.dateFormat = "E"
-        return o.string(from: d)
-    }
+
 }
 
 struct AlertBadge: View {
@@ -152,7 +156,7 @@ struct AlertBadge: View {
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(severityColor.opacity(0.85), in: RoundedRectangle(cornerRadius: 10))
-        .foregroundStyle(.white)
+        .foregroundStyle(alert.severity == "Moderate" ? .black : .white)
     }
     var severityColor: Color {
         switch alert.severity {

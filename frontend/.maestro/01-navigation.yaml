@@ -1,0 +1,40 @@
+appId: com.vanillax.radar-ng
+name: iOS fresh install and primary screens
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: "Choose weather location.*"
+    timeout: 60000
+- takeScreenshot: home
+- scrollUntilVisible:
+    element: "Open full radar.*"
+    direction: DOWN
+- takeScreenshot: home-radar-card
+- tapOn: "Nowcast"
+- extendedWaitUntil:
+    visible: "NEXT-HOUR PRECIPITATION"
+    timeout: 30000
+- takeScreenshot: nowcast
+- tapOn: "Alerts"
+- assertVisible: "Refresh weather alerts"
+- takeScreenshot: alerts
+- tapOn: "Settings"
+- assertVisible: "Search city"
+- takeScreenshot: settings
+- tapOn: "Home"
+- tapOn: "Radar"
+- extendedWaitUntil:
+    visible: "Choose radar layer"
+    timeout: 30000
+- takeScreenshot: radar
+- tapOn: "Choose map style"
+- takeScreenshot: map-styles
+- tapOn: "Light map style"
+- tapOn: "Choose radar layer"
+- takeScreenshot: radar-layers
+- tapOn: "Radar radar layer"
+- tapOn: "Close radar"
+- assertVisible: "Home"

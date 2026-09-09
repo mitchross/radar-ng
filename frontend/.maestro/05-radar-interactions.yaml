@@ -1,0 +1,45 @@
+appId: com.vanillax.radar-ng
+name: iOS radar playback styles layers and foreground recovery
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- tapOn: "Radar"
+- extendedWaitUntil:
+    visible: "Play radar animation"
+    timeout: 30000
+- tapOn: "Play radar animation"
+- assertVisible: "Pause radar animation"
+- takeScreenshot: playback
+- repeat:
+    times: 5
+    commands:
+      - tapOn: "48h radar timeline"
+      - tapOn: "1h radar timeline"
+- tapOn: "Pause radar animation"
+- tapOn: "Choose map style"
+- tapOn: "Dark map style"
+- takeScreenshot: dark-radar
+- tapOn: "Choose map style"
+- tapOn: "Satellite map style"
+- takeScreenshot: satellite-radar
+- tapOn: "Choose map style"
+- tapOn: "Light map style"
+- tapOn: "Choose radar layer"
+- tapOn: "Air Quality radar layer"
+- takeScreenshot: air-quality
+- tapOn: "Choose radar layer"
+- tapOn: "Radar radar layer"
+- tapOn: "Toggle storm and lightning overlays"
+- takeScreenshot: storm-overlays
+- tapOn: "Toggle storm and lightning overlays"
+- tapOn: "Refresh radar"
+- assertVisible: "Play radar animation"
+- pressKey: Home
+- launchApp:
+    stopApp: false
+- assertVisible: "Choose radar layer"
+- takeScreenshot: radar-foreground
+- tapOn: "Close radar"
+- assertVisible: "Home"

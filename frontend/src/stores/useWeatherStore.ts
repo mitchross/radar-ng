@@ -10,6 +10,7 @@ import {
   parseServerUrl,
   parseTimelineMode,
   parseViewMode,
+  parseOpacity,
   type ViewMode,
 } from "../lib/persistedPrefs";
 import type { AppearanceMode } from "../theme/weatherClearTheme";
@@ -116,10 +117,10 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   locationMode: initialResolvedLocationMode,
   selectedPlace: initialSelectedPlace,
   devicePlace: null,
-  radarOpacity: RADAR.DEFAULT_OPACITY,
+  radarOpacity: parseOpacity(getString("radarOpacity", String(RADAR.DEFAULT_OPACITY)), RADAR.DEFAULT_OPACITY),
   radarVisible: true,
   activeLayer: "radar" as LayerType,
-  temperatureUnit: "fahrenheit",
+  temperatureUnit: getString("temperatureUnit", "fahrenheit") === "celsius" ? "celsius" : "fahrenheit",
   // Persisted strings are parsed, not cast: a stale/garbage value would otherwise
   // index MAP_STYLES_SELFHOSTED[undefined] and throw at WeatherMap mount.
   mapStyle: parseMapStyle(getString("mapStyle", "light")),
@@ -173,8 +174,14 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     setString("locationMode", "device");
     set({ locationMode: "device" });
   },
-  setRadarOpacity: (opacity) => set({ radarOpacity: opacity }),
-  setTemperatureUnit: (unit) => set({ temperatureUnit: unit }),
+  setRadarOpacity: (opacity) => {
+    setString("radarOpacity", String(opacity));
+    set({ radarOpacity: opacity });
+  },
+  setTemperatureUnit: (unit) => {
+    setString("temperatureUnit", unit);
+    set({ temperatureUnit: unit });
+  },
   setMapStyle: (style) => {
     setString("mapStyle", style);
     set({ mapStyle: style });

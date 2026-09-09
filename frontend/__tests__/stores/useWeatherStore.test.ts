@@ -13,6 +13,14 @@ beforeEach(() => {
 });
 
 describe("useWeatherStore", () => {
+  it("saves temperature units and radar opacity for the next launch", () => {
+    useWeatherStore.getState().setTemperatureUnit("celsius");
+    useWeatherStore.getState().setRadarOpacity(0.45);
+    expect(setString).toHaveBeenCalledWith("temperatureUnit", "celsius");
+    expect(setString).toHaveBeenCalledWith("radarOpacity", "0.45");
+    expect(useWeatherStore.getState().temperatureUnit).toBe("celsius");
+    expect(useWeatherStore.getState().radarOpacity).toBe(0.45);
+  });
   it("starts with default values", () => {
     const state = useWeatherStore.getState();
     expect(state.frames).toEqual([]);

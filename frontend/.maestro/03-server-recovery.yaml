@@ -1,0 +1,46 @@
+appId: com.vanillax.radar-ng
+name: iOS unavailable server and recovery
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- tapOn: "Settings"
+- scrollUntilVisible:
+    element: "Adv"
+    direction: UP
+- tapOn: "Adv"
+- scrollUntilVisible:
+    element:
+      id: "stack-url-input"
+    direction: DOWN
+- tapOn:
+    id: "stack-url-input"
+- eraseText
+- inputText: "https://radar-qa.invalid"
+- tapOn: "Save stack URL"
+- tapOn: "Home"
+- extendedWaitUntil:
+    visible: "Couldn’t load weather.*"
+    timeout: 60000
+- takeScreenshot: server-unavailable
+- tapOn: "Settings"
+- scrollUntilVisible:
+    element:
+      id: "stack-url-input"
+    direction: UP
+- tapOn:
+    id: "stack-url-input"
+- eraseText
+- inputText: "https://radar-ng-api.vanillax.me"
+- tapOn: "Save stack URL"
+- tapOn: "Home"
+- extendedWaitUntil:
+    visible: "Choose weather location.*"
+    timeout: 60000
+- takeScreenshot: server-recovered
+- tapOn: "Settings"
+- scrollUntilVisible:
+    element: "Simple"
+    direction: UP
+- tapOn: "Simple"

@@ -23,6 +23,7 @@ import {
   getWindDirection,
   isNightAt,
 } from "../../lib/cumulusTheme";
+import { displayTemperature } from "../../lib/temperature";
 import { getForecastScreenState } from "../../lib/weatherPresentation";
 import {
   ScreenState,
@@ -50,6 +51,7 @@ export default function HomeScreen() {
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
   const devicePlace = useWeatherStore((s) => s.devicePlace);
+  const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
   const viewMode = useWeatherStore((s) => s.viewMode);
   const setViewMode = useWeatherStore((s) => s.setViewMode);
 
@@ -125,10 +127,12 @@ export default function HomeScreen() {
     ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
     : CONDITION_GRADIENTS[condition];
 
-  const temp = Math.round(forecast.current.temperature_2m ?? 0);
-  const feels = Math.round(forecast.current.apparent_temperature ?? temp);
-  const hi = Math.round(forecast.daily.temperature_2m_max[0] ?? temp);
-  const lo = Math.round(forecast.daily.temperature_2m_min[0] ?? temp);
+  const currentFahrenheit = forecast.current.temperature_2m ?? 0;
+  const temperature = (value: number) => displayTemperature(value, temperatureUnit);
+  const temp = temperature(currentFahrenheit);
+  const feels = temperature(forecast.current.apparent_temperature ?? currentFahrenheit);
+  const hi = temperature(forecast.daily.temperature_2m_max[0] ?? currentFahrenheit);
+  const lo = temperature(forecast.daily.temperature_2m_min[0] ?? currentFahrenheit);
 
   const conditionLabel = CONDITION_LABELS[condition];
   const locationLabel = activeLocationLabel(locationMode, selectedPlace, devicePlace);
@@ -145,7 +149,7 @@ export default function HomeScreen() {
     const hrIsNight = hr < sunrise || hr > sunset;
     return {
       time: formatHour(hr, i),
-      temp: Math.round(forecast.hourly.temperature_2m[idx]),
+      temp: temperature(forecast.hourly.temperature_2m[idx]),
       icon: getIconKind(forecast.hourly.weather_code[idx], hrIsNight),
       precip: forecast.hourly.precipitation_probability?.[idx] ?? 0,
       isNow: i === 0,
@@ -171,8 +175,8 @@ export default function HomeScreen() {
         ? "Today"
         : new Date(`${t}T00:00:00`).toLocaleDateString([], { weekday: "short" }),
       icon: getIconKind(forecast.daily.weather_code[i], false),
-      hi: Math.round(forecast.daily.temperature_2m_max[i]),
-      lo: Math.round(forecast.daily.temperature_2m_min[i]),
+      hi: temperature(forecast.daily.temperature_2m_max[i]),
+      lo: temperature(forecast.daily.temperature_2m_min[i]),
       precip: Math.round(forecast.daily.precipitation_probability_max?.[i] ?? 0),
       now: isToday ? temp : undefined,
     };
@@ -187,7 +191,8 @@ export default function HomeScreen() {
   const windDeg = forecast.current.wind_direction_10m ?? 0;
   const windCompass = getWindDirection(windDeg);
   const humidity = Math.round(forecast.current.relative_humidity_2m ?? 0);
-  const dew = Math.round(forecast.current.dew_point_2m ?? 0);
+  const dewFahrenheit = forecast.current.dew_point_2m ?? 0;
+  const dew = temperature(dewFahrenheit);
   const visM = forecast.hourly.visibility?.[hourlyStart];
   const visibility = visM != null ? Math.min(10, visM / 1609) : 10;
   const pressure = Math.round(forecast.current.surface_pressure ?? 1013);
@@ -262,7 +267,7 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.heroCondition}>{conditionLabel}</Text>
             <View style={styles.heroTempRow}>
-              <Text style={styles.heroTemp}>{temp}</Text>
+              <Text testID="current-temperature" accessibilityLabel={`${temp} degrees ${temperatureUnit}`} style={styles.heroTemp}>{temp}</Text>
               <Text style={styles.heroDeg}>{"\u00B0"}</Text>
             </View>
             <Text style={styles.heroMeta}>
@@ -459,9 +464,7 @@ export default function HomeScreen() {
           </View>
 
           {/* Mini radar map */}
-          <RadarMiniMap
-            headline={nowcastHeadline ? "Precip developing nearby" : "Clear skies overhead"}
-          />
+          <RadarMiniMap />
 
           {/* Advanced Mode: Stats grid & Twilight sun path */}
           {isAdv ? (
@@ -546,10 +549,10 @@ export default function HomeScreen() {
                     <Text style={styles.statUnit}>°</Text>
                   </View>
                   <Text style={styles.statSubText}>
-                    {dew > 60 ? "Humid air" : "Comfortable"}
+                    {dewFahrenheit > 60 ? "Humid air" : "Comfortable"}
                   </Text>
                   <View style={styles.widgetWrapper}>
-                    <FillRing value={Math.max(0, Math.min(1, (dew - 20) / 60))} color={theme.colors.hot} />
+                    <FillRing value={Math.max(0, Math.min(1, (dewFahrenheit - 20) / 60))} color={theme.colors.hot} />
                   </View>
                 </View>
               </View>

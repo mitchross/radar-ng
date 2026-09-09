@@ -1,9 +1,9 @@
 import SwiftUI
 import CoreLocation
 
-/// Live self-hosted MRMS radar over a dark basemap, centered on the user.
+/// Self-hosted MRMS radar over a native Apple map snapshot, centered on the user.
 /// watchOS has no MKTileOverlay, so slippy-map tiles are composited by hand:
-/// a 3x3 grid of base tiles with radar tiles layered on top, offset so the
+/// only visible radar tiles are layered over the snapshot, offset so the
 /// user's location sits at screen center.
 struct RadarMapView: View {
     @EnvironmentObject var store: WatchStore
@@ -24,7 +24,7 @@ struct RadarMapView: View {
         GeometryReader { geo in
             let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
             ZStack {
-                Color.black
+                WatchBasemapView(latitude: coord.latitude, longitude: coord.longitude, zoom: z, size: geo.size)
                 ForEach(-1...1, id: \.self) { dy in
                     ForEach(-1...1, id: \.self) { dx in
                         let tx = Int(floor(xf)) + dx
@@ -35,12 +35,13 @@ struct RadarMapView: View {
                                 x: center.x + CGFloat(Double(tx) + 0.5 - xf) * tileSize,
                                 y: center.y + CGFloat(Double(ty) + 0.5 - yf) * tileSize
                             )
-                            TileImage(url: Self.baseURL(z: z, x: wx, y: ty))
-                                .position(pos)
+                            if pos.x > -tileSize / 2 && pos.x < geo.size.width + tileSize / 2 &&
+                                pos.y > -tileSize / 2 && pos.y < geo.size.height + tileSize / 2 {
                             if let url = store.radarFrame?.tileURL(z: z, x: wx, y: ty) {
                                 TileImage(url: url)
                                     .opacity(0.82)
                                     .position(pos)
+                            }
                             }
                         }
                     }
@@ -50,6 +51,8 @@ struct RadarMapView: View {
                     .frame(width: 9, height: 9)
                     .overlay(Circle().stroke(.white, lineWidth: 1.5))
             }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipped()
         }
         .ignoresSafeArea()
         .focusable()
@@ -64,7 +67,7 @@ struct RadarMapView: View {
     @ViewBuilder
     private var radarStatus: some View {
         if let frame = store.radarFrame {
-            Label(Self.ageLabel(frame.timestamp), systemImage: "dot.radiowaves.left.and.right")
+            Label(store.radarErrorMessage == nil ? Self.ageLabel(frame.timestamp) : "Offline · saved radar", systemImage: "dot.radiowaves.left.and.right")
                 .font(.system(size: 9, weight: .semibold))
                 .padding(.horizontal, 7)
                 .padding(.vertical, 4)
@@ -90,45 +93,51 @@ struct RadarMapView: View {
     private var controls: some View {
         HStack {
             Button { zoom = max(4, zoom - 1) } label: {
-                Image(systemName: "minus").font(.caption2.bold())
+                Image(systemName: "minus").font(.body.bold())
+                    .frame(width: 36, height: 36).contentShape(Circle())
             }
+            .accessibilityLabel("Zoom out")
+            .accessibilityIdentifier("watch-zoom-out")
             .buttonStyle(.plain)
-            .frame(width: 28, height: 28)
+            .frame(width: 36, height: 36)
             .background(.ultraThinMaterial, in: Circle())
 
             Spacer()
 
             Button { Task { await store.refreshRadar() } } label: {
-                if store.isRadarLoading {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Image(systemName: "arrow.clockwise").font(.caption2.bold())
+                Group {
+                    if store.isRadarLoading {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: "arrow.clockwise").font(.body.bold())
+                    }
                 }
+                .frame(width: 36, height: 36).contentShape(Circle())
             }
+            .accessibilityLabel("Refresh radar")
+            .accessibilityIdentifier("watch-radar-refresh")
             .buttonStyle(.plain)
-            .frame(width: 28, height: 28)
+            .frame(width: 36, height: 36)
             .background(.ultraThinMaterial, in: Circle())
 
             Spacer()
 
             Button { zoom = min(Double(store.radarFrame?.maxZoom ?? 7), zoom + 1) } label: {
-                Image(systemName: "plus").font(.caption2.bold())
+                Image(systemName: "plus").font(.body.bold())
+                    .frame(width: 36, height: 36).contentShape(Circle())
             }
+            .accessibilityLabel("Zoom in")
+            .accessibilityIdentifier("watch-zoom-in")
             .buttonStyle(.plain)
-            .frame(width: 28, height: 28)
+            .frame(width: 36, height: 36)
             .background(.ultraThinMaterial, in: Circle())
         }
         .padding(.horizontal, 10)
         .padding(.bottom, 4)
     }
 
-    private static func baseURL(z: Int, x: Int, y: Int) -> URL {
-        let sub = ["a", "b", "c", "d"][(x + y) % 4]
-        return URL(string: "https://\(sub).basemaps.cartocdn.com/dark_all/\(z)/\(x)/\(y)@2x.png")!
-    }
-
     private static func ageLabel(_ timestamp: String) -> String {
-        guard let date = ISO8601DateFormatter().date(from: timestamp) else { return "Live radar" }
+        guard let date = ISO8601DateFormatter().date(from: timestamp) else { return "Radar time unknown" }
         let minutes = max(0, Int(Date().timeIntervalSince(date) / 60))
         return minutes < 1 ? "Radar now" : "Radar \(minutes)m ago"
     }
@@ -147,5 +156,6 @@ private struct TileImage: View {
                 Color.clear.frame(width: 256, height: 256)
             }
         }
+        .accessibilityHidden(true)
     }
 }

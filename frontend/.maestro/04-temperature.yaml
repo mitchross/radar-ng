@@ -1,0 +1,29 @@
+appId: com.vanillax.radar-ng
+name: iOS temperature units apply to Home and survive relaunch
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- tapOn: "Settings"
+- scrollUntilVisible:
+    element: "°C"
+    direction: DOWN
+- tapOn: "°C"
+- tapOn: "Home"
+- extendedWaitUntil:
+    visible: ".* degrees celsius"
+    timeout: 30000
+- takeScreenshot: celsius-home
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: ".* degrees celsius"
+    timeout: 30000
+- tapOn: "Settings"
+- scrollUntilVisible:
+    element: "°F"
+    direction: DOWN
+- tapOn: "°F"
+- tapOn: "Home"
+- assertVisible: ".* degrees fahrenheit"

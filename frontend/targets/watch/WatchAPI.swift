@@ -50,6 +50,8 @@ enum WatchAPI {
     }
 
     private static func fetch(_ request: URLRequest) async throws -> Data {
+        var request = request
+        request.timeoutInterval = 15
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw WatchAPIError.invalidResponse

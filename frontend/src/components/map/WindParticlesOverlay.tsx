@@ -26,6 +26,7 @@ import {
   useDerivedValue,
   useFrameCallback,
   runOnUI,
+  useReducedMotion,
   type SharedValue,
 } from "react-native-reanimated";
 import {
@@ -34,6 +35,8 @@ import {
   useWindField,
 } from "../../hooks/useWindField";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { useAppActive } from "../../hooks/useAppActive";
+import { useIsFocused } from "expo-router/react-navigation";
 
 const PARTICLE_COUNT = 1200;
 const LIFETIME_FRAMES = 90; // ~1.5s at 60fps
@@ -61,7 +64,7 @@ export function useSharedCamera(
   const lon = useSharedValue(initLon);
   const lat = useSharedValue(initLat);
   const zoom = useSharedValue(initZoom);
-  return { lon, lat, zoom };
+  return useMemo(() => ({ lon, lat, zoom }), [lon, lat, zoom]);
 }
 
 interface ParticleBuffer {
@@ -80,6 +83,15 @@ export function WindParticlesOverlay({
   enabled: boolean;
   camera: SharedCamera;
 }) {
+  const active = useAppActive();
+  const focused = useIsFocused();
+  const reducedMotion = useReducedMotion();
+  if (!enabled || !active || !focused || reducedMotion) return null;
+  return <ActiveWindParticles camera={camera} />;
+}
+
+function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
+  const enabled = true;
   const { width, height } = useWindowDimensions();
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
@@ -119,8 +131,8 @@ export function WindParticlesOverlay({
     if (!field) return;
     runOnUI(() => {
       "worklet";
-      const camLon = camera.lon.value;
-      const camLat = camera.lat.value;
+      const camLon = camera.lon.get();
+      const camLat = camera.lat.get();
       const lonMin = Math.max(field.lon_min, camLon - SEED_HALF_DEG);
       const lonMax = Math.min(field.lon_max, camLon + SEED_HALF_DEG);
       const latMin = Math.max(field.lat_min, camLat - SEED_HALF_DEG);
@@ -140,8 +152,8 @@ export function WindParticlesOverlay({
   useFrameCallback(() => {
     "worklet";
     if (!enabled || !field) return;
-    const camLon = camera.lon.value;
-    const camLat = camera.lat.value;
+    const camLon = camera.lon.get();
+    const camLat = camera.lat.get();
     const lonMin = Math.max(field.lon_min, camLon - SEED_HALF_DEG);
     const lonMax = Math.min(field.lon_max, camLon + SEED_HALF_DEG);
     const latMin = Math.max(field.lat_min, camLat - SEED_HALF_DEG);
@@ -175,7 +187,7 @@ export function WindParticlesOverlay({
       particles.speeds[i] = Math.sqrt(u * u + v * v);
       particles.ages[i] = age;
     }
-    tick.value += 1;
+    tick.set(tick.get() + 1);
   }, true);
 
   // Inline the loop into each derived value. Calling buildPath across the
@@ -184,13 +196,13 @@ export function WindParticlesOverlay({
   // as one, leading to empty paths).
   const pathSlow = useDerivedValue(() => {
     "worklet";
-    void tick.value;
+    void tick.get();
     const p = Skia.Path.Make();
     if (!field) return p;
-    const scale = (256 * Math.pow(2, camera.zoom.value)) / (2 * Math.PI);
+    const scale = (256 * Math.pow(2, camera.zoom.get())) / (2 * Math.PI);
     const cx = width / 2;
     const cy = height / 2;
-    const centerProj = projectLngLat(camera.lon.value, camera.lat.value, scale);
+    const centerProj = projectLngLat(camera.lon.get(), camera.lat.get(), scale);
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const s = particles.speeds[i];
       if (s >= 15) continue;
@@ -213,13 +225,13 @@ export function WindParticlesOverlay({
 
   const pathMed = useDerivedValue(() => {
     "worklet";
-    void tick.value;
+    void tick.get();
     const p = Skia.Path.Make();
     if (!field) return p;
-    const scale = (256 * Math.pow(2, camera.zoom.value)) / (2 * Math.PI);
+    const scale = (256 * Math.pow(2, camera.zoom.get())) / (2 * Math.PI);
     const cx = width / 2;
     const cy = height / 2;
-    const centerProj = projectLngLat(camera.lon.value, camera.lat.value, scale);
+    const centerProj = projectLngLat(camera.lon.get(), camera.lat.get(), scale);
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const s = particles.speeds[i];
       if (s < 15 || s >= 30) continue;
@@ -242,13 +254,13 @@ export function WindParticlesOverlay({
 
   const pathFast = useDerivedValue(() => {
     "worklet";
-    void tick.value;
+    void tick.get();
     const p = Skia.Path.Make();
     if (!field) return p;
-    const scale = (256 * Math.pow(2, camera.zoom.value)) / (2 * Math.PI);
+    const scale = (256 * Math.pow(2, camera.zoom.get())) / (2 * Math.PI);
     const cx = width / 2;
     const cy = height / 2;
-    const centerProj = projectLngLat(camera.lon.value, camera.lat.value, scale);
+    const centerProj = projectLngLat(camera.lon.get(), camera.lat.get(), scale);
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const s = particles.speeds[i];
       if (s < 30 || s >= 50) continue;
@@ -271,13 +283,13 @@ export function WindParticlesOverlay({
 
   const pathExtreme = useDerivedValue(() => {
     "worklet";
-    void tick.value;
+    void tick.get();
     const p = Skia.Path.Make();
     if (!field) return p;
-    const scale = (256 * Math.pow(2, camera.zoom.value)) / (2 * Math.PI);
+    const scale = (256 * Math.pow(2, camera.zoom.get())) / (2 * Math.PI);
     const cx = width / 2;
     const cy = height / 2;
-    const centerProj = projectLngLat(camera.lon.value, camera.lat.value, scale);
+    const centerProj = projectLngLat(camera.lon.get(), camera.lat.get(), scale);
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const s = particles.speeds[i];
       if (s < 50) continue;
