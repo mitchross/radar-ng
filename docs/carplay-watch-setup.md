@@ -61,8 +61,51 @@ A **radar widget** is the supported first path for displaying radar in the user'
 car without turning Radar NG into a full navigation app. iOS 26+ CarPlay can show
 `.systemSmall` widgets from ordinary iPhone apps. A widget can show a timestamped
 radar snapshot; system-scheduled widget refreshes are not a continuous animation.
-This widget is a followup, not an implemented feature in this change. Watch/iPhone
-quality work takes priority per the current user direction.
+The native `RadarWidget` target now implements this first step. It uses the
+self-hosted MRMS manifest and classic radar tiles, composited over a MapKit
+snapshot. The widget shows the frame timestamp (not the download time), requests an
+update after ten minutes, and schedules an older-data label after fifteen minutes.
+WidgetKit decides when to refresh; this is not a live feed or continuously tracked
+driving position. The location dot belongs to the sampled snapshot.
+
+Open Radar NG on the iPhone and allow location access first. Then add **Nearby
+Radar** from the iPhone widget gallery, or from **Settings → General → CarPlay →
+your car → Widgets** on iOS 26+. Accept the separate system prompt allowing Radar
+NG's widgets to use your location. The widget is `.systemSmall`, uses a removable
+background, and does not request a CarPlay entitlement or App Group. Location is
+requested by the extension through WidgetKit's supported location authorization.
+If location or any required tile is unavailable, it shows an explicit message
+instead of presenting a partial map as clear weather. Coverage is continental US.
+
+For private testing, build and install the containing iPhone app with normal Apple
+development signing. No public App Store release is required. The extension must
+also be signed for the same development team. A simulator build cannot be installed
+on a physical iPhone.
+
+Run the isolated native rendering test (real API, MapKit, timestamp parsing,
+coverage rejection, and small-size/error presentation):
+
+```sh
+IOS_SIMULATOR_UDID=<booted-iphone-uuid> bash scripts/test-widget-simulator.sh
+```
+
+### Next: animated radar
+
+The requested next step is animated radar. WidgetKit supports short transitions
+when data changes, with a maximum duration of two seconds; it does not provide a
+supported continuous radar playback loop. Do not generate per-second timelines
+or describe repeated widget refresh requests as animation. Live Activities have
+the same documented animation-duration limit.
+
+Investigate playback in the full native CarPlay map separately, including Apple's
+navigation entitlement and permitted driving presentation. Approval of a map app
+does not establish approval of a looping weather animation. First validate frame
+caching, frame timestamps, pause/resume, and rendering in the prototype simulator,
+then confirm the CarPlay presentation with Apple before promising it in the car.
+
+- [Apple: widgets in CarPlay without a CarPlay app](https://developer.apple.com/videos/play/wwdc2025/216/)
+- [Apple: widget location access](https://developer.apple.com/documentation/widgetkit/accessing-location-information-in-widgets/)
+- [Apple: widget animation limits](https://developer.apple.com/documentation/widgetkit/animating-data-updates-in-widgets-and-live-activities)
 
 ## CarPlay simulators
 
