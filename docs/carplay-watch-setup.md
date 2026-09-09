@@ -1,164 +1,80 @@
-# CarPlay + Apple Watch — Build & Sideload Guide
+# Apple Watch and CarPlay development
 
-This doc covers building the CarPlay scene and watchOS target in `frontend/targets/` for **personal-device use only**. These features are NOT meant for App Store submission and use workarounds Apple does not officially bless.
+The Watch app and experimental CarPlay map scene are native Swift sources under
+`frontend/targets/`. Expo prebuild registers them in `frontend/ios/radarng.xcworkspace`.
+Keep both the iPhone and CarPlay scene declarations: removing the iPhone scene
+breaks React Native window attachment.
 
-## Prereqs (Mac only)
+## Apple Watch
 
-- macOS with Xcode 16+ installed
-- iPhone with iOS 17+ (paired to your Apple Watch if testing Watch)
-- Paid Apple Developer account (free tier blocks entitlements + limits sideload to 7 days)
-- Carplay-equipped car OR CarPlay Simulator (Xcode → Window → Simulators → install iOS Simulator, then Features → External Displays → CarPlay)
-- The repo cloned on Mac — you cannot compile iOS/watchOS from Linux
+From `frontend`, install the locked dependencies and generate the native project:
 
-## Install deps
-
-```bash
-bun add -d @bacons/apple-targets
+```sh
+bun install --frozen-lockfile
+bunx expo prebuild --platform ios --no-install
 ```
 
-## Prebuild
+Open `ios/radarng.xcworkspace`, select `radar-ngWatch`, and choose a Watch simulator
+or your paired Watch. Use normal Apple development signing for a physical Watch.
+The Watch target has no CarPlay entitlement requirement.
 
-From the project root on Mac:
+The radar page uses a native MapKit snapshot plus the latest self-hosted MRMS
+raster tiles. The Digital Crown and +/- buttons change zoom; refresh fetches a new
+manifest. Only tiles intersecting the screen are loaded. Swiping up opens a native
+SwiftUI forecast page. Its hourly strip starts at the forecast's current hour;
+its next-hour precipitation uses four upcoming 15-minute samples, not the first
+60 samples from midnight. Missing data and location fallback are explicitly labeled.
+Forecast and radar use the Radar API; Watch alerts still use NWS directly.
 
-```bash
-bunx expo prebuild --clean --platform ios
+Native UI tests and launch measurements:
+
+```sh
+WATCH_SIMULATOR_UDID=<watch-uuid> \
+IOS_SIMULATOR_APP_PATH=/path/to/Release-iphonesimulator/radarng.app \
+bash scripts/test-watch-simulator.sh
 ```
 
-This will:
+For a paired Watch simulator, the companion app must be installed on its paired
+iPhone. Otherwise the paired-device machinery can remove the Watch app during tests.
+`IOS_SIMULATOR_APP_PATH` installs it; omit this variable if it is already installed.
 
-1. Generate `frontend/ios/` from `frontend/app.json`
-2. Copy `frontend/targets/carplay/*.swift` into `frontend/ios/radarng/CarPlay/` via `frontend/plugins/withCarPlayScene.js`
-3. Add the `com.apple.developer.carplay-maps` entitlement to the main app's `.entitlements`
-4. Register the `CPTemplateApplicationSceneSessionRoleApplication` scene in the main `Info.plist`
-5. Generate a sibling watchOS target from `frontend/targets/watch/` via `@bacons/apple-targets`
+The runner adds a UI-test target to the generated project and runs the checked-in
+Watch tests. It does not modify app provisioning or deploy to a physical device.
+See [the September QA report](ios-watch-qa-2026-09-08.md) for tested devices and limits.
 
-Open the workspace:
+## CarPlay: real car requirements
 
-```bash
-open frontend/ios/radarng.xcworkspace
-```
+The previous guide and `carplay-resign.sh` incorrectly claimed that adding an
+entitlement after archiving bypasses provisioning checks. **It does not.** iOS
+validates signed entitlements against the embedded provisioning profile. Developer
+Mode and a paid Apple Developer account do not grant restricted CarPlay capabilities.
+The old command now stops with an explanation instead of producing a misleading build.
 
-## CarPlay — signing hack for personal use
+For a full CarPlay app, request Apple's category-specific capability, enable it for
+the app identifier, regenerate the development profile, and include the matching
+entitlement in the app. `com.apple.developer.carplay-maps` is for navigation apps
+with route guidance; Apple's driving-task category does not permit custom maps.
+The current `RadarMapController` is an experimental radar map, not a navigation app.
+It still uses Iowa Mesonet tiles and has not been verified in an actual car.
 
-Apple does not grant `com.apple.developer.carplay-maps` to non-navigation apps. The entitlement is already declared in the `.entitlements` file, but the standard provisioning flow will refuse to sign. Options, in order of preference:
+A **radar widget** is the supported first path for displaying radar in the user's
+car without turning Radar NG into a full navigation app. iOS 26+ CarPlay can show
+`.systemSmall` widgets from ordinary iPhone apps. A widget can show a timestamped
+radar snapshot; system-scheduled widget refreshes are not a continuous animation.
+This widget is a followup, not an implemented feature in this change. Watch/iPhone
+quality work takes priority per the current user direction.
 
-### Option A — CarPlay Simulator (no hack needed)
+## CarPlay simulators
 
-Fully supported, no entitlement required at sign time.
+Apple's standalone CarPlay Simulator (Additional Tools for Xcode / Device Hub)
+connects to a physical iPhone. It does not bypass that phone's provisioning checks.
+Xcode's iOS Simulator also offers I/O → External Displays → CarPlay for supported
+runtimes. Registering a scene alone does not make the app eligible for CarPlay;
+follow Apple's entitlement setup. Neither kind of simulator proves operation in a car.
 
-1. In Xcode, run the app on a regular iOS Simulator
-2. Simulator menu → **Features → External Displays → CarPlay**
-3. A second window opens showing the CarPlay UI with `RadarMapController`
-4. This is good enough for 95% of development
+## References
 
-### Option B — Sideload to real device/car (the hack)
-
-You need to bypass Xcode's entitlement validation. Two known paths:
-
-**B1. Manual re-sign post-build (most reliable):**
-
-```bash
-# Build for device with auto-signing (will strip the carplay entitlement)
-xcodebuild -workspace ios/stormscope.xcworkspace \
-  -scheme stormscope \
-  -configuration Release \
-  -destination 'generic/platform=iOS' \
-  -archivePath build/stormscope.xcarchive archive
-
-# Copy entitlements with carplay-maps back in
-cat > /tmp/entitlements-patched.plist <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>application-identifier</key><string>YOUR_TEAMID.com.anonymous.stormscope</string>
-  <key>com.apple.developer.team-identifier</key><string>YOUR_TEAMID</string>
-  <key>com.apple.developer.carplay-maps</key><true/>
-  <key>get-task-allow</key><true/>
-</dict>
-</plist>
-EOF
-
-# Re-sign the .app inside the archive
-codesign --force --sign "Apple Development: your@email.com" \
-  --entitlements /tmp/entitlements-patched.plist \
-  --deep --preserve-metadata=identifier,requirements,flags,runtime \
-  build/stormscope.xcarchive/Products/Applications/stormscope.app
-
-# Install to connected device
-ios-deploy --bundle build/stormscope.xcarchive/Products/Applications/stormscope.app
-```
-
-Success rate: iOS will load the app. When CarPlay connects, the scene delegate fires because the entitlement is present in the embedded provisioning profile's associated app (iOS checks the app's signed entitlements, not the Apple dev portal).
-
-**B2. AltStore / TrollStore:**
-
-If B1 refuses, TrollStore on supported iOS versions can install arbitrary entitlements. This is device-dependent — out of scope for this doc.
-
-### Option C — Give up on real car, use simulator only
-
-Acceptable if your car supports wireless CarPlay — you can dev against Simulator and just enjoy the app on the phone itself.
-
-## Watch — no hacks needed
-
-The Watch target has no gated entitlements. Standard flow:
-
-1. Xcode → scheme dropdown → `StormScopeWatch`
-2. Select your paired Apple Watch (must be on same Wi-Fi or paired iPhone nearby)
-3. Cmd+R
-4. First run: allow location prompt on watch
-
-If it fails to install on device, switch the scheme's destination to a Watch Simulator and confirm it builds, then retry device.
-
-## What gets rendered
-
-**CarPlay (`RadarMapController`):**
-
-- `MKMapView` with `mutedStandard` basemap
-- `MKTileOverlay` hitting Iowa State's public NEXRAD tile cache (`mesonet.agron.iastate.edu/...nexrad-n0q-0/{z}/{x}/{y}.png`, TMS Y-flipped)
-- User location pin
-- Top bar: re-center, refresh (bumps cache key to force tile reload), opacity cycle (40/60/80/100%)
-- Auto-refresh every 5 min
-- No animation / timeline — CarPlay UI guidelines prohibit rich animation
-
-**Watch (`ContentView`):**
-
-- Current temp + condition (large Thin font, SF Symbols)
-- Alert badge at top if any NWS active alert
-- 60-minute nowcast bar chart from `minutely_15.precipitation`
-- 12-hour scroll row
-- 5-day list
-- Pull-to-refresh
-- Hits `https://radar-ng-api.vanillax.me/api/forecast/{lat}/{lon}` + NWS alerts
-
-## Troubleshooting
-
-- **"Provisioning profile doesn't include com.apple.developer.carplay-maps"**: you hit this when signing normally. Use Option B1 post-archive re-sign, or switch to CarPlay Simulator.
-- **Watch app shows "NSURLErrorDomain"**: watchOS 10+ requires `NSAppTransportSecurity` for non-https if you point at `http://` — your server is https already so you're fine.
-- **Tile overlay blank on CarPlay**: check `RadarTileOverlay.url(forTilePath:)` — the TMS Y flip is required for IEM. Hit the URL in a browser to verify.
-- **Scene delegate never fires on real car**: the entitlement is missing from the signed app. Verify with `codesign -d --entitlements - /path/to/stormscope.app`.
-
-## Files
-
-All paths are relative to `frontend/`.
-
-```
-frontend/targets/
-├── carplay/
-│   ├── RadarCarPlaySceneDelegate.swift  — CPTemplateApplicationSceneDelegate
-│   ├── RadarMapController.swift         — CPMapTemplate + MKMapView host
-│   ├── RadarTileOverlay.swift           — MKTileOverlay (IEM NEXRAD, TMS)
-│   ├── RadarLocationManager.swift       — CoreLocation wrapper
-│   ├── RadarAPI.swift                   — backend URLs
-│   └── MainSceneDelegate.swift          — UIWindowSceneDelegate for the iPhone window (required once UIApplicationSceneManifest is declared)
-└── watch/
-    ├── expo-target.config.js            — @bacons/apple-targets config
-    ├── RadarWatchApp.swift              — @main SwiftUI app
-    ├── WatchStore.swift                 — ObservableObject, fetches + location
-    ├── WatchAPI.swift                   — fetchForecast, fetchAlerts, Codable types
-    ├── ContentView.swift                — all watch views
-    └── Info.plist
-
-frontend/plugins/withCarPlayScene.js     — copies carplay/ into main app, adds entitlement, registers Main + CarPlay scenes in Info.plist
-frontend/plugins/withScriptSandboxOff.js — disables Xcode 15+ script sandboxing for build phases that need it
-```
+- [CarPlay Developer Guide, June 2026](https://developer.apple.com/download/files/CarPlay-Developer-Guide.pdf): widgets, category rules, and entitlements.
+- [Requesting CarPlay entitlements](https://developer.apple.com/documentation/carplay/requesting-carplay-entitlements).
+- [Apple entitlement troubleshooting](https://developer.apple.com/library/archive/technotes/tn2415/_index.html).
+- [Setting up Watch tests](https://developer.apple.com/documentation/watchos-apps/setting-up-tests-for-your-watchos-app).

@@ -29,6 +29,12 @@ describe("forecast presentation", () => {
     expect(getNowcastVerdict([0, 0, 0, 0])).toEqual({ kind: "dry" });
   });
 
+  it("does not call light precipitation dry", () => {
+    const verdict = getNowcastVerdict([0, 0.01, 0.04, 0]);
+    expect(verdict).toEqual({ kind: "light" });
+    expect(describeNowcast(verdict)).toBe("Light precipitation possible during the next hour.");
+  });
+
   it("summarizes precipitation timing without relying on the chart", () => {
     expect(describeNowcast({
       kind: "starting",

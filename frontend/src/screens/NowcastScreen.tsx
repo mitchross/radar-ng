@@ -212,6 +212,11 @@ export default function NowcastScreen() {
                 No rain expected{"\n"}
                 <Text style={styles.heroDrySub}>for the next hour</Text>
               </Text>
+            ) : verdict.kind === "light" ? (
+              <Text style={styles.heroDry}>
+                Light precipitation{"\n"}
+                <Text style={styles.heroDrySub}>possible this hour</Text>
+              </Text>
             ) : verdict.kind === "raining" ? (
               <Text style={styles.heroDry}>
                 Raining <Text style={{ color: theme.colors.rain }}>now.</Text>

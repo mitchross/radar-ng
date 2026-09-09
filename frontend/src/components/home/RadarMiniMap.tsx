@@ -9,6 +9,8 @@ import { useMemo } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Camera, Layer, Map, RasterSource } from "@maplibre/maplibre-react-native";
 import { useRouter } from "expo-router";
+import { useIsFocused } from "expo-router/react-navigation";
+import { useAppActive } from "../../hooks/useAppActive";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS } from "../../lib/constants";
 import {
@@ -28,7 +30,9 @@ const MINI_ZOOM = 8;
 const MINI_SOURCE_MIN_ZOOM = 4;
 const MINI_SOURCE_MAX_ZOOM = 7;
 
-export function RadarMiniMap({ headline }: { headline?: string }) {
+export function RadarMiniMap() {
+  const focused = useIsFocused();
+  const appActive = useAppActive();
   const router = useRouter();
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -36,7 +40,7 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
   const activePalette = useWeatherStore((s) => s.activePalette);
   const lat = useWeatherStore((s) => s.latitude) ?? DEFAULTS.LATITUDE;
   const lon = useWeatherStore((s) => s.longitude) ?? DEFAULTS.LONGITUDE;
-  const patchedStyle = usePatchedMapStyle(serverUrl, "light");
+  const patchedStyle = usePatchedMapStyle(serverUrl, theme.dark ? "dark" : "light");
 
   const { data: manifest, dataUpdatedAt, isError, isPaused, isPending } = useManifestQuery();
 
@@ -75,15 +79,20 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
     unavailable: theme.colors.textFaint,
   }[status.tone];
   const fallbackHeadline = nowFrame
-    ? "Tap to open full radar"
+    ? "Explore nearby precipitation"
     : status.tone === "unavailable" && status.label !== "LOADING"
       ? "Radar unavailable"
       : "Loading…";
 
   return (
-    <View style={styles.wrap}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={radarButtonAccessibilityLabel(status)}
+      onPress={() => router.push("/radar")}
+      style={({ pressed }) => [styles.wrap, pressed && { opacity: 0.85 }]}
+    >
       <View style={styles.mapWrap} pointerEvents="none">
-        {patchedStyle ? (
+        {patchedStyle && focused && appActive ? (
           <Map
             style={styles.map}
             mapStyle={patchedStyle}
@@ -122,7 +131,6 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
           <View style={styles.basemapTint} />
         )}
         <View style={styles.mapVignette} />
-      </View>
 
       {/* user-location pin */}
       <View style={styles.pinWrap} pointerEvents="none">
@@ -136,25 +144,21 @@ export function RadarMiniMap({ headline }: { headline?: string }) {
         <Text style={styles.statusText}>{status.label}</Text>
       </View>
 
-      {/* footer label */}
+      </View>
+
+      {/* Keep copy outside the native map surface so labels cannot collide. */}
       <View style={styles.footer}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.footerLabel}>RADAR</Text>
+          <Text style={styles.footerLabel}>Weather radar</Text>
           <Text style={styles.footerTitle} numberOfLines={1}>
-            {headline ?? fallbackHeadline}
+            {fallbackHeadline}
           </Text>
         </View>
         <View style={styles.chevronBox}>
           <Text style={styles.chevron}>{"›"}</Text>
         </View>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={radarButtonAccessibilityLabel(status, headline)}
-        style={styles.hitArea}
-        onPress={() => router.push("/radar")}
-      />
-    </View>
+    </Pressable>
   );
 }
 
@@ -163,20 +167,17 @@ function createStyles(theme: WeatherClearTheme) {
   wrap: {
     marginHorizontal: 16,
     marginTop: 18,
-    height: 180,
+    borderCurve: "continuous",
     borderRadius: 18,
     borderWidth: 1,
     borderColor: theme.colors.border,
     overflow: "hidden",
-    backgroundColor: "#0d1428",
-  },
-  hitArea: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 10,
+    backgroundColor: theme.colors.surface,
   },
   mapWrap: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: "#e8ece5",
+    height: 176,
+    overflow: "hidden",
+    backgroundColor: theme.colors.surfaceMuted,
   },
   map: {
     flex: 1,
@@ -237,37 +238,32 @@ function createStyles(theme: WeatherClearTheme) {
     letterSpacing: 1.4,
   },
   footer: {
-    position: "absolute",
-    left: 12,
-    right: 12,
-    bottom: 10,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.45)",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    gap: theme.spacing.md,
+    backgroundColor: theme.colors.surface,
+    padding: theme.spacing.lg,
+    minHeight: 72,
   },
   footerLabel: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 10,
+    color: theme.colors.text,
+    fontSize: 17,
     fontFamily: theme.typography.uiSemibold,
-    letterSpacing: 1.6,
   },
   footerTitle: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontFamily: theme.typography.uiSemibold,
-    marginTop: 2,
+    color: theme.colors.textSecondary,
+    fontSize: 13,
+    fontFamily: theme.typography.ui,
+    marginTop: 4,
   },
   chevronBox: {
     width: 28,
     height: 28,
     borderRadius: 9,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: theme.colors.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
   },
-  chevron: { color: "#ffffff", fontSize: 18 },
+  chevron: { color: theme.colors.textSecondary, fontSize: 24 },
   });
 }

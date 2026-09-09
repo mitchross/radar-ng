@@ -24,10 +24,7 @@ function patchPodfile(contents) {
   let next = contents;
 
   if (!next.includes(POD_FLOOR_DECLARATION)) {
-    next = next.replace(
-      /^(ios_deployment_target = .+)$/m,
-      `$1\n${POD_FLOOR_DECLARATION}`,
-    );
+    next = `${POD_FLOOR_DECLARATION}\n${next}`;
   }
 
   if (!next.includes("minimum_pod_version = Gem::Version.new(minimum_pod_deployment_target)")) {

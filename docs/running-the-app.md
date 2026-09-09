@@ -64,9 +64,12 @@ User prefs (server URL, data source, palette, opacity, active layer, theme, extr
 
 ## iOS extras: CarPlay + Apple Watch
 
-The repo ships a CarPlay map scene and a watchOS forecast app as extra Apple targets (`frontend/targets/{carplay,watch}/`, copied into `ios/` on prebuild). These are **personal-sideload only** — CarPlay in particular needs an entitlement Apple won't grant for non-navigation apps, so a re-signing workaround is required for real-car use (the CarPlay *Simulator* needs no hacks).
+The repo ships a native Watch radar/forecast app and an experimental CarPlay map
+scene. Watch uses normal development signing. A full CarPlay map requires Apple's
+navigation entitlement and matching provisioning; post-archive re-signing does not
+bypass that requirement. A CarPlay radar widget is planned separately.
 
-Full walkthrough, signing hack included: [carplay-watch-setup.md](carplay-watch-setup.md).
+Build and test instructions: [carplay-watch-setup.md](carplay-watch-setup.md).
 
 ## Tests
 

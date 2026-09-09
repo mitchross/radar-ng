@@ -2,7 +2,7 @@
  * Cumulus radar timeline — Apple-Weather-inspired "forecast pill".
  * Violet play button + layer/date header + 1h/48h segmented zoom + segmented
  * track (past / nowcast / HRRR / long-range) + NOW marker + draggable thumb.
- * Playback advances every 750ms within the active zoom window.
+ * Playback follows the configured speed within the active zoom window.
  */
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import Slider from "@react-native-community/slider";
@@ -11,11 +11,11 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
 import { findClosestIdx } from "../../lib/frameIndex";
 import { useAppActive } from "../../hooks/useAppActive";
+import { useIsFocused } from "expo-router/react-navigation";
 import type { LayerType } from "../../types/weather";
 
 const NOWCAST_MIN = 60;
 const HRRR_MIN = 48 * 60;
-const PLAYBACK_MS = 750;
 const NOW_REFRESH_MS = 60_000;
 
 const LAYER_TITLE: Record<LayerType, string> = {
@@ -39,6 +39,7 @@ export function TimelineBar() {
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
   const isPlaying = useWeatherStore((s) => s.isPlaying);
+  const playbackSpeed = useWeatherStore((s) => s.playbackSpeed);
   const togglePlaying = useWeatherStore((s) => s.togglePlaying);
   const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
@@ -52,6 +53,7 @@ export function TimelineBar() {
   // Frozen-at-mount "now" drifted the 1h window and NOW marker into the past after ~30 min on the tab.
   const nowSec = useNowSec();
   const appActive = useAppActive();
+  const focused = useIsFocused();
 
   // Zoom window indices
   const { startIdx, endIdx } = useMemo(() => {
@@ -86,18 +88,18 @@ export function TimelineBar() {
 
   // Playback tick within zoom window; paused while backgrounded (each tick remounts a RasterSource).
   useEffect(() => {
-    if (!appActive || !isPlaying || frames.length === 0 || endIdx <= startIdx) return;
+    if (!appActive || !focused || !isPlaying || frames.length === 0 || endIdx <= startIdx) return;
     const id = setInterval(() => {
       const next = idxRef.current < startIdx || idxRef.current >= endIdx
         ? startIdx
         : idxRef.current + 1;
       setCurrentFrameIndex(next);
-    }, PLAYBACK_MS);
+    }, 1000 / Math.max(1, Math.min(10, playbackSpeed)));
     return () => clearInterval(id);
-  }, [appActive, isPlaying, startIdx, endIdx, frames.length, setCurrentFrameIndex]);
+  }, [appActive, focused, isPlaying, playbackSpeed, startIdx, endIdx, frames.length, setCurrentFrameIndex]);
 
   // Segment boundaries don't depend on the playback index — memoize so the
-  // 750 ms tick doesn't re-run three O(n) frame scans. Must stay above the
+  // playback tick doesn't re-run three O(n) frame scans. Must stay above the
   // early return below (rules-of-hooks).
   const { nowPct, nowcastPct, hrrrPct } = useMemo(() => {
     const winLen = Math.max(1, endIdx - startIdx);

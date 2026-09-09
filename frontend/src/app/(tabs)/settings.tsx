@@ -13,6 +13,7 @@ import {
   TextInput,
   ActivityIndicator,
   RefreshControl,
+  Keyboard,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -136,6 +137,7 @@ export default function SettingsScreen() {
     >
       <SafeAreaView style={styles.flex} edges={["top"]}>
         <ScrollView
+          keyboardShouldPersistTaps="handled"
           style={styles.flex}
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
@@ -224,6 +226,7 @@ export default function SettingsScreen() {
                   onPress={() => {
                     setSelectedPlace(place);
                     setCityQuery(formatPlaceLabel(place));
+                    Keyboard.dismiss();
                   }}
                 />
               ))}
@@ -244,6 +247,9 @@ export default function SettingsScreen() {
                     autoCorrect={false}
                     placeholder="https://radar-ng-api.example.com"
                     accessibilityLabel="Stack URL"
+                    testID="stack-url-input"
+                    selectTextOnFocus
+                    keyboardType="url"
                     placeholderTextColor={theme.colors.textFaint}
                   />
                   <Pressable
@@ -254,7 +260,10 @@ export default function SettingsScreen() {
                       urlDraft === serverUrl ? styles.saveBtnDisabled : null,
                     ]}
                     disabled={urlDraft === serverUrl}
-                    onPress={() => setServerUrl(urlDraft.trim())}
+                    onPress={() => {
+                      setServerUrl(urlDraft.trim());
+                      Keyboard.dismiss();
+                    }}
                   >
                     <Text style={styles.saveBtnText}>Save</Text>
                   </Pressable>
