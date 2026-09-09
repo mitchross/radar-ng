@@ -84,7 +84,7 @@ export async function fetchAlerts(
     async (span) => {
       const res = await fetchWithTimeout(
         `${API.NWS_ALERTS}?point=${lat},${lon}`,
-        { headers: { "User-Agent": "radar-ng/1.1 (self-hosted-weather-radar)" } },
+        { headers: { "User-Agent": "radar-ng/2.0 (self-hosted-weather-radar)" } },
         signal,
       );
       span.setAttribute("http.status_code", res.status);

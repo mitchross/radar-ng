@@ -2,7 +2,7 @@ import Foundation
 
 enum WatchAPI {
     static let serverURL = "https://radar-ng-api.vanillax.me"
-    private static let userAgent = "radar-ng/1.1 (watchOS)"
+    private static let userAgent = "radar-ng/2.0 (watchOS)"
 
     static func fetchForecast(lat: Double, lon: Double) async throws -> Forecast {
         let url = URL(string: "\(serverURL)/api/forecast/\(lat)/\(lon)")!
