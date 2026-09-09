@@ -1,40 +1,29 @@
 {
-  "fill" : {
-    "automatic-gradient" : "extended-srgb:0.04706,0.10200,0.13333,1.00000"
+  "fill": {
+    "solid": "srgb:0.03137,0.10196,0.14118,1.00000"
   },
-  "groups" : [
+  "groups": [
     {
-      "layers" : [
+      "layers": [
         {
-          "image-name" : "radar-ng-symbol.svg",
-          "name" : "radar-ng-symbol",
-          "position" : {
-            "scale" : 1.02,
-            "translation-in-points" : [
-              0,
-              0
-            ]
-          }
-        },
-        {
-          "image-name" : "grid.png",
-          "name" : "radar-field"
+          "image-name": "radar-mark.png",
+          "name": "Radar mark"
         }
       ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.35
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0
       },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.32
+      "translucency": {
+        "enabled": false,
+        "value": 0
       }
     }
   ],
-  "supported-platforms" : {
-    "circles" : [
+  "supported-platforms": {
+    "circles": [
       "watchOS"
     ],
-    "squares" : "shared"
+    "squares": "shared"
   }
 }
