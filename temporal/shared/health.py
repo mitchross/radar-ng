@@ -1,19 +1,7 @@
-"""Worker liveness via a touched file.
+"""Separate local event-loop liveness from Temporal connectivity readiness.
 
-The SDK retries failed polls forever and silently: when cluster DNS died the
-worker sat for four hours unable to reach the frontend, with no restart. This
-loop calls the frontend's gRPC health check every ``HEALTH_EVERY`` and touches
-``TEMPORAL_HEALTH_FILE`` (default ``/tmp/temporal-healthy``) only on success,
-so a stale file means "cannot reach Temporal".
-
-Intended k8s livenessProbe (fails after ~3 min without a successful check)::
-
-    livenessProbe:
-      exec:
-        command: ["sh", "-c", "test $(find /tmp/temporal-healthy -mmin -3)"]
-      initialDelaySeconds: 60
-      periodSeconds: 30
-      failureThreshold: 2
+Neither file proves that the SDK is polling. Inspect SDK poll metrics and
+controller registration when connectivity succeeds but work stops progressing.
 """
 
 from __future__ import annotations
@@ -29,6 +17,7 @@ from temporalio.client import Client
 HEALTH_EVERY = timedelta(seconds=30)
 HEALTH_RPC_TIMEOUT = timedelta(seconds=10)
 HEALTH_FILE = Path(os.environ.get("TEMPORAL_HEALTH_FILE", "/tmp/temporal-healthy"))
+ALIVE_FILE = Path(os.environ.get("TEMPORAL_ALIVE_FILE", "/tmp/worker-alive"))
 
 
 def touch(path: Path = HEALTH_FILE) -> None:
@@ -51,10 +40,15 @@ async def health_file_loop(
     client: Client,
     *,
     path: Path = HEALTH_FILE,
+    alive_path: Path = ALIVE_FILE,
     every: timedelta = HEALTH_EVERY,
 ) -> None:
-    """Run forever: touch `path` after each successful health check."""
+    """Refresh liveness each iteration, readiness only after a successful RPC."""
     while True:
+        try:
+            touch(alive_path)
+        except OSError as exc:
+            logger.error("cannot touch liveness file {}: {!r}", alive_path, exc)
         if await check_once(client):
             try:
                 touch(path)

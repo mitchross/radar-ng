@@ -59,6 +59,8 @@ from backend.ingest_tropical import activities as tropical
 from backend.nowcast import activities as nowcast
 from backend.open_meteo_sync import activities as open_meteo
 from backend.tile_cleanup import activities as tile_cleanup
+from temporal.shared.deployment_smoke import radar_deployment_smoke
+from temporal.workflows.deployment_smoke import RadarDeploymentSmokeWorkflow
 from temporal.task_queues import OPEN_METEO_TASK_QUEUE
 from temporal.workflows.ingest_airquality import IngestAirQualityWorkflow
 from temporal.workflows.ingest_hrrr import IngestHrrrWorkflow
@@ -171,6 +173,7 @@ def _fake(real: Callable[..., Any]) -> Callable[..., Any]:
 
 
 REAL_ACTIVITIES = [
+    radar_deployment_smoke,
     mrms.mrms_list_unprocessed_keys,
     mrms.mrms_process_frame,
     mrms.mrms_mark_processed,
@@ -258,6 +261,7 @@ def _compare(sampled: bool) -> storm.CompareFramesResult:
 
 
 DEFAULTS: dict[str, Behavior] = {
+    "radar_deployment_smoke": ret({"ok": True, "role": "alerts"}),
     "mrms_list_unprocessed_keys": ret(
         mrms.ListKeysResult(keys=list(MRMS_KEYS), backlog_total=3)
     ),
@@ -408,6 +412,10 @@ def _signal_error(inp: storm.SignalWatchesInput) -> storm.SignalWatchesResult:
 
 
 SCENARIOS: list[Scenario] = [
+    Scenario(RadarDeploymentSmokeWorkflow, "success"),
+    Scenario(RadarDeploymentSmokeWorkflow, "activity-error",
+             behaviors={"radar_deployment_smoke": fail("synthetic gate failure")},
+             outcome="failed"),
     Scenario(IngestMrmsWorkflow, "success", MRMS_ARGS),
     Scenario(
         IngestMrmsWorkflow,
