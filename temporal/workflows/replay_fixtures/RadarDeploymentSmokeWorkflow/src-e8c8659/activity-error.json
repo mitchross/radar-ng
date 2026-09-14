@@ -2,7 +2,7 @@
   "events": [
     {
       "eventId": "1",
-      "eventTime": "2026-09-14T22:17:21.837Z",
+      "eventTime": "2026-09-14T22:34:49.929Z",
       "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_STARTED",
       "workflowExecutionStartedEventAttributes": {
         "workflowType": {
@@ -15,9 +15,9 @@
         "workflowExecutionTimeout": "315360000s",
         "workflowRunTimeout": "315360000s",
         "workflowTaskTimeout": "10s",
-        "originalExecutionRunId": "e073f010-f0fb-4627-ab62-daf8326a29b3",
+        "originalExecutionRunId": "4c4b9ec4-2dac-4db0-8f73-f8b4d84ad820",
         "identity": "synthetic-replay-client",
-        "firstExecutionRunId": "e073f010-f0fb-4627-ab62-daf8326a29b3",
+        "firstExecutionRunId": "4c4b9ec4-2dac-4db0-8f73-f8b4d84ad820",
         "attempt": 1,
         "firstWorkflowTaskBackoff": "0s",
         "priority": {}
@@ -25,7 +25,7 @@
     },
     {
       "eventId": "2",
-      "eventTime": "2026-09-14T22:17:21.837Z",
+      "eventTime": "2026-09-14T22:34:49.929Z",
       "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
       "workflowTaskScheduledEventAttributes": {
         "taskQueue": {
@@ -37,7 +37,7 @@
     },
     {
       "eventId": "3",
-      "eventTime": "2026-09-14T22:17:21.837Z",
+      "eventTime": "2026-09-14T22:34:49.929Z",
       "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
       "workflowTaskStartedEventAttributes": {
         "scheduledEventId": "2",
@@ -47,7 +47,7 @@
     },
     {
       "eventId": "4",
-      "eventTime": "2026-09-14T22:17:21.855Z",
+      "eventTime": "2026-09-14T22:34:49.943Z",
       "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
       "workflowTaskCompletedEventAttributes": {
         "scheduledEventId": "2",
@@ -55,9 +55,9 @@
         "binaryChecksum": "0c39c76748ef1636c44771f194c7dcd2",
         "sdkMetadata": {
           "coreUsedFlags": [
+            3,
             1,
-            2,
-            3
+            2
           ],
           "sdkName": "temporal-python",
           "sdkVersion": "1.30.0"
@@ -67,7 +67,7 @@
     },
     {
       "eventId": "5",
-      "eventTime": "2026-09-14T22:17:21.855Z",
+      "eventTime": "2026-09-14T22:34:49.943Z",
       "eventType": "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
       "activityTaskScheduledEventAttributes": {
         "activityId": "1",
@@ -96,7 +96,7 @@
     },
     {
       "eventId": "6",
-      "eventTime": "2026-09-14T22:17:21.855Z",
+      "eventTime": "2026-09-14T22:34:49.943Z",
       "eventType": "EVENT_TYPE_ACTIVITY_TASK_STARTED",
       "activityTaskStartedEventAttributes": {
         "scheduledEventId": "5",
@@ -106,27 +106,25 @@
     },
     {
       "eventId": "7",
-      "eventTime": "2026-09-14T22:17:21.856Z",
-      "eventType": "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
-      "activityTaskCompletedEventAttributes": {
-        "result": {
-          "payloads": [
-            {
-              "metadata": {
-                "encoding": "anNvbi9wbGFpbg=="
-              },
-              "data": "eyJvayI6dHJ1ZSwicm9sZSI6ImFsZXJ0cyJ9"
-            }
-          ]
+      "eventTime": "2026-09-14T22:34:49.944Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "activityTaskFailedEventAttributes": {
+        "failure": {
+          "message": "synthetic gate failure",
+          "applicationFailureInfo": {
+            "type": "synthetic-failure",
+            "nonRetryable": true
+          }
         },
         "scheduledEventId": "5",
         "startedEventId": "6",
-        "identity": "synthetic-replay-worker"
+        "identity": "synthetic-replay-worker",
+        "retryState": "RETRY_STATE_NON_RETRYABLE_FAILURE"
       }
     },
     {
       "eventId": "8",
-      "eventTime": "2026-09-14T22:17:21.856Z",
+      "eventTime": "2026-09-14T22:34:49.944Z",
       "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
       "workflowTaskScheduledEventAttributes": {
         "taskQueue": {
@@ -138,17 +136,17 @@
     },
     {
       "eventId": "9",
-      "eventTime": "2026-09-14T22:17:21.856Z",
+      "eventTime": "2026-09-14T22:34:49.944Z",
       "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
       "workflowTaskStartedEventAttributes": {
         "scheduledEventId": "8",
         "identity": "synthetic-replay-worker",
-        "historySizeBytes": "770"
+        "historySizeBytes": "1874"
       }
     },
     {
       "eventId": "10",
-      "eventTime": "2026-09-14T22:17:21.858Z",
+      "eventTime": "2026-09-14T22:34:49.944Z",
       "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
       "workflowTaskCompletedEventAttributes": {
         "scheduledEventId": "8",
@@ -160,18 +158,28 @@
     },
     {
       "eventId": "11",
-      "eventTime": "2026-09-14T22:17:21.858Z",
-      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED",
-      "workflowExecutionCompletedEventAttributes": {
-        "result": {
-          "payloads": [
-            {
-              "metadata": {
-                "encoding": "anNvbi9wbGFpbg=="
-              },
-              "data": "eyJvayI6dHJ1ZSwicm9sZSI6ImFsZXJ0cyJ9"
+      "eventTime": "2026-09-14T22:34:49.944Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_FAILED",
+      "workflowExecutionFailedEventAttributes": {
+        "failure": {
+          "message": "Activity task failed",
+          "cause": {
+            "message": "synthetic gate failure",
+            "applicationFailureInfo": {
+              "type": "synthetic-failure",
+              "nonRetryable": true
             }
-          ]
+          },
+          "activityFailureInfo": {
+            "scheduledEventId": "5",
+            "startedEventId": "6",
+            "identity": "synthetic-replay-worker",
+            "activityType": {
+              "name": "radar_deployment_smoke"
+            },
+            "activityId": "1",
+            "retryState": "RETRY_STATE_NON_RETRYABLE_FAILURE"
+          }
         },
         "workflowTaskCompletedEventId": "9"
       }

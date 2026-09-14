@@ -32,11 +32,12 @@ and their config alive. The retained historical fixtures must still replay;
 the `watch-storm-*` patch markers preserve historical command paths.
 
 For a deliberately selected existing run, export its history to a private
-temporary location and replay it with the candidate before any one-time move
-to the fix version. Never commit real histories: they can contain coordinates,
-user IDs, and push data. Use Temporal's one-time move operation only after
-reviewing that execution and candidate; verify its next Continue-as-New carries
-state and removes the need for its old version. A sample fixture replay does
+temporary location and replay it with the candidate before moving it to the
+fix version. Never commit real histories: they can contain coordinates,
+user IDs, and push data. A CLI pinned-version override is sticky, not a one-time
+move. Apply it only after approval of that execution and candidate; explicitly
+clear the override after the repaired worker processes the run, and verify the
+next Continue-as-New's state and version assignment. A sample fixture replay does
 not authorize a bulk move. Historical completed handoffs that already discarded
 state cannot be reconstructed by this fix.
 
