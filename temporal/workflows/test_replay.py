@@ -43,6 +43,7 @@ _SINGLE_ACTIVITY: dict[str, set[Marker]] = {
 # Scenarios every workflow must retain in at least one version, with proof they took the
 # path they are named for. Dropping a scenario here weakens the gate; add, do not remove.
 REQUIRED_SCENARIOS: dict[str, dict[str, set[Marker]]] = {
+    "RadarDeploymentSmokeWorkflow": _SINGLE_ACTIVITY,
     "IngestMrmsWorkflow": {
         "success": {_COMPLETED, "mrms_mark_processed"},
         "partial": {_COMPLETED},

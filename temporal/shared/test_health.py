@@ -33,18 +33,23 @@ class HealthTests(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "temporal-healthy"
+            alive_path = Path(tmp) / "worker-alive"
 
             bad = asyncio.ensure_future(
-                health.health_file_loop(_Client(RuntimeError("down")), path=path, every=timedelta(0))
+                health.health_file_loop(_Client(False), path=path, alive_path=alive_path, every=timedelta(milliseconds=5))
             )
             await asyncio.sleep(0.02)
             bad.cancel()
             with self.assertRaises(asyncio.CancelledError):
                 await bad
             self.assertFalse(path.exists(), "health file must not be touched while unreachable")
+            self.assertTrue(alive_path.exists(), "a Temporal outage must not fail local liveness")
+            stopped_at = alive_path.stat().st_mtime_ns
+            await asyncio.sleep(0.01)
+            self.assertEqual(alive_path.stat().st_mtime_ns, stopped_at, "a stopped loop cannot refresh liveness")
 
             good = asyncio.ensure_future(
-                health.health_file_loop(_Client(True), path=path, every=timedelta(0))
+                health.health_file_loop(_Client(True), path=path, alive_path=alive_path, every=timedelta(milliseconds=5))
             )
             await asyncio.sleep(0.02)
             good.cancel()

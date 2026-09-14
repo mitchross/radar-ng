@@ -18,12 +18,14 @@ from temporal.workflows.register_push_token import (
 )
 from temporal.workflows.tile_cleanup import TileCleanupWorkflow
 from temporal.workflows.watch_storm import WatchStormWorkflow
+from temporal.workflows.deployment_smoke import RadarDeploymentSmokeWorkflow
 
 
 # Keys are the externally stable Temporal workflow type names. RegisterPushToken
 # and DeletePushToken are no longer started by the API (tokens must not enter new
 # histories), but remain registered so retained executions can still replay.
 WORKFLOW_REGISTRY: dict[str, type] = {
+    "RadarDeploymentSmokeWorkflow": RadarDeploymentSmokeWorkflow,
     "IngestMrmsWorkflow": IngestMrmsWorkflow,
     "IngestHrrrWorkflow": IngestHrrrWorkflow,
     "IngestAirQualityWorkflow": IngestAirQualityWorkflow,

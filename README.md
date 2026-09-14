@@ -88,6 +88,7 @@ component breakdown, the per-frame pipeline, and the caching story are in
 | [GETTING_STARTED.md](GETTING_STARTED.md) | Run the stack (Compose or k8s) + the app |
 | [docs/configuration.md](docs/configuration.md) | Every env var + the basemap-date gotcha |
 | [docs/self-hosting.md](docs/self-hosting.md) | Docker Compose golden path |
+| [docs/temporal-safe-deployments.md](docs/temporal-safe-deployments.md) | Worker handoff, functional gates, and retained version safety |
 | [docs/kubernetes.md](docs/kubernetes.md) | Bring-your-own-cluster (Temporal, storage, probes) |
 | [docs/tuning.md](docs/tuning.md) | Faster / cheaper / fresher, knob by knob |
 | [docs/debug-harness.md](docs/debug-harness.md) | Inspect a live stack: freshness, latency, Temporal, disk |

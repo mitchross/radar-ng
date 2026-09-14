@@ -64,6 +64,7 @@ from temporal.schedules.seed import SCHEDULES, ScheduleSeedError, safe_error_lab
 from temporal.schedules.seed import seed_with_retry as seed_schedules
 from temporal.schedules.watchdog import watch_schedules
 from temporal.shared.health import health_file_loop
+from temporal.shared.deployment_smoke import radar_deployment_smoke
 from temporal.shared.otel import init_tracer
 from temporal.shared.push import send_push_notification
 from temporal.task_queues import (
@@ -88,6 +89,7 @@ from temporal.workflows import (
     RegisterPushTokenWorkflow,
     TileCleanupWorkflow,
     WatchStormWorkflow,
+    RadarDeploymentSmokeWorkflow,
 )
 
 DEFAULT_MAX_CONCURRENT_ACTIVITIES = 4
@@ -96,6 +98,7 @@ WORKER_START_POLL_SECONDS = 0.01
 
 
 ALL_ACTIVITIES = [
+    radar_deployment_smoke,
     # ingest-mrms
     mrms_list_unprocessed_keys,
     mrms_process_frame,
@@ -203,6 +206,14 @@ ROLE_CONFIG: dict[str, tuple[str, Sequence[type], Sequence[object]]] = {
     "legacy": (LEGACY_TASK_QUEUE, ALL_WORKFLOWS, ALL_ACTIVITIES),
     "all": (LEGACY_TASK_QUEUE, ALL_WORKFLOWS, ALL_ACTIVITIES),
 }
+
+for _role, (_queue, _workflows, _activities) in list(ROLE_CONFIG.items()):
+    if _role not in {"legacy", "all"}:
+        ROLE_CONFIG[_role] = (
+            _queue,
+            [*_workflows, RadarDeploymentSmokeWorkflow],
+            [*_activities, radar_deployment_smoke],
+        )
 
 
 def _deployment_config_from_env() -> WorkerDeploymentConfig | None:

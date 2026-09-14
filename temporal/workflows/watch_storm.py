@@ -14,12 +14,13 @@ Workflow id convention: `watch:{user_id}:{storm_cell_id}` — unique, stable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError
+from temporalio.exceptions import ApplicationError
 
 with workflow.unsafe.imports_passed_through():
     from backend.api.api.storm_watch_activities import (
@@ -46,6 +47,7 @@ class WatchStormInput:
     storm_cell_id: str
     lat: float
     lng: float
+    handoff: WatchStormHandoff | None = None
 
 
 @dataclass
@@ -60,6 +62,13 @@ class WatchStormState:
     last_notified_at: float | None = None
     poll_count: int = 0
     push_count: int = 0
+
+
+@dataclass
+class WatchStormHandoff:
+    schema_version: int = 1
+    state: WatchStormState = field(default_factory=WatchStormState)
+    pending_alert_ids: list[str] = field(default_factory=list)
 
 
 _DEFAULT_RETRY = RetryPolicy(
@@ -78,18 +87,38 @@ _PUSH_RETRY = RetryPolicy(
 
 @workflow.defn(name="WatchStormWorkflow")
 class WatchStormWorkflow:
-    def __init__(self) -> None:
-        self._state = WatchStormState()
+    @workflow.init
+    def __init__(self, inp: WatchStormInput) -> None:
+        if inp.handoff is not None and inp.handoff.schema_version != 1:
+            raise ApplicationError("Unsupported storm-watch handoff schema", non_retryable=True)
+        self._state = replace(inp.handoff.state) if inp.handoff else WatchStormState()
         self._unpinned = False
-        self._pending_alert_id: str | None = None
+        self._continue_requested = False
+        self._pending_alert_ids = list(inp.handoff.pending_alert_ids) if inp.handoff else []
 
     @workflow.signal(name="unpinSignal")
     def unpin(self) -> None:
         self._unpinned = True
 
+    @workflow.signal(name="wakeUpSignal")
+    def wake_up(self) -> None:
+        self._observe_continue_request()
+
     @workflow.signal(name="alertMatchSignal")
     def alert_match(self, alert_id: str) -> None:
-        self._pending_alert_id = alert_id
+        # Keep historical last-alert behavior during replay; new handlers queue every signal.
+        if not workflow.patched("watch-storm-alert-queue-v1"):
+            self._pending_alert_ids.clear()
+        self._pending_alert_ids.append(alert_id)
+        self._observe_continue_request()
+
+    def _observe_continue_request(self) -> None:
+        # The server's notification can clear on the next task; remember it until the safe boundary.
+        info = workflow.info()
+        self._continue_requested = self._continue_requested or (
+            info.is_continue_as_new_suggested()
+            or info.is_target_worker_deployment_version_changed()
+        )
 
     @workflow.query(name="getCurrentState")
     def get_state(self) -> WatchStormState:
@@ -98,6 +127,7 @@ class WatchStormWorkflow:
     @workflow.run
     async def run(self, inp: WatchStormInput) -> WatchStormState:
         deadline = workflow.now() + MAX_RUN_DURATION
+        polls_this_run = 0
         self._state.user_id = inp.user_id
         self._state.storm_cell_id = inp.storm_cell_id
         self._state.lat = inp.lat
@@ -108,16 +138,35 @@ class WatchStormWorkflow:
         )
 
         while not self._unpinned:
+            self._observe_continue_request()
             # Continue-as-new bound — keep history under 50K events.
-            if self._state.poll_count >= MAX_FRAMES_PER_RUN or workflow.now() >= deadline:
+            if (
+                polls_this_run >= MAX_FRAMES_PER_RUN
+                or workflow.now() >= deadline
+                or (
+                    self._continue_requested
+                    and workflow.patched("watch-storm-version-boundary-v1")
+                )
+            ):
                 workflow.logger.info("continue-as-new (polls=%d)", self._state.poll_count)
+                if workflow.patched("watch-storm-handoff-v1"):
+                    await workflow.wait_condition(workflow.all_handlers_finished)
+                    if self._unpinned:
+                        break
+                    workflow.continue_as_new(
+                        replace(inp, handoff=WatchStormHandoff(
+                            state=replace(self._state),
+                            pending_alert_ids=list(self._pending_alert_ids),
+                        )),
+                        initial_versioning_behavior=workflow.ContinueAsNewVersioningBehavior.AUTO_UPGRADE,
+                    )
                 workflow.continue_as_new(inp)
 
             # Drain any pending alert match signal first (high-priority).
-            if self._pending_alert_id is not None:
-                alert_id = self._pending_alert_id
-                self._pending_alert_id = None
+            if self._pending_alert_ids:
+                alert_id = self._pending_alert_ids.pop(0)
                 await self._push_alert(inp, alert_id)
+                self._observe_continue_request()
 
             cmp_in = CompareFramesInput(
                 lat=inp.lat,
@@ -130,8 +179,10 @@ class WatchStormWorkflow:
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=_DEFAULT_RETRY,
             )
+            self._observe_continue_request()
 
             self._state.poll_count += 1
+            polls_this_run += 1
 
             if cmp_out.sampled:
                 self._state.last_frame_ts = cmp_out.curr_timestamp
@@ -148,13 +199,15 @@ class WatchStormWorkflow:
                     start_to_close_timeout=timedelta(seconds=10),
                     retry_policy=_DEFAULT_RETRY,
                 )
+                self._observe_continue_request()
 
                 if det.kind:
                     await self._push_change(inp, det)
+                    self._observe_continue_request()
 
             try:
                 await workflow.wait_condition(
-                    lambda: self._unpinned or self._pending_alert_id is not None,
+                    lambda: self._unpinned or bool(self._pending_alert_ids),
                     timeout=timedelta(seconds=POLL_S),
                 )
             except TimeoutError:
