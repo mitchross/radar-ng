@@ -41,11 +41,21 @@ def check_release() -> dict:
         if not pygrib.grib_api_version:
             raise ValueError("ecCodes is unavailable")
 
-    for variable, default in (
+    writable_volumes = (
         ("TILE_DIR", "/data/tiles"),
         ("GRID_DIR", "/data/grids"),
         ("STATE_DIR", "/data/state"),
-    ):
+    )
+    if role == "alerts":
+        # Alerts have no tiles mount and consume grids through a read-only mount.
+        grid_dir = Path(os.environ.get("GRID_DIR", "/data/grids"))
+        with os.scandir(grid_dir) as entries:
+            next(entries, None)
+        if not os.access(grid_dir, os.R_OK | os.X_OK):
+            raise PermissionError(f"Grid directory is not readable/searchable: {grid_dir}")
+        writable_volumes = (("STATE_DIR", "/data/state"),)
+
+    for variable, default in writable_volumes:
         # Never create the mount root: a missing volume must fail the gate.
         with tempfile.TemporaryDirectory(prefix=".deployment-smoke-", dir=os.environ.get(variable, default)) as scratch:
             pending, published = Path(scratch) / "pending", Path(scratch) / "published"
