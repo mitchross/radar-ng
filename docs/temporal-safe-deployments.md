@@ -46,8 +46,11 @@ state cannot be reconstructed by this fix.
 Every role registers `RadarDeploymentSmokeWorkflow`. The controller runs it on
 the candidate version before promotion. Its activity verifies the actual PNG
 palette transformation, configured palette files, role-specific native modules,
-and write/fsync/rename/read on each mounted tiles/grids/state volume. Scratch
-files are isolated and removed; no tiles are published and no push is sent.
+and write/fsync/rename/read on the writable volumes required by that role.
+Alerts requires readable/searchable grids and writable state; it never writes
+grids or requires a tiles mount. Ingestion/rendering roles check all three
+tiles/grids/state volumes. Scratch files are isolated and removed; no tiles are
+published and no push is sent.
 It has a 90-second activity schedule-to-close bound and at most two attempts.
 
 The gate does not validate every external weather feed or the scientific
