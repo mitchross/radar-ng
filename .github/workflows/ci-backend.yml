@@ -58,6 +58,12 @@ jobs:
           backend/tile_cleanup
           temporal'
 
+      - name: Check release storage permissions as the production worker user
+        run: >-
+          docker run --rm --user 1000:1000 --cap-drop ALL
+          --env MPLCONFIGDIR=/tmp/matplotlib --entrypoint python
+          radar-ng-temporal-worker:ci -m unittest -q temporal.shared.test_deployment_smoke
+
   api:
     runs-on: ubuntu-latest
     timeout-minutes: 15
