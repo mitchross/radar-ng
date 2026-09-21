@@ -1,7 +1,10 @@
 # Pinned Caddy — copying the binary from the official image makes builds
 # reproducible (the caddyserver.com download API always serves latest).
 # Renovate picks up this tag like any other image reference.
-FROM caddy:2.10.2 AS caddy
+# 2.10.2 bundles smallstep/certificates v0.28.4 (CVE-2025-44005, CVE-2026-30836,
+# both score 10) and grpc v1.73.0 (CVE-2026-33186); 2.11.4 carries
+# smallstep v0.30.2 and grpc v1.81.0.
+FROM caddy:2.11.4 AS caddy
 
 FROM python:3.12-slim
 
