@@ -478,3 +478,59 @@ class SeedIsolationTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# Variables each open-meteo domain actually stores (s3://openmeteo/data/<model>/,
+# surface fields only). `sync` silently skips anything else, which is how the
+# forecast ended up with null weather codes, wind and feels-like.
+STORED_VARIABLES = {
+    "ncep_gfs013": {
+        "cloud_cover", "frozen_precipitation_percent", "precipitation",
+        "relative_humidity_2m", "shortwave_radiation", "showers",
+        "snowfall_water_equivalent", "temperature_2m", "uv_index",
+        "wind_u_component_10m", "wind_v_component_10m",
+    },
+    "ncep_gfs025": {
+        "cape", "categorical_freezing_rain", "lifted_index", "pressure_msl",
+        "visibility", "wind_gusts_10m",
+    },
+    "ncep_hrrr_conus": {
+        "cape", "categorical_freezing_rain", "cloud_cover", "frozen_precipitation_percent",
+        "lifted_index", "precipitation", "pressure_msl", "relative_humidity_2m",
+        "shortwave_radiation", "snowfall_water_equivalent", "temperature_2m",
+        "visibility", "wind_gusts_10m", "wind_u_component_10m", "wind_v_component_10m",
+    },
+}
+DERIVED_AT_QUERY_TIME = {
+    "weather_code", "wind_speed_10m", "wind_direction_10m", "apparent_temperature",
+    "dew_point_2m", "surface_pressure", "precipitation_probability",
+}
+
+
+class OpenMeteoSyncVariablesTest(unittest.TestCase):
+    def _sync_inputs(self):
+        return [
+            s.workflow_input[0]
+            for s in seed.SCHEDULES
+            if s.workflow_name == "OpenMeteoSyncWorkflow"
+        ]
+
+    def test_syncs_only_variables_the_domain_stores(self):
+        inputs = self._sync_inputs()
+        self.assertEqual(
+            {i["model"] for i in inputs}, set(STORED_VARIABLES), "every synced domain is covered"
+        )
+        for i in inputs:
+            requested = set(i["variables"].split(","))
+            self.assertFalse(requested & DERIVED_AT_QUERY_TIME, i["model"])
+            self.assertLessEqual(requested, STORED_VARIABLES[i["model"]], i["model"])
+
+    def test_weather_code_inputs_are_synced_for_gfs_and_hrrr(self):
+        synced = {i["model"]: set(i["variables"].split(",")) for i in self._sync_inputs()}
+        gfs = synced["ncep_gfs013"] | synced["ncep_gfs025"]
+        for needed in ("cloud_cover", "precipitation", "snowfall_water_equivalent", "cape", "visibility"):
+            self.assertIn(needed, gfs)
+            self.assertIn(needed, synced["ncep_hrrr_conus"])
+        for wind in ("wind_u_component_10m", "wind_v_component_10m"):
+            self.assertIn(wind, synced["ncep_gfs013"])
+            self.assertIn(wind, synced["ncep_hrrr_conus"])
