@@ -5,6 +5,10 @@ Research for task 1.6 (finding F-R7) of `docs/tasks/2026-09-23-mobile-audit-and-
 their own servers, with no API keys. Satellite moves to self-hosted US/Canada/Mexico public-domain
 imagery (plan task S.1); the keyed ArcGIS path (option B) is ruled out.
 
+**Done:** satellite now uses public-domain USGS National Map orthoimagery. The tile server proxies
+it at `/basemap/imagery` for the bundled style, and the home cluster caches it at
+`maps.vanillax.me/imagery` for release builds. Nothing below is still in use.
+
 ## 1. Esri World Imagery (the satellite basemap)
 
 The bundled `satellite` style is served by the tile server at

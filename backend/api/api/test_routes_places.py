@@ -178,11 +178,7 @@ def test_bundled_styles_reference_no_external_hosts():
     from pathlib import Path
 
     styles = Path(__file__).resolve().parents[2] / "basemap" / "styles"
-    # satellite.json still points at Esri until self-hosted imagery lands (plan task S.1).
-    pending = {"satellite.json"}
     for path in styles.glob("*.json"):
-        if path.name in pending:
-            continue
         style = json.loads(path.read_text())
         urls = [style.get("glyphs"), style.get("sprite")]
         for src in style.get("sources", {}).values():

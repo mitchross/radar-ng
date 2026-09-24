@@ -52,7 +52,7 @@ device, where it never leaves the app except through the two paths above.
 | " | `GET /api/alerts?lat&lon` | 3 dp | active NWS alerts; the **server** asks `api.weather.gov` with its own contact User-Agent |
 | " | `GET /api/geocode?q=` | none — the typed city name only | city search; the server asks the self-hosted Photon |
 | " | `GET /api/reverse-geocode?lat&lon` | 3 dp | place label for the device position; the server asks the self-hosted Photon |
-| `services.arcgisonline.com` (satellite basemap only) | `…/World_Imagery/MapServer/tile/{z}/{y}/{x}` | none — z/y/x reveals the viewed area | satellite imagery |
+| " | `GET /basemap/imagery/{z}/{x}/{y}.jpg`, or the self-hosted VersaTiles host's `/imagery/...` in release builds | none — z/x/y reveals the viewed area | satellite imagery; the **server** fetches public-domain USGS tiles |
 | Apple, via `MKDirections` (**CarPlay build only**) | route request with `MKMapItem(location:)` | **full precision** | turn-by-turn routing |
 | Configured OTLP endpoint (opt-in, off by default) | traces and logs | none — location-shaped attributes are stripped by `src/lib/telemetryPrivacy.ts` | diagnostics |
 
@@ -78,8 +78,8 @@ runtime. Three calls moved behind the tile server:
   NWS's own point matching via `GET /api/alerts`, with a 60 s cache. An upstream failure is a 502,
   never an empty list.
 
-Satellite imagery (Esri) is the remaining third-party request and is being replaced by self-hosted
-public-domain imagery (plan task S.1).
+Satellite imagery no longer comes from Esri: the server fetches public-domain USGS orthoimagery and
+serves it (plan task S.1). The app contacts no third party at runtime.
 
 ## 4. Retention
 
@@ -114,7 +114,7 @@ inert unless `EXPO_PUBLIC_TELEMETRY_ENABLED=1` and `EXPO_PUBLIC_OTLP_BASE` are b
 time.
 
 Upstream services the *server* calls (NWS, the self-hosted Photon) receive the server's address, not
-the device's. Esri satellite tiles are still fetched by the device until task S.1 lands.
+the device's.
 
 ## 5. Draft App Store Connect answers
 
@@ -127,9 +127,8 @@ Privacy labels for the submitted build (default server = first-party):
 - **Identifiers.** None collected by the app. The server sees source IPs in access logs (§4.1); do
   not declare an identifier unless the logs begin feeding an account or an ad system.
 - **Diagnostics.** Only if a build ships with `EXPO_PUBLIC_TELEMETRY_ENABLED=1`. Otherwise none.
-- **Tracking.** No. Nothing is used to track across apps or websites — note that the Esri satellite
-  tiles are a third-party request made directly from the device, so confirm D7 before claiming that
-  no third-party SDK is contacted.
+- **Tracking.** No. Nothing is used to track across apps or websites, and the app contacts no third
+  party at runtime.
 - **Privacy policy URL.** Required for the location rows and **not yet present** in `app.json`.
 
 ## 6. Draft Play Console Data safety answers
@@ -153,7 +152,7 @@ will need once it exists:
 
 1. NWS `User-Agent` contact address (blocked on the user supplying one).
 2. Privacy policy URL for both stores (blocked on the user; no such page exists yet).
-3. Esri satellite terms — D7, task 1.6.
+3. ~~Esri satellite terms~~ — resolved: satellite is self-hosted USGS imagery (D7, task S.1).
 4. `ACCESS_FINE_LOCATION` necessity on Android.
 5. Retention at the S3 backend for Loki (§4.1, UNVERIFIED).
 6. **The privacy manifest exists but declares no collected data.** `frontend/ios/radarng/PrivacyInfo.xcprivacy`

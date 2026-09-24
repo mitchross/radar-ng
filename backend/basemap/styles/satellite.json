@@ -5,20 +5,26 @@
     "imagery": {
       "type": "raster",
       "tiles": [
-        "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+        "/basemap/imagery/{z}/{x}/{y}.jpg"
       ],
       "tileSize": 256,
-      "attribution": "Powered by Esri — Esri, Vantor, Earthstar Geographics, and the GIS User Community",
-      "maxzoom": 19
+      "attribution": "USDA, USGS The National Map: Orthoimagery",
+      "minzoom": 0,
+      "maxzoom": 16
     }
   },
   "layers": [
     {
+      "id": "background",
+      "type": "background",
+      "paint": {
+        "background-color": "#1b2226"
+      }
+    },
+    {
       "id": "imagery",
       "type": "raster",
-      "source": "imagery",
-      "minzoom": 0,
-      "maxzoom": 19
+      "source": "imagery"
     }
   ]
 }

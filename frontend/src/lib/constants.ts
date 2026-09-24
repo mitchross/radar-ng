@@ -6,7 +6,7 @@ export type MapStyleId = "light" | "dark" | "satellite";
 // documents are served by your own tile-server image at /srv/basemap/styles/;
 // resolveMapStyleUrl joins them to the active serverUrl. Forks and upstream
 // users need set nothing to get a working map. The satellite document
-// references Esri's public no-key imagery tiles and carries attribution.
+// uses public-domain USGS imagery that the tile server itself fetches and serves.
 export const MAP_STYLES_SELFHOSTED: Record<MapStyleId, string> = {
   light: "/basemap/styles/positron.json",
   dark: "/basemap/styles/dark-matter.json",
@@ -23,7 +23,7 @@ export const MAP_STYLES_SELFHOSTED: Record<MapStyleId, string> = {
 //   EXPO_PUBLIC_BASEMAP_SATELLITE_STYLE_URL=...            # optional
 //
 // Any style left unset falls back to its bundled counterpart, so you can move
-// just light+dark to an external provider and keep the bundled Esri satellite.
+// just light+dark to an external provider and keep the bundled satellite.
 // Unset ⇒ empty ⇒ bundled, so this is invisible to anyone who doesn't opt in.
 export const MAP_STYLES_EXTERNAL: Partial<Record<MapStyleId, string | undefined>> = {
   light: process.env.EXPO_PUBLIC_BASEMAP_LIGHT_STYLE_URL,
