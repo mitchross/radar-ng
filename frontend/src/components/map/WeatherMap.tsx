@@ -6,11 +6,11 @@ import {
   type PressEvent,
   type ViewStateChangeEvent,
 } from "@maplibre/maplibre-react-native";
-import { Children, isValidElement, useEffect, useMemo, useRef, useState } from "react";
+import { Children, isValidElement, useEffect, useMemo, useRef } from "react";
 import { Pressable, StyleSheet, Text, View, type NativeSyntheticEvent } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { DEFAULTS, isExternalMapStyle, resolveMapStyleUrl } from "../../lib/constants";
-import { trace } from "../../lib/telemetry";
+import { DEFAULTS } from "../../lib/constants";
+import { useBasemapStyle } from "../../hooks/useBasemapStyle";
 
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 15;
@@ -19,90 +19,6 @@ interface WeatherMapProps {
   children?: React.ReactNode;
   onLongPress?: (lat: number, lon: number) => void;
   onCameraChanged?: (camera: { lon: number; lat: number; zoom: number }) => void;
-}
-
-/**
- * Fetch the Protomaps style JSON from the tile-server and rewrite its
- * source `tiles` / `url` entries to absolute URLs. MapLibre Native doesn't
- * always resolve root-relative paths against the fetched style URL, so
- * serving the patched JSON inline is the reliable path.
- */
-export function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark" | "satellite") {
-  const styleUrl = resolveMapStyleUrl(serverUrl, mapStyle);
-  const external = isExternalMapStyle(mapStyle);
-  // External styles are complete absolute documents, so they can be handed to
-  // MapLibre immediately (avoids a black-map flash on the first frame).
-  const [patched, setPatched] = useState<string | null>(external ? styleUrl : null);
-
-  useEffect(() => {
-    // External basemap (e.g. self-hosted VersaTiles): the style JSON is a
-    // complete absolute MapLibre document — its sources/glyphs/sprite are
-    // already absolute, so there is nothing to rewrite. Hand MapLibre the URL
-    // directly, exactly how any hosted style is loaded. The fetch+patch dance
-    // below exists ONLY for the bundled Protomaps style's relative tile paths.
-    if (external) {
-      setPatched(styleUrl);
-      return;
-    }
-    let cancelled = false;
-
-    async function attempt(): Promise<string> {
-      const r = await fetch(styleUrl);
-      const json = (await r.json()) as {
-        sources?: Record<string, { tiles?: string[]; url?: string }>;
-      };
-      const sources = json.sources ?? {};
-      for (const src of Object.values(sources)) {
-        if (Array.isArray(src.tiles)) {
-          src.tiles = src.tiles.map((t) => (t.startsWith("http") ? t : `${serverUrl}${t}`));
-        }
-        if (typeof src.url === "string" && !src.url.startsWith("http")) {
-          src.url = `${serverUrl}${src.url}`;
-        }
-      }
-      return JSON.stringify(json);
-    }
-
-    trace(
-      "map.fetchStyle",
-      async (span) => {
-        // Cold-start race: on Android, the JS fetch can fire before the
-        // emulator's network stack is fully up, throwing a DNS error
-        // immediately. Retry with backoff so the basemap doesn't fall
-        // back to MapLibre's native loader (which does NOT rewrite the
-        // relative `/basemap/tiles/{z}/{x}/{y}.mvt` paths in the
-        // Protomaps style → solid black map).
-        const delays = [400, 800, 1600];
-        let lastErr: unknown;
-        for (let i = 0; i < delays.length + 1; i++) {
-          if (cancelled) return;
-          try {
-            const result = await attempt();
-            span.setAttribute("map.fetchStyle.attempts", i + 1);
-            if (!cancelled) setPatched(result);
-            return;
-          } catch (err) {
-            lastErr = err;
-            if (i < delays.length) {
-              await new Promise((res) => setTimeout(res, delays[i]));
-            }
-          }
-        }
-        throw lastErr;
-      },
-      { "map.style": mapStyle },
-    ).catch(() => {
-      // All retries failed → hand MapLibre the raw URL. It still won't
-      // rewrite relative tile paths, but at least the user sees the
-      // attribution + zoom controls instead of nothing.
-      if (!cancelled) setPatched(styleUrl);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [serverUrl, mapStyle, styleUrl, external]);
-
-  return patched;
 }
 
 export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMapProps) {
@@ -116,7 +32,7 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
   // Mirror current camera zoom so the +/- buttons can clamp without round-tripping.
   const zoomRef = useRef<number>(initialZoom);
 
-  const patchedStyle = usePatchedMapStyle(serverUrl, mapStyle);
+  const { style: patchedStyle } = useBasemapStyle(serverUrl, mapStyle);
 
   const centerCoord = useMemo<[number, number]>(
     () => [

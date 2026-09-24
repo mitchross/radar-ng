@@ -158,3 +158,34 @@ def test_out_of_range_point_is_rejected(upstream):
     client, calls, _ = upstream
     assert client.get("/api/alerts", params={"lat": 91, "lon": 0}).status_code == 422
     assert calls == []
+
+
+def test_basemap_style_serves_absolute_self_hosted_glyphs(monkeypatch, tmp_path):
+    (tmp_path / "positron.json").write_text(
+        '{"version": 8, "glyphs": "/basemap/fonts/{fontstack}/{range}.pbf",'
+        ' "sources": {"b": {"type": "vector", "tiles": ["/basemap/tiles/{z}/{x}/{y}.mvt"]}}, "layers": []}'
+    )
+    monkeypatch.setattr(server, "STYLE_DIR", str(tmp_path))
+    with TestClient(server.app) as client:
+        style = client.get("/api/basemap/style/positron", headers={"host": "radar.example"}).json()
+
+    assert style["glyphs"] == "http://radar.example/basemap/fonts/{fontstack}/{range}.pbf"
+    assert style["sources"]["b"]["tiles"] == ["http://radar.example/basemap/tiles/{z}/{x}/{y}.mvt"]
+
+
+def test_bundled_styles_reference_no_external_hosts():
+    import json
+    from pathlib import Path
+
+    styles = Path(__file__).resolve().parents[2] / "basemap" / "styles"
+    # satellite.json still points at Esri until self-hosted imagery lands (plan task S.1).
+    pending = {"satellite.json"}
+    for path in styles.glob("*.json"):
+        if path.name in pending:
+            continue
+        style = json.loads(path.read_text())
+        urls = [style.get("glyphs"), style.get("sprite")]
+        for src in style.get("sources", {}).values():
+            urls += src.get("tiles", []) + [src.get("url")]
+        external = [u for u in urls if isinstance(u, str) and u.startswith("http")]
+        assert external == [], f"{path.name} fetches from {external}"

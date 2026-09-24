@@ -6,6 +6,8 @@
  */
 import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useTropical } from "../../hooks/useTropical";
+import { useBasemapStyle } from "../../hooks/useBasemapStyle";
+import { useWeatherStore } from "../../stores/useWeatherStore";
 import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 export interface TropicalStormDetails {
@@ -23,6 +25,10 @@ export function TropicalOverlay({
   onSelect?: (storm: TropicalStormDetails) => void;
 }) {
   const { data } = useTropical();
+  const serverUrl = useWeatherStore((s) => s.serverUrl);
+  const mapStyle = useWeatherStore((s) => s.mapStyle);
+  // Label glyphs must come from the active basemap's own glyph server.
+  const { labelFont } = useBasemapStyle(serverUrl, mapStyle);
   // Always mounted (empty collection off-season) — see lib/emptyGeoJSON.
   const geojson = data && data.features.length > 0
     ? (data as GeoJSON.FeatureCollection)
@@ -92,7 +98,7 @@ export function TropicalOverlay({
             ["coalesce", ["get", "classification"], "Storm"],
           ] as never,
           "text-size": 12,
-          "text-font": ["Noto Sans Regular"],
+          "text-font": labelFont,
           "text-offset": [0, 1.6],
           "text-anchor": "top",
           "text-allow-overlap": true,

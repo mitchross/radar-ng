@@ -23,6 +23,15 @@
         header Access-Control-Allow-Origin "*"
     }
 
+    # Glyphs for the bundled styles, baked into the image (see Dockerfile).
+    handle /basemap/fonts/* {
+        uri strip_prefix /basemap
+        root * /srv/basemap
+        file_server
+        header Cache-Control "public, max-age=604800"
+        header Access-Control-Allow-Origin "*"
+    }
+
     # Protomaps PMTiles tile server. go-pmtiles exposes tiles at
     # /{archive}/{z}/{x}/{y}.mvt — our archive is basemap.pmtiles so
     # archive = "basemap". Client requests /basemap/tiles/{z}/{x}/{y}.mvt,

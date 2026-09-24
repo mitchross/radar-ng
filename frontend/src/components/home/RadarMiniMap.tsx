@@ -20,7 +20,7 @@ import {
 } from "../../lib/radarStatus";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
 import { pickNowFrameIndex, useManifestQuery } from "../../hooks/useManifest";
-import { usePatchedMapStyle } from "../map/WeatherMap";
+import { useBasemapStyle } from "../../hooks/useBasemapStyle";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { LayerType, RadarFrame } from "../../types/weather";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
@@ -40,7 +40,7 @@ export function RadarMiniMap() {
   const activePalette = useWeatherStore((s) => s.activePalette);
   const lat = useWeatherStore((s) => s.latitude) ?? DEFAULTS.LATITUDE;
   const lon = useWeatherStore((s) => s.longitude) ?? DEFAULTS.LONGITUDE;
-  const patchedStyle = usePatchedMapStyle(serverUrl, theme.dark ? "dark" : "light");
+  const { style: patchedStyle } = useBasemapStyle(serverUrl, theme.dark ? "dark" : "light");
 
   const { data: manifest, dataUpdatedAt, isError, isPaused, isPending } = useManifestQuery();
 

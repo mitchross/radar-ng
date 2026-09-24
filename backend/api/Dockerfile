@@ -6,6 +6,13 @@
 # smallstep v0.30.2 and grpc v1.81.0.
 FROM caddy:2.11.4 AS caddy
 
+# Glyphs for the bundled styles, fetched at build time from a pinned commit so
+# no client ever loads fonts from a third party.
+FROM alpine:3.22 AS glyphs
+RUN apk add --no-cache curl
+COPY basemap/fetch-glyphs.sh /fetch-glyphs.sh
+RUN /fetch-glyphs.sh 028c18f713baecad011301ff7a69acc39bcc2ae7 /glyphs "Noto Sans Regular"
+
 FROM python:3.12-slim
 
 # The official image sets cap_net_bind_service=ep on the binary and COPY
@@ -30,6 +37,7 @@ RUN touch /app/backend/__init__.py /app/backend/shared/__init__.py /app/backend/
 
 COPY api/Caddyfile /etc/caddy/Caddyfile
 COPY basemap/styles/ /srv/basemap/styles/
+COPY --from=glyphs /glyphs/ /srv/basemap/fonts/
 
 COPY api/start.sh /start.sh
 RUN chmod +x /start.sh

@@ -862,6 +862,11 @@ def get_basemap_style(name: str, request: Request) -> JSONResponse:
             (origin + t) if isinstance(t, str) and t.startswith("/") else t
             for t in tiles
         ]
+    # Glyphs and sprites are served by this same host (see Caddyfile /basemap/fonts).
+    for key in ("glyphs", "sprite"):
+        value = style.get(key)
+        if isinstance(value, str) and value.startswith("/"):
+            style[key] = origin + value
 
     return JSONResponse(style)
 
