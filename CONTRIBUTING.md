@@ -10,7 +10,7 @@ See **[GETTING_STARTED.md](GETTING_STARTED.md)** — it covers running the stack
 (Docker Compose or Kubernetes) and the mobile app.
 
 - **Backend / pipeline:** Python 3.12. Code lives in `backend/` (activities) and `temporal/` (workflows + workers).
-- **Frontend:** Expo (SDK 57) + TypeScript, package manager is **[Bun](https://bun.sh)**.
+- **Frontend:** Expo (SDK 58 preview) + TypeScript, package manager is **[Bun](https://bun.sh)**.
   ```bash
   cd frontend
   bun install
