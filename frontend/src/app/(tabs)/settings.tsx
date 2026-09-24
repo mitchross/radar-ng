@@ -34,6 +34,7 @@ import { formatPlaceLabel } from "../../lib/locationLabel";
 import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { SELF_HOSTED } from "../../lib/constants";
 import { PLAYBACK_FPS_RANGE } from "../../lib/persistedPrefs";
+import { isCleartextToPublicHost } from "../../lib/networkSafety";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
 import { PaletteSelector } from "../../components/palette/PaletteSelector";
@@ -282,6 +283,11 @@ export default function SettingsScreen() {
                     <Text style={styles.saveBtnText}>Save</Text>
                   </Pressable>
                 </View>
+                {isCleartextToPublicHost(urlDraft) ? (
+                  <Text style={styles.urlWarning}>
+                    This address uses http over the internet, so requests (including your location) travel unencrypted. Use https, or http only on your home network.
+                  </Text>
+                ) : null}
               </View>
             </>
           )}
@@ -1120,6 +1126,13 @@ function createStyles(theme: WeatherClearTheme) {
   sep: { height: 1, backgroundColor: theme.colors.divider, marginLeft: 16 },
 
   urlRow: { flexDirection: "row", alignItems: "center", padding: 10, gap: 8 },
+  urlWarning: {
+    color: cumulus.alert,
+    fontSize: 12,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    fontFamily: cumulusFonts.ui,
+  },
   locationSearch: { paddingHorizontal: 12, paddingVertical: 12 },
   searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   searchInput: {

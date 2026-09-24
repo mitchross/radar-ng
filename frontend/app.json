@@ -24,7 +24,8 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#081A24",
-        "foregroundImage": "./assets/images/android-icon-foreground.png"
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -63,15 +64,13 @@
           "ios": {
             "deploymentTarget": "26.0",
             "enableSceneSupport": true
-          },
-          "android": {
-            "usesCleartextTraffic": true
           }
         }
       ],
       "./plugins/withXcode27PodDeploymentFloor",
       "./plugins/withScriptSandboxOff",
       "./plugins/withAndroidAppLabel",
+      "./plugins/withAndroidNetworkSecurity",
       "@bacons/apple-targets",
       [
         "expo-font",
