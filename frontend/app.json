@@ -71,6 +71,7 @@
       "./plugins/withScriptSandboxOff",
       "./plugins/withAndroidAppLabel",
       "./plugins/withAndroidNetworkSecurity",
+      "./plugins/withAndroidReleaseSigning",
       "@bacons/apple-targets",
       [
         "expo-font",

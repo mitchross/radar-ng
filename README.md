@@ -49,7 +49,7 @@ bun run ios:ipa
 The output lands at:
 
 ```text
-frontend/build/ios-standalone/export-debugging/radarng.ipa
+artifacts/ios/export-debugging/radarng.ipa
 ```
 
 This is a `Release` Xcode archive/export. It embeds the Hermes `main.jsbundle`
