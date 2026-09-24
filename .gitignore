@@ -61,6 +61,13 @@ expo-env.d.ts
 *.xcuserstate
 xcodebuild*.log
 
+# Xcode Organizer export folders: "<scheme> YYYY-MM-DD HH-MM-SS/"
+# They carry signed IPAs and provisioning profiles, so keep them out of git.
+*.ipa
+*.xcarchive
+**/DistributionSummary.plist
+**/ExportOptions.plist
+
 # Native signing material
 *.orig.*
 *.jks
