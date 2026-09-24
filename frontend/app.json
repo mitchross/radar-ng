@@ -17,6 +17,7 @@
       "appleTeamId": "FVU6RGL532",
       "icon": "./assets/expo.icon",
       "infoPlist": {
+        "CFBundleDisplayName": "Radar NG",
         "NSLocalNetworkUsageDescription": "Radar NG connects to a weather server on your local network when you configure one."
       }
     },
@@ -70,6 +71,7 @@
       ],
       "./plugins/withXcode27PodDeploymentFloor",
       "./plugins/withScriptSandboxOff",
+      "./plugins/withAndroidAppLabel",
       "@bacons/apple-targets",
       [
         "expo-font",
