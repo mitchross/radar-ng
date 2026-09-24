@@ -27,9 +27,23 @@ struct PresentationChecks {
         precondition(invalid.tileURL(z: 7, x: 33, y: 47) == nil)
         let invalidZoom = WatchRadarFrame(timestamp: frame.timestamp, path: frame.path, palette: "classic", maxZoom: 0)
         precondition(invalidZoom.tileURL(z: 1, x: 0, y: 0) == nil)
-        let alert = Alert(id: "1", event: "Test", headline: nil, severity: "Severe", areaDesc: "Test", expires: frame.timestamp)
+        let alert = Alert(id: "1", event: "Test", headline: nil, severity: "Severe", areaDesc: "Test",
+                          expires: frame.timestamp, effective: "2026-09-08T22:30:00Z", onset: nil, ends: nil)
         precondition(alert.isActive(at: observed.addingTimeInterval(-1)))
         precondition(!alert.isActive(at: observed))
+        // Not yet effective, and ended before it expires, are both inactive.
+        precondition(!alert.isActive(at: observed.addingTimeInterval(-3601 - 1)))
+        let ended = Alert(id: "2", event: "Test", headline: nil, severity: "Severe", areaDesc: "Test",
+                          expires: frame.timestamp, effective: "2026-09-08T22:30:00Z", onset: nil, ends: "2026-09-08T23:00:00Z")
+        precondition(!ended.isActive(at: observed.addingTimeInterval(-60)))
+        // One null in the forecast must not fail the whole decode.
+        let json = #"{"latitude":1,"longitude":2,"current":{"time":"2026-09-08T19:30","temperature_2m":null,"relative_humidity_2m":null},"hourly":{"time":["2026-09-08T19:00"],"temperature_2m":[null],"weather_code":[null],"precipitation_probability":[null]},"daily":{"time":["2026-09-08"],"temperature_2m_max":[null],"temperature_2m_min":[50],"weather_code":[1]}}"#
+        let decoded = try! JSONDecoder().decode(Forecast.self, from: Data(json.utf8))
+        precondition(WatchForecastPresentation.degrees(decoded.current.temperature_2m) == "—")
+        precondition(WatchForecastPresentation.degrees(decoded.daily.temperature_2m_min[0]) == "50°")
+        let gappy = Forecast.Minutely(time: ["2026-09-08T19:30", "2026-09-08T19:45", "2026-09-08T20:00", "2026-09-08T20:15"],
+                                      precipitation: [0, nil, 0, 0])
+        precondition(WatchForecastPresentation.nextHour(gappy, currentTime: "2026-09-08T19:30").isEmpty)
         // Basemap comes from the home cluster at the 512-px static zoom matching 256-pt radar tiles.
         precondition(WatchBasemap.url(latitude: 42.9634, longitude: -85.6681, zoom: 7, size: CGSize(width: 184, height: 224))?.absoluteString
             == "https://maps.vanillax.me/raster/styles/dark/static/-85.66810,42.96340,6/184x224@2x.png")

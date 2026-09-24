@@ -39,10 +39,15 @@ enum RadarSnapshot {
         }
     }
 
-    static func parseDate(_ value: String) -> Date? {
+    private static let fractionalISO: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+        return formatter
+    }()
+    private static let plainISO = ISO8601DateFormatter()
+
+    static func parseDate(_ value: String) -> Date? {
+        fractionalISO.date(from: value) ?? plainISO.date(from: value)
     }
 
     private static func fetch(_ url: URL) async throws -> Data {

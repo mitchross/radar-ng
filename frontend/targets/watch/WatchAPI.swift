@@ -108,10 +108,16 @@ struct WatchRadarFrame: Equatable {
     let palette: String
     let maxZoom: Int
 
-    static func date(_ value: String) -> Date? {
+    // Built once: these run inside filter/max over every manifest frame.
+    private static let fractionalISO: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+        return formatter
+    }()
+    private static let plainISO = ISO8601DateFormatter()
+
+    static func date(_ value: String) -> Date? {
+        fractionalISO.date(from: value) ?? plainISO.date(from: value)
     }
 
     func isFresh(at now: Date) -> Bool {
@@ -159,29 +165,31 @@ struct Forecast: Decodable {
     let daily: Daily
     let minutely_15: Minutely?
 
+    // Open-Meteo sends null for values a model doesn't provide. Every value is
+    // optional so one null can't fail the whole forecast; the UI shows "—".
     struct Current: Decodable {
         let time: String
-        let temperature_2m: Double
+        let temperature_2m: Double?
         let apparent_temperature: Double?
         let weather_code: Int?
         let wind_speed_10m: Double?
-        let relative_humidity_2m: Double
+        let relative_humidity_2m: Double?
     }
     struct Hourly: Decodable {
         let time: [String]
-        let temperature_2m: [Double]
+        let temperature_2m: [Double?]
         let weather_code: [Int?]
         let precipitation_probability: [Int?]
     }
     struct Daily: Decodable {
         let time: [String]
-        let temperature_2m_max: [Double]
-        let temperature_2m_min: [Double]
+        let temperature_2m_max: [Double?]
+        let temperature_2m_min: [Double?]
         let weather_code: [Int?]
     }
     struct Minutely: Decodable {
         let time: [String]
-        let precipitation: [Double]
+        let precipitation: [Double?]
     }
 }
 
@@ -198,7 +206,16 @@ struct Alert: Decodable, Identifiable {
     let severity: String
     let areaDesc: String
     let expires: String
+    let effective: String?
+    let onset: String?
+    let ends: String?
+
+    /// Same window as the phone (src/lib/alertLifecycle.ts): from `effective`
+    /// (or `onset`) until the earlier of `expires` and `ends`.
     func isActive(at now: Date) -> Bool {
-        WatchRadarFrame.date(expires).map { $0 > now } ?? false
+        guard let expiresAt = WatchRadarFrame.date(expires),
+              let startsAt = (effective ?? onset).flatMap(WatchRadarFrame.date) else { return false }
+        let endsAt = ends.flatMap(WatchRadarFrame.date).map { min($0, expiresAt) } ?? expiresAt
+        return now >= startsAt && now < endsAt
     }
 }

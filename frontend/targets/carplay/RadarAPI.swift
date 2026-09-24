@@ -2,6 +2,13 @@ import Foundation
 
 enum RadarAPI {
     static let serverURL = "https://radar-ng-api.vanillax.me"
+    // Built once: observedAt runs inside filter/max over every manifest frame.
+    fileprivate static let fractionalISO: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    fileprivate static let plainISO = ISO8601DateFormatter()
     struct Manifest: Decodable { let layers: [String: Layer] }
     struct Layer: Decodable { let frames: [Frame]?; let palettes: [String]? }
     struct Frame: Decodable, Equatable {
@@ -10,9 +17,7 @@ enum RadarAPI {
         let palettes: [String]?
         let max_zoom: Int?
         var observedAt: Date? {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            return formatter.date(from: timestamp) ?? ISO8601DateFormatter().date(from: timestamp)
+            RadarAPI.fractionalISO.date(from: timestamp) ?? RadarAPI.plainISO.date(from: timestamp)
         }
         var isValid: Bool {
             guard let date = observedAt, date.timeIntervalSinceNow <= 60 else { return false }
