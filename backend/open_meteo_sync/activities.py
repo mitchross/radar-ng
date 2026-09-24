@@ -48,6 +48,14 @@ class OpenMeteoSyncResult:
     stderr_tail: str = ""
 
 
+def critical_error(lines: list[str]) -> str | None:
+    """The first CRITICAL/ERROR line openmeteo-api printed, or None."""
+    for line in lines:
+        if "[ CRITICAL ]" in line or "[ ERROR ]" in line:
+            return line
+    return None
+
+
 @activity.defn(name="open_meteo_sync")
 async def open_meteo_sync(args: OpenMeteoSyncArgs) -> OpenMeteoSyncResult:
     """Run `openmeteo-api sync <model> <variables> --past-days <n>` and
@@ -65,6 +73,7 @@ async def open_meteo_sync(args: OpenMeteoSyncArgs) -> OpenMeteoSyncResult:
     )
 
     stderr_tail: deque[str] = deque(maxlen=50)
+    stdout_tail: deque[str] = deque(maxlen=50)
 
     async def _drain(stream: asyncio.StreamReader, sink: deque[str] | None) -> None:
         while True:
@@ -76,7 +85,7 @@ async def open_meteo_sync(args: OpenMeteoSyncArgs) -> OpenMeteoSyncResult:
                 sink.append(decoded)
             activity.logger.debug(decoded)
 
-    drain_out = asyncio.create_task(_drain(proc.stdout, None))
+    drain_out = asyncio.create_task(_drain(proc.stdout, stdout_tail))
     drain_err = asyncio.create_task(_drain(proc.stderr, stderr_tail))
 
     last_heartbeat = 0.0
@@ -95,6 +104,14 @@ async def open_meteo_sync(args: OpenMeteoSyncArgs) -> OpenMeteoSyncResult:
     duration = round(time.time() - started, 1)
 
     rc = proc.returncode or 0
+    critical = critical_error([*stdout_tail, *stderr_tail])
+    if critical:
+        # openmeteo-api logs "[ CRITICAL ] Error during sync ..." and still exits 0;
+        # treating that as success hid 11 days of frozen forecast data.
+        raise ApplicationError(
+            f"open-meteo {args.model} sync reported an error (rc={rc}): {critical[-500:]}",
+            non_retryable=False,
+        )
     if rc != 0:
         tail = "\n".join(stderr_tail)
         raise ApplicationError(

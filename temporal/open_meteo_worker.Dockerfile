@@ -11,16 +11,18 @@
 
 # Pin both the release and manifest digest. A tag-only bump can silently change
 # the binary or its shared-library closure (1.5.3 shipped without
-# libparquet-glib and caused the 2026-07-02 outage).
-FROM ghcr.io/open-meteo/open-meteo:1.5.6@sha256:4e30cdc550702e7ebe3a27d61a6640e94a5d70798e58392361dab06e6210df35
+# libparquet-glib and caused the 2026-07-02 outage). 1.5.6's `sync` could not
+# replace an existing chunk ("[ CRITICAL ] Error during sync linkAt(error: -1)",
+# still exit 0), so forecast data froze on 2026-09-13; 1.6.0 fixes it.
+FROM ghcr.io/open-meteo/open-meteo:1.6.0@sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da
 
 # This derivative contains radar-ng's MIT-licensed worker code and the
 # AGPL-3.0-only Open-Meteo distribution. Record the immutable base explicitly;
 # the release workflow repeats these annotations because metadata-action
 # supplies labels at build time.
 LABEL org.opencontainers.image.licenses="MIT AND AGPL-3.0-only" \
-      org.opencontainers.image.base.name="ghcr.io/open-meteo/open-meteo:1.5.6" \
-      org.opencontainers.image.base.digest="sha256:4e30cdc550702e7ebe3a27d61a6640e94a5d70798e58392361dab06e6210df35" \
+      org.opencontainers.image.base.name="ghcr.io/open-meteo/open-meteo:1.6.0" \
+      org.opencontainers.image.base.digest="sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da" \
       org.opencontainers.image.title="radar-ng-open-meteo-worker" \
       org.opencontainers.image.description="Open-Meteo API with the radar-ng Temporal sync worker" \
       org.opencontainers.image.source="https://github.com/mitchross/radar-ng"
