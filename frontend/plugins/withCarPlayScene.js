@@ -18,57 +18,68 @@ const CARPLAY_FILES = [
   "RadarTileOverlay.swift",
   "RadarLocationManager.swift",
   "RadarAPI.swift",
-  // Required because once UIApplicationSceneManifest exists, iOS uses
-  // scene-based lifecycle for the iPhone window too. Without a UIWindowScene
-  // delegate that creates UIWindow(windowScene:), the RN root view never
-  // attaches to the active scene and the app shows a black screen.
-  "MainSceneDelegate.swift",
 ];
 
 // app.config.js enables the navigation entitlement with RADAR_CARPLAY=1.
 // The signing profile must contain Apple's matching approved capability.
+const carPlayEnabled = () => process.env.RADAR_CARPLAY === "1";
 
-// Declare BOTH the iPhone window scene and the CarPlay template scene. On
-// iOS 13+, presence of UIApplicationSceneManifest puts the app into
-// scene-based lifecycle — the main window must be constructed from a
-// UIWindowScene via MainSceneDelegate, otherwise iPhone launch is black.
-function withCarPlaySceneManifest(config) {
+// The iPhone window scene is declared by expo-build-properties'
+// `ios.enableSceneSupport`, which points UIWindowSceneSessionRoleApplication at
+// Expo's own EXExpoAppSceneDelegate. That delegate rebuilds the launch options
+// from the scene's connectionOptions, so a link that cold-starts the app still
+// reaches Linking.getInitialURL(). This plugin therefore never writes the window
+// scene, and never replaces AppDelegate.swift.
+//
+// Order matters: config-plugin mods run last-registered-first, so this plugin
+// must be listed BEFORE expo-build-properties in app.json for the window scene
+// to exist by the time the CarPlay roles are appended. enableSceneSupport also
+// throws when it finds a scene manifest it does not own.
+//
+// It only appends the CarPlay roles, and only for RADAR_CARPLAY=1 builds.
+// Compiling CarPlay scenes into an ordinary release would ship background modes
+// and a navigation capability that App Review cannot see (guideline 2.5.4).
+function withCarPlaySceneRoles(config) {
   return withInfoPlist(config, (c) => {
     const projectName = c.modRequest.projectName || "radarng";
     // UIRequiresFullScreen is deprecated in iOS 26 and ignored at runtime —
     // the Expo template still emits it, so strip it whenever we touch Info.plist.
     delete c.modResults.UIRequiresFullScreen;
-    c.modResults.UIApplicationSceneManifest = {
-      UIApplicationSupportsMultipleScenes: true,
-      CPSupportsDashboardNavigationScene: true,
-      UISceneConfigurations: {
-        UIWindowSceneSessionRoleApplication: [
-          {
-            UISceneConfigurationName: "Main",
-            UISceneDelegateClassName: `${projectName}.MainSceneDelegate`,
-          },
-        ],
-        CPTemplateApplicationSceneSessionRoleApplication: [
-          {
-            UISceneClassName: "CPTemplateApplicationScene",
-            UISceneConfigurationName: "CarPlay",
-            UISceneDelegateClassName: `${projectName}.RadarCarPlaySceneDelegate`,
-          },
-        ],
-        CPTemplateApplicationDashboardSceneSessionRoleApplication: [
-          {
-            UISceneClassName: "CPTemplateApplicationDashboardScene",
-            UISceneConfigurationName: "CarPlay Dashboard",
-            UISceneDelegateClassName: `${projectName}.RadarCarPlayDashboardSceneDelegate`,
-          },
-        ],
+
+    if (!carPlayEnabled()) {
+      return c;
+    }
+
+    const manifest = c.modResults.UIApplicationSceneManifest ?? {};
+    const configurations = manifest.UISceneConfigurations ?? {};
+    // CarPlay connects its scenes alongside the phone window, so the app runs
+    // more than one scene at a time.
+    manifest.UIApplicationSupportsMultipleScenes = true;
+    manifest.CPSupportsDashboardNavigationScene = true;
+    configurations.CPTemplateApplicationSceneSessionRoleApplication = [
+      {
+        UISceneClassName: "CPTemplateApplicationScene",
+        UISceneConfigurationName: "CarPlay",
+        UISceneDelegateClassName: `${projectName}.RadarCarPlaySceneDelegate`,
       },
-    };
+    ];
+    configurations.CPTemplateApplicationDashboardSceneSessionRoleApplication = [
+      {
+        UISceneClassName: "CPTemplateApplicationDashboardScene",
+        UISceneConfigurationName: "CarPlay Dashboard",
+        UISceneDelegateClassName: `${projectName}.RadarCarPlayDashboardSceneDelegate`,
+      },
+    ];
+    manifest.UISceneConfigurations = configurations;
+    c.modResults.UIApplicationSceneManifest = manifest;
     return c;
   });
 }
 
 function withCarPlayFiles(config) {
+  if (!carPlayEnabled()) {
+    return config;
+  }
   return withDangerousMod(config, [
     "ios",
     async (c) => {
@@ -88,6 +99,9 @@ function withCarPlayFiles(config) {
 }
 
 function withCarPlayPbxproj(config) {
+  if (!carPlayEnabled()) {
+    return config;
+  }
   return withXcodeProject(config, (c) => {
     const proj = c.modResults;
     const appName = c.modRequest.projectName;
@@ -105,105 +119,19 @@ function withCarPlayPbxproj(config) {
   });
 }
 
-// The Expo template's AppDelegate creates the iPhone window inline in
-// didFinishLaunchingWithOptions and bootstraps RN there. That breaks once
-// UIApplicationSceneManifest is declared (which we need for CarPlay): iOS
-// switches to scene-based lifecycle and the manually-created UIWindow never
-// attaches to the active scene → black screen. Replace AppDelegate.swift
-// post-prebuild with a scene-aware version that defers RN bootstrap to
-// MainSceneDelegate.startReactNative(in:).
-function withSceneAwareAppDelegate(config) {
-  return withDangerousMod(config, [
-    "ios",
-    async (c) => {
-      const iosRoot = c.modRequest.platformProjectRoot;
-      const appName = c.modRequest.projectName;
-      const dst = path.join(iosRoot, appName, "AppDelegate.swift");
-      const contents = `internal import Expo
-import React
-import ReactAppDependencyProvider
-
-@main
-class AppDelegate: ExpoAppDelegate {
-  var window: UIWindow?
-
-  var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
-  var reactNativeFactory: RCTReactNativeFactory?
-
-  private var pendingLaunchOptions: [UIApplication.LaunchOptionsKey: Any]?
-
-  public override func application(
-    _ application: UIApplication,
-    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
-  ) -> Bool {
-    let delegate = ReactNativeDelegate()
-    let factory = ExpoReactNativeFactory(delegate: delegate)
-    delegate.dependencyProvider = RCTAppDependencyProvider()
-
-    reactNativeDelegate = delegate
-    reactNativeFactory = factory
-    pendingLaunchOptions = launchOptions
-
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
-
-  // Called by MainSceneDelegate.scene(_:willConnectTo:options:) once iOS has
-  // produced a UIWindowScene. The window MUST be constructed from that scene
-  // (UIWindow(windowScene:)) so the RN root view becomes visible — see the
-  // comment in MainSceneDelegate.swift for why.
-  func startReactNative(in window: UIWindow) {
-    self.window = window
-    reactNativeFactory?.startReactNative(
-      withModuleName: "main",
-      in: window,
-      launchOptions: pendingLaunchOptions)
-    pendingLaunchOptions = nil
-  }
-
-  // Deep links (radarng://) and universal links are routed through the
-  // scene delegate (see MainSceneDelegate.swift) — iOS 26 deprecated the
-  // application(_:open:options:) and application(_:continue:restorationHandler:)
-  // hooks in favor of UIScene callbacks once a UIApplicationSceneManifest is
-  // declared, which we do for CarPlay + the main window scene.
-}
-
-class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
-  // Extension point for config-plugins
-
-  override func sourceURL(for bridge: RCTBridge) -> URL? {
-    // needed to return the correct URL for expo-dev-client.
-    bridge.bundleURL ?? bundleURL()
-  }
-
-  override func bundleURL() -> URL? {
-#if DEBUG
-    return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: ".expo/.virtual-metro-entry")
-#else
-    return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
-#endif
-  }
-}
-`;
-      fs.writeFileSync(dst, contents);
-      return c;
-    },
-  ]);
-}
-
 module.exports = (config) => {
   config = withEntitlementsPlist(config, (c) => {
     // Prebuild merges existing native entitlements. Remove a previous opt-in
     // when returning to ordinary development signing.
-    if (process.env.RADAR_CARPLAY === "1") {
+    if (carPlayEnabled()) {
       c.modResults["com.apple.developer.carplay-maps"] = true;
     } else {
       delete c.modResults["com.apple.developer.carplay-maps"];
     }
     return c;
   });
-  config = withCarPlaySceneManifest(config);
+  config = withCarPlaySceneRoles(config);
   config = withCarPlayFiles(config);
   config = withCarPlayPbxproj(config);
-  config = withSceneAwareAppDelegate(config);
   return config;
 };

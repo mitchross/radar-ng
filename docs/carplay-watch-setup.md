@@ -2,8 +2,19 @@
 
 The Watch app and CarPlay navigation implementation are native Swift sources under
 `frontend/targets/`. Expo prebuild registers them in `frontend/ios/radarng.xcworkspace`.
-Keep both the iPhone and CarPlay scene declarations: removing the iPhone scene
-breaks React Native window attachment.
+
+The iPhone window scene is always declared. Expo 57 supplies it through
+`ios.enableSceneSupport` in `expo-build-properties`, which points
+`UIWindowSceneSessionRoleApplication` at `EXExpoAppSceneDelegate`. That delegate
+creates the window from the connecting scene and rebuilds the launch options from
+its `connectionOptions`, so a link that cold-starts the app still reaches
+`Linking.getInitialURL()`. The two CarPlay scene roles, the CarPlay Swift sources
+and the navigation entitlement are added only by `RADAR_CARPLAY=1` builds.
+
+Config-plugin mods run last-registered-first, so `./plugins/withCarPlayScene` is
+listed **before** `expo-build-properties` in `app.json`: the window scene has to
+exist before the CarPlay roles are appended, and `enableSceneSupport` throws when it
+finds a scene manifest it does not own.
 
 ## Apple Watch
 
@@ -78,7 +89,9 @@ The profile must contain `com.apple.developer.carplay-maps = true`, match
 `FVU6RGL532.com.vanillax.radar-ng`, and be unexpired. Checking a capability or adding
 the entitlement locally cannot grant Apple's approval. To return to ordinary
 signing, run prebuild without `RADAR_CARPLAY`; the plugin removes any previously
-generated maps entitlement. Keep both iPhone and CarPlay scene declarations.
+generated maps entitlement and compiles no CarPlay sources. The iPhone window scene
+stays declared either way — only the CarPlay roles are gated, so an ordinary release
+cannot ship background modes that App Review cannot see.
 
 The September 21 request is prepared in the signed-in browser, category Navigation,
 with an honest planned-feature description and labelled iPhone development-preview

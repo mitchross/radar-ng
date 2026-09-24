@@ -75,7 +75,7 @@ struct RadarWidgetView: View {
             }
         }
         .containerBackground(.background, for: .widget)
-        .widgetURL(URL(string: "radarng://"))
+        .widgetURL(URL(string: "radarng://radar"))
     }
 }
 

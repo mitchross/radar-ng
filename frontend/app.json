@@ -46,11 +46,13 @@
         }
       ],
       "@maplibre/maplibre-react-native",
+      "./plugins/withCarPlayScene",
       [
         "expo-build-properties",
         {
           "ios": {
-            "deploymentTarget": "26.0"
+            "deploymentTarget": "26.0",
+            "enableSceneSupport": true
           },
           "android": {
             "usesCleartextTraffic": true
@@ -58,7 +60,6 @@
         }
       ],
       "./plugins/withXcode27PodDeploymentFloor",
-      "./plugins/withCarPlayScene",
       "./plugins/withScriptSandboxOff",
       "@bacons/apple-targets",
       [
