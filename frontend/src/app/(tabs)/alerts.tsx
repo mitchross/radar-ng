@@ -137,7 +137,7 @@ export default function AlertsScreen() {
                 <AlertCard
                   key={alert.id}
                   alert={alert}
-                  onPress={() => router.push(`/alert/${encodeURIComponent(alert.id)}` as any)}
+                  onPress={() => router.push({ pathname: "/alert/[id]", params: { id: alert.id } })}
                 />
               ))}
             </>

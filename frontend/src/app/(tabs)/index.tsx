@@ -224,7 +224,7 @@ export default function HomeScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Choose weather location. Current location: ${locationLabel}`}
-              onPress={() => router.push("/(tabs)/settings" as any)}
+              onPress={() => router.push("/settings")}
               style={styles.locationContainer}
             >
               <View style={styles.locationRow}>
@@ -300,7 +300,7 @@ export default function HomeScreen() {
               accessibilityRole="button"
               accessibilityLabel={`${nowcastBanner.headline}. ${nowcastBanner.sub}`}
               style={styles.nowcastBanner}
-              onPress={() => router.push("/nowcast" as never)}
+              onPress={() => router.push("/nowcast")}
             >
               <View style={styles.nowcastIcon}>
                 <WeatherIcon kind="rain" size={24} />
@@ -347,7 +347,7 @@ export default function HomeScreen() {
               accessibilityRole="button"
               accessibilityLabel={`${alertStatus.accessibilityLabel} Open weather alerts`}
               style={styles.alertCard}
-              onPress={() => router.push("/alerts" as never)}
+              onPress={() => router.push("/alerts")}
             >
               <View style={styles.alertIndicatorDot} />
               <View style={{ flex: 1 }}>

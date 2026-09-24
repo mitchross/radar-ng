@@ -65,16 +65,13 @@ export function resolveMapStyleUrl(
 }
 
 export const RADAR = {
-  TILE_SIZE: 256,
-  MIN_ZOOM: 1,
-  MAX_ZOOM: 12,
   DEFAULT_OPACITY: 0.8,
 } as const;
 
 export const DEFAULTS = {
   LATITUDE: 42.9634,
   LONGITUDE: -85.6681,
-  ZOOM: 8,
+  ZOOM: 7,
   PLAYBACK_FPS: 2,
   MANIFEST_REFETCH_MS: 30_000,
   FORECAST_REFETCH_MS: 15 * 60_000,

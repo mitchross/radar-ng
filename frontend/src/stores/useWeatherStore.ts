@@ -42,7 +42,6 @@ interface WeatherState {
   /** One-shot request for the radar map to frame these bounds [west, south, east, north]. */
   focusBounds: [number, number, number, number] | null;
   radarOpacity: number;
-  radarVisible: boolean;
   activeLayer: LayerType;
   temperatureUnit: TemperatureUnit;
   mapStyle: MapStyle;
@@ -148,7 +147,6 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   recenterNonce: 0,
   focusBounds: null,
   radarOpacity: parseOpacity(getString("radarOpacity", String(RADAR.DEFAULT_OPACITY)), RADAR.DEFAULT_OPACITY),
-  radarVisible: true,
   activeLayer: "radar" as LayerType,
   temperatureUnit: getString("temperatureUnit", "fahrenheit") === "celsius" ? "celsius" : "fahrenheit",
   // Persisted strings are parsed, not cast: a stale/garbage value would otherwise

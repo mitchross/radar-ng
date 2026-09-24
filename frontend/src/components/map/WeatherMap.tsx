@@ -41,7 +41,7 @@ export function WeatherMap({
   const recenterNonce = useWeatherStore((s) => s.recenterNonce);
   const focusBounds = useWeatherStore((s) => s.focusBounds);
   const setFocusBounds = useWeatherStore((s) => s.setFocusBounds);
-  const initialZoom = 7;
+  const initialZoom = DEFAULTS.ZOOM;
   // Mirror current camera zoom so the +/- buttons can clamp without round-tripping.
   const zoomRef = useRef<number>(initialZoom);
 

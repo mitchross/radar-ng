@@ -1,15 +1,15 @@
 # Building and running the mobile app
 
-The app is an Expo SDK 56 / React Native 0.85 project living entirely in `frontend/`. It uses native modules (MapLibre Native, Skia, MMKV), so it **cannot run in Expo Go** — you build a dev client with `expo run:ios` / `expo run:android` (wrapped by the `bun run` scripts below).
+The app is an Expo SDK 57 / React Native 0.86 project living entirely in `frontend/`. It uses native modules (MapLibre Native, Skia, MMKV), so it **cannot run in Expo Go** — you build a dev client with `expo run:ios` / `expo run:android` (wrapped by the `bun run` scripts below).
 
 ## Prerequisites
 
 | tool | version | notes |
 |---|---|---|
-| [Bun](https://bun.sh) | 1.1+ | replaces npm/yarn — all scripts assume `bun` |
+| [Bun](https://bun.sh) | 1.4+ | replaces npm/yarn — all scripts assume `bun` |
 | JDK | 17 | Gradle requirement (Android) |
 | Android Studio | with API 35 SDK + emulator image | Android builds |
-| Xcode | 26+ | iOS — deployment target is 26.0, macOS only |
+| Xcode | 27 (release, not beta) | iOS — deployment target is 26.0, macOS only; App Store uploads need the iOS 27 SDK from April 2027 |
 | CocoaPods | 1.15+ | `gem install cocoapods` (iOS) |
 | Watchman | latest | Metro file watching on macOS |
 

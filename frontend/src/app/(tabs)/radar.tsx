@@ -93,7 +93,7 @@ export default function RadarScreen() {
       <SafeAreaView style={styles.safeTop} edges={["top"]} pointerEvents="box-none">
         <Pressable
           style={styles.closeBtn}
-          onPress={() => router.navigate("/" as never)}
+          onPress={() => router.navigate("/")}
           hitSlop={10}
           accessibilityRole="button"
           accessibilityLabel="Close radar"

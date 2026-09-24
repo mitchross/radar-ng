@@ -160,7 +160,7 @@ The asymmetry in the first two rows is the whole caching story: **immutability i
 | Tiles are files on a PVC, not object storage | ~12.6k small PNGs every 2 min is small-object churn that per-object PUT/GET overhead punishes; a directory `rename` is also the atomic commit primitive |
 | z9 dropped from the radar pyramid | the top zoom level is ~75% of render wall-clock; with z9 frames arrived ~15 min stale, without it ~2 min — the client upsamples z8 instead (`SOURCE_MAX_ZOOM`) |
 | Nowcast manifest uses replace-semantics | every nowcast run supersedes the last; incremental adds mixed fresh and stale vintages in one timeline (`replace_layer_manifest` in `backend/shared/manifest.py`) |
-| 5-slot frame carousel, opacity swap | constant native child count avoids the iOS `insertReactSubview` crash; swapping opacity instead of remounting kills refetch jank; `WINDOW = 1` is the kill switch |
+| Frame carousel, opacity swap (1 slot until device sign-off, then 5) | constant native child count avoids the iOS `insertReactSubview` crash; swapping opacity instead of remounting kills refetch jank; `WINDOW = 1` is the kill switch |
 | Tiered caching split by data mutability | observed frames are write-once → 24 h immutable; forecast frames rewrite the same path → 120 s |
 | Caddy inside the tile-server pod | Envoy at the edge routes but can't file-serve; FastAPI shouldn't spend Python cycles on static PNGs |
 | Temporal Schedules over K8s CronJobs | SKIP overlap, catchup window, retry budgets, heartbeats, and per-item isolation are the difference between "stale radar self-heals" and "pager duty" |
