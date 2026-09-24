@@ -9,7 +9,6 @@
     "ios:ipa": "bash ./scripts/build-ios-standalone.sh",
     "ios:ipa:release-testing": "EXPORT_METHOD=release-testing bash ./scripts/build-ios-standalone.sh",
     "ios:ipa:app-store": "EXPORT_METHOD=app-store-connect bash ./scripts/build-ios-standalone.sh",
-    "postinstall": "node ./scripts/patch-apple-targets-podspec.js",
     "lint": "expo lint",
     "test": "jest",
     "test:ios": "bash ./scripts/test-ios-simulator.sh",
