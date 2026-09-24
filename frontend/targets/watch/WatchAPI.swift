@@ -4,14 +4,29 @@ enum WatchAPI {
     static let serverURL = "https://radar-ng-api.vanillax.me"
     private static let userAgent = "radar-ng/2.0 (watchOS)"
 
+    /// Mirrors `PRECISION` in `src/lib/coordinates.ts` so the watch and the phone
+    /// ask the same question for the same place. The radar and nowcast grids are
+    /// 1 km cells, so a finer fix only costs cache hits, never accuracy.
+    private static let weatherDecimals = 2
+    /// Alert polygons can be far smaller than a forecast cell, so they keep 3.
+    private static let pointDecimals = 3
+
+    private static func round(_ value: Double, decimals: Int) -> Double {
+        let factor = pow(10.0, Double(decimals))
+        return (value * factor).rounded() / factor
+    }
+
     static func fetchForecast(lat: Double, lon: Double) async throws -> Forecast {
-        let url = URL(string: "\(serverURL)/api/forecast/\(lat)/\(lon)")!
+        let url = URL(
+            string: "\(serverURL)/api/forecast/\(round(lat, decimals: weatherDecimals))/\(round(lon, decimals: weatherDecimals))"
+        )!
         let data = try await fetch(url)
         return try JSONDecoder().decode(Forecast.self, from: data)
     }
 
     static func fetchAlerts(lat: Double, lon: Double) async throws -> [Alert] {
-        var req = URLRequest(url: URL(string: "https://api.weather.gov/alerts/active?point=\(lat),\(lon)")!)
+        let point = "\(round(lat, decimals: pointDecimals)),\(round(lon, decimals: pointDecimals))"
+        var req = URLRequest(url: URL(string: "https://api.weather.gov/alerts/active?point=\(point)")!)
         req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         let data = try await fetch(req)
         let envelope = try JSONDecoder().decode(AlertsEnvelope.self, from: data)

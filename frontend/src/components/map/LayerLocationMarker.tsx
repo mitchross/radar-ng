@@ -16,6 +16,7 @@ import { displayTemperature } from "../../lib/temperature";
 import { activeLocationLabel } from "../../lib/locationLabel";
 import { cumulus, getWindDirection } from "../../lib/cumulusTheme";
 import { inspectPoint, type InspectReading } from "../../lib/inspector";
+import { locationKey, PRECISION } from "../../lib/coordinates";
 import type { LayerType } from "../../types/weather";
 
 export function LayerLocationMarker() {
@@ -36,7 +37,13 @@ export function LayerLocationMarker() {
   const isAqLayer = activeLayer === "air-quality" || activeLayer === "ozone";
   const frameTimestamp = frames[currentFrameIndex]?.timestamp ?? null;
   const { data: aqReading } = useQuery({
-    queryKey: ["aq-point", activeLayer, frameTimestamp, latitude, longitude, serverUrl],
+    queryKey: [
+      "aq-point",
+      activeLayer,
+      frameTimestamp,
+      locationKey(latitude as number, longitude as number, PRECISION.POINT),
+      serverUrl,
+    ],
     queryFn: () =>
       inspectPoint({
         serverUrl,

@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useSyncExternalStore } from "react";
 import { onlineManager, useQuery } from "@tanstack/react-query";
 import { fetchAlerts } from "../lib/api";
+import { locationKey, PRECISION } from "../lib/coordinates";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { DEFAULTS } from "../lib/constants";
 import {
@@ -22,9 +23,13 @@ export function useAlerts() {
   const appActive = useAppActive();
   const isOnline = useSyncExternalStore(subscribeToOnlineState, getOnlineState, getOnlineState);
   const [, advanceClock] = useReducer((revision: number) => revision + 1, 0);
+  const position =
+    latitude != null && longitude != null
+      ? locationKey(latitude, longitude, PRECISION.POINT)
+      : null;
 
   const query = useQuery({
-    queryKey: ["alerts", latitude, longitude],
+    queryKey: ["alerts", position],
     queryFn: ({ signal }) => fetchAlerts(latitude!, longitude!, signal),
     enabled: latitude !== null && longitude !== null,
     refetchInterval: DEFAULTS.ALERTS_REFETCH_MS,

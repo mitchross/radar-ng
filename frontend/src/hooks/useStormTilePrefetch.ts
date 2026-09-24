@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchStormPrefetchPlan } from "../lib/api";
+import { locationKey, PRECISION } from "../lib/coordinates";
 import { logEvent } from "../lib/telemetry";
 import { telemetryErrorType } from "../lib/telemetryPrivacy";
 import { useWeatherStore } from "../stores/useWeatherStore";
@@ -19,9 +20,13 @@ export function useStormTilePrefetch() {
   const longitude = useWeatherStore((state) => state.longitude);
   const activePalette = useWeatherStore((state) => state.activePalette);
   const extrasVisible = useWeatherStore((state) => state.extrasVisible);
+  const position =
+    latitude != null && longitude != null
+      ? locationKey(latitude, longitude, PRECISION.WEATHER)
+      : null;
 
   const query = useQuery({
-    queryKey: ["storm-prefetch", serverUrl, latitude, longitude, activePalette],
+    queryKey: ["storm-prefetch", serverUrl, position, activePalette],
     queryFn: ({ signal }) => fetchStormPrefetchPlan(
       serverUrl,
       latitude as number,

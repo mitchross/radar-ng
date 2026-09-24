@@ -150,6 +150,46 @@ describe("fetchStormPrefetchPlan", () => {
   });
 });
 
+describe("coordinate rounding at the API boundary", () => {
+  // Rounding lives in api.ts rather than at the call sites so a new caller
+  // cannot forget it. Every case below feeds a full-precision GPS fix.
+  const lat = 42.9634567;
+  const lon = -85.6681234;
+
+  it("narrows the forecast path to ~1 km", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+    await fetchForecast("https://radar.example", lat, lon);
+    expect(calledUrl()).toBe("https://radar.example/api/forecast/42.96/-85.67");
+  });
+
+  it("narrows the nowcast path to the same precision as the forecast", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ status: "ok", points: [] }),
+    });
+    await fetchRadarNowcast("https://radar.example", lat, lon);
+    expect(calledUrl()).toBe("https://radar.example/api/nowcast/42.96/-85.67");
+  });
+
+  it("keeps 3 decimals for NWS alerts so a polygon boundary is not flipped", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ features: [] }) });
+    await fetchAlerts(lat, lon);
+    // Rounded, and finer than the forecast path above.
+    expect(calledUrl()).toBe("https://api.weather.gov/alerts/active?point=42.963,-85.668");
+  });
+
+  it("narrows the storm-prefetch query params", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ plan_id: null, tile_urls: [] }),
+    });
+    await fetchStormPrefetchPlan("https://radar.example", lat, lon, "vivid");
+    expect(calledUrl()).toBe(
+      "https://radar.example/api/storm-prefetch?lat=42.96&lon=-85.67&zoom=6&palette=vivid",
+    );
+  });
+});
+
 describe("fetchServerStatus / healthLevelOf", () => {
   it("parses a 503 degraded body instead of treating it as down", async () => {
     const body = { status: "degraded", mrms_age_s: 1800, reasons: ["mrms_stale"] };
