@@ -1,0 +1,80 @@
+{
+  "frame": {
+    "issued_at": "2026-09-22T04:08:07+00:00",
+    "kind": "observation",
+    "lead_minutes": 0,
+    "max_zoom": 7,
+    "palettes": [
+      "classic",
+      "muted",
+      "vivid"
+    ],
+    "path": "2026-09-22T04:08:07+00:00",
+    "source": "mrms",
+    "spatial_resolution_km": 1.0,
+    "timestamp": "2026-09-22T04:08:07+00:00"
+  },
+  "check": "Downloaded server tiles after capture; does not prove screenshot renderer received them",
+  "area": {
+    "south": 42.94,
+    "north": 42.99,
+    "west": -85.69,
+    "east": -85.65
+  },
+  "results": [
+    {
+      "z": 7,
+      "url": "https://radar-ng-api.vanillax.me/tiles/radar/classic/2026-09-22T04:08:07+00:00/7/33/47.png",
+      "httpStatus": "404",
+      "localFile": "/tmp/radar-overlay-audit-z7.png"
+    },
+    {
+      "z": 6,
+      "url": "https://radar-ng-api.vanillax.me/tiles/radar/classic/2026-09-22T04:08:07+00:00/6/16/23.png",
+      "httpStatus": "200",
+      "localFile": "/tmp/radar-overlay-audit-z6.png",
+      "sha256": "7cfa626ddcd326fa5b71077c58ca11e03ae3fb92486104f74b849cdd7e47d09c",
+      "tileAlphaPixels": 2535,
+      "viewportPixelBox": [
+        196,
+        132,
+        198,
+        137
+      ],
+      "viewportAlphaPixels": 0,
+      "viewportPixels": 10
+    },
+    {
+      "z": 5,
+      "url": "https://radar-ng-api.vanillax.me/tiles/radar/classic/2026-09-22T04:08:07+00:00/5/8/11.png",
+      "httpStatus": "200",
+      "localFile": "/tmp/radar-overlay-audit-z5.png",
+      "sha256": "fa6e32e9aabfb057e0a3469533da7e76d1305b345f75332dc7baaa8882412441",
+      "tileAlphaPixels": 1258,
+      "viewportPixelBox": [
+        98,
+        194,
+        99,
+        197
+      ],
+      "viewportAlphaPixels": 0,
+      "viewportPixels": 3
+    },
+    {
+      "z": 4,
+      "url": "https://radar-ng-api.vanillax.me/tiles/radar/classic/2026-09-22T04:08:07+00:00/4/4/5.png",
+      "httpStatus": "200",
+      "localFile": "/tmp/radar-overlay-audit-z4.png",
+      "sha256": "948bbf62bdc1f8848c4bc6bb858abaaa285542b1a531c42d5ae5103d63532d38",
+      "tileAlphaPixels": 1225,
+      "viewportPixelBox": [
+        49,
+        225,
+        50,
+        227
+      ],
+      "viewportAlphaPixels": 0,
+      "viewportPixels": 2
+    }
+  ]
+}

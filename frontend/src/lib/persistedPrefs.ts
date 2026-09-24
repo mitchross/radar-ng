@@ -26,6 +26,16 @@ export function parseServerUrl(v: string, fallback: string): string {
   return /^https?:\/\/[^\s/]+(\/[^\s]*)?$/i.test(trimmed) ? trimmed : fallback;
 }
 
+/** Frames per second the playback timer honours. */
+export const PLAYBACK_FPS_RANGE = { min: 1, max: 10 } as const;
+
+/** Whole FPS clamped to PLAYBACK_FPS_RANGE; non-numeric → fallback. */
+export function parsePlaybackFps(v: string, fallback: number): number {
+  const n = Math.round(Number(v));
+  if (v.trim() === "" || !Number.isFinite(n)) return fallback;
+  return Math.max(PLAYBACK_FPS_RANGE.min, Math.min(PLAYBACK_FPS_RANGE.max, n));
+}
+
 /** Radar opacity in (0, 1]; NaN/out-of-range → fallback. */
 export function parseOpacity(v: string, fallback: number): number {
   const n = Number(v);

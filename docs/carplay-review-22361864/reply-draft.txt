@@ -1,0 +1,18 @@
+Case-ID: 22361864
+
+Hello CarPlay Entitlements team,
+
+Thank you for the clarification. Radar NG's intended primary CarPlay function is turn-by-turn driving navigation, with timestamped precipitation radar as supplementary map context.
+
+The three attached development screenshots illustrate how we populate and update CPManeuver metadata on a MapKit driving route from Crossville to Knoxville, Tennessee. They show the roundabout maneuver onto Peavine Rd at 300 meters, the same maneuver at 40 meters, and advancement to the next instruction to merge right onto I-40 East. Display distances are localized and rounded. The regional map shows the selected route alongside actual timestamped precipitation radar from our live feed.
+
+Our shared maneuver factory populates instructionVariants, symbolImage, initialTravelEstimates, and the corresponding Dashboard and notification variants. The CarPlay controller is implemented to supply upcoming maneuvers through CPNavigationSession.upcomingManeuvers, update maneuver estimates through updateEstimates(_:for:), and update trip estimates on CPMapTemplate. Its map view renders the selected route and timestamped radar overlay.
+
+For clarity, these are unedited iOS simulator screenshots of a development presentation using the same CPManeuver objects, estimate construction, map controller, and radar tile overlay as our CarPlay implementation. GPS positions are replayed and labelled on-screen. These illustrate the metadata and map implementation; they are not screenshots of the CarPlay system interface or an in-vehicle test. CarPlay integration and vehicle validation remain outstanding.
+
+Please let us know if you require a different form of evidence, or native CarPlay system-interface captures, to continue the entitlement review.
+
+Thank you,
+Mitch Ross
+Radar NG — com.vanillax.radar-ng
+Team ID: FVU6RGL532

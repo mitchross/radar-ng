@@ -1,5 +1,5 @@
-appId: com.vanillax.radar-ng
-name: iOS radar playback styles layers and foreground recovery
+appId: ${APP_ID}
+name: radar playback styles layers and foreground recovery
 ---
 - launchApp:
     clearState: true

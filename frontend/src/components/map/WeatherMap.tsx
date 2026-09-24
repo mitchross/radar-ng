@@ -6,11 +6,12 @@ import {
   type PressEvent,
   type ViewStateChangeEvent,
 } from "@maplibre/maplibre-react-native";
-import { Children, isValidElement, useEffect, useMemo, useRef, useState } from "react";
+import { Children, isValidElement, useEffect, useEffectEvent, useMemo, useRef } from "react";
 import { Pressable, StyleSheet, Text, View, type NativeSyntheticEvent } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { DEFAULTS, isExternalMapStyle, resolveMapStyleUrl } from "../../lib/constants";
-import { trace } from "../../lib/telemetry";
+import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
+import { useBasemapStyle } from "../../hooks/useBasemapStyle";
+import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 15;
@@ -19,104 +20,34 @@ interface WeatherMapProps {
   children?: React.ReactNode;
   onLongPress?: (lat: number, lon: number) => void;
   onCameraChanged?: (camera: { lon: number; lat: number; zoom: number }) => void;
+  /**
+   * Report every camera frame during a gesture, not just where it settles.
+   * Only a live overlay (wind particles) needs this; each event crosses the bridge.
+   */
+  trackCameraContinuously?: boolean;
 }
 
-/**
- * Fetch the Protomaps style JSON from the tile-server and rewrite its
- * source `tiles` / `url` entries to absolute URLs. MapLibre Native doesn't
- * always resolve root-relative paths against the fetched style URL, so
- * serving the patched JSON inline is the reliable path.
- */
-export function usePatchedMapStyle(serverUrl: string, mapStyle: "light" | "dark" | "satellite") {
-  const styleUrl = resolveMapStyleUrl(serverUrl, mapStyle);
-  const external = isExternalMapStyle(mapStyle);
-  // External styles are complete absolute documents, so they can be handed to
-  // MapLibre immediately (avoids a black-map flash on the first frame).
-  const [patched, setPatched] = useState<string | null>(external ? styleUrl : null);
-
-  useEffect(() => {
-    // External basemap (e.g. self-hosted VersaTiles): the style JSON is a
-    // complete absolute MapLibre document — its sources/glyphs/sprite are
-    // already absolute, so there is nothing to rewrite. Hand MapLibre the URL
-    // directly, exactly how any hosted style is loaded. The fetch+patch dance
-    // below exists ONLY for the bundled Protomaps style's relative tile paths.
-    if (external) {
-      setPatched(styleUrl);
-      return;
-    }
-    let cancelled = false;
-
-    async function attempt(): Promise<string> {
-      const r = await fetch(styleUrl);
-      const json = (await r.json()) as {
-        sources?: Record<string, { tiles?: string[]; url?: string }>;
-      };
-      const sources = json.sources ?? {};
-      for (const src of Object.values(sources)) {
-        if (Array.isArray(src.tiles)) {
-          src.tiles = src.tiles.map((t) => (t.startsWith("http") ? t : `${serverUrl}${t}`));
-        }
-        if (typeof src.url === "string" && !src.url.startsWith("http")) {
-          src.url = `${serverUrl}${src.url}`;
-        }
-      }
-      return JSON.stringify(json);
-    }
-
-    trace(
-      "map.fetchStyle",
-      async (span) => {
-        // Cold-start race: on Android, the JS fetch can fire before the
-        // emulator's network stack is fully up, throwing a DNS error
-        // immediately. Retry with backoff so the basemap doesn't fall
-        // back to MapLibre's native loader (which does NOT rewrite the
-        // relative `/basemap/tiles/{z}/{x}/{y}.mvt` paths in the
-        // Protomaps style → solid black map).
-        const delays = [400, 800, 1600];
-        let lastErr: unknown;
-        for (let i = 0; i < delays.length + 1; i++) {
-          if (cancelled) return;
-          try {
-            const result = await attempt();
-            span.setAttribute("map.fetchStyle.attempts", i + 1);
-            if (!cancelled) setPatched(result);
-            return;
-          } catch (err) {
-            lastErr = err;
-            if (i < delays.length) {
-              await new Promise((res) => setTimeout(res, delays[i]));
-            }
-          }
-        }
-        throw lastErr;
-      },
-      { "map.style": mapStyle },
-    ).catch(() => {
-      // All retries failed → hand MapLibre the raw URL. It still won't
-      // rewrite relative tile paths, but at least the user sees the
-      // attribution + zoom controls instead of nothing.
-      if (!cancelled) setPatched(styleUrl);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [serverUrl, mapStyle, styleUrl, external]);
-
-  return patched;
-}
-
-export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMapProps) {
+export function WeatherMap({
+  children,
+  onLongPress,
+  onCameraChanged,
+  trackCameraContinuously = false,
+}: WeatherMapProps) {
   const mapRef = useRef<MapRef>(null);
+  const chrome = useMapChromeInsets();
   const cameraRef = useRef<CameraRef>(null);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const latitude = useWeatherStore((s) => s.latitude);
   const longitude = useWeatherStore((s) => s.longitude);
-  const initialZoom = latitude != null ? 7 : DEFAULTS.ZOOM;
+  const recenterNonce = useWeatherStore((s) => s.recenterNonce);
+  const focusBounds = useWeatherStore((s) => s.focusBounds);
+  const setFocusBounds = useWeatherStore((s) => s.setFocusBounds);
+  const initialZoom = DEFAULTS.ZOOM;
   // Mirror current camera zoom so the +/- buttons can clamp without round-tripping.
   const zoomRef = useRef<number>(initialZoom);
 
-  const patchedStyle = usePatchedMapStyle(serverUrl, mapStyle);
+  const { style: patchedStyle } = useBasemapStyle(serverUrl, mapStyle);
 
   const centerCoord = useMemo<[number, number]>(
     () => [
@@ -132,14 +63,25 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
     cameraRef.current?.setStop({ zoom: next, duration: 220 });
   }
 
+  // Recenter only on intent (first fix, a new place, the Locate button), never
+  // on GPS drift, and keep whatever zoom the user chose.
+  const recenter = useEffectEvent(() => {
+    cameraRef.current?.setStop({ center: centerCoord, duration: 350 });
+  });
   useEffect(() => {
-    cameraRef.current?.setStop({
-      center: centerCoord,
-      zoom: initialZoom,
-      duration: 0,
+    if (recenterNonce > 0) recenter();
+  }, [recenterNonce]);
+
+  // Frame a requested area (e.g. "Open in Radar" from an alert) once, clearing
+  // top chrome and the timeline card, then drop the request.
+  useEffect(() => {
+    if (!focusBounds || !patchedStyle) return;
+    cameraRef.current?.fitBounds(focusBounds, {
+      padding: { top: chrome.top + 28, right: chrome.right + 58, bottom: chrome.aboveTimeline + 20, left: chrome.left + 28 },
+      duration: 600,
     });
-    zoomRef.current = initialZoom;
-  }, [centerCoord, initialZoom]);
+    setFocusBounds(null);
+  }, [focusBounds, patchedStyle, setFocusBounds, chrome]);
 
   if (!patchedStyle) return null;
 
@@ -170,7 +112,7 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
         attribution={true}
         attributionPosition={{ bottom: 8, left: 8 }}
         onLongPress={handleLongPress}
-        onRegionIsChanging={handleRegionChange}
+        onRegionIsChanging={trackCameraContinuously ? handleRegionChange : undefined}
         onRegionDidChange={handleRegionChange}
       >
         <Camera
@@ -184,7 +126,7 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
       </Map>
 
       {/* Manual zoom controls — pinch still works, this is for one-handed use. */}
-      <View style={styles.zoomWrap} pointerEvents="box-none">
+      <View style={[styles.zoomWrap, { right: chrome.right, bottom: chrome.aboveTimeline }]} pointerEvents="box-none">
         <Pressable
           onPress={() => zoomBy(+1)}
           style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
@@ -192,7 +134,7 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
           accessibilityRole="button"
           accessibilityLabel="Zoom in"
         >
-          <Text style={styles.zoomLabel}>+</Text>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.zoomLabel}>+</Text>
         </Pressable>
         <View style={styles.zoomDivider} />
         <Pressable
@@ -202,7 +144,7 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
           accessibilityRole="button"
           accessibilityLabel="Zoom out"
         >
-          <Text style={styles.zoomLabel}>−</Text>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.zoomLabel}>−</Text>
         </Pressable>
       </View>
     </View>

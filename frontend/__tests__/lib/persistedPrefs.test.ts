@@ -2,6 +2,7 @@ import {
   parseMapProjection,
   parseMapStyle,
   parseOpacity,
+  parsePlaybackFps,
   parsePalette,
   parseServerUrl,
   parseTimelineMode,
@@ -45,5 +46,14 @@ describe("persisted pref parsers", () => {
     expect(parseOpacity("0", 0.8)).toBe(0.8);
     expect(parseOpacity("1.5", 0.8)).toBe(0.8);
     expect(parseOpacity("abc", 0.8)).toBe(0.8);
+  });
+
+  it("clamps playback speed to what the timer honours", () => {
+    expect(parsePlaybackFps("2", 2)).toBe(2);
+    expect(parsePlaybackFps("15", 2)).toBe(10);
+    expect(parsePlaybackFps("0", 2)).toBe(1);
+    expect(parsePlaybackFps("3.6", 2)).toBe(4);
+    expect(parsePlaybackFps("", 2)).toBe(2);
+    expect(parsePlaybackFps("fast", 2)).toBe(2);
   });
 });

@@ -92,7 +92,7 @@ for bundled mode.
 |---|---|---|
 | `EXPO_PUBLIC_BASEMAP_LIGHT_STYLE_URL` | _(unset → bundled)_ | Absolute MapLibre style URL for the **light** theme. |
 | `EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL` | _(unset → bundled)_ | Absolute MapLibre style URL for the **dark** theme. |
-| `EXPO_PUBLIC_BASEMAP_SATELLITE_STYLE_URL` | _(unset → bundled Esri)_ | Optional; omit to keep the bundled no-key satellite style. |
+| `EXPO_PUBLIC_BASEMAP_SATELLITE_STYLE_URL` | _(unset → bundled)_ | Optional. The bundled style uses public-domain USGS imagery that the tile server fetches and serves at `/basemap/imagery`, so the app never contacts a third party. |
 
 Each style resolves independently: set only light+dark to move the vector
 basemap external while keeping the bundled satellite. An external style must be

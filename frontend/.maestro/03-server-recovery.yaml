@@ -1,5 +1,5 @@
-appId: com.vanillax.radar-ng
-name: iOS unavailable server and recovery
+appId: ${APP_ID}
+name: unavailable server and recovery
 ---
 - launchApp:
     clearState: true

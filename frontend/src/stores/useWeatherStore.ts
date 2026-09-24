@@ -11,11 +11,14 @@ import {
   parseTimelineMode,
   parseViewMode,
   parseOpacity,
+  parsePlaybackFps,
   type ViewMode,
 } from "../lib/persistedPrefs";
 import type { AppearanceMode } from "../theme/weatherClearTheme";
 import type { PlaybackWindow } from "../lib/radarCarousel";
 import { resnapFrameIndex } from "../lib/frameIndex";
+import { roundCoord } from "../lib/coordinates";
+import { parseDeviceFix, statusForFix, type LocationStatus } from "../lib/locationStatus";
 
 interface WeatherState {
   frames: RadarFrame[];
@@ -30,8 +33,15 @@ interface WeatherState {
   locationMode: LocationMode;
   selectedPlace: SelectedPlace | null;
   devicePlace: SelectedPlace | null;
+  /** Where device-mode coordinates come from; drives honest location labels. */
+  locationStatus: LocationStatus;
+  /** Epoch ms of the device fix currently shown, or null. */
+  lastFixAt: number | null;
+  /** Bumped when the map should recenter on the active location (user intent, not GPS drift). */
+  recenterNonce: number;
+  /** One-shot request for the radar map to frame these bounds [west, south, east, north]. */
+  focusBounds: [number, number, number, number] | null;
   radarOpacity: number;
-  radarVisible: boolean;
   activeLayer: LayerType;
   temperatureUnit: TemperatureUnit;
   mapStyle: MapStyle;
@@ -55,6 +65,10 @@ interface WeatherState {
   setSelectedPlace: (place: SelectedPlace) => void;
   setDevicePlace: (place: SelectedPlace | null) => void;
   useDeviceLocation: () => void;
+  applyDeviceFix: (lat: number, lon: number, at: number) => void;
+  applyLocationFailure: (reason: "denied" | "unavailable") => void;
+  requestRecenter: () => void;
+  setFocusBounds: (bounds: [number, number, number, number] | null) => void;
   setRadarOpacity: (opacity: number) => void;
   setTemperatureUnit: (unit: TemperatureUnit) => void;
   setMapStyle: (style: MapStyle) => void;
@@ -67,6 +81,8 @@ interface WeatherState {
   setViewMode: (mode: ViewMode) => void;
   setAppearanceMode: (mode: AppearanceMode) => void;
 }
+
+const LAST_DEVICE_FIX_KEY = "lastDeviceFix";
 
 function parseLocationMode(value: string): LocationMode {
   return value === "city" ? "city" : "device";
@@ -92,7 +108,7 @@ function parseAppearanceMode(value: string): AppearanceMode {
   return value === "light" || value === "dark" ? value : "system";
 }
 
-const DEFAULT_PLACE: SelectedPlace = {
+export const DEFAULT_PLACE: SelectedPlace = {
   id: 4994358,
   name: "Grand Rapids",
   latitude: DEFAULTS.LATITUDE,
@@ -105,20 +121,32 @@ const initialLocationMode = parseLocationMode(getString("locationMode", "device"
 const initialSelectedPlace = parseSelectedPlace(getString("selectedPlace", "")) ?? DEFAULT_PLACE;
 const initialResolvedLocationMode: LocationMode =
   initialLocationMode === "city" && initialSelectedPlace ? "city" : "device";
+// Device mode starts from the last fix this device saw, never from the fallback city.
+const persistedFix = parseDeviceFix(getString(LAST_DEVICE_FIX_KEY, ""));
+const initialCoords =
+  initialResolvedLocationMode === "city"
+    ? { latitude: initialSelectedPlace.latitude, longitude: initialSelectedPlace.longitude }
+    : { latitude: persistedFix?.latitude ?? null, longitude: persistedFix?.longitude ?? null };
+
+/** Same ~110 m cell: a new fix inside it is GPS jitter, not a move. */
+const sameCell = (a: number | null, b: number) => a !== null && roundCoord(a, 3) === roundCoord(b, 3);
 
 export const useWeatherStore = create<WeatherState>()((set, get) => ({
   frames: [],
   currentFrameIndex: -1,
   isPlaying: false,
-  playbackSpeed: DEFAULTS.PLAYBACK_FPS,
+  playbackSpeed: parsePlaybackFps(getString("playbackSpeed", ""), DEFAULTS.PLAYBACK_FPS),
   playbackWindow: null,
-  latitude: initialResolvedLocationMode === "city" && initialSelectedPlace ? initialSelectedPlace.latitude : DEFAULTS.LATITUDE,
-  longitude: initialResolvedLocationMode === "city" && initialSelectedPlace ? initialSelectedPlace.longitude : DEFAULTS.LONGITUDE,
+  latitude: initialCoords.latitude,
+  longitude: initialCoords.longitude,
   locationMode: initialResolvedLocationMode,
   selectedPlace: initialSelectedPlace,
   devicePlace: null,
+  locationStatus: persistedFix ? "last-known" : "locating",
+  lastFixAt: persistedFix?.at ?? null,
+  recenterNonce: 0,
+  focusBounds: null,
   radarOpacity: parseOpacity(getString("radarOpacity", String(RADAR.DEFAULT_OPACITY)), RADAR.DEFAULT_OPACITY),
-  radarVisible: true,
   activeLayer: "radar" as LayerType,
   temperatureUnit: getString("temperatureUnit", "fahrenheit") === "celsius" ? "celsius" : "fahrenheit",
   // Persisted strings are parsed, not cast: a stale/garbage value would otherwise
@@ -151,7 +179,11 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setCurrentFrameIndex: (index) => set({ currentFrameIndex: index }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   togglePlaying: () => set((s) => ({ isPlaying: !s.isPlaying })),
-  setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
+  setPlaybackSpeed: (speed) => {
+    const fps = parsePlaybackFps(String(speed), DEFAULTS.PLAYBACK_FPS);
+    setString("playbackSpeed", String(fps));
+    set({ playbackSpeed: fps });
+  },
   setPlaybackWindow: (window) =>
     set((s) =>
       s.playbackWindow?.start === window?.start && s.playbackWindow?.end === window?.end
@@ -162,18 +194,61 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setSelectedPlace: (place) => {
     setString("locationMode", "city");
     setString("selectedPlace", JSON.stringify(place));
-    set({
+    set((s) => ({
       locationMode: "city",
       selectedPlace: place,
       latitude: place.latitude,
       longitude: place.longitude,
-    });
+      recenterNonce: s.recenterNonce + 1,
+    }));
   },
   setDevicePlace: (place) => set({ devicePlace: place }),
   useDeviceLocation: () => {
     setString("locationMode", "device");
-    set({ locationMode: "device" });
+    const fix = parseDeviceFix(getString(LAST_DEVICE_FIX_KEY, ""));
+    // Never keep showing the chosen city's coordinates under a "My Location" label.
+    set((s) => ({
+      locationMode: "device",
+      latitude: fix?.latitude ?? null,
+      longitude: fix?.longitude ?? null,
+      locationStatus: fix ? "last-known" : "locating",
+      lastFixAt: fix?.at ?? null,
+      recenterNonce: s.recenterNonce + 1,
+    }));
   },
+  applyDeviceFix: (lat, lon, at) => {
+    const state = get();
+    if (state.locationMode !== "device") return;
+    setString(LAST_DEVICE_FIX_KEY, JSON.stringify({ latitude: lat, longitude: lon, at }));
+    const firstFix = state.latitude === null;
+    const moved = !(sameCell(state.latitude, lat) && sameCell(state.longitude, lon));
+    set({
+      ...(moved ? { latitude: lat, longitude: lon } : {}),
+      locationStatus: statusForFix(at),
+      lastFixAt: at,
+      ...(firstFix ? { recenterNonce: state.recenterNonce + 1 } : {}),
+    });
+  },
+  applyLocationFailure: (reason) => {
+    const state = get();
+    if (state.locationMode !== "device") return;
+    // A timeout keeps any fix we already have; a denial must stop using the device's position.
+    if (reason === "unavailable" && state.latitude !== null && state.locationStatus !== "denied") {
+      set({ locationStatus: "last-known" });
+      return;
+    }
+    if (reason === "denied") setString(LAST_DEVICE_FIX_KEY, "");
+    set({
+      latitude: DEFAULT_PLACE.latitude,
+      longitude: DEFAULT_PLACE.longitude,
+      locationStatus: reason,
+      lastFixAt: null,
+      devicePlace: null,
+      recenterNonce: state.recenterNonce + 1,
+    });
+  },
+  requestRecenter: () => set((s) => ({ recenterNonce: s.recenterNonce + 1 })),
+  setFocusBounds: (bounds) => set({ focusBounds: bounds }),
   setRadarOpacity: (opacity) => {
     setString("radarOpacity", String(opacity));
     set({ radarOpacity: opacity });

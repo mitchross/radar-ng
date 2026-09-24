@@ -27,6 +27,6 @@ fi
 xcrun simctl bootstatus "$SIMULATOR_UDID" -b
 xcrun simctl install "$SIMULATOR_UDID" \
   "$QA_OUTPUT/DerivedData/Build/Products/Release-iphonesimulator/radarng.app"
-maestro --device "$SIMULATOR_UDID" test \
+maestro --device "$SIMULATOR_UDID" test -e APP_ID=com.vanillax.radar-ng \
   --format JUNIT --output "$QA_OUTPUT/results.xml" \
   --test-output-dir "$QA_OUTPUT/maestro" .maestro/

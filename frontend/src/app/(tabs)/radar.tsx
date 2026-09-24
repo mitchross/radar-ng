@@ -8,10 +8,12 @@
  *   • EyedropperPin    (long-press map → readout)
  *   • TimelineBar      ("Reflectivity / Sunday, April 19 2026" header)
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, StyleSheet, Pressable, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { useIsFocused } from "expo-router/react-navigation";
+import { StatusBar } from "expo-status-bar";
 import { WeatherMap } from "../../components/map/WeatherMap";
 import { RadarOverlay } from "../../components/map/RadarOverlay";
 import { WeatherLayerOverlay } from "../../components/map/WeatherLayerOverlay";
@@ -24,7 +26,7 @@ import {
 import { TropicalDetailSheet } from "../../components/map/TropicalDetailSheet";
 import { StormCellsOverlay } from "../../components/map/StormCellsOverlay";
 import { WindParticlesOverlay, useSharedCamera } from "../../components/map/WindParticlesOverlay";
-import { DEFAULTS } from "../../lib/constants";
+import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { LayerLegendCard } from "../../components/map/LayerLegendCard";
 import { LayerLocationMarker } from "../../components/map/LayerLocationMarker";
 import { TimelineBar } from "../../components/timeline/TimelineBar";
@@ -32,22 +34,30 @@ import { RadarFABs } from "../../components/map/RadarFABs";
 import { MapStylePicker } from "../../components/map/MapStylePicker";
 import { EyedropperPin, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
+import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { useAlerts } from "../../hooks/useAlerts";
-import { useLocation } from "../../hooks/useLocation";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 
 export default function RadarScreen() {
   useManifest();
-  useLocation();
   const { alertStatus } = useAlerts();
   const router = useRouter();
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
+  const mapStyle = useWeatherStore((s) => s.mapStyle);
+  const focused = useIsFocused();
+  const chrome = useMapChromeInsets();
 
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
   const [selectedTropical, setSelectedTropical] = useState<TropicalStormDetails | null>(null);
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
+  const [inspectHint, setInspectHint] = useState(false);
+  useEffect(() => {
+    if (!inspectHint) return;
+    const timer = setTimeout(() => setInspectHint(false), 3000);
+    return () => clearTimeout(timer);
+  }, [inspectHint]);
 
   const camera = useSharedCamera(DEFAULTS.LONGITUDE, DEFAULTS.LATITUDE, DEFAULTS.ZOOM);
   // Particles also run over the air-quality heatmap (the IQAir Earth look):
@@ -57,8 +67,11 @@ export default function RadarScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Status text follows the basemap, not the app theme; only while this tab shows. */}
+      {focused ? <StatusBar style={mapStyle === "light" ? "dark" : "light"} /> : null}
       <WeatherMap
         onLongPress={(lat, lon) => setPinned({ lat, lon })}
+        trackCameraContinuously={windParticlesOn}
         onCameraChanged={(c) => {
           camera.lon.set(c.lon);
           camera.lat.set(c.lat);
@@ -85,10 +98,10 @@ export default function RadarScreen() {
       </WeatherMap>
 
       {/* Top safe area — close button only. Alerts live on the Alerts tab. */}
-      <SafeAreaView style={styles.safeTop} edges={["top"]} pointerEvents="box-none">
+      <SafeAreaView style={styles.safeTop} edges={["top", "left", "right"]} pointerEvents="box-none">
         <Pressable
           style={styles.closeBtn}
-          onPress={() => router.navigate("/" as never)}
+          onPress={() => router.navigate("/")}
           hitSlop={10}
           accessibilityRole="button"
           accessibilityLabel="Close radar"
@@ -97,7 +110,7 @@ export default function RadarScreen() {
           <View style={[styles.closeLine, styles.closeLineB]} />
         </Pressable>
         {alertStatus.kind !== "current" ? (
-          <Text
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE}
             accessibilityRole="alert"
             accessibilityLabel={alertStatus.accessibilityLabel}
             pointerEvents="none"
@@ -117,9 +130,19 @@ export default function RadarScreen() {
       {/* Right-side controls — crosshair button clears a pinned inspector if any. */}
       <RadarFABs
         inspectorActive={pinned != null}
-        onToggleInspector={() => setPinned(null)}
+        onToggleInspector={() => {
+          // With nothing pinned, explain the gesture instead of doing nothing.
+          if (pinned) setPinned(null);
+          else setInspectHint(true);
+        }}
         onOpenStylePicker={() => setStylePickerOpen(true)}
       />
+
+      {inspectHint ? (
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} accessibilityRole="alert" style={[styles.hint, { top: chrome.top, left: chrome.left + 58, right: chrome.right + 58 }]} pointerEvents="none">
+          Long-press the map to inspect a point
+        </Text>
+      ) : null}
 
       {/* Map style + projection picker */}
       <MapStylePicker visible={stylePickerOpen} onClose={() => setStylePickerOpen(false)} />
@@ -167,6 +190,22 @@ const styles = StyleSheet.create({
   },
   closeLineA: { transform: [{ rotate: "45deg" }] },
   closeLineB: { transform: [{ rotate: "-45deg" }] },
+  hint: {
+    position: "absolute",
+    top: 112,
+    left: 70,
+    right: 70,
+    zIndex: 22,
+    textAlign: "center",
+    color: "#FFFFFF",
+    backgroundColor: "rgba(10,10,20,0.82)",
+    borderRadius: 12,
+    overflow: "hidden",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    fontWeight: "600",
+  },
   alertStatus: {
     position: "absolute",
     top: 8,

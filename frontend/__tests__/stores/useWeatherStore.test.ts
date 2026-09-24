@@ -167,3 +167,65 @@ describe("useWeatherStore", () => {
     expect(useWeatherStore.getState().serverUrl).toBe("http://192.168.1.10:8080");
   });
 });
+
+describe("device location honesty", () => {
+  const now = Date.now();
+
+  it("starts device mode without coordinates instead of the fallback city", () => {
+    const state = useWeatherStore.getState();
+    expect(state.locationMode).toBe("device");
+    expect(state.latitude).toBeNull();
+    expect(state.locationStatus).toBe("locating");
+  });
+
+  it("applies a first fix, persists it and asks the map to recenter once", () => {
+    useWeatherStore.getState().applyDeviceFix(42.9634, -85.6681, now);
+    const state = useWeatherStore.getState();
+    expect([state.latitude, state.longitude]).toEqual([42.9634, -85.6681]);
+    expect(state.locationStatus).toBe("live");
+    expect(state.recenterNonce).toBe(1);
+    expect(setString).toHaveBeenCalledWith(
+      "lastDeviceFix",
+      JSON.stringify({ latitude: 42.9634, longitude: -85.6681, at: now }),
+    );
+  });
+
+  it("ignores GPS jitter inside the same ~110 m cell and never recenters on it", () => {
+    useWeatherStore.getState().applyDeviceFix(42.9634, -85.6681, now);
+    useWeatherStore.getState().applyDeviceFix(42.96341, -85.66812, now + 1000);
+    const state = useWeatherStore.getState();
+    expect(state.latitude).toBe(42.9634);
+    expect(state.recenterNonce).toBe(1);
+  });
+
+  it("keeps an existing fix, labelled last-known, when a refresh times out", () => {
+    useWeatherStore.getState().applyDeviceFix(42.9634, -85.6681, now);
+    useWeatherStore.getState().applyLocationFailure("unavailable");
+    const state = useWeatherStore.getState();
+    expect(state.latitude).toBe(42.9634);
+    expect(state.locationStatus).toBe("last-known");
+  });
+
+  it("falls back to the default city, flagged as such, when nothing is known", () => {
+    useWeatherStore.getState().applyLocationFailure("unavailable");
+    const state = useWeatherStore.getState();
+    expect(state.latitude).toBeCloseTo(42.9634);
+    expect(state.locationStatus).toBe("unavailable");
+  });
+
+  it("stops using the device position and forgets the saved fix when permission is denied", () => {
+    useWeatherStore.getState().applyDeviceFix(40, -80, now);
+    useWeatherStore.getState().applyLocationFailure("denied");
+    const state = useWeatherStore.getState();
+    expect(state.latitude).toBeCloseTo(42.9634);
+    expect(state.locationStatus).toBe("denied");
+    expect(setString).toHaveBeenCalledWith("lastDeviceFix", "");
+  });
+
+  it("ignores device fixes while a chosen city is active", () => {
+    const place: SelectedPlace = { id: 1, name: "Chicago", latitude: 41.88, longitude: -87.63 };
+    useWeatherStore.getState().setSelectedPlace(place);
+    useWeatherStore.getState().applyDeviceFix(42.96, -85.67, now);
+    expect(useWeatherStore.getState().latitude).toBe(41.88);
+  });
+});

@@ -8,23 +8,32 @@ import CoreLocation
 struct RadarMapView: View {
     @EnvironmentObject var store: WatchStore
     @State private var zoom: Double = 7
+    @State private var failedTiles: Set<String> = []
 
     private let fallback = CLLocationCoordinate2D(latitude: 42.9634, longitude: -85.6681)
     private let tileSize: CGFloat = 256
 
     var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            radarMap(at: context.date)
+        }
+    }
+
+    private func radarMap(at now: Date) -> some View {
         let coord = store.location ?? fallback
-        let maxZoom = store.radarFrame?.maxZoom ?? 7
-        let z = min(Int(zoom.rounded()), maxZoom)
+        let maxZoom = max(1, min(store.radarFrame?.maxZoom ?? 7, 7))
+        let z = max(1, min(Int(zoom.rounded()), maxZoom))
         let n = 1 << z
         let xf = Double(n) * (coord.longitude + 180) / 360
-        let latRad = coord.latitude * .pi / 180
+        let latitude = min(85.0511, max(-85.0511, coord.latitude))
+        let latRad = latitude * .pi / 180
+        let covered = (20...55).contains(coord.latitude) && (-130 ... -60).contains(coord.longitude)
         let yf = Double(n) * (1 - log(tan(latRad) + 1 / cos(latRad)) / .pi) / 2
 
-        GeometryReader { geo in
+        return GeometryReader { geo in
             let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
             ZStack {
-                WatchBasemapView(latitude: coord.latitude, longitude: coord.longitude, zoom: z, size: geo.size)
+                WatchBasemapView(latitude: latitude, longitude: coord.longitude, zoom: z, size: geo.size)
                 ForEach(-1...1, id: \.self) { dy in
                     ForEach(-1...1, id: \.self) { dx in
                         let tx = Int(floor(xf)) + dx
@@ -37,8 +46,10 @@ struct RadarMapView: View {
                             )
                             if pos.x > -tileSize / 2 && pos.x < geo.size.width + tileSize / 2 &&
                                 pos.y > -tileSize / 2 && pos.y < geo.size.height + tileSize / 2 {
-                            if let url = store.radarFrame?.tileURL(z: z, x: wx, y: ty) {
-                                TileImage(url: url)
+                            if covered, let frame = store.radarFrame, frame.isFresh(at: now) {
+                                TileImage(frame: frame, z: z, x: wx, y: ty, reload: store.radarRefreshID) { key, failed in
+                                    if failed { failedTiles.insert(key) } else { failedTiles.remove(key) }
+                                }
                                     .opacity(0.82)
                                     .position(pos)
                             }
@@ -46,18 +57,27 @@ struct RadarMapView: View {
                         }
                     }
                 }
+                if store.location != nil {
                 Circle()
                     .fill(.blue)
                     .frame(width: 9, height: 9)
                     .overlay(Circle().stroke(.white, lineWidth: 1.5))
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
         }
         .ignoresSafeArea()
         .focusable()
-        .digitalCrownRotation($zoom, from: 4, through: Double(store.radarFrame?.maxZoom ?? 7), by: 1, sensitivity: .low)
-        .overlay(alignment: .top) { radarStatus }
+        .digitalCrownRotation($zoom, from: Double(min(4, maxZoom)), through: Double(maxZoom), by: 1, sensitivity: .low)
+        .overlay(alignment: .top) {
+            VStack(spacing: 2) {
+                radarStatus(at: now, covered: covered)
+                if let notice = store.locationNotice ?? (store.location == nil ? "Showing Grand Rapids" : nil) {
+                    Text(notice).font(.system(size: 9)).padding(3).background(.ultraThinMaterial, in: Capsule())
+                }
+            }
+        }
         .overlay(alignment: .bottom) { controls }
         .onChange(of: store.radarFrame?.maxZoom) { _, maxZoom in
             zoom = min(zoom, Double(maxZoom ?? 7))
@@ -65,9 +85,16 @@ struct RadarMapView: View {
     }
 
     @ViewBuilder
-    private var radarStatus: some View {
-        if let frame = store.radarFrame {
-            Label(store.radarErrorMessage == nil ? Self.ageLabel(frame.timestamp) : "Offline · saved radar", systemImage: "dot.radiowaves.left.and.right")
+    private func radarStatus(at now: Date, covered: Bool) -> some View {
+        if !covered || store.radarFrame.map({ !$0.isFresh(at: now) }) == true {
+            Text(!covered ? "Radar: continental US only" : "Radar expired · refresh")
+                .font(.system(size: 9, weight: .semibold))
+                .padding(6).background(.ultraThinMaterial, in: Capsule())
+        } else if !failedTiles.isEmpty {
+            Text("Radar incomplete · refresh").font(.system(size: 9, weight: .semibold))
+                .padding(6).background(.ultraThinMaterial, in: Capsule())
+        } else if let frame = store.radarFrame {
+            Label(store.radarErrorMessage == nil ? Self.ageLabel(frame.timestamp, now: now) : "Offline · saved radar", systemImage: "dot.radiowaves.left.and.right")
                 .font(.system(size: 9, weight: .semibold))
                 .padding(.horizontal, 7)
                 .padding(.vertical, 4)
@@ -92,7 +119,7 @@ struct RadarMapView: View {
 
     private var controls: some View {
         HStack {
-            Button { zoom = max(4, zoom - 1) } label: {
+            Button { zoom = max(Double(min(4, store.radarFrame?.maxZoom ?? 7)), zoom - 1) } label: {
                 Image(systemName: "minus").font(.body.bold())
                     .frame(width: 36, height: 36).contentShape(Circle())
             }
@@ -136,26 +163,72 @@ struct RadarMapView: View {
         .padding(.bottom, 4)
     }
 
-    private static func ageLabel(_ timestamp: String) -> String {
-        guard let date = ISO8601DateFormatter().date(from: timestamp) else { return "Radar time unknown" }
-        let minutes = max(0, Int(Date().timeIntervalSince(date) / 60))
+    private static func ageLabel(_ timestamp: String, now: Date) -> String {
+        guard let date = WatchRadarFrame.date(timestamp) else { return "Radar time unknown" }
+        let minutes = max(0, Int(now.timeIntervalSince(date) / 60))
         return minutes < 1 ? "Radar now" : "Radar \(minutes)m ago"
     }
 }
 
 private struct TileImage: View {
-    let url: URL
+    let frame: WatchRadarFrame
+    let z: Int
+    let x: Int
+    let y: Int
+    let reload: Int
+    let reportFailure: (String, Bool) -> Void
+    @State private var image: UIImage?
+    @State private var failed = false
+    @State private var reportedKey: String?
+    private var requestKey: String { "\(frame.path):\(frame.palette):\(z):\(x):\(y):\(reload)" }
 
     var body: some View {
-        AsyncImage(url: url) { phase in
-            if let image = phase.image {
-                image
-                    .resizable()
-                    .frame(width: 256, height: 256)
+        Group {
+            if let image {
+                Image(uiImage: image).resizable()
+            } else if failed {
+                Color.black.opacity(0.55).overlay {
+                    Label("Radar unavailable", systemImage: "wifi.slash")
+                        .font(.caption2).padding(8)
+                }
             } else {
-                Color.clear.frame(width: 256, height: 256)
+                Color.black.opacity(0.25).overlay { ProgressView().controlSize(.mini) }
             }
         }
-        .accessibilityHidden(true)
+        .frame(width: 256, height: 256)
+        .onDisappear { if let reportedKey { reportFailure(reportedKey, false) } }
+        .task(id: requestKey) {
+            if let reportedKey { reportFailure(reportedKey, false) }
+            reportedKey = requestKey
+            image = nil
+            failed = false
+            // The service may omit high-zoom tiles. Crop the same frame's
+            // parent tile instead of displaying missing precipitation as clear.
+            for level in stride(from: z, through: min(4, z), by: -1) {
+                guard !Task.isCancelled else { return }
+                let factor = 1 << (z - level)
+                guard let url = frame.tileURL(z: level, x: x / factor, y: y / factor) else { continue }
+                do {
+                    var request = URLRequest(url: url)
+                    request.timeoutInterval = 8
+                    request.setValue("radar-ng/2.0 (watchOS)", forHTTPHeaderField: "User-Agent")
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    guard !Task.isCancelled else { return }
+                    guard (response as? HTTPURLResponse)?.statusCode == 200,
+                          let decoded = UIImage(data: data)?.cgImage else { continue }
+                    let size = CGFloat(decoded.width) / CGFloat(factor)
+                    let rect = CGRect(x: CGFloat(x % factor) * size, y: CGFloat(y % factor) * size,
+                                      width: size, height: size)
+                    if let crop = decoded.cropping(to: rect) {
+                        image = UIImage(cgImage: crop)
+                        return
+                    }
+                } catch {
+                    if Task.isCancelled { return }
+                }
+            }
+            failed = true
+            reportFailure(requestKey, true)
+        }
     }
 }

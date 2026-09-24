@@ -25,7 +25,10 @@ struct ForecastPage: View {
                         Label("Saved forecast", systemImage: "wifi.slash")
                             .font(.caption2).foregroundStyle(.orange)
                     }
-                    if let alert = store.alerts.first {
+                    if let message = store.alertErrorMessage {
+                        Label(message, systemImage: "wifi.slash").font(.caption2).foregroundStyle(.orange)
+                    }
+                    if let alert = store.alerts.first(where: { $0.isActive(at: Date()) }) {
                         AlertBadge(alert: alert)
                     }
                     if let f = store.forecast {
@@ -56,7 +59,7 @@ struct CurrentCard: View {
     let current: Forecast.Current
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("\(Int(current.temperature_2m.rounded()))°")
+            Text(WatchForecastPresentation.degrees(current.temperature_2m))
                 .font(.system(size: 52, weight: .thin, design: .rounded))
             Text(current.weather_code.map { WeatherCodes.label($0) } ?? "Conditions unavailable")
                 .font(.footnote).foregroundStyle(.secondary)
@@ -64,7 +67,9 @@ struct CurrentCard: View {
                 if let wind = current.wind_speed_10m {
                     Label("\(Int(wind.rounded())) mph", systemImage: "wind")
                 }
-                Label("\(Int(current.relative_humidity_2m.rounded()))%", systemImage: "humidity")
+                if let humidity = current.relative_humidity_2m {
+                    Label("\(Int(humidity.rounded()))%", systemImage: "humidity")
+                }
             }
             .font(.caption2).foregroundStyle(.secondary)
         }
@@ -114,7 +119,7 @@ struct HourlyRow: View {
                         Text(WatchForecastPresentation.shortHour(triple.0)).font(.caption2).foregroundStyle(.secondary)
                         Image(systemName: triple.1.1.map { WeatherCodes.sfSymbol($0) } ?? "questionmark.circle")
                             .font(.footnote)
-                        Text("\(Int(triple.1.0.rounded()))°").font(.caption2)
+                        Text(WatchForecastPresentation.degrees(triple.1.0)).font(.caption2)
                     }
                     .frame(width: 34)
                 }
@@ -135,7 +140,7 @@ struct DailyList: View {
                     Image(systemName: daily.weather_code[i].map { WeatherCodes.sfSymbol($0) } ?? "questionmark.circle")
                         .font(.footnote)
                     Spacer()
-                    Text("\(Int(daily.temperature_2m_min[i].rounded()))° / \(Int(daily.temperature_2m_max[i].rounded()))°")
+                    Text("\(WatchForecastPresentation.degrees(daily.temperature_2m_min[i])) / \(WatchForecastPresentation.degrees(daily.temperature_2m_max[i]))")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }

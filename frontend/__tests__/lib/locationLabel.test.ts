@@ -28,3 +28,10 @@ describe("location labels", () => {
     expect(activeLocationName("device", null, null)).toBe("My Location");
   });
 });
+
+describe("fallback city labels", () => {
+  it("names the fallback city instead of claiming it is the device location", () => {
+    expect(activeLocationName("device", null, null, grandRapids)).toBe("Grand Rapids");
+    expect(activeLocationLabel("device", null, null, grandRapids)).toBe("Grand Rapids, Michigan");
+  });
+});

@@ -1,0 +1,1 @@
+PASS: CPManeuver metadata, approach updates, next turn, stale GPS, end trip

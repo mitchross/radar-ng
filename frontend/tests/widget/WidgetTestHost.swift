@@ -1,5 +1,5 @@
 import SwiftUI
-import MapKit
+import CoreLocation
 
 /// Isolated simulator host for real network/MapKit rendering and small-size layout.
 /// Never compiled into the shipping app or extension.

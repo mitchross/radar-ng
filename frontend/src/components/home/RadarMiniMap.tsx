@@ -11,6 +11,7 @@ import { Camera, Layer, Map, RasterSource } from "@maplibre/maplibre-react-nativ
 import { useRouter } from "expo-router";
 import { useIsFocused } from "expo-router/react-navigation";
 import { useAppActive } from "../../hooks/useAppActive";
+import { useNow } from "../../hooks/useNow";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS } from "../../lib/constants";
 import {
@@ -20,7 +21,7 @@ import {
 } from "../../lib/radarStatus";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
 import { pickNowFrameIndex, useManifestQuery } from "../../hooks/useManifest";
-import { usePatchedMapStyle } from "../map/WeatherMap";
+import { useBasemapStyle } from "../../hooks/useBasemapStyle";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { LayerType, RadarFrame } from "../../types/weather";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
@@ -40,7 +41,7 @@ export function RadarMiniMap() {
   const activePalette = useWeatherStore((s) => s.activePalette);
   const lat = useWeatherStore((s) => s.latitude) ?? DEFAULTS.LATITUDE;
   const lon = useWeatherStore((s) => s.longitude) ?? DEFAULTS.LONGITUDE;
-  const patchedStyle = usePatchedMapStyle(serverUrl, theme.dark ? "dark" : "light");
+  const { style: patchedStyle } = useBasemapStyle(serverUrl, theme.dark ? "dark" : "light");
 
   const { data: manifest, dataUpdatedAt, isError, isPaused, isPending } = useManifestQuery();
 
@@ -63,9 +64,10 @@ export function RadarMiniMap() {
   const nowFrameIndex = pickNowFrameIndex(frames);
   const nowFrame = nowFrameIndex >= 0 ? frames[nowFrameIndex] : null;
   const radarUrl = nowFrame ? buildSelfHostedTileUrl(serverUrl, layerKey as LayerType, nowFrame.path, activePalette) : null;
-  // Tracking dataUpdatedAt makes a successful no-change poll rerender this
-  // clock-derived badge instead of leaving LIVE frozen during an ingest stall.
-  const statusNow = dataUpdatedAt > 0 ? Math.max(Date.now(), dataUpdatedAt) : Date.now();
+  // The clock ticks with the manifest poll, and dataUpdatedAt moves it forward
+  // on every successful poll, so LIVE can't stay frozen during an ingest stall.
+  const clock = useNow(DEFAULTS.MANIFEST_REFETCH_MS);
+  const statusNow = Math.max(clock, dataUpdatedAt);
   const status = radarStatus({
     frameTimeSeconds: nowFrame?.time ?? null,
     refreshFailed: radarQueryIsOffline(isError, isPaused),
@@ -105,6 +107,9 @@ export function RadarMiniMap() {
             touchRotate={false}
             touchPitch={false}
             preferredFramesPerSecond={30}
+            // A SurfaceView inside Home's ScrollView tears and ghosts when
+            // scrolled; a TextureView composites with the rest of the screen.
+            androidView="texture"
           >
             <Camera center={[lon, lat]} zoom={MINI_ZOOM} minZoom={MINI_ZOOM} maxZoom={MINI_ZOOM} />
             {radarUrl ? (

@@ -1,4 +1,5 @@
-import { API, SELF_HOSTED } from "./constants";
+import { SELF_HOSTED } from "./constants";
+import { PRECISION, roundCoords } from "./coordinates";
 import { trace } from "./telemetry";
 import { parseSelfHostedManifest } from "./manifest";
 import type {
@@ -34,17 +35,21 @@ export async function fetchWithTimeout(
   }
 }
 
-/** Forecast — always proxied through the tile-server → open-meteo container. */
+/**
+ * Forecast — always proxied through the tile-server → open-meteo container.
+ * Rounds here rather than at the call sites so no caller can leak a full fix.
+ */
 export async function fetchForecast(
   serverUrl: string,
   lat: number,
   lon: number,
   signal?: AbortSignal,
 ): Promise<OpenMeteoResponse> {
+  const { lat: rLat, lon: rLon } = roundCoords(lat, lon, PRECISION.WEATHER);
   return trace(
     "api.fetchForecast",
     async (span) => {
-      const res = await fetchWithTimeout(`${serverUrl}${SELF_HOSTED.FORECAST_PATH}/${lat}/${lon}`, {}, signal);
+      const res = await fetchWithTimeout(`${serverUrl}${SELF_HOSTED.FORECAST_PATH}/${rLat}/${rLon}`, {}, signal);
       span.setAttribute("http.status_code", res.status);
       if (!res.ok) throw new Error(`Forecast error: ${res.status}`);
       return res.json();
@@ -59,10 +64,11 @@ export async function fetchRadarNowcast(
   lon: number,
   signal?: AbortSignal,
 ): Promise<RadarNowcastResponse> {
+  const { lat: rLat, lon: rLon } = roundCoords(lat, lon, PRECISION.WEATHER);
   return trace(
     "api.fetchRadarNowcast",
     async (span) => {
-      const res = await fetchWithTimeout(`${serverUrl}${SELF_HOSTED.NOWCAST_PATH}/${lat}/${lon}`, {}, signal);
+      const res = await fetchWithTimeout(`${serverUrl}${SELF_HOSTED.NOWCAST_PATH}/${rLat}/${rLon}`, {}, signal);
       span.setAttribute("http.status_code", res.status);
       if (!res.ok) throw new Error(`Nowcast error: ${res.status}`);
       const body = (await res.json()) as RadarNowcastResponse;
@@ -73,22 +79,28 @@ export async function fetchRadarNowcast(
   );
 }
 
-/** NWS active alerts — the one non-self-hosted call (gov API, free, no auth). */
+/**
+ * NWS active alerts, fetched by the self-hosted server (`/api/alerts`), which
+ * proxies NWS's own point matching. Keeps 3 decimals: alert polygons are much
+ * finer than a forecast cell.
+ */
 export async function fetchAlerts(
+  serverUrl: string,
   lat: number,
   lon: number,
   signal?: AbortSignal,
 ): Promise<NWSAlertCollection> {
+  const { lat: rLat, lon: rLon } = roundCoords(lat, lon, PRECISION.POINT);
   return trace(
     "api.fetchAlerts",
     async (span) => {
       const res = await fetchWithTimeout(
-        `${API.NWS_ALERTS}?point=${lat},${lon}`,
-        { headers: { "User-Agent": "radar-ng/2.0 (self-hosted-weather-radar)" } },
+        `${serverUrl}${SELF_HOSTED.ALERTS_PATH}?lat=${rLat}&lon=${rLon}`,
+        {},
         signal,
       );
       span.setAttribute("http.status_code", res.status);
-      if (!res.ok) throw new Error(`NWS API error: ${res.status}`);
+      if (!res.ok) throw new Error(`Alerts error: ${res.status}`);
       return res.json();
     },
   );
@@ -114,9 +126,10 @@ export async function fetchStormPrefetchPlan(
   zoom = 6,
   signal?: AbortSignal,
 ): Promise<StormPrefetchPlan> {
+  const { lat: rLat, lon: rLon } = roundCoords(lat, lon, PRECISION.WEATHER);
   const params = new URLSearchParams({
-    lat: String(lat),
-    lon: String(lon),
+    lat: String(rLat),
+    lon: String(rLon),
     zoom: String(zoom),
     palette,
   });

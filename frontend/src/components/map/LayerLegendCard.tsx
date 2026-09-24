@@ -5,8 +5,9 @@
 import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import type { LayerType } from "../../types/weather";
-import { cumulus } from "../../lib/cumulusTheme";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
+import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 
 // Plain-English tag at the top of the legend telling the user whether
 // they're looking at "Now" (live radar), "Soon" (next hour, pysteps
@@ -151,35 +152,38 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
 
 export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   const legend = LEGENDS[activeLayer] ?? LEGENDS.radar;
+  const chrome = useMapChromeInsets();
   const timelineMode = useWeatherStore((s) => s.timelineMode);
-  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
-  const frames = useWeatherStore((s) => s.frames);
+  // Scalars, not the frame array: the card re-renders only when the tag can
+  // change, not on every playback tick.
+  const frameSource = useWeatherStore((s) => s.frames[s.currentFrameIndex]?.source ?? null);
+  const frameIsLater = useWeatherStore(
+    (s) => (s.frames[s.currentFrameIndex]?.time ?? 0) > Math.floor(Date.now() / 1000) + 30 * 60,
+  );
 
   // For the radar layer, the source tag shifts based on which frame the
   // user is sitting on: past = OBSERVED, near-future = NOWCAST, far-future
   // = FORECAST (HRRR). Other layers are statically tagged.
   let source = LAYER_SOURCE[activeLayer] ?? "Now";
   if ((activeLayer === "radar" || activeLayer === "radar-hrrr") && timelineMode === "forecast") {
-    const frame = frames[currentFrameIndex];
-    if (frame?.source === "nowcast") source = "Soon";
-    else if (frame?.source === "radar-hrrr") source = "Later";
+    if (frameSource === "nowcast") source = "Soon";
+    else if (frameSource === "radar-hrrr") source = "Later";
     else source = "Now";
   } else if (activeLayer === "air-quality" || activeLayer === "ozone") {
     // A single AQM run spans the current hour plus 3 days out, so the tag
     // tracks whichever frame the scrubber is on.
-    const frame = frames[currentFrameIndex];
-    if (frame && frame.time > Math.floor(Date.now() / 1000) + 30 * 60) source = "Later";
+    if (frameIsLater) source = "Later";
   }
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { top: chrome.top, left: chrome.left }]}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.title} numberOfLines={1}>
             {legend.title}
           </Text>
           <View style={[styles.tag, { backgroundColor: SOURCE_COLOR[source] + "33", borderColor: SOURCE_COLOR[source] }]}>
-            <Text style={[styles.tagText, { color: SOURCE_COLOR[source] }]}>{source}</Text>
+            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.tagText, { color: SOURCE_COLOR[source] }]}>{source}</Text>
           </View>
         </View>
         <View style={styles.scaleRow}>
@@ -191,14 +195,13 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
           />
           <View style={styles.labels}>
             {legend.stops.map((s, i) => (
-              <Text key={i} style={styles.label}>
+              <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} key={i} style={styles.label}>
                 {s.label}
               </Text>
             ))}
           </View>
         </View>
       </View>
-      <Text style={styles.attribution}>Map Data</Text>
     </View>
   );
 }
@@ -269,12 +272,5 @@ const styles = StyleSheet.create({
     color: "#3a4258",
     fontVariant: ["tabular-nums"],
     fontWeight: "500",
-  },
-  attribution: {
-    color: cumulus.inkMuted,
-    fontSize: 9,
-    marginTop: 4,
-    marginLeft: 6,
-    textDecorationLine: "underline",
   },
 });

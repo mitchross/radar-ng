@@ -13,9 +13,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { useForecast } from "../../hooks/useForecast";
 import { displayTemperature } from "../../lib/temperature";
-import { activeLocationLabel } from "../../lib/locationLabel";
+import { useActiveLocation } from "../../hooks/useActiveLocation";
+import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { cumulus, getWindDirection } from "../../lib/cumulusTheme";
 import { inspectPoint, type InspectReading } from "../../lib/inspector";
+import { locationKey, PRECISION } from "../../lib/coordinates";
 import type { LayerType } from "../../types/weather";
 
 export function LayerLocationMarker() {
@@ -23,20 +25,28 @@ export function LayerLocationMarker() {
   const longitude = useWeatherStore((s) => s.longitude);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
-  const locationMode = useWeatherStore((s) => s.locationMode);
-  const selectedPlace = useWeatherStore((s) => s.selectedPlace);
-  const devicePlace = useWeatherStore((s) => s.devicePlace);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
-  const frames = useWeatherStore((s) => s.frames);
-  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
+  const { label } = useActiveLocation();
   const { data: forecast } = useForecast();
 
   // Open-Meteo carries no pollutant fields, so the AQ pill samples the AQM
   // grid at the pinned frame via the same /api/inspect the eyedropper uses.
   const isAqLayer = activeLayer === "air-quality" || activeLayer === "ozone";
-  const frameTimestamp = frames[currentFrameIndex]?.timestamp ?? null;
+  // Only AQ layers need the frame; selecting null elsewhere keeps this
+  // native marker from re-rendering on every playback tick.
+  const frameTimestamp = useWeatherStore((s) =>
+    s.activeLayer === "air-quality" || s.activeLayer === "ozone"
+      ? (s.frames[s.currentFrameIndex]?.timestamp ?? null)
+      : null,
+  );
   const { data: aqReading } = useQuery({
-    queryKey: ["aq-point", activeLayer, frameTimestamp, latitude, longitude, serverUrl],
+    queryKey: [
+      "aq-point",
+      activeLayer,
+      frameTimestamp,
+      latitude != null && longitude != null ? locationKey(latitude, longitude, PRECISION.POINT) : null,
+      serverUrl,
+    ],
     queryFn: () =>
       inspectPoint({
         serverUrl,
@@ -49,14 +59,19 @@ export function LayerLocationMarker() {
     staleTime: 60_000,
   });
 
-  if (latitude == null || longitude == null) return null;
-
+  // Always mounted (hidden until a location exists) so the map's native child count never churns.
+  const hidden = latitude == null || longitude == null;
   const body = renderBody(activeLayer, forecast, temperatureUnit, aqReading);
-  const label = activeLocationLabel(locationMode, selectedPlace, devicePlace);
 
   return (
-    <Marker lngLat={[longitude, latitude]} anchor="bottom">
-      <View style={styles.wrap} pointerEvents="none" accessibilityLabel={label}>
+    <Marker lngLat={[longitude ?? DEFAULTS.LONGITUDE, latitude ?? DEFAULTS.LATITUDE]} anchor="bottom">
+      <View
+        style={[styles.wrap, hidden ? styles.hidden : null]}
+        pointerEvents="none"
+        accessibilityLabel={label}
+        accessibilityElementsHidden={hidden}
+        importantForAccessibility={hidden ? "no-hide-descendants" : "auto"}
+      >
         <View style={styles.pill}>{body}</View>
         <View style={styles.tail} />
         <View style={styles.dot} />
@@ -73,11 +88,11 @@ function renderBody(
 ) {
   if (layer === "air-quality" || layer === "ozone") {
     const v = aqReading?.ok ? aqReading.value : null;
-    if (v == null) return <Text style={styles.value}>{"—"}</Text>;
+    if (v == null) return <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.value}>{"—"}</Text>;
     return (
       <>
-        <Text style={styles.value}>{Math.round(v)}</Text>
-        <Text style={styles.unit}>{layer === "ozone" ? "PPB" : "µG/M³"}</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.value}>{Math.round(v)}</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.unit}>{layer === "ozone" ? "PPB" : "µG/M³"}</Text>
       </>
     );
   }
@@ -85,12 +100,12 @@ function renderBody(
   if (layer === "wind") {
     const mph = forecast?.current?.wind_speed_10m;
     const deg = forecast?.current?.wind_direction_10m;
-    if (mph == null || deg == null) return <Text style={styles.value}>{"\u2014"}</Text>;
+    if (mph == null || deg == null) return <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.value}>{"\u2014"}</Text>;
     return (
       <>
-        <Text style={styles.windDir}>{getWindDirection(deg)}</Text>
-        <Text style={[styles.value, { color: cumulus.rain }]}>{Math.round(mph)}</Text>
-        <Text style={styles.unit}>MPH</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.windDir}>{getWindDirection(deg)}</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.value, { color: cumulus.rain }]}>{Math.round(mph)}</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.unit}>MPH</Text>
       </>
     );
   }
@@ -98,15 +113,15 @@ function renderBody(
   if (layer === "cape") {
     return (
       <>
-        <Text style={styles.value}>{"\u2014"}</Text>
-        <Text style={styles.unit}>J/KG</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.value}>{"\u2014"}</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.unit}>J/KG</Text>
       </>
     );
   }
 
   const t = forecast?.current?.temperature_2m;
-  if (t == null) return <Text style={styles.value}>{"\u2014"}</Text>;
-  return <Text style={styles.value}>{displayTemperature(t, unit)}°</Text>;
+  if (t == null) return <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.value}>{"\u2014"}</Text>;
+  return <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.value}>{displayTemperature(t, unit)}°</Text>;
 }
 
 const PILL_BG = "rgba(255,255,255,0.98)";
@@ -114,6 +129,7 @@ const PILL_BORDER = "rgba(10,20,40,0.08)";
 
 const styles = StyleSheet.create({
   wrap: { alignItems: "center" },
+  hidden: { opacity: 0 },
   pill: {
     backgroundColor: PILL_BG,
     borderRadius: 18,

@@ -1,0 +1,70 @@
+{
+  "caseID" : "22361864",
+  "checks" : [
+    "required maneuver metadata",
+    "decreasing distance",
+    "next maneuver advancement",
+    "stale GPS rejected",
+    "end trip"
+  ],
+  "destination" : "Gerald R. Ford International Airport",
+  "presentation" : "Development review host, not CarPlay system UI",
+  "route" : "I-96 E",
+  "snapshots" : [
+    {
+      "dashboardInstructionVariants" : [
+        "Turn left onto Crescent St NW"
+      ],
+      "file" : "01-approaching-turn.png",
+      "initialDistanceMeters" : 598.61464051761288,
+      "initialTimeSeconds" : 33.640172061453342,
+      "instructionVariants" : [
+        "Turn left onto Crescent St NW"
+      ],
+      "nextInstruction" : "Turn right onto Ionia Ave NW",
+      "stepIndex" : 0,
+      "symbolImagePresent" : true,
+      "tripDistanceMeters" : 21126.12795195754,
+      "tripTimeSeconds" : 1187.2188402903255,
+      "updatedDistanceMeters" : 300.00000000018213,
+      "updatedTimeSeconds" : 16.859012351778912
+    },
+    {
+      "dashboardInstructionVariants" : [
+        "Turn left onto Crescent St NW"
+      ],
+      "file" : "02-near-turn.png",
+      "initialDistanceMeters" : 598.61464051761288,
+      "initialTimeSeconds" : 33.640172061453342,
+      "instructionVariants" : [
+        "Turn left onto Crescent St NW"
+      ],
+      "nextInstruction" : "Turn right onto Ionia Ave NW",
+      "stepIndex" : 0,
+      "symbolImagePresent" : true,
+      "tripDistanceMeters" : 20866.127951959483,
+      "tripTimeSeconds" : 1172.6076962522352,
+      "updatedDistanceMeters" : 40.000000002125944,
+      "updatedTimeSeconds" : 2.2478683136886279
+    },
+    {
+      "dashboardInstructionVariants" : [
+        "Turn right onto Ionia Ave NW"
+      ],
+      "file" : "03-next-maneuver.png",
+      "initialDistanceMeters" : 72.378580034239462,
+      "initialTimeSeconds" : 4.0674379160024028,
+      "instructionVariants" : [
+        "Turn right onto Ionia Ave NW"
+      ],
+      "nextInstruction" : "Turn left to merge onto I-196 East toward Lansing",
+      "stepIndex" : 1,
+      "symbolImagePresent" : true,
+      "tripDistanceMeters" : 20791.127951957271,
+      "tripTimeSeconds" : 1168.3929431641689,
+      "updatedDistanceMeters" : 37.378580034154311,
+      "updatedTimeSeconds" : 2.1005531416246055
+    }
+  ],
+  "source" : "Live MapKit route; replayed GPS; native CPManeuver objects"
+}

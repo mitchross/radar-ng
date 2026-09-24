@@ -3,6 +3,7 @@
  * interpolated layer value at a point.
  */
 import type { LayerType } from "../types/weather";
+import { PRECISION, roundCoords } from "./coordinates";
 import { recordSpanError, trace } from "./telemetry";
 import { fetchWithTimeout } from "./api";
 
@@ -28,7 +29,8 @@ export async function inspectPoint(opts: InspectOptions): Promise<InspectReading
     "api.inspectPoint",
     async (span) => {
       try {
-        const url = `${opts.serverUrl}/api/inspect/${opts.layer}/${encodeURIComponent(opts.timestamp)}/${opts.lat}/${opts.lon}`;
+        const { lat, lon } = roundCoords(opts.lat, opts.lon, PRECISION.POINT);
+        const url = `${opts.serverUrl}/api/inspect/${opts.layer}/${encodeURIComponent(opts.timestamp)}/${lat}/${lon}`;
         const resp = await fetchWithTimeout(url, {}, opts.signal);
         span.setAttribute("http.status_code", resp.status);
         if (resp.ok) {

@@ -3,14 +3,17 @@
  * map-style picker. Glass-dark buttons; Apple-Weather-style popover with
  * icons + checkmark + layer-tinted background.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Animated, Easing, View, StyleSheet, Text, Pressable } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { pickNowFrameIndex } from "../../hooks/useManifest";
 import { cumulus } from "../../lib/cumulusTheme";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
+import { refreshDeviceLocation } from "../../hooks/useLocation";
 import type { LayerType } from "../../types/weather";
+import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
+import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 
 type IconKind = "umbrella" | "thermo" | "dust" | "wind" | "bolt" | "layers" | "drop" | "cloud" | "ozone";
 
@@ -43,12 +46,14 @@ export function RadarFABs({
   onToggleInspector: () => void;
   onOpenStylePicker?: () => void;
 }) {
+  const chrome = useMapChromeInsets();
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const setActiveLayer = useWeatherStore((s) => s.setActiveLayer);
   const extrasVisible = useWeatherStore((s) => s.extrasVisible);
   const toggleExtras = useWeatherStore((s) => s.toggleExtras);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
   const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
+  const requestRecenter = useWeatherStore((s) => s.requestRecenter);
   const queryClient = useQueryClient();
   const [layerOpen, setLayerOpen] = useState(false);
 
@@ -80,7 +85,7 @@ export function RadarFABs({
 
   return (
     <>
-      <View style={styles.rail}>
+      <View style={[styles.rail, { top: chrome.top, right: chrome.right }]}>
         <GlassBtn
           active={layerOpen}
           onPress={() => setLayerOpen((v) => !v)}
@@ -104,6 +109,15 @@ export function RadarFABs({
         >
           <CrosshairIcon />
         </GlassBtn>
+        <GlassBtn
+          onPress={() => {
+            requestRecenter();
+            refreshDeviceLocation();
+          }}
+          accessibilityLabel="Center map on your location"
+        >
+          <LocateIcon />
+        </GlassBtn>
         <GlassBtn onPress={onOpenStylePicker} accessibilityLabel="Choose map style">
           <MapStyleIcon />
         </GlassBtn>
@@ -124,7 +138,7 @@ export function RadarFABs({
             accessibilityRole="button"
             accessibilityLabel="Close radar layer picker"
           />
-          <View style={[styles.panel, { backgroundColor: popoverBg }]}>
+          <View style={[styles.panel, { top: chrome.top - 8, right: chrome.right + 56, backgroundColor: popoverBg }]}>
             {options.map((opt) => {
               const isActive = activeLayer === opt.id;
               return (
@@ -148,7 +162,7 @@ export function RadarFABs({
                   <View style={styles.iconCol}>
                     <LayerOptionIcon kind={opt.icon} />
                   </View>
-                  <Text style={[styles.panelRowTitle, isActive && styles.panelRowTitleActive]}>
+                  <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.panelRowTitle, isActive && styles.panelRowTitleActive]}>
                     {opt.name}
                   </Text>
                 </Pressable>
@@ -215,6 +229,15 @@ function CrosshairIcon() {
   );
 }
 
+function LocateIcon() {
+  return (
+    <View style={styles.iconBox}>
+      <View style={icons.locateRing} />
+      <View style={icons.locateDot} />
+    </View>
+  );
+}
+
 function BoltIcon() {
   // Lightning bolt — toggles the storm-cell + lightning-strike overlays.
   return (
@@ -239,7 +262,7 @@ function RefreshIcon({ spinning = false }: { spinning?: boolean }) {
   // Spins while a refresh is in flight so the tap reads as "actually doing
   // something" — without this the FAB looked dead because the manifest
   // request usually completes before any visible state change.
-  const rotation = useRef(new Animated.Value(0)).current;
+  const [rotation] = useState(() => new Animated.Value(0));
   useEffect(() => {
     if (!spinning) {
       rotation.stopAnimation();
@@ -500,6 +523,21 @@ const icons = StyleSheet.create({
     backgroundColor: "#1a2030",
     borderRadius: 1,
     top: 1,
+  },
+  locateRing: {
+    position: "absolute",
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.6,
+    borderColor: "#1a2030",
+  },
+  locateDot: {
+    position: "absolute",
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#1a2030",
   },
   pinDot: {
     position: "absolute",

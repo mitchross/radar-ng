@@ -19,7 +19,6 @@ export function RadarOverlay() {
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
-  const radarVisible = useWeatherStore((s) => s.radarVisible);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const activePalette = useWeatherStore((s) => s.activePalette);
@@ -42,7 +41,7 @@ export function RadarOverlay() {
       frames={frames}
       currentFrameIndex={currentFrameIndex}
       playbackWindow={playbackWindow}
-      opacity={radarVisible ? radarOpacity : 0}
+      opacity={radarOpacity}
       minZoom={SOURCE_MIN_ZOOM}
       specFor={specFor}
     />

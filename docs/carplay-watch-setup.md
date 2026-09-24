@@ -1,9 +1,20 @@
 # Apple Watch and CarPlay development
 
-The Watch app and experimental CarPlay map scene are native Swift sources under
+The Watch app and CarPlay navigation implementation are native Swift sources under
 `frontend/targets/`. Expo prebuild registers them in `frontend/ios/radarng.xcworkspace`.
-Keep both the iPhone and CarPlay scene declarations: removing the iPhone scene
-breaks React Native window attachment.
+
+The iPhone window scene is always declared. Expo 57 supplies it through
+`ios.enableSceneSupport` in `expo-build-properties`, which points
+`UIWindowSceneSessionRoleApplication` at `EXExpoAppSceneDelegate`. That delegate
+creates the window from the connecting scene and rebuilds the launch options from
+its `connectionOptions`, so a link that cold-starts the app still reaches
+`Linking.getInitialURL()`. The two CarPlay scene roles, the CarPlay Swift sources
+and the navigation entitlement are added only by `RADAR_CARPLAY=1` builds.
+
+Config-plugin mods run last-registered-first, so `./plugins/withCarPlayScene` is
+listed **before** `expo-build-properties` in `app.json`: the window scene has to
+exist before the CarPlay roles are appended, and `enableSceneSupport` throws when it
+finds a scene manifest it does not own.
 
 ## Apple Watch
 
@@ -18,13 +29,19 @@ Open `ios/radarng.xcworkspace`, select `radar-ngWatch`, and choose a Watch simul
 or your paired Watch. Use normal Apple development signing for a physical Watch.
 The Watch target has no CarPlay entitlement requirement.
 
-The radar page uses a native MapKit snapshot plus the latest self-hosted MRMS
-raster tiles. The Digital Crown and +/- buttons change zoom; refresh fetches a new
+The radar page uses a basemap image rendered by the home cluster
+(`maps.vanillax.me/raster`, tileserver-gl over VersaTiles) plus the latest
+self-hosted MRMS raster tiles. No third-party map service is involved. The Digital Crown and +/- buttons change zoom; refresh fetches a new
 manifest. Only tiles intersecting the screen are loaded. Swiping up opens a native
 SwiftUI forecast page. Its hourly strip starts at the forecast's current hour;
 its next-hour precipitation uses four upcoming 15-minute samples, not the first
 60 samples from midnight. Missing data and location fallback are explicitly labeled.
 Forecast and radar use the Radar API; Watch alerts still use NWS directly.
+Location refreshes reject stale/inaccurate fixes, discard weather responses for a
+previous location, and label the fallback or last-known location. Missing high-zoom
+radar tiles fall back to a cropped lower-resolution tile from the same frame.
+Loading/failure states are visible; radar older than 15 minutes is hidden. Expired
+alerts are omitted and failed alert requests are labelled unavailable.
 
 Native UI tests and launch measurements:
 
@@ -54,16 +71,42 @@ For a full CarPlay app, request Apple's category-specific capability, enable it 
 the app identifier, regenerate the development profile, and include the matching
 entitlement in the app. `com.apple.developer.carplay-maps` is for navigation apps
 with route guidance; Apple's driving-task category does not permit custom maps.
-The current `RadarMapController` is an experimental radar map, not a navigation app.
-It still uses Iowa Mesonet tiles and has not been verified in an actual car.
+The current implementation includes destination search, MapKit driving routes,
+route alternatives, turn instructions, voice prompts, GPS-loss handling, rerouting,
+and a Dashboard map sharing the active journey. Radar uses Radar NG's timestamped
+MRMS tiles; missing high-zoom tiles fall back to the same frame's parent tile.
+This is development code, not yet verified in an actual CarPlay session or vehicle.
+Travel times during a journey are approximate, derived from MapKit's route estimate.
 
-A **radar widget** is the supported first path for displaying radar in the user's
+Ordinary phone/Watch builds intentionally omit the restricted entitlement. After
+Apple grants Navigation to this team and bundle identifier, generate a CarPlay build:
+
+```sh
+RADAR_CARPLAY=1 bunx expo prebuild --platform ios --no-install
+python3 scripts/check-carplay-profile.py /path/to/profile.mobileprovision
+```
+
+The profile must contain `com.apple.developer.carplay-maps = true`, match
+`FVU6RGL532.com.vanillax.radar-ng`, and be unexpired. Checking a capability or adding
+the entitlement locally cannot grant Apple's approval. To return to ordinary
+signing, run prebuild without `RADAR_CARPLAY`; the plugin removes any previously
+generated maps entitlement and compiles no CarPlay sources. The iPhone window scene
+stays declared either way — only the CarPlay roles are gated, so an ordinary release
+cannot ship background modes that App Review cannot see.
+
+The September 21 request is prepared in the signed-in browser, category Navigation,
+with an honest planned-feature description and labelled iPhone development-preview
+images. It awaits the account owner's agreement/submission unless separately
+confirmed. See [the request and validation record](carplay-request-2026-09-21.md).
+
+A **radar widget** is another supported path for displaying radar in the user's
 car without turning Radar NG into a full navigation app. iOS 26+ CarPlay can show
 `.systemSmall` widgets from ordinary iPhone apps. A widget can show a timestamped
 radar snapshot; system-scheduled widget refreshes are not a continuous animation.
 The native `RadarWidget` target now implements this first step. It uses the
-self-hosted MRMS manifest and classic radar tiles, composited over a MapKit
-snapshot. The widget shows the frame timestamp (not the download time), requests an
+self-hosted MRMS manifest and classic radar tiles, composited over a basemap
+image rendered by the home cluster (`maps.vanillax.me/raster`). If the basemap is
+unreachable the radar still renders over a plain background. The widget shows the frame timestamp (not the download time), requests an
 update after ten minutes, and schedules an older-data label after fifteen minutes.
 WidgetKit decides when to refresh; this is not a live feed or continuously tracked
 driving position. The location dot belongs to the sampled snapshot.
@@ -82,7 +125,7 @@ development signing. No public App Store release is required. The extension must
 also be signed for the same development team. A simulator build cannot be installed
 on a physical iPhone.
 
-Run the isolated native rendering test (real API, MapKit, timestamp parsing,
+Run the isolated native rendering test (real API, self-hosted basemap, timestamp parsing,
 coverage rejection, and small-size/error presentation):
 
 ```sh
@@ -121,3 +164,28 @@ follow Apple's entitlement setup. Neither kind of simulator proves operation in 
 - [Requesting CarPlay entitlements](https://developer.apple.com/documentation/carplay/requesting-carplay-entitlements).
 - [Apple entitlement troubleshooting](https://developer.apple.com/library/archive/technotes/tn2415/_index.html).
 - [Setting up Watch tests](https://developer.apple.com/documentation/watchos-apps/setting-up-tests-for-your-watchos-app).
+
+## Physical iPhone: integrity could not be verified
+
+On September 21, an exported release-testing IPA was cryptographically valid but
+its iPhone and widget profiles listed the previous iPhone's UDID, not the currently
+connected phone. Both phones had the same user-visible name. Xcode reported an
+integrity/install failure rather than identifying the device mismatch in its first
+error line. Changing the app's CarPlay entitlement did not refresh those old exports.
+
+Use `xcrun devicectl list devices` to identify the connected **physical** phone by
+UDID, then build for that explicit destination so automatic signing can register it:
+
+```sh
+xcodebuild -workspace ios/radarng.xcworkspace -scheme radarng \
+  -configuration Release -destination 'platform=iOS,id=PHONE_UDID' \
+  -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+```
+
+Re-export the archive with refreshed profiles (`debugging` for direct local testing,
+`release-testing` for ad hoc distribution). The previous IPA remains invalid for the
+new phone. Inspect `embedded.mobileprovision` with `security cms -D -i` and confirm
+that the iPhone app and each iOS extension include the target phone in
+`ProvisionedDevices`. Watch provisioning is separate; validate against the Watch
+when diagnosing a Watch-only installation failure. Never remove the installed app
+or its data merely to address a profile mismatch.

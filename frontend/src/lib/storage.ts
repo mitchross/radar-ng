@@ -15,3 +15,24 @@ export function setString(key: string, value: string): void {
     storage.set(key, value);
   } catch {}
 }
+
+/** Synchronous Storage-shaped adapter for the react-query persister. */
+export const queryCacheStorage = {
+  getItem(key: string): string | null {
+    try {
+      return storage.getString(key) ?? null;
+    } catch {
+      return null;
+    }
+  },
+  setItem(key: string, value: string): void {
+    try {
+      storage.set(key, value);
+    } catch {}
+  },
+  removeItem(key: string): void {
+    try {
+      storage.remove(key);
+    } catch {}
+  },
+};

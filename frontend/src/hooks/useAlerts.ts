@@ -1,6 +1,7 @@
-import { useEffect, useReducer, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { onlineManager, useQuery } from "@tanstack/react-query";
 import { fetchAlerts } from "../lib/api";
+import { locationKey, PRECISION } from "../lib/coordinates";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { DEFAULTS } from "../lib/constants";
 import {
@@ -18,20 +19,28 @@ const getOnlineState = () => onlineManager.isOnline();
 
 export function useAlerts() {
   const latitude = useWeatherStore((s) => s.latitude);
+  const serverUrl = useWeatherStore((s) => s.serverUrl);
   const longitude = useWeatherStore((s) => s.longitude);
   const appActive = useAppActive();
   const isOnline = useSyncExternalStore(subscribeToOnlineState, getOnlineState, getOnlineState);
-  const [, advanceClock] = useReducer((revision: number) => revision + 1, 0);
+  // The clock advances at each scheduled transition (an alert expiring, the
+  // all-clear ageing out) and never lags the last successful response.
+  const [clock, setClock] = useState(() => Date.now());
+  const advanceClock = useCallback(() => setClock(Date.now()), []);
+  const position =
+    latitude != null && longitude != null
+      ? locationKey(latitude, longitude, PRECISION.POINT)
+      : null;
 
   const query = useQuery({
-    queryKey: ["alerts", latitude, longitude],
-    queryFn: ({ signal }) => fetchAlerts(latitude!, longitude!, signal),
+    queryKey: ["alerts", position, serverUrl],
+    queryFn: ({ signal }) => fetchAlerts(serverUrl, latitude!, longitude!, signal),
     enabled: latitude !== null && longitude !== null,
     refetchInterval: DEFAULTS.ALERTS_REFETCH_MS,
     staleTime: DEFAULTS.ALERTS_REFETCH_MS,
   });
 
-  const now = Date.now();
+  const now = Math.max(clock, query.dataUpdatedAt);
   const snapshot = query.data
     ? getAlertCollectionSnapshot(query.data, now)
     : undefined;
@@ -46,7 +55,7 @@ export function useAlerts() {
   useEffect(() => {
     if (!appActive) return undefined;
     return scheduleAlertTransition(nextTransitionAt, advanceClock);
-  }, [appActive, nextTransitionAt]);
+  }, [appActive, nextTransitionAt, advanceClock]);
 
   const alertStatus = getAlertFreshnessStatus({
     hasCachedData: query.data !== undefined,

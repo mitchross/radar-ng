@@ -17,13 +17,15 @@
       "appleTeamId": "FVU6RGL532",
       "icon": "./assets/expo.icon",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "radar-ng uses your location to show local weather radar and forecasts."
+        "CFBundleDisplayName": "Radar NG",
+        "NSLocalNetworkUsageDescription": "Radar NG connects to a weather server on your local network when you configure one."
       }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#081A24",
-        "foregroundImage": "./assets/images/android-icon-foreground.png"
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -46,20 +48,29 @@
         }
       ],
       "@maplibre/maplibre-react-native",
+      "./plugins/withCarPlayScene",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Radar NG uses your location to show radar, forecasts and alerts for where you are.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "motionUsagePermission": false
+        }
+      ],
       [
         "expo-build-properties",
         {
           "ios": {
-            "deploymentTarget": "26.0"
-          },
-          "android": {
-            "usesCleartextTraffic": true
+            "deploymentTarget": "26.0",
+            "enableSceneSupport": true
           }
         }
       ],
       "./plugins/withXcode27PodDeploymentFloor",
-      "./plugins/withCarPlayScene",
       "./plugins/withScriptSandboxOff",
+      "./plugins/withAndroidAppLabel",
+      "./plugins/withAndroidNetworkSecurity",
       "@bacons/apple-targets",
       [
         "expo-font",
@@ -75,10 +86,6 @@
           ]
         }
       ],
-      "expo-image",
-      "expo-web-browser",
-      "expo-localization",
-      "expo-secure-store",
       "expo-status-bar"
     ],
     "experiments": {

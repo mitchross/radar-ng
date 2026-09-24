@@ -5,7 +5,7 @@
 radar-ng is a monorepo:
 - `backend/` — Python 3.12 ingest + tile-rendering Temporal activities (MRMS radar, HRRR forecast, NAQFC air quality, lightning, tropical, nowcast, open-meteo sync).
 - `temporal/` — Temporal workflows + workers that orchestrate the pipeline (scheduled via Temporal Schedules, no cron).
-- `frontend/` — Expo SDK 56 / TypeScript universal app (the "Weather Clear" light UI).
+- `frontend/` — Expo SDK 57 / TypeScript iOS + Android app (the "Weather Clear" light UI).
 - `deploy/` — Docker Compose golden path + reference Kubernetes manifests.
 
 First-party container images publish to `ghcr.io/mitchross/radar-ng-{tile-server,temporal-worker,open-meteo-worker}`. The live Kubernetes manifests live in a separate gitops repo, `mitchross/talos-argocd-proxmox` (Talos + ArgoCD). The tile-server is Caddy (static tile serving + cache headers + routing) in front of FastAPI/uvicorn.

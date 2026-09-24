@@ -23,6 +23,34 @@
         header Access-Control-Allow-Origin "*"
     }
 
+    # Glyphs for the bundled styles, baked into the image (see Dockerfile).
+    handle /basemap/fonts/* {
+        uri strip_prefix /basemap
+        root * /srv/basemap
+        file_server
+        header Cache-Control "public, max-age=604800"
+        header Access-Control-Allow-Origin "*"
+    }
+
+    # Satellite for the bundled style: public-domain USGS orthoimagery, fetched
+    # by this server so clients never contact a third party. XYZ in, ArcGIS {z}/{y}/{x} out; z0-16.
+    @imagery path_regexp tile ^/basemap/imagery/([0-9]|1[0-6])/([0-9]+)/([0-9]+)\.jpg$
+    handle @imagery {
+        rewrite * /arcgis/rest/services/USGSImageryOnly/MapServer/tile/{re.tile.1}/{re.tile.3}/{re.tile.2}
+        reverse_proxy https://basemap.nationalmap.gov {
+            header_up Host {upstream_hostport}
+            header_down -Cache-Control
+            header_down -Set-Cookie
+            header_down -X-Cache
+            header_down -Via
+        }
+        header Cache-Control "public, max-age=604800"
+        header Access-Control-Allow-Origin "*"
+    }
+    handle /basemap/imagery/* {
+        respond 404
+    }
+
     # Protomaps PMTiles tile server. go-pmtiles exposes tiles at
     # /{archive}/{z}/{x}/{y}.mvt — our archive is basemap.pmtiles so
     # archive = "basemap". Client requests /basemap/tiles/{z}/{x}/{y}.mvt,

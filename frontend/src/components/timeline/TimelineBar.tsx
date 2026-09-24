@@ -10,13 +10,25 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
 import { findClosestIdx } from "../../lib/frameIndex";
+import { createThrottle } from "../../lib/throttle";
 import { useAppActive } from "../../hooks/useAppActive";
+import { useNow } from "../../hooks/useNow";
+import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { useIsFocused } from "expo-router/react-navigation";
 import type { LayerType } from "../../types/weather";
+import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 
 const NOWCAST_MIN = 60;
 const HRRR_MIN = 48 * 60;
 const NOW_REFRESH_MS = 60_000;
+// Each committed index remounts a raster source, so a drag commits at most this often.
+const SCRUB_COMMIT_MS = 100;
+// Built once: constructing a formatter per render showed up on every playback tick.
+const FRAME_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
+  weekday: "long",
+  hour: "numeric",
+  minute: "2-digit",
+});
 
 const LAYER_TITLE: Record<LayerType, string> = {
   radar: "Radar",
@@ -35,6 +47,7 @@ const LAYER_TITLE: Record<LayerType, string> = {
 type Zoom = "1h" | "48h";
 
 export function TimelineBar() {
+  const chrome = useMapChromeInsets();
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
@@ -46,6 +59,8 @@ export function TimelineBar() {
   const setPlaybackWindow = useWeatherStore((s) => s.setPlaybackWindow);
 
   const [zoom, setZoom] = useState<Zoom>("1h");
+  const [scrub] = useState(() => createThrottle(setCurrentFrameIndex, SCRUB_COMMIT_MS));
+  useEffect(() => () => scrub.cancel(), [scrub]);
 
   const idxRef = useRef(currentFrameIndex);
   useEffect(() => { idxRef.current = currentFrameIndex; }, [currentFrameIndex]);
@@ -94,7 +109,7 @@ export function TimelineBar() {
         ? startIdx
         : idxRef.current + 1;
       setCurrentFrameIndex(next);
-    }, 1000 / Math.max(1, Math.min(10, playbackSpeed)));
+    }, 1000 / playbackSpeed);
     return () => clearInterval(id);
   }, [appActive, focused, isPlaying, playbackSpeed, startIdx, endIdx, frames.length, setCurrentFrameIndex]);
 
@@ -120,16 +135,12 @@ export function TimelineBar() {
   const offsetMin = currentFrame ? Math.round((currentFrame.time - nowSec) / 60) : 0;
   const layerTitle = LAYER_TITLE[activeLayer] ?? "Radar";
   const frameDate = new Date((currentFrame?.time ?? nowSec) * 1000);
-  const dateLabel = frameDate.toLocaleDateString([], {
-    weekday: "long",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const dateLabel = FRAME_DATE_FORMAT.format(frameDate);
 
   const mode = offsetMin === 0 ? "Now" : offsetMin > 0 ? "Forecast" : "Past";
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { left: chrome.left, right: chrome.right, bottom: chrome.bottom }]}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <Pressable
@@ -150,10 +161,10 @@ export function TimelineBar() {
           </Pressable>
 
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.layerTitle} numberOfLines={1}>
+            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.layerTitle} numberOfLines={1}>
               {layerTitle} · {mode}
             </Text>
-            <Text style={styles.dateLabel} numberOfLines={1}>{dateLabel}</Text>
+            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.dateLabel} numberOfLines={1}>{dateLabel}</Text>
           </View>
 
           <View style={styles.segmented}>
@@ -170,7 +181,7 @@ export function TimelineBar() {
                 accessibilityLabel={`${z} radar timeline`}
                 accessibilityState={{ checked: zoom === z }}
               >
-                <Text style={[styles.segText, zoom === z ? styles.segTextActive : null]}>{z}</Text>
+                <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.segText, zoom === z ? styles.segTextActive : null]}>{z}</Text>
               </Pressable>
             ))}
           </View>
@@ -222,10 +233,12 @@ export function TimelineBar() {
             maximumValue={endIdx}
             step={1}
             value={currentFrameIndex}
+            onSlidingStart={() => setIsPlaying(false)}
             onValueChange={(v) => {
               setIsPlaying(false);
-              setCurrentFrameIndex(Math.round(v));
+              scrub.call(Math.round(v));
             }}
+            onSlidingComplete={(v) => scrub.flush(Math.round(v))}
             minimumTrackTintColor="transparent"
             maximumTrackTintColor="transparent"
             thumbTintColor="#ffffff"
@@ -238,7 +251,7 @@ export function TimelineBar() {
             ? ["-60", "-30", "Now", "+30", "+60"]
             : ["Past", "Now", "+12h", "+24h", "+48h"]
           ).map((label, i) => (
-            <Text
+            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE}
               key={i}
               style={[
                 styles.axisTick,
@@ -256,12 +269,7 @@ export function TimelineBar() {
 
 /** Epoch seconds, refreshed once a minute while mounted. */
 function useNowSec(): number {
-  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
-  useEffect(() => {
-    const id = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), NOW_REFRESH_MS);
-    return () => clearInterval(id);
-  }, []);
-  return nowSec;
+  return Math.floor(useNow(NOW_REFRESH_MS) / 1000);
 }
 
 function DashedRow({ color }: { color: string }) {

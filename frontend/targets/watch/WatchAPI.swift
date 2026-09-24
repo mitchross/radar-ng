@@ -4,16 +4,32 @@ enum WatchAPI {
     static let serverURL = "https://radar-ng-api.vanillax.me"
     private static let userAgent = "radar-ng/2.0 (watchOS)"
 
+    /// Mirrors `PRECISION` in `src/lib/coordinates.ts` so the watch and the phone
+    /// ask the same question for the same place. The radar and nowcast grids are
+    /// 1 km cells, so a finer fix only costs cache hits, never accuracy.
+    private static let weatherDecimals = 2
+    /// Alert polygons can be far smaller than a forecast cell, so they keep 3.
+    private static let pointDecimals = 3
+
+    private static func round(_ value: Double, decimals: Int) -> Double {
+        let factor = pow(10.0, Double(decimals))
+        return (value * factor).rounded() / factor
+    }
+
     static func fetchForecast(lat: Double, lon: Double) async throws -> Forecast {
-        let url = URL(string: "\(serverURL)/api/forecast/\(lat)/\(lon)")!
+        let url = URL(
+            string: "\(serverURL)/api/forecast/\(round(lat, decimals: weatherDecimals))/\(round(lon, decimals: weatherDecimals))"
+        )!
         let data = try await fetch(url)
         return try JSONDecoder().decode(Forecast.self, from: data)
     }
 
     static func fetchAlerts(lat: Double, lon: Double) async throws -> [Alert] {
-        var req = URLRequest(url: URL(string: "https://api.weather.gov/alerts/active?point=\(lat),\(lon)")!)
-        req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        let data = try await fetch(req)
+        // The server proxies NWS point matching, so the Watch never calls a third party.
+        let url = URL(
+            string: "\(serverURL)/api/alerts?lat=\(round(lat, decimals: pointDecimals))&lon=\(round(lon, decimals: pointDecimals))"
+        )!
+        let data = try await fetch(url)
         let envelope = try JSONDecoder().decode(AlertsEnvelope.self, from: data)
         return envelope.features.map { $0.properties }
     }
@@ -26,9 +42,9 @@ enum WatchAPI {
         guard let layer = manifest.layers["radar"] else {
             throw WatchAPIError.radarUnavailable
         }
-        let frame = layer.latest.flatMap { latest in
-            layer.frames?.first(where: { $0.timestamp == latest })
-        } ?? layer.frames?.max(by: { $0.timestamp < $1.timestamp })
+        let frame = layer.frames?.filter {
+            WatchRadarFrame.date($0.timestamp).map { $0.timeIntervalSinceNow <= 60 } == true
+        }.max { WatchRadarFrame.date($0.timestamp)! < WatchRadarFrame.date($1.timestamp)! }
         guard let frame else {
             throw WatchAPIError.radarUnavailable
         }
@@ -39,7 +55,7 @@ enum WatchAPI {
             timestamp: frame.timestamp,
             path: frame.path,
             palette: palette,
-            maxZoom: min(max(frame.maxZoom ?? 7, 4), 7)
+            maxZoom: min(max(frame.maxZoom ?? 7, 1), 7)
         )
     }
 
@@ -57,6 +73,20 @@ enum WatchAPI {
             throw WatchAPIError.invalidResponse
         }
         return data
+    }
+}
+
+/// Basemap images rendered by the home cluster's tileserver-gl from the phone's VersaTiles styles.
+enum WatchBasemap {
+    static let rasterURL = "https://maps.vanillax.me/raster"
+
+    /// Static-map zoom uses MapLibre's 512-px convention, one less than the 256-pt radar tile zoom,
+    /// so the image lines up with the radar tiles RadarMapView positions at `zoom`.
+    static func url(latitude: Double, longitude: Double, zoom: Int, size: CGSize) -> URL? {
+        let width = min(1024, max(1, Int(size.width.rounded())))
+        let height = min(1024, max(1, Int(size.height.rounded())))
+        return URL(string: String(format: "%@/styles/dark/static/%.5f,%.5f,%d/%dx%d@2x.png",
+                                  rasterURL, longitude, latitude, zoom - 1, width, height))
     }
 }
 
@@ -78,8 +108,30 @@ struct WatchRadarFrame: Equatable {
     let palette: String
     let maxZoom: Int
 
+    // Built once: these run inside filter/max over every manifest frame.
+    private static let fractionalISO: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let plainISO = ISO8601DateFormatter()
+
+    static func date(_ value: String) -> Date? {
+        fractionalISO.date(from: value) ?? plainISO.date(from: value)
+    }
+
+    func isFresh(at now: Date) -> Bool {
+        guard let date = Self.date(timestamp) else { return false }
+        return (-60...900).contains(now.timeIntervalSince(date))
+    }
+
     func tileURL(z: Int, x: Int, y: Int) -> URL? {
-        URL(string: "\(WatchAPI.serverURL)/tiles/radar/\(palette)/\(path)/\(z)/\(x)/\(y).png")
+        guard maxZoom >= 1, (1...min(maxZoom, 7)).contains(z), (0..<(1 << z)).contains(x), (0..<(1 << z)).contains(y),
+              !path.isEmpty, !palette.isEmpty,
+              path.allSatisfy({ $0.isLetter || $0.isNumber || "_:+-".contains($0) || $0 == "." }),
+              path != ".", path != "..",
+              palette.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else { return nil }
+        return URL(string: "\(WatchAPI.serverURL)/tiles/radar/\(palette)/\(path)/\(z)/\(x)/\(y).png")
     }
 }
 
@@ -113,29 +165,31 @@ struct Forecast: Decodable {
     let daily: Daily
     let minutely_15: Minutely?
 
+    // Open-Meteo sends null for values a model doesn't provide. Every value is
+    // optional so one null can't fail the whole forecast; the UI shows "—".
     struct Current: Decodable {
         let time: String
-        let temperature_2m: Double
+        let temperature_2m: Double?
         let apparent_temperature: Double?
         let weather_code: Int?
         let wind_speed_10m: Double?
-        let relative_humidity_2m: Double
+        let relative_humidity_2m: Double?
     }
     struct Hourly: Decodable {
         let time: [String]
-        let temperature_2m: [Double]
+        let temperature_2m: [Double?]
         let weather_code: [Int?]
         let precipitation_probability: [Int?]
     }
     struct Daily: Decodable {
         let time: [String]
-        let temperature_2m_max: [Double]
-        let temperature_2m_min: [Double]
+        let temperature_2m_max: [Double?]
+        let temperature_2m_min: [Double?]
         let weather_code: [Int?]
     }
     struct Minutely: Decodable {
         let time: [String]
-        let precipitation: [Double]
+        let precipitation: [Double?]
     }
 }
 
@@ -152,4 +206,16 @@ struct Alert: Decodable, Identifiable {
     let severity: String
     let areaDesc: String
     let expires: String
+    let effective: String?
+    let onset: String?
+    let ends: String?
+
+    /// Same window as the phone (src/lib/alertLifecycle.ts): from `effective`
+    /// (or `onset`) until the earlier of `expires` and `ends`.
+    func isActive(at now: Date) -> Bool {
+        guard let expiresAt = WatchRadarFrame.date(expires),
+              let startsAt = (effective ?? onset).flatMap(WatchRadarFrame.date) else { return false }
+        let endsAt = ends.flatMap(WatchRadarFrame.date).map { min($0, expiresAt) } ?? expiresAt
+        return now >= startsAt && now < endsAt
+    }
 }

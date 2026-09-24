@@ -5,6 +5,6 @@ module.exports = {
   displayName: "Radar NG",
   bundleIdentifier: ".radar-widget",
   deploymentTarget: "26.0",
-  frameworks: ["MapKit", "CoreLocation"],
+  frameworks: ["CoreLocation"],
   entitlements: {},
 };

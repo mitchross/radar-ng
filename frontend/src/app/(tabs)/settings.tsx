@@ -16,10 +16,11 @@ import {
   Keyboard,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
+import { ScreenBackground } from "../../components/ui/ScreenBackground";
 import Slider from "@react-native-community/slider";
 import Constants from "expo-constants";
 import { useQuery } from "@tanstack/react-query";
+import { useIsFocused } from "expo-router/react-navigation";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import {
   fetchServerStatus,
@@ -29,8 +30,11 @@ import {
 } from "../../lib/api";
 import { useManifestQuery } from "../../hooks/useManifest";
 import type { SelfHostedManifest } from "../../types/weather";
-import { activeLocationLabel, formatPlaceLabel } from "../../lib/locationLabel";
+import { formatPlaceLabel } from "../../lib/locationLabel";
+import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { SELF_HOSTED } from "../../lib/constants";
+import { PLAYBACK_FPS_RANGE } from "../../lib/persistedPrefs";
+import { isCleartextToPublicHost } from "../../lib/networkSafety";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
 import { PaletteSelector } from "../../components/palette/PaletteSelector";
@@ -46,9 +50,17 @@ import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 type SourceKey = "radar" | "satellite" | "forecast" | "airquality" | "basemap" | "alerts";
 type SourceStatus = "healthy" | "stale" | "error" | "disabled";
 
+// One StyleSheet per theme object, shared by every Settings row instead of
+// rebuilt in each component instance.
+const stylesByTheme = new WeakMap<WeatherClearTheme, ReturnType<typeof createStyles>>();
+
 function useSettingsTheme() {
   const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  let styles = stylesByTheme.get(theme);
+  if (!styles) {
+    styles = createStyles(theme);
+    stylesByTheme.set(theme, styles);
+  }
   return { theme, styles };
 }
 
@@ -66,7 +78,7 @@ export default function SettingsScreen() {
   const setServerUrl = useWeatherStore((s) => s.setServerUrl);
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
-  const devicePlace = useWeatherStore((s) => s.devicePlace);
+  const activeLocation = useActiveLocation();
   const setSelectedPlace = useWeatherStore((s) => s.setSelectedPlace);
   const useDeviceLocation = useWeatherStore((s) => s.useDeviceLocation);
 
@@ -85,9 +97,12 @@ export default function SettingsScreen() {
   // Live stack data for the Advanced cards. The old build shipped a
   // hard-coded container list ("versions are wrong") — everything shown
   // now comes from /api/health + /api/manifest.json.
+  const focused = useIsFocused();
   const { data: serverStatus, refetch: refetchStatus } = useQuery({
     queryKey: ["server-status", serverUrl],
     queryFn: ({ signal }) => fetchServerStatus(serverUrl, signal),
+    // Only the Advanced cards show health; don't poll a tab nobody is looking at.
+    enabled: viewMode === "advanced" && focused,
     refetchInterval: 60_000,
   });
   const { data: stackManifest, refetch: refetchManifest } = useManifestQuery();
@@ -123,14 +138,14 @@ export default function SettingsScreen() {
   );
 
   const stackHost = useMemo(() => hostOf(serverUrl), [serverUrl]);
-  const locationLabel = activeLocationLabel(locationMode, selectedPlace, devicePlace);
+  const locationLabel = activeLocation.notice ? `${activeLocation.label} · ${activeLocation.notice}` : activeLocation.label;
   const isAdv = viewMode === "advanced";
   const gradient = theme.dark
     ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
     : CONDITION_GRADIENTS.clearNight;
 
   return (
-    <LinearGradient
+    <ScreenBackground
       accessibilityLabel="Weather settings"
       colors={gradient}
       style={styles.container}
@@ -268,6 +283,11 @@ export default function SettingsScreen() {
                     <Text style={styles.saveBtnText}>Save</Text>
                   </Pressable>
                 </View>
+                {isCleartextToPublicHost(urlDraft) ? (
+                  <Text style={styles.urlWarning}>
+                    This address uses http over the internet, so requests (including your location) travel unencrypted. Use https, or http only on your home network.
+                  </Text>
+                ) : null}
               </View>
             </>
           )}
@@ -417,8 +437,8 @@ export default function SettingsScreen() {
             <View style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
               <Text style={styles.rowLabel}>Playback {playbackSpeed} FPS</Text>
               <Slider
-                minimumValue={1}
-                maximumValue={15}
+                minimumValue={PLAYBACK_FPS_RANGE.min}
+                maximumValue={PLAYBACK_FPS_RANGE.max}
                 step={1}
                 value={playbackSpeed}
                 onValueChange={setPlaybackSpeed}
@@ -464,7 +484,7 @@ export default function SettingsScreen() {
           <View style={{ height: 140 }} />
         </ScrollView>
       </SafeAreaView>
-    </LinearGradient>
+    </ScreenBackground>
   );
 }
 
@@ -520,10 +540,10 @@ function buildSources(
     },
     {
       key: "alerts",
-      name: "Alerts (NWS CAP)",
+      name: "Alerts (NWS, via your server)",
       icon: "⚠︎",
-      endpoint: "https://api.weather.gov/alerts/active",
-      status: "healthy",
+      endpoint: `${serverUrl}${SELF_HOSTED.ALERTS_PATH}?lat={lat}&lon={lon}`,
+      status,
     },
   ];
 }
@@ -644,17 +664,8 @@ function SourceEditor({ src }: { src: { name: string; endpoint: string } }) {
   const { styles } = useSettingsTheme();
   return (
     <View style={styles.editor}>
-      <Text style={styles.editorKicker}>EDIT ENDPOINT</Text>
+      <Text style={styles.editorKicker}>ENDPOINT</Text>
       <Field label="URL TEMPLATE" value={src.endpoint} />
-      <Field label="AUTH" value="None" />
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <View style={{ flex: 1 }}>
-          <Field label="TIMEOUT" value="8s" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Field label="RETRIES" value="3" />
-        </View>
-      </View>
       <Text style={styles.editorHint}>
         Individual source URLs derive from the Stack URL above. Change the stack URL to
         re-point every data source.
@@ -1115,6 +1126,13 @@ function createStyles(theme: WeatherClearTheme) {
   sep: { height: 1, backgroundColor: theme.colors.divider, marginLeft: 16 },
 
   urlRow: { flexDirection: "row", alignItems: "center", padding: 10, gap: 8 },
+  urlWarning: {
+    color: cumulus.alert,
+    fontSize: 12,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    fontFamily: cumulusFonts.ui,
+  },
   locationSearch: { paddingHorizontal: 12, paddingVertical: 12 },
   searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   searchInput: {

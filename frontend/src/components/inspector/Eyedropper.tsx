@@ -4,14 +4,15 @@
  * self-hosted tile-server when available, falls back to Open-Meteo for
  * temperature/wind, shows "—" otherwise.
  */
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { useEffect, useRef, useState } from "react";
+import { View, Text, StyleSheet, Pressable } from "react-native";
+import { useEffect, useState } from "react";
 import { Marker } from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { DEFAULTS } from "../../lib/constants";
+import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { cumulus } from "../../lib/cumulusTheme";
 import { formatReading, inspectPoint, type InspectReading } from "../../lib/inspector";
 import type { LayerType } from "../../types/weather";
+import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 
 const LAYER_LABEL: Record<LayerType, string> = {
   radar: "REFLECTIVITY",
@@ -27,7 +28,7 @@ const LAYER_LABEL: Record<LayerType, string> = {
   ozone: "OZONE",
 };
 
-// Playback ticks at 750 ms; one /api/inspect per tick was a fetch storm.
+// One /api/inspect per playback tick was a fetch storm.
 const INSPECT_DEBOUNCE_MS = 300;
 
 export interface PinnedPoint {
@@ -41,31 +42,35 @@ interface Props {
 }
 
 export function EyedropperPin({ pinned, onClear }: Props) {
+  const chrome = useMapChromeInsets();
   const activeLayer = useWeatherStore((s) => s.activeLayer);
-  const frames = useWeatherStore((s) => s.frames);
-  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const isPlaying = useWeatherStore((s) => s.isPlaying);
 
-  const [reading, setReading] = useState<InspectReading | null>(null);
-  const [loading, setLoading] = useState(false);
+  // Each reading remembers the pin it belongs to, so a new or cleared pin
+  // never shows a stale value, and no effect has to reset state.
+  const [result, setResult] = useState<{ pin: PinnedPoint; reading: InspectReading | null } | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<string | null>(null);
 
-  // Key on the timestamp, not the frame object: every manifest poll rebuilds the frame array.
-  const frameTimestamp = frames[currentFrameIndex]?.timestamp ?? null;
+  // The timestamp only matters with a pin and paused playback; selecting null
+  // otherwise keeps this native marker from re-rendering on every tick.
+  // (Keyed on the timestamp, not the frame object, which every manifest poll rebuilds.)
+  const hasPin = pinned != null;
+  const frameTimestamp = useWeatherStore((s) =>
+    hasPin && !s.isPlaying ? (s.frames[s.currentFrameIndex]?.timestamp ?? null) : null,
+  );
+
+  // Keep the last reading on screen while frames tick by; refetch once paused.
+  const requestKey =
+    pinned && !isPlaying && frameTimestamp
+      ? `${serverUrl}|${activeLayer}|${frameTimestamp}|${pinned.lat}|${pinned.lon}`
+      : null;
 
   useEffect(() => {
-    if (!pinned || !frameTimestamp) {
-      setReading(null);
-      return;
-    }
-    // Keep the last reading on screen while frames tick by; refetch once paused.
-    if (isPlaying) {
-      setLoading(false);
-      return;
-    }
+    if (!pinned || !requestKey || !frameTimestamp) return;
     const ctrl = new AbortController();
     const timer = setTimeout(() => {
-      setLoading(true);
+      setPendingRequest(requestKey);
       inspectPoint({
         serverUrl,
         layer: activeLayer,
@@ -75,23 +80,26 @@ export function EyedropperPin({ pinned, onClear }: Props) {
         signal: ctrl.signal,
       })
         .then((r) => {
-          if (!ctrl.signal.aborted) setReading(r);
+          if (!ctrl.signal.aborted) setResult({ pin: pinned, reading: r });
         })
         .finally(() => {
-          if (!ctrl.signal.aborted) setLoading(false);
+          if (!ctrl.signal.aborted) setPendingRequest(null);
         });
     }, INSPECT_DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [pinned, activeLayer, frameTimestamp, serverUrl, isPlaying]);
+  }, [pinned, requestKey, activeLayer, frameTimestamp, serverUrl]);
+
+  const reading = result && result.pin === pinned ? result.reading : null;
+  const loading = requestKey !== null && pendingRequest === requestKey;
 
   // Always mounted: the Marker is a native child of <Map>, so it hides (opacity 0,
   // parked at the last pin) instead of unmounting to keep the child count constant.
-  const lastPinRef = useRef<PinnedPoint>({ lat: DEFAULTS.LATITUDE, lon: DEFAULTS.LONGITUDE });
-  if (pinned) lastPinRef.current = pinned;
-  const shown = pinned ?? lastPinRef.current;
+  const [lastPin, setLastPin] = useState<PinnedPoint>({ lat: DEFAULTS.LATITUDE, lon: DEFAULTS.LONGITUDE });
+  if (pinned && pinned !== lastPin) setLastPin(pinned);
+  const shown = pinned ?? lastPin;
   const hidden = pinned == null;
 
   const readout = loading ? "…" : reading ? formatReading(activeLayer, reading) : "\u2014";
@@ -102,7 +110,7 @@ export function EyedropperPin({ pinned, onClear }: Props) {
       <Marker lngLat={[shown.lon, shown.lat]} anchor="bottom">
         <View style={[styles.markerWrap, hidden ? styles.hidden : null]} pointerEvents="none">
           <View style={styles.marker}>
-            <Text style={styles.markerText}>{readout}</Text>
+            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.markerText}>{readout}</Text>
           </View>
           <View style={styles.tail} />
           <View style={styles.crosshairDot} />
@@ -110,23 +118,30 @@ export function EyedropperPin({ pinned, onClear }: Props) {
       </Marker>
 
       <View
-        style={[styles.panel, hidden ? styles.hidden : null]}
+        style={[styles.panel, { top: chrome.top, left: chrome.left, right: chrome.right }, hidden ? styles.hidden : null]}
         pointerEvents={hidden ? "none" : "box-none"}
         accessibilityElementsHidden={hidden}
         importantForAccessibility={hidden ? "no-hide-descendants" : "auto"}
       >
         <View style={styles.panelHeader}>
-          <Text style={styles.panelKicker}>{LAYER_LABEL[activeLayer]}</Text>
-          <TouchableOpacity onPress={onClear} hitSlop={8} style={styles.closeBtn}>
-            <Text style={styles.closeX}>✕</Text>
-          </TouchableOpacity>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelKicker}>{LAYER_LABEL[activeLayer]}</Text>
+          <Pressable
+            onPress={onClear}
+            style={styles.closeBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Clear inspected point"
+          >
+            <View style={styles.closeCircle}>
+              <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.closeX}>✕</Text>
+            </View>
+          </Pressable>
         </View>
-        <Text style={styles.panelValue}>{readout}</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelValue}>{readout}</Text>
         <View style={styles.panelMeta}>
-          <Text style={styles.panelMetaText}>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelMetaText}>
             {shown.lat.toFixed(4)}, {shown.lon.toFixed(4)}
           </Text>
-          <Text style={styles.panelSource}>{sourceLabel}</Text>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelSource}>{sourceLabel}</Text>
         </View>
       </View>
     </>
@@ -202,6 +217,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
   },
   closeBtn: {
+    width: 44,
+    height: 44,
+    marginRight: -11,
+    marginVertical: -11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeCircle: {
     width: 22,
     height: 22,
     borderRadius: 11,
