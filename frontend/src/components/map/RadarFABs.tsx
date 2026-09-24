@@ -13,6 +13,7 @@ import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { refreshDeviceLocation } from "../../hooks/useLocation";
 import type { LayerType } from "../../types/weather";
 import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
+import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 
 type IconKind = "umbrella" | "thermo" | "dust" | "wind" | "bolt" | "layers" | "drop" | "cloud" | "ozone";
 
@@ -45,6 +46,7 @@ export function RadarFABs({
   onToggleInspector: () => void;
   onOpenStylePicker?: () => void;
 }) {
+  const chrome = useMapChromeInsets();
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const setActiveLayer = useWeatherStore((s) => s.setActiveLayer);
   const extrasVisible = useWeatherStore((s) => s.extrasVisible);
@@ -83,7 +85,7 @@ export function RadarFABs({
 
   return (
     <>
-      <View style={styles.rail}>
+      <View style={[styles.rail, { top: chrome.top, right: chrome.right }]}>
         <GlassBtn
           active={layerOpen}
           onPress={() => setLayerOpen((v) => !v)}
@@ -136,7 +138,7 @@ export function RadarFABs({
             accessibilityRole="button"
             accessibilityLabel="Close radar layer picker"
           />
-          <View style={[styles.panel, { backgroundColor: popoverBg }]}>
+          <View style={[styles.panel, { top: chrome.top - 8, right: chrome.right + 56, backgroundColor: popoverBg }]}>
             {options.map((opt) => {
               const isActive = activeLayer === opt.id;
               return (

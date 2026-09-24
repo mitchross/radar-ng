@@ -12,6 +12,7 @@ import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { cumulus } from "../../lib/cumulusTheme";
 import { formatReading, inspectPoint, type InspectReading } from "../../lib/inspector";
 import type { LayerType } from "../../types/weather";
+import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 
 const LAYER_LABEL: Record<LayerType, string> = {
   radar: "REFLECTIVITY",
@@ -41,6 +42,7 @@ interface Props {
 }
 
 export function EyedropperPin({ pinned, onClear }: Props) {
+  const chrome = useMapChromeInsets();
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const isPlaying = useWeatherStore((s) => s.isPlaying);
@@ -116,7 +118,7 @@ export function EyedropperPin({ pinned, onClear }: Props) {
       </Marker>
 
       <View
-        style={[styles.panel, hidden ? styles.hidden : null]}
+        style={[styles.panel, { top: chrome.top, left: chrome.left, right: chrome.right }, hidden ? styles.hidden : null]}
         pointerEvents={hidden ? "none" : "box-none"}
         accessibilityElementsHidden={hidden}
         importantForAccessibility={hidden ? "no-hide-descendants" : "auto"}

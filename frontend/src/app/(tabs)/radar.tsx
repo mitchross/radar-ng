@@ -34,6 +34,7 @@ import { RadarFABs } from "../../components/map/RadarFABs";
 import { MapStylePicker } from "../../components/map/MapStylePicker";
 import { EyedropperPin, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
+import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 
@@ -46,6 +47,7 @@ export default function RadarScreen() {
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const focused = useIsFocused();
+  const chrome = useMapChromeInsets();
 
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
   const [selectedTropical, setSelectedTropical] = useState<TropicalStormDetails | null>(null);
@@ -96,7 +98,7 @@ export default function RadarScreen() {
       </WeatherMap>
 
       {/* Top safe area — close button only. Alerts live on the Alerts tab. */}
-      <SafeAreaView style={styles.safeTop} edges={["top"]} pointerEvents="box-none">
+      <SafeAreaView style={styles.safeTop} edges={["top", "left", "right"]} pointerEvents="box-none">
         <Pressable
           style={styles.closeBtn}
           onPress={() => router.navigate("/")}
@@ -137,7 +139,7 @@ export default function RadarScreen() {
       />
 
       {inspectHint ? (
-        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} accessibilityRole="alert" style={styles.hint} pointerEvents="none">
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} accessibilityRole="alert" style={[styles.hint, { top: chrome.top, left: chrome.left + 58, right: chrome.right + 58 }]} pointerEvents="none">
           Long-press the map to inspect a point
         </Text>
       ) : null}

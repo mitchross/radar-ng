@@ -13,6 +13,7 @@ import { findClosestIdx } from "../../lib/frameIndex";
 import { createThrottle } from "../../lib/throttle";
 import { useAppActive } from "../../hooks/useAppActive";
 import { useNow } from "../../hooks/useNow";
+import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { useIsFocused } from "expo-router/react-navigation";
 import type { LayerType } from "../../types/weather";
 import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
@@ -46,6 +47,7 @@ const LAYER_TITLE: Record<LayerType, string> = {
 type Zoom = "1h" | "48h";
 
 export function TimelineBar() {
+  const chrome = useMapChromeInsets();
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
@@ -138,7 +140,7 @@ export function TimelineBar() {
   const mode = offsetMin === 0 ? "Now" : offsetMin > 0 ? "Forecast" : "Past";
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { left: chrome.left, right: chrome.right, bottom: chrome.bottom }]}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <Pressable

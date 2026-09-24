@@ -11,6 +11,7 @@ import { Pressable, StyleSheet, Text, View, type NativeSyntheticEvent } from "re
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { useBasemapStyle } from "../../hooks/useBasemapStyle";
+import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 15;
@@ -33,6 +34,7 @@ export function WeatherMap({
   trackCameraContinuously = false,
 }: WeatherMapProps) {
   const mapRef = useRef<MapRef>(null);
+  const chrome = useMapChromeInsets();
   const cameraRef = useRef<CameraRef>(null);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
@@ -75,11 +77,11 @@ export function WeatherMap({
   useEffect(() => {
     if (!focusBounds || !patchedStyle) return;
     cameraRef.current?.fitBounds(focusBounds, {
-      padding: { top: 140, right: 70, bottom: 260, left: 40 },
+      padding: { top: chrome.top + 28, right: chrome.right + 58, bottom: chrome.aboveTimeline + 20, left: chrome.left + 28 },
       duration: 600,
     });
     setFocusBounds(null);
-  }, [focusBounds, patchedStyle, setFocusBounds]);
+  }, [focusBounds, patchedStyle, setFocusBounds, chrome]);
 
   if (!patchedStyle) return null;
 
@@ -124,7 +126,7 @@ export function WeatherMap({
       </Map>
 
       {/* Manual zoom controls — pinch still works, this is for one-handed use. */}
-      <View style={styles.zoomWrap} pointerEvents="box-none">
+      <View style={[styles.zoomWrap, { right: chrome.right, bottom: chrome.aboveTimeline }]} pointerEvents="box-none">
         <Pressable
           onPress={() => zoomBy(+1)}
           style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
