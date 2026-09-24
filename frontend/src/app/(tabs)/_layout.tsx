@@ -40,9 +40,10 @@ export default function TabLayout() {
           md="warning"
         />
         <NativeTabs.Trigger.Label>Alerts</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Badge hidden={alertCount === 0}>
-          {alertCount > 9 ? "9+" : String(alertCount)}
-        </NativeTabs.Trigger.Badge>
+        {/* Rendered only with a count: the preview's Badge `hidden` still showed "0". */}
+        {alertCount > 0 ? (
+          <NativeTabs.Trigger.Badge>{alertCount > 9 ? "9+" : String(alertCount)}</NativeTabs.Trigger.Badge>
+        ) : null}
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings">
         <NativeTabs.Trigger.Icon sf={{ default: "gearshape", selected: "gearshape.fill" }} md="settings" />
