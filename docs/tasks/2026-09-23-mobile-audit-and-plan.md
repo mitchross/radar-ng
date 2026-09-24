@@ -20,7 +20,7 @@ Every item marked done passes `tsc`, lint, Jest (unit + render) and both `expo e
 | 3 | 3.1–3.8 | 3.9 optional, ask first (D10) |
 | 4 | 4.1 (D8: 2 FPS default, persisted, 1–10), 4.2 `EXPO_PUBLIC_CAROUSEL_WINDOW`, 4.4 scrub throttle | 4.3 optional prototype; 4.5 device gate (human) |
 | 5 | 5.5 compiler lint rules on (70/70 compile), 5.6 accessibility | 5.1/5.2 visual work needs simulator screenshots for review; 5.3 needs D3; 5.4 needs D4; 5.7 needs a landscape decision |
-| 6 | 6.3 safe-area chrome, 6.4 Maestro on Android, 6.7 monochrome icon + Network Security Config + public-http warning | 6.1/6.2 see below; 6.5, 6.6 need an emulator session; 6.8 needs D5 |
+| 6 | 6.1 release APK compiles with no config changes; 6.2 all native libs 16 KB aligned (MMKV included); 6.3 safe-area chrome, 6.4 Maestro on Android, 6.7 monochrome icon + Network Security Config + public-http warning. See `docs/android-qa-2026-09-24.md` | Install/run and Maestro on an emulator; 6.5, 6.6 need an emulator session; 6.8 needs D5 |
 | 7 | 7.1 render tests (jest-expo + Testing Library) replace the UI source greps, 7.2 CI runs doctor, version check and both exports | Optional native CI jobs (runner cost) |
 | 8 | 8.1 docs, 8.2 dead code (also fixed the particle camera starting at zoom 8 vs the map's 7), 8.3 postinstall patch removed | 8.4 CarPlay tile cache (low priority) |
 
