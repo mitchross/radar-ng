@@ -350,6 +350,83 @@ Then run the full native simulator build and tests once (§0.3). `docs/carplay-r
 - Summarise Esri World Imagery terms for an App Store app, and Nominatim's policy (made moot by 1.4). Present the options to the user.
 - Add a contact to the NWS User-Agent once the user supplies one, in `api.ts:87` and `WatchAPI.swift:5`.
 
+### Phase S — Self-hosted only (hard requirement, added 2026-09-24)
+
+**Rule (user, 2026-09-24):** Radar NG is an at-home weather station. At runtime the phone, Watch, widget and CarPlay may talk **only to the user's own servers**: the tile server, and VersaTiles at `maps.vanillax.me`. No API keys. No third-party map, imagery, geocoding or tile services, including "keyless" platform ones like Apple MapKit tiles or CLGeocoder/Android Geocoder. Public data (NOAA, NWS, USGS, GeoNames, OSM extracts) is fine only when **the server** ingests or caches it and serves it itself. This overrides any conflicting task above; it closes **D7** in favour of self-hosting.
+
+**How it is hosted today** (gitops repo `~/programming/talos-argocd-proxmox`; ArgoCD auto-syncs, so **merging there is deploying**, which is the user's call):
+
+- `my-apps/maps/versatiles/` is shared map infrastructure at `https://maps.vanillax.me`.
+  - VersaTiles v4.6 serves a full-planet OSM Shortbread vector archive (z0–14, 62 GiB) from a TrueNAS SMB PVC.
+  - It self-hosts glyphs (`/assets/glyphs/{fontstack}/{range}.pbf`) and sprites.
+  - A small `map-styles` nginx serves the pre-generated `styles/light.json` (colorful) and `styles/dark.json` (eclipse). The app uses these through `frontend/.env.production`.
+  - Its README lists "no geocoding/search, no routing, no satellite imagery (future phases: Photon / Valhalla)".
+- `my-apps/development/radar-ng/` runs the app's own services at `https://radar-ng-api.vanillax.me`:
+  - the tile server (Caddy + FastAPI);
+  - self-hosted Open-Meteo;
+  - Temporal workers;
+  - a Protomaps CONUS basemap pod (go-pmtiles, fetched by an init container from `build.protomaps.com`). This is the batteries-included fallback for forks; the VersaTiles README calls retiring it a follow-up.
+- The existing pattern for big static datasets is an init/bootstrap step that downloads once to the TrueNAS share and serves read-only. New map datasets (satellite, raster renders) should follow it and live under `my-apps/maps/`, next to VersaTiles, so other home apps can share them.
+
+**Bug found while checking this (fix in S.2):** `TropicalOverlay.tsx:94` requests the fontstack `"Noto Sans Regular"`, which is the Protomaps name. The release basemap is VersaTiles, whose fontstacks are `noto_sans_regular`/`noto_sans_bold` (verified against `https://maps.vanillax.me/styles/light.json`). So on release builds the storm-name label requests a glyph that doesn't exist, and the label doesn't render.
+
+Audit of remaining external runtime calls (2026-09-24):
+
+| # | Call | Where | Replacement |
+|---|---|---|---|
+| S1 | Esri World Imagery (satellite) | `backend/basemap/styles/satellite.json` | Self-hosted public-domain imagery (S.1) |
+| S2 | `protomaps.github.io` glyphs in the bundled fallback styles | `backend/basemap/styles/*.json` `"glyphs"` | Serve glyphs from the tile server (S.2) |
+| S3 | Apple MapKit basemap on Watch, widget and CarPlay | `WatchBasemapView.swift`, `RadarSnapshot.swift`, `RadarMapController.swift` | Self-hosted raster basemap tiles (S.3) |
+| S4 | `api.weather.gov` alerts from phone and Watch | `src/lib/api.ts` `fetchAlerts`, `WatchAPI.swift` | Tile-server alerts endpoint (S.4) |
+| S5 | Open-Meteo public geocoding (city search) | `src/lib/geocoding.ts` `searchCities` | Tile-server geocoder (S.5) |
+| S6 | Reverse geocoding: Nominatim, and in the uncommitted 1.4 work, the platform geocoder | `src/lib/geocoding.ts` `reverseGeocode` | Tile-server reverse geocoder (S.5) |
+| S7 | CarPlay search and routing (MKLocalSearch/MKDirections) | `targets/carplay/*` | Out of scope while CarPlay is pending Apple; record as a known exception or plan self-hosted OSRM/Valhalla (ask the user) |
+
+**S.1 Satellite (backend + style).**
+- Serve imagery from the tile server. Source it from US public-domain imagery: the USGS National Map / NAIP orthoimagery, which radar coverage is CONUS-only anyway. Add NASA Blue Marble or VIIRS for low zooms if a world view is needed.
+- Two ways to build it:
+  - Pre-seed a PMTiles archive for CONUS through the existing basemap pipeline. z0–12 is roughly on the order of 10 GB; measure before committing.
+  - Run a disk-caching proxy in Caddy/FastAPI that fetches from USGS on a miss and serves from disk afterwards.
+- Either way, the device only ever calls the tile server.
+- Host it as shared map data in `my-apps/maps/` (gitops), following the VersaTiles pattern: a bootstrap Job builds or downloads the archive once to the TrueNAS share, and a read-only server serves it. VersaTiles can serve a second, raster tileset alongside `osm`; otherwise use go-pmtiles as the radar-ng basemap pod does. Publish a `styles/satellite.json` via the existing `map-styles` nginx, and set `EXPO_PUBLIC_BASEMAP_SATELLITE_STYLE_URL` in `.env.production`.
+- Update `satellite.json` to the self-hosted URL and a public-domain attribution. Remove every Esri reference, and update `docs/third-party-terms.md` to record the decision.
+- Acceptance: with the phone's network filtered to the tile server's host only, satellite renders.
+
+**S.2 Glyphs and label fonts.**
+- The release basemap (VersaTiles) already self-hosts glyphs; nothing to do there.
+- The bundled Protomaps fallback styles still point at `protomaps.github.io`. Vendor the needed font PBFs into the radar-ng basemap and serve them at `/basemap/fonts/{fontstack}/{range}.pbf`. Point the bundled styles at that path; `usePatchedMapStyle` already absolutises relative tile URLs, so extend it to `glyphs`/`sprite`.
+- Fix the TropicalOverlay font bug above. Derive the label fontstack from the active style: read a `text-font` already used by the loaded style, or keep a per-basemap constant (`noto_sans_regular` for VersaTiles, `Noto Sans Regular` for Protomaps). Add a unit test for the mapping.
+
+**Where the new server pieces live:**
+- Shared map data (satellite imagery, raster renders) goes in the gitops repo under `my-apps/maps/`.
+- App-specific endpoints (alerts, geocoding) go in radar-ng's FastAPI (`backend/api/`).
+- Prepare the gitops changes on a branch in `talos-argocd-proxmox`; the user merges, since that deploys.
+
+**S.3 Raster basemap for native targets.**
+- Add a raster renderer in `my-apps/maps/` (gitops), e.g. tileserver-gl, that renders the existing VersaTiles `light`/`dark` styles to PNG tiles under `maps.vanillax.me`, with a disk cache, since the Watch and widget request few tiles. Keep the same styles as the phone so every device matches.
+- Watch and widget: replace `MKMapSnapshotter` with the existing manual tile compositor (the Watch already composites radar tiles), drawing basemap tiles first.
+- CarPlay: use an `MKTileOverlay` with `canReplaceMapContent = true` pointing at the raster endpoint. It only takes effect once CarPlay work resumes.
+- The server URL for all three comes from the App Group config (task 5.4 / D4). This makes D4 effectively required.
+- Acceptance: the Watch and widget render with MapKit removed from their `frameworks` list.
+
+**S.4 Alerts via the tile server.**
+- Add `GET /api/alerts?lat=&lon=` on the tile server. Answer it from the active-alerts set the `poll-alerts` workflow already maintains, with a point-in-polygon/zone match and the NWS GeoJSON shape, so `alertLifecycle.ts` is unchanged.
+- Point `fetchAlerts` and `WatchAPI.fetchAlerts` at it.
+- Keep freshness semantics: the endpoint must return its own `updated_at`, so a stalled poller surfaces as STALE rather than all-clear.
+
+**S.5 Geocoding via the tile server.**
+- Add `GET /api/geocode?q=` and `GET /api/reverse-geocode?lat=&lon=`, backed by a GeoNames `cities5000`/`cities15000` dump (CC BY 4.0; a few MB) loaded at startup: prefix search plus nearest city. Immich in the same cluster already ships a GeoNames reverse-geocoding dump (`my-apps/media/immich`), so the data source is proven there.
+- A shared Photon instance (the VersaTiles README's "future phase") is the heavier alternative. Only worth it if other home apps need address-level search; ask the user.
+- Replace both `searchCities` and `reverseGeocode`.
+- This **supersedes the platform-geocoder part of task 1.4**. Keep 1.4's coordinate rounding, cache and throttle, but call the server instead of `Location.reverseGeocodeAsync`.
+
+**S.6 Enforcement.**
+- Add a Jest test that greps `src/` and `targets/` for `https?://` literals and fails on any host other than the configured server placeholders. Maintain an explicit allowlist, e.g. attribution links that are displayed but never fetched.
+- Add a CI check that the bundled styles contain no external tile, glyph or sprite hosts.
+- Document the rule in `ARCHITECTURE.md` and `CONTRIBUTING.md`.
+
+Order: S.4 and S.5 first (small, and they unblock 1.4), then S.2, then S.1, then S.3. S.1 and S.3 need backend deploys, which are the user's call (guardrail 5): prepare them, don't deploy.
+
 ### Phase 2 — Correctness and truthful UI
 
 **2.1 One location owner, persisted fix, honest fallback, foreground refresh (F-C1, F-C2).** Effort M. Depends on 1.4.
@@ -610,7 +687,7 @@ These are opportunities, not defects. Propose them; don't start them without the
 | D4 | Add an App Group so the widget, Watch and CarPlay follow the phone's server URL, palette and last location | Yes. It's a standard capability, not a restricted one |
 | D5 | Android release path: EAS Build vs local Gradle + Play App Signing | Local Gradle to match the iOS local-archive approach, unless you want hosted builds |
 | D6 | iOS minimum: keep 26.0 or lower it for reach | Keep 26.0 for now; revisit with adoption data |
-| D7 | Satellite imagery source (Esri public tiles) for a store app | Confirm the terms, or swap to a licensed/self-hosted source |
+| D7 | Satellite imagery source (Esri public tiles) for a store app | **Decided 2026-09-24: self-host (Phase S).** No keyed or public third-party imagery |
 | D8 | Default playback speed, and when to flip `CAROUSEL_WINDOW` to 5 | 2 FPS now; flip after Appendix A passes on physical devices |
 | D9 | Coordinate precision sent to servers | 2 decimals (~1 km) for forecast and nowcast; 3 for alerts |
 | D10 | When to move to SDK 58 (beta since 2026-09-15; stable expected ~October), and whether to take Reanimated/Worklets patch fixes early (task 3.9) | Finish Phases 1–3 on SDK 57, with task 1.1 done the SDK 58 way. Upgrade once 58 is stable, using the checklist in §2.4 (scene default, `native-tabs` path, `freezeOnBlur` → `activityEnabled`, R8, Gesture Handler 3). Take 3.9 now only if wind-particle battery or crash reports justify it |
