@@ -26,6 +26,7 @@ export default function AlertDetailScreen() {
   const alertData = useAlerts();
   const userLat = useWeatherStore((s) => s.latitude);
   const userLon = useWeatherStore((s) => s.longitude);
+  const setFocusBounds = useWeatherStore((s) => s.setFocusBounds);
 
   const alert = alertData.data?.features.find((f) => f.properties.id === id || f.id === id);
 
@@ -108,7 +109,11 @@ export default function AlertDetailScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Open alert polygon in Radar"
                 style={styles.openInRadar}
-                onPress={() => router.push("/(tabs)/radar" as never)}
+                onPress={() => {
+                  const bounds = polygonBounds(alert.geometry?.coordinates?.[0] ?? []);
+                  if (bounds) setFocusBounds(bounds);
+                  router.push("/radar");
+                }}
               >
                 <Text style={styles.openInRadarText}>Open in Radar →</Text>
               </Pressable>
@@ -205,6 +210,15 @@ function Section({
       </View>
     </View>
   );
+}
+
+/** [west, south, east, north] of a GeoJSON ring, or null for a degenerate one. */
+function polygonBounds(ring: number[][]): [number, number, number, number] | null {
+  const points = ring.filter((p) => p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+  if (points.length < 3) return null;
+  const lons = points.map((p) => p[0]);
+  const lats = points.map((p) => p[1]);
+  return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
 }
 
 function PolygonMap({

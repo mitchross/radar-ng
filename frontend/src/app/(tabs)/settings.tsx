@@ -645,17 +645,8 @@ function SourceEditor({ src }: { src: { name: string; endpoint: string } }) {
   const { styles } = useSettingsTheme();
   return (
     <View style={styles.editor}>
-      <Text style={styles.editorKicker}>EDIT ENDPOINT</Text>
+      <Text style={styles.editorKicker}>ENDPOINT</Text>
       <Field label="URL TEMPLATE" value={src.endpoint} />
-      <Field label="AUTH" value="None" />
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <View style={{ flex: 1 }}>
-          <Field label="TIMEOUT" value="8s" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Field label="RETRIES" value="3" />
-        </View>
-      </View>
       <Text style={styles.editorHint}>
         Individual source URLs derive from the Stack URL above. Change the stack URL to
         re-point every data source.

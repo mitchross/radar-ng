@@ -4,7 +4,7 @@
  * self-hosted tile-server when available, falls back to Open-Meteo for
  * temperature/wind, shows "—" otherwise.
  */
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useEffect, useRef, useState } from "react";
 import { Marker } from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
@@ -117,9 +117,16 @@ export function EyedropperPin({ pinned, onClear }: Props) {
       >
         <View style={styles.panelHeader}>
           <Text style={styles.panelKicker}>{LAYER_LABEL[activeLayer]}</Text>
-          <TouchableOpacity onPress={onClear} hitSlop={8} style={styles.closeBtn}>
-            <Text style={styles.closeX}>✕</Text>
-          </TouchableOpacity>
+          <Pressable
+            onPress={onClear}
+            style={styles.closeBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Clear inspected point"
+          >
+            <View style={styles.closeCircle}>
+              <Text style={styles.closeX}>✕</Text>
+            </View>
+          </Pressable>
         </View>
         <Text style={styles.panelValue}>{readout}</Text>
         <View style={styles.panelMeta}>
@@ -202,6 +209,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
   },
   closeBtn: {
+    width: 44,
+    height: 44,
+    marginRight: -11,
+    marginVertical: -11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeCircle: {
     width: 22,
     height: 22,
     borderRadius: 11,

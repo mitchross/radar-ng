@@ -5,7 +5,6 @@
 import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import type { LayerType } from "../../types/weather";
-import { cumulus } from "../../lib/cumulusTheme";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 
 // Plain-English tag at the top of the legend telling the user whether
@@ -198,7 +197,6 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
           </View>
         </View>
       </View>
-      <Text style={styles.attribution}>Map Data</Text>
     </View>
   );
 }
@@ -269,12 +267,5 @@ const styles = StyleSheet.create({
     color: "#3a4258",
     fontVariant: ["tabular-nums"],
     fontWeight: "500",
-  },
-  attribution: {
-    color: cumulus.inkMuted,
-    fontSize: 9,
-    marginTop: 4,
-    marginLeft: 6,
-    textDecorationLine: "underline",
   },
 });

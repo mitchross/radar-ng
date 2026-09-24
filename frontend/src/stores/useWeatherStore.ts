@@ -38,6 +38,8 @@ interface WeatherState {
   lastFixAt: number | null;
   /** Bumped when the map should recenter on the active location (user intent, not GPS drift). */
   recenterNonce: number;
+  /** One-shot request for the radar map to frame these bounds [west, south, east, north]. */
+  focusBounds: [number, number, number, number] | null;
   radarOpacity: number;
   radarVisible: boolean;
   activeLayer: LayerType;
@@ -66,6 +68,7 @@ interface WeatherState {
   applyDeviceFix: (lat: number, lon: number, at: number) => void;
   applyLocationFailure: (reason: "denied" | "unavailable") => void;
   requestRecenter: () => void;
+  setFocusBounds: (bounds: [number, number, number, number] | null) => void;
   setRadarOpacity: (opacity: number) => void;
   setTemperatureUnit: (unit: TemperatureUnit) => void;
   setMapStyle: (style: MapStyle) => void;
@@ -142,6 +145,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   locationStatus: persistedFix ? "last-known" : "locating",
   lastFixAt: persistedFix?.at ?? null,
   recenterNonce: 0,
+  focusBounds: null,
   radarOpacity: parseOpacity(getString("radarOpacity", String(RADAR.DEFAULT_OPACITY)), RADAR.DEFAULT_OPACITY),
   radarVisible: true,
   activeLayer: "radar" as LayerType,
@@ -241,6 +245,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     });
   },
   requestRecenter: () => set((s) => ({ recenterNonce: s.recenterNonce + 1 })),
+  setFocusBounds: (bounds) => set({ focusBounds: bounds }),
   setRadarOpacity: (opacity) => {
     setString("radarOpacity", String(opacity));
     set({ radarOpacity: opacity });

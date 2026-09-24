@@ -29,6 +29,8 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
   const latitude = useWeatherStore((s) => s.latitude);
   const longitude = useWeatherStore((s) => s.longitude);
   const recenterNonce = useWeatherStore((s) => s.recenterNonce);
+  const focusBounds = useWeatherStore((s) => s.focusBounds);
+  const setFocusBounds = useWeatherStore((s) => s.setFocusBounds);
   const initialZoom = 7;
   // Mirror current camera zoom so the +/- buttons can clamp without round-tripping.
   const zoomRef = useRef<number>(initialZoom);
@@ -57,6 +59,17 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
   useEffect(() => {
     if (recenterNonce > 0) recenter();
   }, [recenterNonce]);
+
+  // Frame a requested area (e.g. "Open in Radar" from an alert) once, clearing
+  // top chrome and the timeline card, then drop the request.
+  useEffect(() => {
+    if (!focusBounds || !patchedStyle) return;
+    cameraRef.current?.fitBounds(focusBounds, {
+      padding: { top: 140, right: 70, bottom: 260, left: 40 },
+      duration: 600,
+    });
+    setFocusBounds(null);
+  }, [focusBounds, patchedStyle, setFocusBounds]);
 
   if (!patchedStyle) return null;
 
