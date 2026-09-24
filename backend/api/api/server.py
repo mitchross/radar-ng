@@ -6,6 +6,7 @@ Endpoints:
 - GET /api/forecast/{lat}/{lon} — Open-Meteo proxy (public upstream OR self-hosted
                                   if OPEN_METEO_BASE env points at a local instance)
 - GET /api/nowcast/{lat}/{lon} — MRMS motion nowcast sampled at one location
+- GET /api/alerts, /api/geocode, /api/reverse-geocode — see routes_places.py
 - GET /api/health             — ok / degraded (degrades when MRMS tiles are stale)
 - GET /api/metrics            — Prometheus-style counters + gauges
 """
@@ -74,6 +75,10 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="radar-ng Tile API", lifespan=_lifespan)
+
+# Alerts and geocoding are sourced server-side so clients never call a third party.
+from backend.api.api.routes_places import router as places_router  # noqa: E402
+app.include_router(places_router)
 
 # Storm-watch + push-token endpoints are workflow-driven — see
 # routes_workflows.py. Register lazily so a deploy that doesn't have

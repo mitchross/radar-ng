@@ -34,7 +34,7 @@ export function useLocation() {
       if (cancelled) return;
       setLocation(lat, lon);
       try {
-        const place = await reverseGeocode(lat, lon);
+        const place = await reverseGeocode(useWeatherStore.getState().serverUrl, lat, lon);
         if (!cancelled && place) setDevicePlace(place);
       } catch {
         // Label is best-effort; coords alone are enough to load weather.

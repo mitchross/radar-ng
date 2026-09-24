@@ -1,12 +1,5 @@
 import type { LayerConfig } from "../types/weather";
 
-// NWS alerts are the one remaining non-self-hosted dependency (free US-gov
-// API, no auth, stable). Everything else goes through the tile-server at
-// SELF_HOSTED.DEFAULT_URL.
-export const API = {
-  NWS_ALERTS: "https://api.weather.gov/alerts/active",
-} as const;
-
 export type MapStyleId = "light" | "dark" | "satellite";
 
 // BUNDLED basemap (the default — "batteries included"). These relative style
@@ -95,6 +88,7 @@ export const SELF_HOSTED = {
   FORECAST_PATH: "/api/forecast",
   NOWCAST_PATH: "/api/nowcast",
   HEALTH_PATH: "/api/health",
+  ALERTS_PATH: "/api/alerts",
   BASEMAP_TILE_PATTERN: "/basemap/tiles/{z}/{x}/{y}.mvt",
 } as const;
 

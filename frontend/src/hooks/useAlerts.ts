@@ -19,6 +19,7 @@ const getOnlineState = () => onlineManager.isOnline();
 
 export function useAlerts() {
   const latitude = useWeatherStore((s) => s.latitude);
+  const serverUrl = useWeatherStore((s) => s.serverUrl);
   const longitude = useWeatherStore((s) => s.longitude);
   const appActive = useAppActive();
   const isOnline = useSyncExternalStore(subscribeToOnlineState, getOnlineState, getOnlineState);
@@ -29,8 +30,8 @@ export function useAlerts() {
       : null;
 
   const query = useQuery({
-    queryKey: ["alerts", position],
-    queryFn: ({ signal }) => fetchAlerts(latitude!, longitude!, signal),
+    queryKey: ["alerts", position, serverUrl],
+    queryFn: ({ signal }) => fetchAlerts(serverUrl, latitude!, longitude!, signal),
     enabled: latitude !== null && longitude !== null,
     refetchInterval: DEFAULTS.ALERTS_REFETCH_MS,
     staleTime: DEFAULTS.ALERTS_REFETCH_MS,

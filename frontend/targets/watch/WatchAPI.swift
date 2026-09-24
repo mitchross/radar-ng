@@ -25,10 +25,11 @@ enum WatchAPI {
     }
 
     static func fetchAlerts(lat: Double, lon: Double) async throws -> [Alert] {
-        let point = "\(round(lat, decimals: pointDecimals)),\(round(lon, decimals: pointDecimals))"
-        var req = URLRequest(url: URL(string: "https://api.weather.gov/alerts/active?point=\(point)")!)
-        req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        let data = try await fetch(req)
+        // The server proxies NWS point matching, so the Watch never calls a third party.
+        let url = URL(
+            string: "\(serverURL)/api/alerts?lat=\(round(lat, decimals: pointDecimals))&lon=\(round(lon, decimals: pointDecimals))"
+        )!
+        let data = try await fetch(url)
         let envelope = try JSONDecoder().decode(AlertsEnvelope.self, from: data)
         return envelope.features.map { $0.properties }
     }

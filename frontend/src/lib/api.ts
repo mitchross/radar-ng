@@ -1,4 +1,4 @@
-import { API, SELF_HOSTED } from "./constants";
+import { SELF_HOSTED } from "./constants";
 import { PRECISION, roundCoords } from "./coordinates";
 import { trace } from "./telemetry";
 import { parseSelfHostedManifest } from "./manifest";
@@ -80,10 +80,12 @@ export async function fetchRadarNowcast(
 }
 
 /**
- * NWS active alerts — the one non-self-hosted call (gov API, free, no auth).
- * Keeps 3 decimals: alert polygons are much finer than a forecast cell.
+ * NWS active alerts, fetched by the self-hosted server (`/api/alerts`), which
+ * proxies NWS's own point matching. Keeps 3 decimals: alert polygons are much
+ * finer than a forecast cell.
  */
 export async function fetchAlerts(
+  serverUrl: string,
   lat: number,
   lon: number,
   signal?: AbortSignal,
@@ -93,14 +95,12 @@ export async function fetchAlerts(
     "api.fetchAlerts",
     async (span) => {
       const res = await fetchWithTimeout(
-        `${API.NWS_ALERTS}?point=${rLat},${rLon}`,
-        // NWS asks for a contactable UA; set NWS_CONTACT to a real address
-        // before submitting to a store (see docs/privacy.md).
-        { headers: { "User-Agent": "radar-ng/2.0 (self-hosted-weather-radar)" } },
+        `${serverUrl}${SELF_HOSTED.ALERTS_PATH}?lat=${rLat}&lon=${rLon}`,
+        {},
         signal,
       );
       span.setAttribute("http.status_code", res.status);
-      if (!res.ok) throw new Error(`NWS API error: ${res.status}`);
+      if (!res.ok) throw new Error(`Alerts error: ${res.status}`);
       return res.json();
     },
   );

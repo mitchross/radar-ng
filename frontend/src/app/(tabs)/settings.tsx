@@ -520,10 +520,10 @@ function buildSources(
     },
     {
       key: "alerts",
-      name: "Alerts (NWS CAP)",
+      name: "Alerts (NWS, via your server)",
       icon: "⚠︎",
-      endpoint: "https://api.weather.gov/alerts/active",
-      status: "healthy",
+      endpoint: `${serverUrl}${SELF_HOSTED.ALERTS_PATH}?lat={lat}&lon={lon}`,
+      status,
     },
   ];
 }

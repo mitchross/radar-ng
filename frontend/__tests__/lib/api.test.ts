@@ -89,17 +89,19 @@ describe("fetchForecast", () => {
 });
 
 describe("fetchAlerts", () => {
-  it("sends correct User-Agent header", async () => {
+  it("asks the self-hosted server, never api.weather.gov directly", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({ features: [] }),
     });
 
-    await fetchAlerts(38.9, -77.0);
-    expect(calledUrl()).toContain("point=38.9,-77");
-    expect(calledInit().headers).toEqual(
-      expect.objectContaining({ "User-Agent": expect.stringContaining("radar-ng") }),
-    );
+    await fetchAlerts("https://radar.example", 38.9, -77.0);
+    expect(calledUrl()).toBe("https://radar.example/api/alerts?lat=38.9&lon=-77");
+  });
+
+  it("surfaces a server error instead of an empty collection", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 502 });
+    await expect(fetchAlerts("https://radar.example", 38.9, -77.0)).rejects.toThrow("502");
   });
 });
 
@@ -171,11 +173,11 @@ describe("coordinate rounding at the API boundary", () => {
     expect(calledUrl()).toBe("https://radar.example/api/nowcast/42.96/-85.67");
   });
 
-  it("keeps 3 decimals for NWS alerts so a polygon boundary is not flipped", async () => {
+  it("keeps 3 decimals for alerts so a polygon boundary is not flipped", async () => {
     mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ features: [] }) });
-    await fetchAlerts(lat, lon);
+    await fetchAlerts("https://radar.example", lat, lon);
     // Rounded, and finer than the forecast path above.
-    expect(calledUrl()).toBe("https://api.weather.gov/alerts/active?point=42.963,-85.668");
+    expect(calledUrl()).toBe("https://radar.example/api/alerts?lat=42.963&lon=-85.668");
   });
 
   it("narrows the storm-prefetch query params", async () => {
