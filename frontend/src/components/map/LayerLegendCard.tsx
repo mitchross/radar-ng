@@ -8,6 +8,7 @@ import type { LayerType } from "../../types/weather";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
+import { MapChromeSurface } from "../ui/MapChromeSurface";
 
 // Plain-English tag at the top of the legend telling the user whether
 // they're looking at "Now" (live radar), "Soon" (next hour, pysteps
@@ -177,7 +178,7 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
 
   return (
     <View style={[styles.wrap, { top: chrome.top, left: chrome.left }]}>
-      <View style={styles.card}>
+      <MapChromeSurface style={styles.card} fallbackStyle={styles.cardFill} colorScheme="light">
         <View style={styles.headerRow}>
           <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.title} numberOfLines={1}>
             {legend.title}
@@ -201,7 +202,7 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
             ))}
           </View>
         </View>
-      </View>
+      </MapChromeSurface>
     </View>
   );
 }
@@ -217,10 +218,12 @@ const styles = StyleSheet.create({
   },
   card: {
     width: 120,
-    backgroundColor: CARD_BG,
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 12,
+  },
+  cardFill: {
+    backgroundColor: CARD_BG,
     shadowColor: "#000",
     shadowOpacity: 0.15,
     shadowRadius: 8,

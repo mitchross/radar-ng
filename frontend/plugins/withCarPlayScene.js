@@ -18,6 +18,7 @@ const CARPLAY_FILES = [
   "RadarTileOverlay.swift",
   "RadarLocationManager.swift",
   "RadarAPI.swift",
+  "RadarShared.swift",
 ];
 
 // app.config.js enables the navigation entitlement with RADAR_CARPLAY=1.

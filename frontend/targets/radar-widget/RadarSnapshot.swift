@@ -3,17 +3,25 @@ import UIKit
 
 @MainActor
 enum RadarSnapshot {
-    private static let server = "https://radar-ng-api.vanillax.me"
+    private static var server: String { RadarShared.serverURL }
 
     static func load() async -> RadarEntry {
+        let shared = RadarShared.current()
+        // A city chosen in the app wins over the widget's own GPS.
+        if let city = shared?.chosenCity {
+            return await load(at: CLLocationCoordinate2D(latitude: city.lat, longitude: city.lon))
+        }
         let locator = WidgetLocation()
-        guard locator.isAuthorized else {
-            return RadarEntry(date: .now, message: "Open Radar NG to enable location", symbol: "location.slash")
+        if locator.isAuthorized, let location = await locator.locate() {
+            return await load(at: location.coordinate)
         }
-        guard let location = await locator.locate() else {
-            return RadarEntry(date: .now, message: "Location unavailable · Try later", symbol: "location.slash")
+        // No fix of our own: the phone app's last fix is better than nothing.
+        if let last = shared?.location {
+            return await load(at: CLLocationCoordinate2D(latitude: last.lat, longitude: last.lon))
         }
-        return await load(at: location.coordinate)
+        return locator.isAuthorized
+            ? RadarEntry(date: .now, message: "Location unavailable · Try later", symbol: "location.slash")
+            : RadarEntry(date: .now, message: "Open Radar NG to enable location", symbol: "location.slash")
     }
 
     static func load(at coordinate: CLLocationCoordinate2D) async -> RadarEntry {
@@ -28,8 +36,7 @@ enum RadarSnapshot {
             guard let layer = manifest.layers["radar"],
                   let frame = layer.frames?.max(by: { $0.timestamp < $1.timestamp }),
                   let observedAt = parseDate(frame.timestamp) else { throw SnapshotError.unavailable }
-            let palette = (frame.palettes ?? layer.palettes ?? []).contains("classic")
-                ? "classic" : (frame.palettes ?? layer.palettes)?.first ?? "classic"
+            let palette = RadarShared.palette(among: frame.palettes ?? layer.palettes ?? [])
             let image = try await render(coordinate, frame: frame, palette: palette)
             return RadarEntry(date: .now, image: image, observedAt: observedAt,
                               message: Date().timeIntervalSince(observedAt) > 900 ? "Older radar" : "Nearby · Snapshot")

@@ -1,7 +1,7 @@
 import Foundation
 
 enum RadarAPI {
-    static let serverURL = "https://radar-ng-api.vanillax.me"
+    static var serverURL: String { RadarShared.serverURL }
     // Built once: observedAt runs inside filter/max over every manifest frame.
     fileprivate static let fractionalISO: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -36,9 +36,10 @@ enum RadarAPI {
         let manifest = try JSONDecoder().decode(Manifest.self, from: data)
         guard let layer = manifest.layers["radar"],
               let frame = layer.frames?.filter(\.isValid).max(by: { $0.observedAt! < $1.observedAt! }),
-              (frame.palettes ?? layer.palettes ?? []).contains("classic") else {
+              let palettes = frame.palettes ?? layer.palettes, !palettes.isEmpty else {
             throw URLError(.cannotParseResponse)
         }
-        return frame
+        // Carry the layer's palettes so the overlay can honour the user's choice.
+        return Frame(timestamp: frame.timestamp, path: frame.path, palettes: palettes, max_zoom: frame.max_zoom)
     }
 }

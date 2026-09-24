@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react-native";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { WeatherClearThemeProvider } from "../../src/theme/WeatherClearThemeProvider";
 
 const clients: QueryClient[] = [];
@@ -16,9 +16,11 @@ export function renderWithProviders(ui: ReactElement) {
     defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { gcTime: Infinity } },
   });
   clients.push(client);
-  return render(
+  // As a wrapper, the providers survive rerender().
+  const Providers = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
-      <WeatherClearThemeProvider>{ui}</WeatherClearThemeProvider>
-    </QueryClientProvider>,
+      <WeatherClearThemeProvider>{children}</WeatherClearThemeProvider>
+    </QueryClientProvider>
   );
+  return render(ui, { wrapper: Providers });
 }

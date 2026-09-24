@@ -11,8 +11,7 @@
 import { useEffect, useState } from "react";
 import { View, StyleSheet, Pressable, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
-import { useIsFocused } from "expo-router/react-navigation";
+import { useIsFocused, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { WeatherMap } from "../../components/map/WeatherMap";
 import { RadarOverlay } from "../../components/map/RadarOverlay";
@@ -114,7 +113,7 @@ export default function RadarScreen() {
             accessibilityRole="alert"
             accessibilityLabel={alertStatus.accessibilityLabel}
             pointerEvents="none"
-            style={styles.alertStatus}
+            style={[styles.alertStatus, { top: chrome.statusTop, right: chrome.right }]}
           >
             ALERTS {alertStatus.label}
           </Text>

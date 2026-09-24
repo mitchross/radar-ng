@@ -292,7 +292,7 @@ function createStyles(theme: WeatherClearTheme) {
   },
   refreshText: { color: cumulus.ink, fontSize: 18, fontWeight: "700" },
 
-  scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 140 },
+  scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 32 },
   muted: { color: cumulus.inkMuted, textAlign: "center", paddingVertical: 20, fontFamily: cumulusFonts.ui },
   statusCard: {
     marginBottom: 10,

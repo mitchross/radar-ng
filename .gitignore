@@ -1,5 +1,9 @@
 # cross-cutting
 
+# Build outputs: IPAs, xcarchives, APKs/AABs, Xcode Organizer exports.
+# Native folders (frontend/ios, frontend/android) are generated and disposable.
+/artifacts/
+
 # macOS
 .DS_Store
 *.pem

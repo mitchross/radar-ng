@@ -12,6 +12,7 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { useBasemapStyle } from "../../hooks/useBasemapStyle";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
+import { MapChromeSurface } from "../ui/MapChromeSurface";
 
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 15;
@@ -110,7 +111,7 @@ export function WeatherMap({
         mapStyle={patchedStyle}
         logo={false}
         attribution={true}
-        attributionPosition={{ bottom: 8, left: 8 }}
+        attributionPosition={{ bottom: chrome.aboveTimeline + 8, left: chrome.left }}
         onLongPress={handleLongPress}
         onRegionIsChanging={trackCameraContinuously ? handleRegionChange : undefined}
         onRegionDidChange={handleRegionChange}
@@ -126,7 +127,13 @@ export function WeatherMap({
       </Map>
 
       {/* Manual zoom controls — pinch still works, this is for one-handed use. */}
-      <View style={[styles.zoomWrap, { right: chrome.right, bottom: chrome.aboveTimeline }]} pointerEvents="box-none">
+      <MapChromeSurface
+        style={[styles.zoomWrap, { right: chrome.right, bottom: chrome.aboveTimeline }]}
+        fallbackStyle={styles.zoomFill}
+        colorScheme="dark"
+        tintColor="rgba(15,18,30,0.6)"
+        pointerEvents="box-none"
+      >
         <Pressable
           onPress={() => zoomBy(+1)}
           style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
@@ -146,7 +153,7 @@ export function WeatherMap({
         >
           <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.zoomLabel}>−</Text>
         </Pressable>
-      </View>
+      </MapChromeSurface>
     </View>
   );
 }
@@ -160,11 +167,13 @@ const styles = StyleSheet.create({
     right: 12,
     bottom: 240,            // sits above the timeline bar
     zIndex: 14,
-    backgroundColor: "rgba(15,18,30,0.86)",
     borderRadius: 14,
+    overflow: "hidden",
+  },
+  zoomFill: {
+    backgroundColor: "rgba(15,18,30,0.86)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
-    overflow: "hidden",
   },
   zoomBtn: {
     width: 44,

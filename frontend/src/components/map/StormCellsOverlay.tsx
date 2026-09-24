@@ -9,7 +9,7 @@
 import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useStormCells } from "../../hooks/useStormCells";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { useIsFocused } from "expo-router/react-navigation";
+import { useIsFocused } from "expo-router";
 import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 export function StormCellsOverlay() {

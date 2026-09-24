@@ -20,7 +20,7 @@ import { ScreenBackground } from "../../components/ui/ScreenBackground";
 import Slider from "@react-native-community/slider";
 import Constants from "expo-constants";
 import { useQuery } from "@tanstack/react-query";
-import { useIsFocused } from "expo-router/react-navigation";
+import { useIsFocused } from "expo-router";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import {
   fetchServerStatus,
@@ -1011,7 +1011,7 @@ function createStyles(theme: WeatherClearTheme) {
   return StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
-  scroll: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 140 },
+  scroll: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 32 },
 
   // Header row
   headerRow: {

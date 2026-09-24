@@ -22,6 +22,8 @@ export function useMapChromeInsets() {
     const bottom = insets.bottom + MAP_CHROME.BOTTOM;
     return {
       top: insets.top + MAP_CHROME.TOP,
+      /** Level with the close button, just below the status bar. */
+      statusTop: insets.top + 8,
       bottom,
       left: insets.left + MAP_CHROME.SIDE,
       right: insets.right + MAP_CHROME.SIDE,

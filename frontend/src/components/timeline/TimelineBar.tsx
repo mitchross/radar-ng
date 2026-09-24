@@ -14,9 +14,10 @@ import { createThrottle } from "../../lib/throttle";
 import { useAppActive } from "../../hooks/useAppActive";
 import { useNow } from "../../hooks/useNow";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
-import { useIsFocused } from "expo-router/react-navigation";
+import { useIsFocused } from "expo-router";
 import type { LayerType } from "../../types/weather";
 import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
+import { MapChromeSurface } from "../ui/MapChromeSurface";
 
 const NOWCAST_MIN = 60;
 const HRRR_MIN = 48 * 60;
@@ -141,7 +142,7 @@ export function TimelineBar() {
 
   return (
     <View style={[styles.container, { left: chrome.left, right: chrome.right, bottom: chrome.bottom }]}>
-      <View style={styles.card}>
+      <MapChromeSurface style={styles.card} fallbackStyle={styles.cardFill} colorScheme="light">
         <View style={styles.headerRow}>
           <Pressable
             style={({ pressed }) => [styles.playBtn, pressed ? styles.controlPressed : null]}
@@ -262,7 +263,7 @@ export function TimelineBar() {
             </Text>
           ))}
         </View>
-      </View>
+      </MapChromeSurface>
     </View>
   );
 }
@@ -288,12 +289,14 @@ function clampPct(p: number) { return Math.max(0, Math.min(100, p)); }
 const styles = StyleSheet.create({
   container: { position: "absolute", left: 12, right: 12, bottom: 44, zIndex: 30 },
   card: {
-    backgroundColor: "rgba(255,255,255,0.88)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.95)",
     borderRadius: 28,
     paddingVertical: 10,
     paddingHorizontal: 14,
+  },
+  cardFill: {
+    backgroundColor: "rgba(255,255,255,0.88)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.95)",
     shadowColor: "#14234f",
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.18,

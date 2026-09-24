@@ -563,7 +563,7 @@ function createStyles(theme: WeatherClearTheme) {
   return StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
-  scroll: { paddingBottom: 120 },
+  scroll: { paddingBottom: 32 },
   stateContainer: { flex: 1, backgroundColor: theme.colors.canvas },
   loadingContainer: { flex: 1, backgroundColor: cumulus.background },
   loading: {
