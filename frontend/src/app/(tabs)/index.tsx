@@ -20,9 +20,18 @@ import {
   getIconKind,
   getUVInfo,
   getWindDirection,
-  isNightAt,
 } from "../../lib/cumulusTheme";
-import { displayTemperature } from "../../lib/temperature";
+import { displayTemperature, formatDegrees } from "../../lib/temperature";
+import {
+  dailyView,
+  hourlyView,
+  isNightAt,
+  nowcastHeadline,
+  precipitationNext24h,
+  startHourIndex,
+  sunTimesFor,
+  weekRange,
+} from "../../lib/forecastView";
 import { getForecastScreenState } from "../../lib/weatherPresentation";
 import {
   ScreenState,
@@ -126,9 +135,8 @@ export default function HomeScreen() {
   }
 
   const now = new Date();
-  const sunrise = new Date(forecast.daily.sunrise[0]);
-  const sunset = new Date(forecast.daily.sunset[0]);
-  const isNight = isNightAt(now, sunrise, sunset);
+  const { sunrise, sunset } = sunTimesFor(forecast.daily, now);
+  const isNight = isNightAt(now, forecast.daily);
 
   const weatherCode = forecast.current.weather_code;
   const condition = getCumulusCondition(weatherCode, isNight);
@@ -137,77 +145,52 @@ export default function HomeScreen() {
     ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
     : CONDITION_GRADIENTS[condition];
 
-  const currentFahrenheit = forecast.current.temperature_2m ?? 0;
-  const temperature = (value: number) => displayTemperature(value, temperatureUnit);
-  const temp = temperature(currentFahrenheit);
-  const feels = temperature(forecast.current.apparent_temperature ?? currentFahrenheit);
-  const hi = temperature(forecast.daily.temperature_2m_max[0] ?? currentFahrenheit);
-  const lo = temperature(forecast.daily.temperature_2m_min[0] ?? currentFahrenheit);
+  // Every value may be missing; each renders as "—" rather than a stand-in.
+  const temperature = (value: number | null | undefined) => displayTemperature(value, temperatureUnit);
+  const temp = temperature(forecast.current.temperature_2m);
+  const feels = temperature(forecast.current.apparent_temperature);
+  const hi = temperature(forecast.daily.temperature_2m_max[0]);
+  const lo = temperature(forecast.daily.temperature_2m_min[0]);
 
   const conditionLabel = CONDITION_LABELS[condition];
   const locationLabel = location.label;
   const locationName = location.name;
 
-  // Nowcast banner logic
-  const nowcastHeadline = buildNowcastHeadline(forecast.minutely_15);
+  const nowcastBanner = nowcastHeadline(forecast.minutely_15);
 
-  // 24h hourly strip
-  const hourlyStart = findStartHourIndex(forecast.hourly.time);
-  const hourly = forecast.hourly.time.slice(hourlyStart, hourlyStart + 24).map((t, i) => {
-    const idx = hourlyStart + i;
-    const hr = new Date(t);
-    const hrIsNight = hr < sunrise || hr > sunset;
-    return {
-      time: formatHour(hr, i),
-      temp: temperature(forecast.hourly.temperature_2m[idx]),
-      icon: getIconKind(forecast.hourly.weather_code[idx], hrIsNight),
-      precip: forecast.hourly.precipitation_probability?.[idx] ?? 0,
-      isNow: i === 0,
-    };
-  });
-  const precipTotalIn = forecast.daily.precipitation_sum[0]?.toFixed(2) ?? "0.00";
+  const hourly = hourlyView(forecast, temperatureUnit, now.getTime());
+  const precipTotal = precipitationNext24h(forecast, now.getTime());
+  const precipTotalIn = precipTotal === null ? "\u2014" : `${precipTotal.toFixed(2)}"`;
 
-  // 7-day forecast
-  const todayLocal = (() => {
-    const d = now;
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  })();
-  const daily = forecast.daily.time.map((t, i) => {
-    const isToday = t === todayLocal;
-    return {
-      // `t` is a date-only string ("2026-07-03"); `new Date(t)` parses it as UTC
-      // midnight, which renders as the previous day in US timezones. Append a
-      // local time component so the weekday label matches local calendar days.
-      day: isToday
-        ? "Today"
-        : new Date(`${t}T00:00:00`).toLocaleDateString([], { weekday: "short" }),
-      icon: getIconKind(forecast.daily.weather_code[i], false),
-      hi: temperature(forecast.daily.temperature_2m_max[i]),
-      lo: temperature(forecast.daily.temperature_2m_min[i]),
-      precip: Math.round(forecast.daily.precipitation_probability_max?.[i] ?? 0),
-      now: isToday ? temp : undefined,
-    };
-  });
-  const weekHi = Math.max(...daily.map((d) => d.hi));
-  const weekLo = Math.min(...daily.map((d) => d.lo));
+  // `date` is a date-only string ("2026-07-03"); `new Date(date)` parses it as
+  // UTC midnight, the previous day in US timezones, so parse it as local.
+  const daily = dailyView(forecast, temperatureUnit, now).map((d) => ({
+    ...d,
+    day: d.isToday ? "Today" : new Date(`${d.date}T00:00:00`).toLocaleDateString([], { weekday: "short" }),
+    now: d.isToday ? temp : null,
+  }));
+  const week = weekRange(daily);
 
   // Stats
-  const uv = forecast.daily.uv_index_max?.[0] ?? 0;
-  const uvInfo = getUVInfo(uv);
-  const windMph = Math.round(forecast.current.wind_speed_10m ?? 0);
-  const windDeg = forecast.current.wind_direction_10m ?? 0;
-  const windCompass = getWindDirection(windDeg);
-  const humidity = Math.round(forecast.current.relative_humidity_2m ?? 0);
-  const dewFahrenheit = forecast.current.dew_point_2m ?? 0;
+  const uv = forecast.daily.uv_index_max?.[0] ?? null;
+  const uvInfo = uv === null ? null : getUVInfo(uv);
+  const windMph = forecast.current.wind_speed_10m == null ? null : Math.round(forecast.current.wind_speed_10m);
+  const windDeg = forecast.current.wind_direction_10m;
+  const windCompass = windDeg == null ? "\u2014" : getWindDirection(windDeg);
+  const humidity =
+    forecast.current.relative_humidity_2m == null ? null : Math.round(forecast.current.relative_humidity_2m);
+  const dewFahrenheit = forecast.current.dew_point_2m;
   const dew = temperature(dewFahrenheit);
-  const visM = forecast.hourly.visibility?.[hourlyStart];
-  const visibility = visM != null ? Math.min(10, visM / 1609) : 10;
-  const pressure = Math.round(forecast.current.surface_pressure ?? 1013);
-  const dayMs = sunset.getTime() - sunrise.getTime();
-  const dayProgress = Math.max(0, Math.min(1, (now.getTime() - sunrise.getTime()) / dayMs));
+  const visM = forecast.hourly.visibility?.[startHourIndex(forecast.hourly.time, now.getTime())];
+  const visibility = visM == null ? null : Math.min(10, visM / 1609);
+  const pressure = forecast.current.surface_pressure == null ? null : Math.round(forecast.current.surface_pressure);
+  const dayProgress =
+    sunrise && sunset
+      ? Math.max(0, Math.min(1, (now.getTime() - sunrise.getTime()) / (sunset.getTime() - sunrise.getTime())))
+      : null;
+  const fmt = (value: number | null) => (value === null ? "\u2014" : String(value));
+  const sunLabel = (d: Date | null) =>
+    d ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase() : "\u2014";
 
   const isAdv = viewMode === "advanced";
 
@@ -287,19 +270,25 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.heroCondition}>{conditionLabel}</Text>
             <View style={styles.heroTempRow}>
-              <Text testID="current-temperature" accessibilityLabel={`${temp} degrees ${temperatureUnit}`} style={styles.heroTemp}>{temp}</Text>
-              <Text style={styles.heroDeg}>{"\u00B0"}</Text>
+              <Text
+                testID="current-temperature"
+                accessibilityLabel={temp === null ? "Temperature unavailable" : `${temp} degrees ${temperatureUnit}`}
+                style={styles.heroTemp}
+              >
+                {temp ?? "\u2014"}
+              </Text>
+              {temp !== null ? <Text style={styles.heroDeg}>{"\u00B0"}</Text> : null}
             </View>
             <Text style={styles.heroMeta}>
-              Feels {feels}{"\u00B0"}   {"\u00B7"}   H {hi}{"\u00B0"}   L {lo}{"\u00B0"}
+              Feels {formatDegrees(feels)}   {"\u00B7"}   H {formatDegrees(hi)}   L {formatDegrees(lo)}
             </Text>
           </View>
 
           {/* Nowcast banner */}
-          {nowcastHeadline ? (
+          {nowcastBanner ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`${nowcastHeadline.headline}. ${nowcastHeadline.sub}`}
+              accessibilityLabel={`${nowcastBanner.headline}. ${nowcastBanner.sub}`}
               style={styles.nowcastBanner}
               onPress={() => router.push("/nowcast" as never)}
             >
@@ -307,8 +296,8 @@ export default function HomeScreen() {
                 <WeatherIcon kind="rain" size={24} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.nowcastHeadline}>{nowcastHeadline.headline}</Text>
-                <Text style={styles.nowcastSub}>{nowcastHeadline.sub}</Text>
+                <Text style={styles.nowcastHeadline}>{nowcastBanner.headline}</Text>
+                <Text style={styles.nowcastSub}>{nowcastBanner.sub}</Text>
               </View>
               <Text style={styles.chevron}>{"\u203A"}</Text>
             </Pressable>
@@ -382,39 +371,46 @@ export default function HomeScreen() {
               <View
                 key={i}
                 accessible
-                accessibilityLabel={`${h.isNow ? "Now" : h.time}, ${h.temp} degrees, ${h.precip} percent chance of precipitation`}
+                accessibilityLabel={`${h.isNow ? "Now" : h.label}, ${
+                  h.temp === null ? "temperature unavailable" : `${h.temp} degrees`
+                }, ${h.chance === null ? "precipitation chance unavailable" : `${h.chance} percent chance of precipitation`}`}
                 style={[styles.hourlyCell, h.isNow ? styles.hourlyCellNow : null]}
               >
                 <Text style={[styles.hourlyTime, h.isNow ? styles.hourlyTimeNow : null]}>
-                  {h.isNow ? "NOW" : h.time}
+                  {h.label}
                 </Text>
                 <View style={{ marginVertical: 6 }}>
-                  <WeatherIcon kind={h.icon} size={22} time={isNight ? "night" : "day"} />
+                  <WeatherIcon kind={h.icon} size={22} time={h.night ? "night" : "day"} />
                 </View>
-                <Text style={styles.hourlyTemp}>{h.temp}{"\u00B0"}</Text>
+                <Text style={styles.hourlyTemp}>{formatDegrees(h.temp)}</Text>
               </View>
             ))}
           </ScrollView>
 
           {/* 24h precip chart */}
           <View style={styles.sectionWrap}>
-            <SectionLabel trailing={`${precipTotalIn}"`}>PRECIPITATION · 24H</SectionLabel>
+            <SectionLabel trailing={precipTotalIn}>PRECIPITATION · NEXT 24H</SectionLabel>
           </View>
           <View
             accessible
-            accessibilityLabel={`24 hour precipitation total ${precipTotalIn} inches`}
+            accessibilityLabel={
+              precipTotal === null
+                ? "Precipitation over the next 24 hours unavailable. Bars show the hourly chance of precipitation."
+                : `${precipTotal.toFixed(2)} inches of precipitation expected over the next 24 hours. Bars show the hourly chance of precipitation.`
+            }
             style={styles.card}
           >
             <View style={styles.precipChart}>
               {hourly.map((h, i) => {
-                const pct = h.precip / 100;
-                const barH = Math.max(2, pct * 42);
+                // Bars are the chance of precipitation; an unknown hour is a flat stub.
+                const pct = (h.chance ?? 0) / 100;
+                const barH = h.chance === null ? 2 : Math.max(2, pct * 42);
                 return (
                   <View key={i} style={styles.precipBarSlot}>
                     <View
                       style={[
                         styles.precipBar,
-                        { height: barH, opacity: pct > 0.05 ? 1 : 0.25 },
+                        { height: barH, opacity: h.chance !== null && pct > 0.05 ? 1 : 0.25 },
                       ]}
                     />
                   </View>
@@ -434,10 +430,12 @@ export default function HomeScreen() {
           </View>
           <View style={[styles.card, { padding: 0, overflow: "hidden" }]}>
             {daily.map((d, i) => {
-              const range = weekHi - weekLo || 1;
-              const leftPct = ((d.lo - weekLo) / range) * 100;
-              const widthPct = ((d.hi - d.lo) / range) * 100;
-              const nowPct = d.now != null ? ((d.now - weekLo) / range) * 100 : 0;
+              // Days with a missing high or low get no bar rather than a fake range.
+              const hasRange = week !== null && d.lo !== null && d.hi !== null;
+              const range = week ? week.hi - week.lo || 1 : 1;
+              const leftPct = hasRange ? (((d.lo as number) - week!.lo) / range) * 100 : 0;
+              const widthPct = hasRange ? (((d.hi as number) - (d.lo as number)) / range) * 100 : 0;
+              const nowPct = week && d.now != null ? ((d.now - week.lo) / range) * 100 : 0;
               return (
                 <View
                   key={i}
@@ -446,7 +444,9 @@ export default function HomeScreen() {
                     i > 0 ? styles.dailyRowBorder : null,
                   ]}
                   accessible
-                  accessibilityLabel={`${d.day}, low ${d.lo} degrees, high ${d.hi} degrees, ${d.precip} percent chance of precipitation`}
+                  accessibilityLabel={`${d.day}, low ${d.lo === null ? "unavailable" : `${d.lo} degrees`}, high ${
+                    d.hi === null ? "unavailable" : `${d.hi} degrees`
+                  }, ${d.chance === null ? "precipitation chance unavailable" : `${d.chance} percent chance of precipitation`}`}
                 >
                   <Text style={[styles.dailyDay, d.day === "Today" ? styles.dailyDayToday : null]}>
                     {d.day}
@@ -454,20 +454,22 @@ export default function HomeScreen() {
                   <View style={{ width: 24, alignItems: "center" }}>
                     <WeatherIcon kind={d.icon} size={21} />
                   </View>
-                  <Text style={styles.dailyLo}>{d.lo}{"\u00B0"}</Text>
+                  <Text style={styles.dailyLo}>{formatDegrees(d.lo)}</Text>
                   <View style={styles.dailyBarTrack}>
-                    <LinearGradient
-                      colors={["#6db4d8", "#f0c34e", "#df6a3c"]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={{
-                        position: "absolute",
-                        left: `${leftPct}%`,
-                        width: `${widthPct}%`,
-                        height: "100%",
-                        borderRadius: 3,
-                      }}
-                    />
+                    {hasRange ? (
+                      <LinearGradient
+                        colors={["#6db4d8", "#f0c34e", "#df6a3c"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={{
+                          position: "absolute",
+                          left: `${leftPct}%`,
+                          width: `${widthPct}%`,
+                          height: "100%",
+                          borderRadius: 3,
+                        }}
+                      />
+                    ) : null}
                     {d.now != null ? (
                       <View
                         style={[
@@ -477,7 +479,7 @@ export default function HomeScreen() {
                       />
                     ) : null}
                   </View>
-                  <Text style={styles.dailyHi}>{d.hi}{"\u00B0"}</Text>
+                  <Text style={styles.dailyHi}>{formatDegrees(d.hi)}</Text>
                 </View>
               );
             })}
@@ -496,84 +498,96 @@ export default function HomeScreen() {
                 {/* 1. UV Index */}
                 <View style={styles.statCard}>
                   <Text style={styles.statLabel}>UV INDEX</Text>
-                  <Text style={styles.statValue}>{Math.round(uv)}</Text>
-                  <Text style={[styles.statSubText, { color: uvInfo.color }]}>
-                    {uvInfo.label}
+                  <Text style={styles.statValue}>{uv === null ? "\u2014" : Math.round(uv)}</Text>
+                  <Text style={[styles.statSubText, uvInfo ? { color: uvInfo.color } : null]}>
+                    {uvInfo?.label ?? "Unavailable"}
                   </Text>
-                  <View style={styles.widgetWrapper}>
-                    <UVBar value={uv} />
-                  </View>
+                  {uv !== null ? (
+                    <View style={styles.widgetWrapper}>
+                      <UVBar value={uv} />
+                    </View>
+                  ) : null}
                 </View>
 
                 {/* 2. Wind compass */}
                 <View style={styles.statCard}>
                   <Text style={styles.statLabel}>WIND</Text>
                   <View style={styles.statValueRow}>
-                    <Text style={styles.statValue}>{windMph}</Text>
+                    <Text style={styles.statValue}>{fmt(windMph)}</Text>
                     <Text style={styles.statUnit}>mph</Text>
                   </View>
                   <Text style={styles.statSubText}>{windCompass}</Text>
-                  <View style={styles.widgetWrapper}>
-                    <WindDial dir={windDeg} />
-                  </View>
+                  {windDeg != null ? (
+                    <View style={styles.widgetWrapper}>
+                      <WindDial dir={windDeg} />
+                    </View>
+                  ) : null}
                 </View>
 
                 {/* 3. Humidity */}
                 <View style={styles.statCard}>
                   <Text style={styles.statLabel}>HUMIDITY</Text>
                   <View style={styles.statValueRow}>
-                    <Text style={styles.statValue}>{humidity}</Text>
+                    <Text style={styles.statValue}>{fmt(humidity)}</Text>
                     <Text style={styles.statUnit}>%</Text>
                   </View>
-                  <Text style={styles.statSubText}>Dew pt {dew}°</Text>
-                  <View style={styles.widgetWrapper}>
-                    <FillRing value={humidity / 100} color={theme.colors.rain} />
-                  </View>
+                  <Text style={styles.statSubText}>Dew pt {formatDegrees(dew)}</Text>
+                  {humidity !== null ? (
+                    <View style={styles.widgetWrapper}>
+                      <FillRing value={humidity / 100} color={theme.colors.rain} />
+                    </View>
+                  ) : null}
                 </View>
 
                 {/* 4. Visibility */}
                 <View style={styles.statCard}>
                   <Text style={styles.statLabel}>VISIBILITY</Text>
                   <View style={styles.statValueRow}>
-                    <Text style={styles.statValue}>{Math.round(visibility)}</Text>
+                    <Text style={styles.statValue}>{visibility === null ? "\u2014" : Math.round(visibility)}</Text>
                     <Text style={styles.statUnit}>mi</Text>
                   </View>
                   <Text style={styles.statSubText}>
-                    {visibility >= 9 ? "Clear view" : "Hazy"}
+                    {visibility === null ? "Unavailable" : visibility >= 9 ? "Clear view" : "Hazy"}
                   </Text>
-                  <View style={styles.widgetWrapper}>
-                    <VisBars value={visibility} />
-                  </View>
+                  {visibility !== null ? (
+                    <View style={styles.widgetWrapper}>
+                      <VisBars value={visibility} />
+                    </View>
+                  ) : null}
                 </View>
 
                 {/* 5. Pressure */}
                 <View style={styles.statCard}>
                   <Text style={styles.statLabel}>PRESSURE</Text>
                   <View style={styles.statValueRow}>
-                    <Text style={styles.statValue}>{pressure}</Text>
+                    <Text style={styles.statValue}>{fmt(pressure)}</Text>
                     <Text style={styles.statUnit}>hPa</Text>
                   </View>
                   <Text style={styles.statSubText}>
-                    {pressure < 1010 ? "Low press." : "Normal"}
+                    {pressure === null ? "Unavailable" : pressure < 1010 ? "Low press." : "Normal"}
                   </Text>
-                  <View style={styles.widgetWrapper}>
-                    <PressureGauge value={pressure} />
-                  </View>
+                  {pressure !== null ? (
+                    <View style={styles.widgetWrapper}>
+                      <PressureGauge value={pressure} />
+                    </View>
+                  ) : null}
                 </View>
 
                 {/* 6. Dew point */}
                 <View style={styles.statCard}>
                   <Text style={styles.statLabel}>DEW POINT</Text>
                   <View style={styles.statValueRow}>
-                    <Text style={styles.statValue}>{dew}</Text>
-                    <Text style={styles.statUnit}>°</Text>
+                    <Text style={styles.statValue}>{fmt(dew)}</Text>
+                    {dew !== null ? <Text style={styles.statUnit}>°</Text> : null}
                   </View>
                   <Text style={styles.statSubText}>
-                    {dewFahrenheit > 60 ? "Humid air" : "Comfortable"}
+                    {dewFahrenheit == null ? "Unavailable" : dewFahrenheit > 60 ? "Humid air" : "Comfortable"}
                   </Text>
-                  <View style={styles.widgetWrapper}>
-                    <FillRing value={Math.max(0, Math.min(1, (dewFahrenheit - 20) / 60))} color={theme.colors.hot} />
-                  </View>
+                  {dewFahrenheit != null ? (
+                    <View style={styles.widgetWrapper}>
+                      <FillRing value={Math.max(0, Math.min(1, (dewFahrenheit - 20) / 60))} color={theme.colors.hot} />
+                    </View>
+                  ) : null}
                 </View>
               </View>
 
@@ -584,7 +598,7 @@ export default function HomeScreen() {
                   <View>
                     <Text style={styles.rowLayoutLabel}>SUNRISE</Text>
                     <Text style={styles.rowLayoutVal}>
-                      {sunrise.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase()}
+                      {sunLabel(sunrise)}
                     </Text>
                   </View>
                 </View>
@@ -593,20 +607,18 @@ export default function HomeScreen() {
                   <View>
                     <Text style={styles.rowLayoutLabel}>SUNSET</Text>
                     <Text style={styles.rowLayoutVal}>
-                      {sunset.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase()}
+                      {sunLabel(sunset)}
                     </Text>
                   </View>
                 </View>
               </View>
 
               {/* Sun Arc */}
-              <View style={[styles.card, styles.sunArcCard]}>
-                <SunArc
-                  sunrise={sunrise.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase()}
-                  sunset={sunset.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase()}
-                  progress={dayProgress}
-                />
-              </View>
+              {dayProgress !== null ? (
+                <View style={[styles.card, styles.sunArcCard]}>
+                  <SunArc sunrise={sunLabel(sunrise)} sunset={sunLabel(sunset)} progress={dayProgress} />
+                </View>
+              ) : null}
             </>
           ) : null}
 
@@ -627,53 +639,8 @@ const CONDITION_LABELS: Record<ReturnType<typeof getCumulusCondition>, string> =
   storm: "Thunderstorms",
   snow: "Snow",
   fog: "Foggy",
+  unknown: "Conditions unavailable",
 };
-
-function findStartHourIndex(hours: string[]): number {
-  const now = Date.now();
-  for (let i = 0; i < hours.length; i++) {
-    if (new Date(hours[i]).getTime() >= now - 30 * 60_000) return i;
-  }
-  return 0;
-}
-
-function formatHour(d: Date, i: number): string {
-  if (i === 0) return "NOW";
-  const h = d.getHours();
-  if (h === 0) return "12a";
-  if (h === 12) return "12p";
-  return h < 12 ? `${h}a` : `${h - 12}p`;
-}
-
-function buildNowcastHeadline(
-  minutely: OpenMeteoMinutely | undefined
-): { headline: string; sub: string } | null {
-  if (!minutely || !minutely.precipitation || minutely.precipitation.length === 0) return null;
-  const now = Date.now();
-  const startIdx = minutely.time.findIndex((t) => new Date(t).getTime() >= now - 7.5 * 60_000);
-  if (startIdx < 0) return null;
-  const slice = minutely.precipitation.slice(startIdx, startIdx + 8);
-  const firstWet = slice.findIndex((p) => p > 0.01);
-  if (firstWet < 0) return null;
-  const minutes = firstWet * 15;
-  const continuedWet = slice.slice(firstWet).findIndex((p) => p < 0.005);
-  const lastsMin = (continuedWet < 0 ? slice.length - firstWet : continuedWet) * 15;
-  const total = slice.slice(firstWet).reduce((s, p) => s + Math.max(0, p), 0);
-  const heavy = slice.slice(firstWet).some((p) => p > 0.3);
-  const kind = heavy ? "Heavy rain" : "Rain";
-  return {
-    headline: minutes === 0 ? `${kind} now` : `${kind} starts in ${minutes} min`,
-    sub: `Lasts ~${lastsMin} min \u00B7 ${total.toFixed(2)}" total`,
-  };
-}
-
-type OpenMeteoMinutely = NonNullable<
-  ReturnType<typeof useForecast> extends { data?: infer T }
-    ? T extends { minutely_15?: infer M }
-      ? M
-      : never
-    : never
->;
 
 function createStyles(theme: WeatherClearTheme) {
   const cumulus = {

@@ -43,7 +43,8 @@ export type CumulusCondition =
   | "rain"
   | "storm"
   | "snow"
-  | "fog";
+  | "fog"
+  | "unknown";
 
 export const CONDITION_GRADIENTS: Record<CumulusCondition, readonly [string, string, string, string, string]> = {
   clearDay:   ["#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea"],
@@ -53,10 +54,15 @@ export const CONDITION_GRADIENTS: Record<CumulusCondition, readonly [string, str
   storm:      ["#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea"],
   snow:       ["#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea"],
   fog:        ["#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea"],
+  unknown:    ["#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea", "#f6f2ea"],
 };
 
-/** Map WMO weather code + day/night to Cumulus condition. */
-export function getCumulusCondition(weatherCode: number, isNight: boolean): CumulusCondition {
+/**
+ * Map WMO weather code + day/night to Cumulus condition. A missing code is
+ * "unknown": null would otherwise compare as 0 and read as clear or cloudy.
+ */
+export function getCumulusCondition(weatherCode: number | null | undefined, isNight: boolean): CumulusCondition {
+  if (weatherCode == null) return "unknown";
   if (weatherCode === 0) return isNight ? "clearNight" : "clearDay";
   if (weatherCode <= 3) return "cloudy";
   if (weatherCode <= 48) return "fog";
@@ -79,9 +85,13 @@ export type IconKind =
   | "storm"
   | "snow"
   | "fog"
-  | "hail";
+  | "hail"
+  | "unknown";
 
-export function getIconKind(weatherCode: number, isNight: boolean): IconKind {
+export function getIconKind(weatherCode: number | null | undefined, isNight: boolean): IconKind {
+  if (weatherCode == null) return "unknown";
+  // Thunderstorm with hail must be checked before the generic >= 95 storm case.
+  if (weatherCode === 96 || weatherCode === 99) return "hail";
   if (weatherCode === 0) return isNight ? "moon" : "sun";
   if (weatherCode <= 2) return "partlyCloudy";
   if (weatherCode === 3) return "overcast";
@@ -94,7 +104,6 @@ export function getIconKind(weatherCode: number, isNight: boolean): IconKind {
   if (weatherCode >= 95) return "storm";
   if (weatherCode <= 82) return weatherCode >= 81 ? "heavyRain" : "rain";
   if (weatherCode <= 86) return "snow";
-  if (weatherCode === 96 || weatherCode === 99) return "hail";
   return "cloudy";
 }
 
@@ -132,9 +141,4 @@ export function getWindInfo(mph: number): { label: string; color: string } {
 export function getWindDirection(degrees: number): string {
   const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
   return dirs[Math.round(degrees / 22.5) % 16];
-}
-
-/** Determine night-time from sunrise/sunset (both as Date). */
-export function isNightAt(now: Date, sunrise: Date, sunset: Date): boolean {
-  return now < sunrise || now > sunset;
 }

@@ -4,7 +4,8 @@
  * that scales linearly with the `size` prop.
  *
  * Supported kinds: sun, moon, partlyCloudy, cloudy, overcast, rain, heavyRain,
- * storm, snow, fog, hail.
+ * storm, snow, fog, hail, and unknown (a faint dashed ring when the source has
+ * no weather code — never a guessed condition).
  */
 import { View } from "react-native";
 import { cumulus, type IconKind } from "../../lib/cumulusTheme";
@@ -396,6 +397,22 @@ export default function WeatherIcon({ kind, size = 40, time = "day" }: Props) {
       )}
 
       {kind === "fog" && <FogBars size={size} />}
+
+      {kind === "unknown" && (
+        <View
+          style={{
+            position: "absolute",
+            left: size * 0.22,
+            top: size * 0.22,
+            width: size * 0.56,
+            height: size * 0.56,
+            borderRadius: size * 0.28,
+            borderWidth: Math.max(1, size * 0.04),
+            borderStyle: "dashed",
+            borderColor: "#9AA4BE",
+          }}
+        />
+      )}
 
       {kind === "hail" && (
         <>

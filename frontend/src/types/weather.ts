@@ -19,45 +19,52 @@ export interface RadarFrame {
 
 // --- Open-Meteo API ---
 
+/**
+ * Open-Meteo returns `null` for any value a model doesn't provide (e.g. hours
+ * past a model's horizon). Types say so, so the UI must render "—" instead of
+ * inventing 0° or clear skies.
+ */
+type Maybe = number | null;
+
 export interface OpenMeteoResponse {
   latitude: number;
   longitude: number;
   current: {
     time: string;
-    temperature_2m: number;
-    relative_humidity_2m: number;
-    apparent_temperature: number;
-    weather_code: number;
-    wind_speed_10m: number;
-    wind_direction_10m: number;
-    wind_gusts_10m: number;
-    dew_point_2m: number;
-    surface_pressure: number;
+    temperature_2m: Maybe;
+    relative_humidity_2m: Maybe;
+    apparent_temperature: Maybe;
+    weather_code: Maybe;
+    wind_speed_10m: Maybe;
+    wind_direction_10m: Maybe;
+    wind_gusts_10m: Maybe;
+    dew_point_2m: Maybe;
+    surface_pressure: Maybe;
   };
   hourly: {
     time: string[];
-    temperature_2m: number[];
-    precipitation_probability: number[];
-    precipitation: number[];
-    weather_code: number[];
-    wind_speed_10m: number[];
-    visibility?: number[];
+    temperature_2m: Maybe[];
+    precipitation_probability: Maybe[];
+    precipitation: Maybe[];
+    weather_code: Maybe[];
+    wind_speed_10m: Maybe[];
+    visibility?: Maybe[];
   };
   daily: {
     time: string[];
-    temperature_2m_max: number[];
-    temperature_2m_min: number[];
-    weather_code: number[];
-    precipitation_sum: number[];
-    precipitation_probability_max: number[];
-    uv_index_max: number[];
-    sunrise: string[];
-    sunset: string[];
+    temperature_2m_max: Maybe[];
+    temperature_2m_min: Maybe[];
+    weather_code: Maybe[];
+    precipitation_sum: Maybe[];
+    precipitation_probability_max: Maybe[];
+    uv_index_max: Maybe[];
+    sunrise: (string | null)[];
+    sunset: (string | null)[];
   };
   minutely_15?: {
     time: string[];
-    precipitation: number[];
-    precipitation_probability?: number[];
+    precipitation: Maybe[];
+    precipitation_probability?: Maybe[];
   };
 }
 

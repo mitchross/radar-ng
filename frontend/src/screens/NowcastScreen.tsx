@@ -13,7 +13,8 @@ import { useRadarNowcast } from "../hooks/useRadarNowcast";
 import { useActiveLocation } from "../hooks/useActiveLocation";
 import { runOnlineRefresh } from "../lib/queryLifecycle";
 import { useWeatherStore } from "../stores/useWeatherStore";
-import { CONDITION_GRADIENTS, getCumulusCondition, isNightAt } from "../lib/cumulusTheme";
+import { CONDITION_GRADIENTS, getCumulusCondition } from "../lib/cumulusTheme";
+import { isNightAt } from "../lib/forecastView";
 import {
   describeNowcast,
   getForecastScreenState,
@@ -123,9 +124,7 @@ export default function NowcastScreen() {
   }
 
   const now = new Date();
-  const sunrise = new Date(forecast.daily.sunrise[0]);
-  const sunset = new Date(forecast.daily.sunset[0]);
-  const isNight = isNightAt(now, sunrise, sunset);
+  const isNight = isNightAt(now, forecast.daily);
   const condition = getCumulusCondition(forecast.current.weather_code, isNight);
   const gradient = theme.dark
     ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
@@ -138,14 +137,12 @@ export default function NowcastScreen() {
       ? radarNowcast.data
       : null;
   const usingRadarNowcast = pointNowcast !== null;
-  const minutes = pointNowcast
+  // Null when the model series has gaps in the next hour: unknown is not dry.
+  const minuteSeries = pointNowcast
     ? buildRadarMinutes(pointNowcast.points)
     : buildMinutes(forecast.minutely_15);
-  const verdict = getNowcastVerdict(
-    usingRadarNowcast || forecast.minutely_15?.precipitation?.length
-      ? minutes.map((minute) => minute.intensity)
-      : undefined,
-  );
+  const minutes = minuteSeries ?? [];
+  const verdict = getNowcastVerdict(minuteSeries?.map((minute) => minute.intensity));
   const rainStart =
     verdict.kind === "starting"
       ? verdict.startMinute
@@ -290,7 +287,11 @@ export default function NowcastScreen() {
               <Text style={styles.chartLabel}>INTENSITY {"\u00B7"} IN/HR</Text>
               <Text style={styles.chartLabel}>NEXT 60 MIN</Text>
             </View>
-            <NowcastChart minutes={minutes} dry={verdict.kind === "dry"} />
+            {minuteSeries ? (
+              <NowcastChart minutes={minuteSeries} dry={verdict.kind === "dry"} />
+            ) : (
+              <Text style={styles.chartLabel}>Next-hour intensity unavailable</Text>
+            )}
             <View style={styles.chartAxis}>
               <Text style={styles.axisTick}>NOW</Text>
               <Text style={styles.axisTick}>+15</Text>
@@ -511,21 +512,20 @@ function Row({
 }
 
 // Helper: build minute intervals
-function buildMinutes(minutely: { time: string[]; precipitation: number[] } | undefined): Minute[] {
-  if (!minutely || minutely.precipitation.length === 0) {
-    return Array.from({ length: 60 }, (_, i) => ({ i, intensity: 0 }));
-  }
+function buildMinutes(
+  minutely: { time: string[]; precipitation: (number | null)[] } | undefined,
+): Minute[] | null {
+  if (!minutely || minutely.precipitation.length === 0) return null;
   const now = Date.now();
   const startIdx = Math.max(
     0,
     minutely.time.findIndex((t) => new Date(t).getTime() >= now - 7.5 * 60_000),
   );
-  const quarters = minutely.precipitation
-    .slice(startIdx, startIdx + 5)
-    // The API requests precipitation_unit=inch; convert each 15-minute
-    // accumulation to an hourly rate for the chart.
-    .map((amountInches) => amountInches * 4);
-  while (quarters.length < 5) quarters.push(0);
+  const window = minutely.precipitation.slice(startIdx, startIdx + 5);
+  if (window.length < 5 || window.some((v) => v == null)) return null;
+  // The API requests precipitation_unit=inch; convert each 15-minute
+  // accumulation to an hourly rate for the chart.
+  const quarters = (window as number[]).map((amountInches) => amountInches * 4);
 
   const out: Minute[] = [];
   for (let i = 0; i < 60; i++) {
