@@ -13,7 +13,7 @@ final class RadarCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDe
         let controller = RadarMapController()
         self.mapController = controller
         window.rootViewController = controller
-        interfaceController.setRootTemplate(controller.makeTemplate(), animated: true, completion: nil)
+        interfaceController.setRootTemplate(controller.makeTemplate(interfaceController: interfaceController), animated: true, completion: nil)
         controller.start()
     }
 
@@ -23,5 +23,6 @@ final class RadarCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDe
         mapController?.stop()
         mapController = nil
         self.interfaceController = nil
+        window.rootViewController = nil
     }
 }
