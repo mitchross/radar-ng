@@ -17,7 +17,7 @@
       "appleTeamId": "FVU6RGL532",
       "icon": "./assets/expo.icon",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "radar-ng uses your location to show local weather radar and forecasts."
+        "NSLocalNetworkUsageDescription": "Radar NG connects to a weather server on your local network when you configure one."
       }
     },
     "android": {
@@ -47,6 +47,15 @@
       ],
       "@maplibre/maplibre-react-native",
       "./plugins/withCarPlayScene",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Radar NG uses your location to show radar, forecasts and alerts for where you are.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "motionUsagePermission": false
+        }
+      ],
       [
         "expo-build-properties",
         {
@@ -79,7 +88,6 @@
       "expo-image",
       "expo-web-browser",
       "expo-localization",
-      "expo-secure-store",
       "expo-status-bar"
     ],
     "experiments": {

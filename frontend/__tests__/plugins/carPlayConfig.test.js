@@ -1,5 +1,19 @@
 const configure = require("../../app.config");
 
+const carPlayLocation = "Radar NG uses your location for nearby radar and turn-by-turn driving directions, including in CarPlay.";
+
+const baseConfig = () => ({
+  ios: {
+    bundleIdentifier: "com.example.radar",
+    entitlements: { "aps-environment": "development" },
+    infoPlist: { UIBackgroundModes: ["audio", "fetch"] },
+  },
+  plugins: [
+    "expo-router",
+    ["expo-location", { locationWhenInUsePermission: "When in use text", locationAlwaysPermission: false }],
+  ],
+});
+
 afterEach(() => { delete process.env.RADAR_CARPLAY; });
 
 test("ordinary iPhone builds retain their provisioning and background behavior", () => {
@@ -9,16 +23,25 @@ test("ordinary iPhone builds retain their provisioning and background behavior",
 
 test("CarPlay builds request navigation and preserve unrelated entitlements", () => {
   process.env.RADAR_CARPLAY = "1";
-  const config = { ios: {
-    entitlements: { "aps-environment": "development" },
-    infoPlist: { UIBackgroundModes: ["audio", "fetch"] },
-  } };
+  const config = baseConfig();
   const output = configure({ config });
   expect(output.ios.entitlements).toEqual({
     "aps-environment": "development", "com.apple.developer.carplay-maps": true,
   });
   expect(output.ios.infoPlist.UIBackgroundModes).toEqual(["audio", "fetch", "location"]);
   expect(config.ios.entitlements).toEqual({ "aps-environment": "development" });
+});
+
+test("CarPlay builds override the expo-location prompt without dropping its other options", () => {
+  process.env.RADAR_CARPLAY = "1";
+  const output = configure({ config: baseConfig() });
+  const [, options] = output.plugins.find((p) => Array.isArray(p) && p[0] === "expo-location");
+  expect(options).toEqual({
+    locationWhenInUsePermission: carPlayLocation,
+    locationAlwaysPermission: false,
+  });
+  // Untouched plugins keep their identity.
+  expect(output.plugins[0]).toBe("expo-router");
 });
 
 jest.mock("@expo/config-plugins", () => ({
