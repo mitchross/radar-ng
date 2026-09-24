@@ -29,8 +29,9 @@ Open `ios/radarng.xcworkspace`, select `radar-ngWatch`, and choose a Watch simul
 or your paired Watch. Use normal Apple development signing for a physical Watch.
 The Watch target has no CarPlay entitlement requirement.
 
-The radar page uses a native MapKit snapshot plus the latest self-hosted MRMS
-raster tiles. The Digital Crown and +/- buttons change zoom; refresh fetches a new
+The radar page uses a basemap image rendered by the home cluster
+(`maps.vanillax.me/raster`, tileserver-gl over VersaTiles) plus the latest
+self-hosted MRMS raster tiles. No third-party map service is involved. The Digital Crown and +/- buttons change zoom; refresh fetches a new
 manifest. Only tiles intersecting the screen are loaded. Swiping up opens a native
 SwiftUI forecast page. Its hourly strip starts at the forecast's current hour;
 its next-hour precipitation uses four upcoming 15-minute samples, not the first
@@ -103,8 +104,9 @@ car without turning Radar NG into a full navigation app. iOS 26+ CarPlay can sho
 `.systemSmall` widgets from ordinary iPhone apps. A widget can show a timestamped
 radar snapshot; system-scheduled widget refreshes are not a continuous animation.
 The native `RadarWidget` target now implements this first step. It uses the
-self-hosted MRMS manifest and classic radar tiles, composited over a MapKit
-snapshot. The widget shows the frame timestamp (not the download time), requests an
+self-hosted MRMS manifest and classic radar tiles, composited over a basemap
+image rendered by the home cluster (`maps.vanillax.me/raster`). If the basemap is
+unreachable the radar still renders over a plain background. The widget shows the frame timestamp (not the download time), requests an
 update after ten minutes, and schedules an older-data label after fifteen minutes.
 WidgetKit decides when to refresh; this is not a live feed or continuously tracked
 driving position. The location dot belongs to the sampled snapshot.
@@ -123,7 +125,7 @@ development signing. No public App Store release is required. The extension must
 also be signed for the same development team. A simulator build cannot be installed
 on a physical iPhone.
 
-Run the isolated native rendering test (real API, MapKit, timestamp parsing,
+Run the isolated native rendering test (real API, self-hosted basemap, timestamp parsing,
 coverage rejection, and small-size/error presentation):
 
 ```sh

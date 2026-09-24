@@ -30,6 +30,11 @@ struct PresentationChecks {
         let alert = Alert(id: "1", event: "Test", headline: nil, severity: "Severe", areaDesc: "Test", expires: frame.timestamp)
         precondition(alert.isActive(at: observed.addingTimeInterval(-1)))
         precondition(!alert.isActive(at: observed))
+        // Basemap comes from the home cluster at the 512-px static zoom matching 256-pt radar tiles.
+        precondition(WatchBasemap.url(latitude: 42.9634, longitude: -85.6681, zoom: 7, size: CGSize(width: 184, height: 224))?.absoluteString
+            == "https://maps.vanillax.me/raster/styles/dark/static/-85.66810,42.96340,6/184x224@2x.png")
+        precondition(WatchBasemap.url(latitude: 0, longitude: 0, zoom: 5, size: CGSize(width: 4000, height: 0.2))?.absoluteString
+            == "https://maps.vanillax.me/raster/styles/dark/static/0.00000,0.00000,4/1024x1@2x.png")
         print("Watch presentation checks passed")
     }
 }

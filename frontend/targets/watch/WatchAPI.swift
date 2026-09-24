@@ -76,6 +76,20 @@ enum WatchAPI {
     }
 }
 
+/// Basemap images rendered by the home cluster's tileserver-gl from the phone's VersaTiles styles.
+enum WatchBasemap {
+    static let rasterURL = "https://maps.vanillax.me/raster"
+
+    /// Static-map zoom uses MapLibre's 512-px convention, one less than the 256-pt radar tile zoom,
+    /// so the image lines up with the radar tiles RadarMapView positions at `zoom`.
+    static func url(latitude: Double, longitude: Double, zoom: Int, size: CGSize) -> URL? {
+        let width = min(1024, max(1, Int(size.width.rounded())))
+        let height = min(1024, max(1, Int(size.height.rounded())))
+        return URL(string: String(format: "%@/styles/dark/static/%.5f,%.5f,%d/%dx%d@2x.png",
+                                  rasterURL, longitude, latitude, zoom - 1, width, height))
+    }
+}
+
 enum WatchAPIError: LocalizedError {
     case invalidResponse
     case radarUnavailable

@@ -1,5 +1,4 @@
 import CoreLocation
-import MapKit
 import UIKit
 
 @MainActor
@@ -56,66 +55,78 @@ enum RadarSnapshot {
         return data
     }
 
+    /// Self-hosted basemap renderer (tileserver-gl over VersaTiles). Same style family as the phone.
+    private static let basemap = "https://maps.vanillax.me/raster"
+
     private static func render(_ coordinate: CLLocationCoordinate2D, frame: Frame, palette: String) async throws -> UIImage {
         let zoom = min(max(frame.max_zoom ?? 7, 1), 7)
         let count = 1 << zoom
-        let tileWidth = MKMapSize.world.width / Double(count)
-        let point = MKMapPoint(coordinate)
-        let rect = MKMapRect(x: point.x - tileWidth / 2, y: point.y - tileWidth / 2,
-                             width: tileWidth, height: tileWidth)
         let size = CGSize(width: 256, height: 190)
-        // Preserve the map's aspect ratio so radar registration is exact.
-        let viewport = MKMapRect(x: rect.minX, y: point.y - tileWidth * 190 / 256 / 2,
-                                 width: tileWidth, height: tileWidth * 190 / 256)
-        let options = MKMapSnapshotter.Options()
-        options.size = size
-        options.scale = 1
-        options.mapRect = viewport
-        options.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
-        let configuration = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .muted)
-        configuration.pointOfInterestFilter = .excludingAll
-        options.preferredConfiguration = configuration
-        let snapshotter = MKMapSnapshotter(options: options)
-        let timeout = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(8))
-            if !Task.isCancelled { snapshotter.cancel() }
-        }
-        defer { timeout.cancel() }
-        async let mapSnapshot = snapshotter.start()
+        // Web-mercator pixel space at `zoom` with 256-pt tiles; the image is centred on the fix.
+        let center = worldPoint(coordinate, zoom: zoom)
+        let origin = CGPoint(x: center.x - size.width / 2, y: center.y - size.height / 2)
+
+        // The basemap is context, not data: if it fails the radar still renders over a plain ground.
+        // Static-map zoom uses MapLibre's 512-px convention, one less than the 256-px tile zoom.
+        let basemapURL = URL(string: String(format: "%@/styles/dark/static/%.5f,%.5f,%d/%dx%d@2x.png",
+                                            basemap, coordinate.longitude, coordinate.latitude, zoom - 1,
+                                            Int(size.width), Int(size.height)))
+        async let basemapImage: UIImage? = {
+            guard let basemapURL, let data = try? await fetch(basemapURL) else { return nil }
+            return UIImage(data: data)
+        }()
+
         // At this viewport size at most four tiles intersect the image.
         var requests: [(Int, Int, Task<Data, Error>)] = []
-        for x in Int(floor(viewport.minX / tileWidth))...Int(floor(viewport.maxX / tileWidth)) {
-            for y in Int(floor(viewport.minY / tileWidth))...Int(floor(viewport.maxY / tileWidth)) {
+        for x in Int(floor(origin.x / 256))...Int(floor((origin.x + size.width) / 256)) {
+            for y in Int(floor(origin.y / 256))...Int(floor((origin.y + size.height) / 256)) {
                 guard (0..<count).contains(x), (0..<count).contains(y),
                       let url = URL(string: "\(server)/tiles/radar/\(palette)/\(frame.path)/\(zoom)/\(x)/\(y).png") else { throw SnapshotError.unavailable }
                 requests.append((x, y, Task { try await fetch(url) }))
             }
         }
         defer { for (_, _, request) in requests { request.cancel() } }
-        let snapshot = try await mapSnapshot
         var tiles: [(UIImage, CGRect)] = []
         for (x, y, request) in requests {
-                guard let image = UIImage(data: try await request.value) else { throw SnapshotError.unavailable }
-                let origin = snapshot.point(for: MKMapPoint(x: Double(x) * tileWidth, y: Double(y) * tileWidth).coordinate)
-                let end = snapshot.point(for: MKMapPoint(x: Double(x + 1) * tileWidth, y: Double(y + 1) * tileWidth).coordinate)
-                tiles.append((image, CGRect(x: origin.x, y: origin.y, width: end.x - origin.x, height: end.y - origin.y)))
+            guard let image = UIImage(data: try await request.value) else { throw SnapshotError.unavailable }
+            tiles.append((image, CGRect(x: CGFloat(x) * 256 - origin.x, y: CGFloat(y) * 256 - origin.y,
+                                        width: 256, height: 256)))
         }
+        let base = await basemapImage
+
         let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
+        format.scale = 2
         return UIGraphicsImageRenderer(size: size, format: format).image { context in
-            snapshot.image.draw(at: .zero)
-            // Leave MapKit attribution at the bottom of the snapshot unobscured.
-            context.cgContext.saveGState()
-            context.cgContext.clip(to: CGRect(x: 0, y: 0, width: size.width, height: size.height - 22))
+            if let base {
+                base.draw(in: CGRect(origin: .zero, size: size))
+            } else {
+                UIColor(red: 0.11, green: 0.13, blue: 0.15, alpha: 1).setFill()
+                context.fill(CGRect(origin: .zero, size: size))
+            }
             for (image, tileRect) in tiles { image.draw(in: tileRect, blendMode: .normal, alpha: 0.75) }
-            context.cgContext.restoreGState()
-            let center = snapshot.point(for: coordinate)
-            let dot = CGRect(x: center.x - 3, y: center.y - 3, width: 6, height: 6)
+            let dot = CGRect(x: size.width / 2 - 3, y: size.height / 2 - 3, width: 6, height: 6)
             UIColor.white.setFill()
             context.cgContext.fillEllipse(in: dot.insetBy(dx: -2, dy: -2))
             UIColor.systemBlue.setFill()
             context.cgContext.fillEllipse(in: dot)
+            if base != nil {
+                // OpenStreetMap's licence requires visible attribution on the rendered map.
+                let credit = NSAttributedString(string: "© OpenStreetMap", attributes: [
+                    .font: UIFont.systemFont(ofSize: 7, weight: .medium),
+                    .foregroundColor: UIColor.white.withAlphaComponent(0.7),
+                ])
+                let textSize = credit.size()
+                credit.draw(at: CGPoint(x: size.width - textSize.width - 4, y: size.height - textSize.height - 2))
+            }
         }
+    }
+
+    /// Web-mercator position of `coordinate` in points at `zoom`, with 256-pt tiles.
+    static func worldPoint(_ coordinate: CLLocationCoordinate2D, zoom: Int) -> CGPoint {
+        let scale = 256 * Double(1 << zoom)
+        let latitude = min(85.0511, max(-85.0511, coordinate.latitude)) * .pi / 180
+        return CGPoint(x: (coordinate.longitude + 180) / 360 * scale,
+                       y: (1 - log(tan(latitude) + 1 / cos(latitude)) / .pi) / 2 * scale)
     }
 
     private struct Manifest: Decodable { let layers: [String: Layer] }
