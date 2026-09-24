@@ -14,6 +14,7 @@ import { createThrottle } from "../../lib/throttle";
 import { useAppActive } from "../../hooks/useAppActive";
 import { useIsFocused } from "expo-router/react-navigation";
 import type { LayerType } from "../../types/weather";
+import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 
 const NOWCAST_MIN = 60;
 const HRRR_MIN = 48 * 60;
@@ -157,10 +158,10 @@ export function TimelineBar() {
           </Pressable>
 
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.layerTitle} numberOfLines={1}>
+            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.layerTitle} numberOfLines={1}>
               {layerTitle} · {mode}
             </Text>
-            <Text style={styles.dateLabel} numberOfLines={1}>{dateLabel}</Text>
+            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.dateLabel} numberOfLines={1}>{dateLabel}</Text>
           </View>
 
           <View style={styles.segmented}>
@@ -177,7 +178,7 @@ export function TimelineBar() {
                 accessibilityLabel={`${z} radar timeline`}
                 accessibilityState={{ checked: zoom === z }}
               >
-                <Text style={[styles.segText, zoom === z ? styles.segTextActive : null]}>{z}</Text>
+                <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.segText, zoom === z ? styles.segTextActive : null]}>{z}</Text>
               </Pressable>
             ))}
           </View>
@@ -247,7 +248,7 @@ export function TimelineBar() {
             ? ["-60", "-30", "Now", "+30", "+60"]
             : ["Past", "Now", "+12h", "+24h", "+48h"]
           ).map((label, i) => (
-            <Text
+            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE}
               key={i}
               style={[
                 styles.axisTick,

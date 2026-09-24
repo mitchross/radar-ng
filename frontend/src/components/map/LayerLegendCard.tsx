@@ -6,6 +6,7 @@ import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import type { LayerType } from "../../types/weather";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 
 // Plain-English tag at the top of the legend telling the user whether
 // they're looking at "Now" (live radar), "Soon" (next hour, pysteps
@@ -176,11 +177,11 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
     <View style={styles.wrap}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.title} numberOfLines={1}>
             {legend.title}
           </Text>
           <View style={[styles.tag, { backgroundColor: SOURCE_COLOR[source] + "33", borderColor: SOURCE_COLOR[source] }]}>
-            <Text style={[styles.tagText, { color: SOURCE_COLOR[source] }]}>{source}</Text>
+            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.tagText, { color: SOURCE_COLOR[source] }]}>{source}</Text>
           </View>
         </View>
         <View style={styles.scaleRow}>
@@ -192,7 +193,7 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
           />
           <View style={styles.labels}>
             {legend.stops.map((s, i) => (
-              <Text key={i} style={styles.label}>
+              <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} key={i} style={styles.label}>
                 {s.label}
               </Text>
             ))}

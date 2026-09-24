@@ -12,6 +12,8 @@ import { useEffect, useState } from "react";
 import { View, StyleSheet, Pressable, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { useIsFocused } from "expo-router/react-navigation";
+import { StatusBar } from "expo-status-bar";
 import { WeatherMap } from "../../components/map/WeatherMap";
 import { RadarOverlay } from "../../components/map/RadarOverlay";
 import { WeatherLayerOverlay } from "../../components/map/WeatherLayerOverlay";
@@ -24,7 +26,7 @@ import {
 import { TropicalDetailSheet } from "../../components/map/TropicalDetailSheet";
 import { StormCellsOverlay } from "../../components/map/StormCellsOverlay";
 import { WindParticlesOverlay, useSharedCamera } from "../../components/map/WindParticlesOverlay";
-import { DEFAULTS } from "../../lib/constants";
+import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { LayerLegendCard } from "../../components/map/LayerLegendCard";
 import { LayerLocationMarker } from "../../components/map/LayerLocationMarker";
 import { TimelineBar } from "../../components/timeline/TimelineBar";
@@ -42,6 +44,8 @@ export default function RadarScreen() {
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
+  const mapStyle = useWeatherStore((s) => s.mapStyle);
+  const focused = useIsFocused();
 
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
   const [selectedTropical, setSelectedTropical] = useState<TropicalStormDetails | null>(null);
@@ -61,6 +65,8 @@ export default function RadarScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Status text follows the basemap, not the app theme; only while this tab shows. */}
+      {focused ? <StatusBar style={mapStyle === "light" ? "dark" : "light"} /> : null}
       <WeatherMap
         onLongPress={(lat, lon) => setPinned({ lat, lon })}
         trackCameraContinuously={windParticlesOn}
@@ -102,7 +108,7 @@ export default function RadarScreen() {
           <View style={[styles.closeLine, styles.closeLineB]} />
         </Pressable>
         {alertStatus.kind !== "current" ? (
-          <Text
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE}
             accessibilityRole="alert"
             accessibilityLabel={alertStatus.accessibilityLabel}
             pointerEvents="none"
@@ -131,7 +137,7 @@ export default function RadarScreen() {
       />
 
       {inspectHint ? (
-        <Text accessibilityRole="alert" style={styles.hint} pointerEvents="none">
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} accessibilityRole="alert" style={styles.hint} pointerEvents="none">
           Long-press the map to inspect a point
         </Text>
       ) : null}

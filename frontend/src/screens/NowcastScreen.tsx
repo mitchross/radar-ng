@@ -8,6 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { ScreenBackground } from "../components/ui/ScreenBackground";
 import { useRouter } from "expo-router";
+import { useReducedMotion } from "react-native-reanimated";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../hooks/useForecast";
 import { useRadarNowcast } from "../hooks/useRadarNowcast";
@@ -71,13 +72,15 @@ export default function NowcastScreen() {
     });
   }, [queryClient]);
 
+  // With Reduce Motion on, open the radar paused; the user can still press play.
+  const reducedMotion = useReducedMotion();
   const openMotionRadar = useCallback(() => {
     setActiveLayer("radar");
     setTimelineMode("forecast");
     setCurrentFrameIndex(-1);
-    setIsPlaying(true);
+    setIsPlaying(!reducedMotion);
     router.push("/radar");
-  }, [router, setActiveLayer, setCurrentFrameIndex, setIsPlaying, setTimelineMode]);
+  }, [reducedMotion, router, setActiveLayer, setCurrentFrameIndex, setIsPlaying, setTimelineMode]);
 
   const presentation = getForecastScreenState({
     data: forecast,

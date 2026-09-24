@@ -9,7 +9,7 @@ import {
 import { Children, isValidElement, useEffect, useEffectEvent, useMemo, useRef } from "react";
 import { Pressable, StyleSheet, Text, View, type NativeSyntheticEvent } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { DEFAULTS } from "../../lib/constants";
+import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { useBasemapStyle } from "../../hooks/useBasemapStyle";
 
 const ZOOM_MIN = 1;
@@ -132,7 +132,7 @@ export function WeatherMap({
           accessibilityRole="button"
           accessibilityLabel="Zoom in"
         >
-          <Text style={styles.zoomLabel}>+</Text>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.zoomLabel}>+</Text>
         </Pressable>
         <View style={styles.zoomDivider} />
         <Pressable
@@ -142,7 +142,7 @@ export function WeatherMap({
           accessibilityRole="button"
           accessibilityLabel="Zoom out"
         >
-          <Text style={styles.zoomLabel}>−</Text>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.zoomLabel}>−</Text>
         </Pressable>
       </View>
     </View>

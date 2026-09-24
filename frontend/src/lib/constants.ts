@@ -112,3 +112,9 @@ export const LAYERS: LayerConfig[] = [
   { id: "air-quality", label: "Air Quality", icon: "Q", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "ozone", label: "Ozone", icon: "O", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
 ];
+
+/**
+ * Dynamic Type cap for text drawn over the map (timeline, legend, FABs,
+ * markers). Larger sizes would cover the radar; sheets and screens scale fully.
+ */
+export const MAP_CHROME_MAX_FONT_SCALE = 1.3;

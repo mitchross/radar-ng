@@ -14,7 +14,7 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { useForecast } from "../../hooks/useForecast";
 import { displayTemperature } from "../../lib/temperature";
 import { useActiveLocation } from "../../hooks/useActiveLocation";
-import { DEFAULTS } from "../../lib/constants";
+import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { cumulus, getWindDirection } from "../../lib/cumulusTheme";
 import { inspectPoint, type InspectReading } from "../../lib/inspector";
 import { locationKey, PRECISION } from "../../lib/coordinates";
@@ -88,11 +88,11 @@ function renderBody(
 ) {
   if (layer === "air-quality" || layer === "ozone") {
     const v = aqReading?.ok ? aqReading.value : null;
-    if (v == null) return <Text style={styles.value}>{"—"}</Text>;
+    if (v == null) return <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.value}>{"—"}</Text>;
     return (
       <>
-        <Text style={styles.value}>{Math.round(v)}</Text>
-        <Text style={styles.unit}>{layer === "ozone" ? "PPB" : "µG/M³"}</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.value}>{Math.round(v)}</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.unit}>{layer === "ozone" ? "PPB" : "µG/M³"}</Text>
       </>
     );
   }
@@ -100,12 +100,12 @@ function renderBody(
   if (layer === "wind") {
     const mph = forecast?.current?.wind_speed_10m;
     const deg = forecast?.current?.wind_direction_10m;
-    if (mph == null || deg == null) return <Text style={styles.value}>{"\u2014"}</Text>;
+    if (mph == null || deg == null) return <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.value}>{"\u2014"}</Text>;
     return (
       <>
-        <Text style={styles.windDir}>{getWindDirection(deg)}</Text>
-        <Text style={[styles.value, { color: cumulus.rain }]}>{Math.round(mph)}</Text>
-        <Text style={styles.unit}>MPH</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.windDir}>{getWindDirection(deg)}</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.value, { color: cumulus.rain }]}>{Math.round(mph)}</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.unit}>MPH</Text>
       </>
     );
   }
@@ -113,15 +113,15 @@ function renderBody(
   if (layer === "cape") {
     return (
       <>
-        <Text style={styles.value}>{"\u2014"}</Text>
-        <Text style={styles.unit}>J/KG</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.value}>{"\u2014"}</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.unit}>J/KG</Text>
       </>
     );
   }
 
   const t = forecast?.current?.temperature_2m;
-  if (t == null) return <Text style={styles.value}>{"\u2014"}</Text>;
-  return <Text style={styles.value}>{displayTemperature(t, unit)}°</Text>;
+  if (t == null) return <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.value}>{"\u2014"}</Text>;
+  return <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.value}>{displayTemperature(t, unit)}°</Text>;
 }
 
 const PILL_BG = "rgba(255,255,255,0.98)";

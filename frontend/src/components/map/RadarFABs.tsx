@@ -12,6 +12,7 @@ import { cumulus } from "../../lib/cumulusTheme";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { refreshDeviceLocation } from "../../hooks/useLocation";
 import type { LayerType } from "../../types/weather";
+import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 
 type IconKind = "umbrella" | "thermo" | "dust" | "wind" | "bolt" | "layers" | "drop" | "cloud" | "ozone";
 
@@ -159,7 +160,7 @@ export function RadarFABs({
                   <View style={styles.iconCol}>
                     <LayerOptionIcon kind={opt.icon} />
                   </View>
-                  <Text style={[styles.panelRowTitle, isActive && styles.panelRowTitleActive]}>
+                  <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.panelRowTitle, isActive && styles.panelRowTitleActive]}>
                     {opt.name}
                   </Text>
                 </Pressable>

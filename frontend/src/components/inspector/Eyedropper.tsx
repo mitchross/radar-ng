@@ -8,7 +8,7 @@ import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useEffect, useRef, useState } from "react";
 import { Marker } from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { DEFAULTS } from "../../lib/constants";
+import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { cumulus } from "../../lib/cumulusTheme";
 import { formatReading, inspectPoint, type InspectReading } from "../../lib/inspector";
 import type { LayerType } from "../../types/weather";
@@ -105,7 +105,7 @@ export function EyedropperPin({ pinned, onClear }: Props) {
       <Marker lngLat={[shown.lon, shown.lat]} anchor="bottom">
         <View style={[styles.markerWrap, hidden ? styles.hidden : null]} pointerEvents="none">
           <View style={styles.marker}>
-            <Text style={styles.markerText}>{readout}</Text>
+            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.markerText}>{readout}</Text>
           </View>
           <View style={styles.tail} />
           <View style={styles.crosshairDot} />
@@ -119,7 +119,7 @@ export function EyedropperPin({ pinned, onClear }: Props) {
         importantForAccessibility={hidden ? "no-hide-descendants" : "auto"}
       >
         <View style={styles.panelHeader}>
-          <Text style={styles.panelKicker}>{LAYER_LABEL[activeLayer]}</Text>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelKicker}>{LAYER_LABEL[activeLayer]}</Text>
           <Pressable
             onPress={onClear}
             style={styles.closeBtn}
@@ -127,16 +127,16 @@ export function EyedropperPin({ pinned, onClear }: Props) {
             accessibilityLabel="Clear inspected point"
           >
             <View style={styles.closeCircle}>
-              <Text style={styles.closeX}>✕</Text>
+              <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.closeX}>✕</Text>
             </View>
           </Pressable>
         </View>
-        <Text style={styles.panelValue}>{readout}</Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelValue}>{readout}</Text>
         <View style={styles.panelMeta}>
-          <Text style={styles.panelMetaText}>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelMetaText}>
             {shown.lat.toFixed(4)}, {shown.lon.toFixed(4)}
           </Text>
-          <Text style={styles.panelSource}>{sourceLabel}</Text>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelSource}>{sourceLabel}</Text>
         </View>
       </View>
     </>
