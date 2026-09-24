@@ -13,6 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../hooks/useForecast";
 import { useRadarNowcast } from "../hooks/useRadarNowcast";
 import { useActiveLocation } from "../hooks/useActiveLocation";
+import { useNow } from "../hooks/useNow";
 import { runOnlineRefresh } from "../lib/queryLifecycle";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { CONDITION_GRADIENTS, getCumulusCondition } from "../lib/cumulusTheme";
@@ -74,6 +75,7 @@ export default function NowcastScreen() {
 
   // With Reduce Motion on, open the radar paused; the user can still press play.
   const reducedMotion = useReducedMotion();
+  const nowMs = useNow(60_000);
   const openMotionRadar = useCallback(() => {
     setActiveLayer("radar");
     setTimelineMode("forecast");
@@ -127,7 +129,7 @@ export default function NowcastScreen() {
     );
   }
 
-  const now = new Date();
+  const now = new Date(nowMs);
   const isNight = isNightAt(now, forecast.daily);
   const condition = getCumulusCondition(forecast.current.weather_code, isNight);
   const gradient = theme.dark
@@ -139,7 +141,7 @@ export default function NowcastScreen() {
   // Null when the model series has gaps in the next hour: unknown is not dry.
   const minuteSeries = pointNowcast
     ? buildRadarMinutes(pointNowcast.points)
-    : buildMinutes(forecast.minutely_15);
+    : buildMinutes(forecast.minutely_15, nowMs);
   const minutes = minuteSeries ?? [];
   const verdict = getNowcastVerdict(minuteSeries?.map((minute) => minute.intensity));
   const rainStart =
@@ -367,7 +369,7 @@ export default function NowcastScreen() {
                 ) : null}
                 <Row
                   label="Last update"
-                  value={`${Math.max(0, Math.round((Date.now() - new Date(
+                  value={`${Math.max(0, Math.round((nowMs - new Date(
                     pointNowcast?.issued_at
                       ? pointNowcast.issued_at
                       : forecast.current.time,
@@ -513,9 +515,9 @@ function Row({
 // Helper: build minute intervals
 function buildMinutes(
   minutely: { time: string[]; precipitation: (number | null)[] } | undefined,
+  now: number,
 ): Minute[] | null {
   if (!minutely || minutely.precipitation.length === 0) return null;
-  const now = Date.now();
   const startIdx = Math.max(
     0,
     minutely.time.findIndex((t) => new Date(t).getTime() >= now - 7.5 * 60_000),

@@ -12,6 +12,7 @@ import { cumulus } from "../../lib/cumulusTheme";
 import { findClosestIdx } from "../../lib/frameIndex";
 import { createThrottle } from "../../lib/throttle";
 import { useAppActive } from "../../hooks/useAppActive";
+import { useNow } from "../../hooks/useNow";
 import { useIsFocused } from "expo-router/react-navigation";
 import type { LayerType } from "../../types/weather";
 import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
@@ -266,12 +267,7 @@ export function TimelineBar() {
 
 /** Epoch seconds, refreshed once a minute while mounted. */
 function useNowSec(): number {
-  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
-  useEffect(() => {
-    const id = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), NOW_REFRESH_MS);
-    return () => clearInterval(id);
-  }, []);
-  return nowSec;
+  return Math.floor(useNow(NOW_REFRESH_MS) / 1000);
 }
 
 function DashedRow({ color }: { color: string }) {

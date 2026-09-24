@@ -3,7 +3,7 @@
  * map-style picker. Glass-dark buttons; Apple-Weather-style popover with
  * icons + checkmark + layer-tinted background.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Animated, Easing, View, StyleSheet, Text, Pressable } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
@@ -260,7 +260,7 @@ function RefreshIcon({ spinning = false }: { spinning?: boolean }) {
   // Spins while a refresh is in flight so the tap reads as "actually doing
   // something" — without this the FAB looked dead because the manifest
   // request usually completes before any visible state change.
-  const rotation = useRef(new Animated.Value(0)).current;
+  const [rotation] = useState(() => new Animated.Value(0));
   useEffect(() => {
     if (!spinning) {
       rotation.stopAnimation();

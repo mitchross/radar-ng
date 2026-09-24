@@ -11,6 +11,7 @@ import { Camera, Layer, Map, RasterSource } from "@maplibre/maplibre-react-nativ
 import { useRouter } from "expo-router";
 import { useIsFocused } from "expo-router/react-navigation";
 import { useAppActive } from "../../hooks/useAppActive";
+import { useNow } from "../../hooks/useNow";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS } from "../../lib/constants";
 import {
@@ -63,9 +64,10 @@ export function RadarMiniMap() {
   const nowFrameIndex = pickNowFrameIndex(frames);
   const nowFrame = nowFrameIndex >= 0 ? frames[nowFrameIndex] : null;
   const radarUrl = nowFrame ? buildSelfHostedTileUrl(serverUrl, layerKey as LayerType, nowFrame.path, activePalette) : null;
-  // Tracking dataUpdatedAt makes a successful no-change poll rerender this
-  // clock-derived badge instead of leaving LIVE frozen during an ingest stall.
-  const statusNow = dataUpdatedAt > 0 ? Math.max(Date.now(), dataUpdatedAt) : Date.now();
+  // The clock ticks with the manifest poll, and dataUpdatedAt moves it forward
+  // on every successful poll, so LIVE can't stay frozen during an ingest stall.
+  const clock = useNow(DEFAULTS.MANIFEST_REFETCH_MS);
+  const statusNow = Math.max(clock, dataUpdatedAt);
   const status = radarStatus({
     frameTimeSeconds: nowFrame?.time ?? null,
     refreshFailed: radarQueryIsOffline(isError, isPaused),

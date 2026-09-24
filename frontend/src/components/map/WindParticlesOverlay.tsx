@@ -150,7 +150,9 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
     })();
   }, [field, particles, camera]);
 
-  // Advect every particle each frame.
+  // Advect every particle each frame. The typed-array buffer is mutated on the
+  // UI thread by design; copying 1200 particles per frame would defeat it.
+  // eslint-disable-next-line react-hooks/immutability -- UI-thread particle buffer
   useFrameCallback(() => {
     "worklet";
     if (!enabled || !field) return;
@@ -170,6 +172,7 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
         particles.lats[i] < latMin ||
         particles.lats[i] > latMax;
       if (age >= LIFETIME_FRAMES || outOfBox) {
+        // eslint-disable-next-line react-hooks/immutability -- UI-thread particle buffer
         particles.lats[i] = latMin + Math.random() * (latMax - latMin);
         particles.lons[i] = lonMin + Math.random() * (lonMax - lonMin);
         particles.prevLats[i] = particles.lats[i];

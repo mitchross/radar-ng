@@ -5,7 +5,7 @@
  * temperature/wind, shows "—" otherwise.
  */
 import { View, Text, StyleSheet, Pressable } from "react-native";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Marker } from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
@@ -27,7 +27,7 @@ const LAYER_LABEL: Record<LayerType, string> = {
   ozone: "OZONE",
 };
 
-// Playback ticks at 750 ms; one /api/inspect per tick was a fetch storm.
+// One /api/inspect per playback tick was a fetch storm.
 const INSPECT_DEBOUNCE_MS = 300;
 
 export interface PinnedPoint {
@@ -45,8 +45,10 @@ export function EyedropperPin({ pinned, onClear }: Props) {
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const isPlaying = useWeatherStore((s) => s.isPlaying);
 
-  const [reading, setReading] = useState<InspectReading | null>(null);
-  const [loading, setLoading] = useState(false);
+  // Each reading remembers the pin it belongs to, so a new or cleared pin
+  // never shows a stale value, and no effect has to reset state.
+  const [result, setResult] = useState<{ pin: PinnedPoint; reading: InspectReading | null } | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<string | null>(null);
 
   // The timestamp only matters with a pin and paused playback; selecting null
   // otherwise keeps this native marker from re-rendering on every tick.
@@ -56,19 +58,17 @@ export function EyedropperPin({ pinned, onClear }: Props) {
     hasPin && !s.isPlaying ? (s.frames[s.currentFrameIndex]?.timestamp ?? null) : null,
   );
 
+  // Keep the last reading on screen while frames tick by; refetch once paused.
+  const requestKey =
+    pinned && !isPlaying && frameTimestamp
+      ? `${serverUrl}|${activeLayer}|${frameTimestamp}|${pinned.lat}|${pinned.lon}`
+      : null;
+
   useEffect(() => {
-    if (!pinned) {
-      setReading(null);
-      return;
-    }
-    // Keep the last reading on screen while frames tick by; refetch once paused.
-    if (isPlaying || !frameTimestamp) {
-      setLoading(false);
-      return;
-    }
+    if (!pinned || !requestKey || !frameTimestamp) return;
     const ctrl = new AbortController();
     const timer = setTimeout(() => {
-      setLoading(true);
+      setPendingRequest(requestKey);
       inspectPoint({
         serverUrl,
         layer: activeLayer,
@@ -78,23 +78,26 @@ export function EyedropperPin({ pinned, onClear }: Props) {
         signal: ctrl.signal,
       })
         .then((r) => {
-          if (!ctrl.signal.aborted) setReading(r);
+          if (!ctrl.signal.aborted) setResult({ pin: pinned, reading: r });
         })
         .finally(() => {
-          if (!ctrl.signal.aborted) setLoading(false);
+          if (!ctrl.signal.aborted) setPendingRequest(null);
         });
     }, INSPECT_DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [pinned, activeLayer, frameTimestamp, serverUrl, isPlaying]);
+  }, [pinned, requestKey, activeLayer, frameTimestamp, serverUrl]);
+
+  const reading = result && result.pin === pinned ? result.reading : null;
+  const loading = requestKey !== null && pendingRequest === requestKey;
 
   // Always mounted: the Marker is a native child of <Map>, so it hides (opacity 0,
   // parked at the last pin) instead of unmounting to keep the child count constant.
-  const lastPinRef = useRef<PinnedPoint>({ lat: DEFAULTS.LATITUDE, lon: DEFAULTS.LONGITUDE });
-  if (pinned) lastPinRef.current = pinned;
-  const shown = pinned ?? lastPinRef.current;
+  const [lastPin, setLastPin] = useState<PinnedPoint>({ lat: DEFAULTS.LATITUDE, lon: DEFAULTS.LONGITUDE });
+  if (pinned && pinned !== lastPin) setLastPin(pinned);
+  const shown = pinned ?? lastPin;
   const hidden = pinned == null;
 
   const readout = loading ? "…" : reading ? formatReading(activeLayer, reading) : "\u2014";
