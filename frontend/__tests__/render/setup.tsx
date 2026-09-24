@@ -25,3 +25,6 @@ jest.mock("expo-glass-effect", () => ({
   isLiquidGlassAvailable: () => false,
   GlassView: jest.requireActual("react-native").View,
 }));
+
+// Symbols are native views; render nothing in tests (labels live on the buttons).
+jest.mock("expo-symbols", () => ({ SymbolView: () => null }));

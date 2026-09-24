@@ -1,7 +1,7 @@
 /**
- * Cumulus radar right-rail controls: layer picker, pinpoint (inspector),
- * map-style picker. Glass-dark buttons; Apple-Weather-style popover with
- * icons + checkmark + layer-tinted background.
+ * Radar right-rail controls: layer picker, storms, inspector, locate, map
+ * style, refresh. Liquid Glass buttons with SF Symbols (Material Symbols on
+ * Android); an Apple-Weather-style layer popover with a layer-tinted background.
  */
 import { useEffect, useState } from "react";
 import { Animated, Easing, View, StyleSheet, Text, Pressable } from "react-native";
@@ -15,6 +15,7 @@ import type { LayerType } from "../../types/weather";
 import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { MapChromeSurface } from "../ui/MapChromeSurface";
+import { SymbolView, type SymbolViewProps } from "expo-symbols";
 
 type IconKind = "umbrella" | "thermo" | "dust" | "wind" | "bolt" | "layers" | "drop" | "cloud" | "ozone";
 
@@ -91,44 +92,42 @@ export function RadarFABs({
           active={layerOpen}
           onPress={() => setLayerOpen((v) => !v)}
           accessibilityLabel="Choose radar layer"
-        >
-          <LayersIcon />
-        </GlassBtn>
+          symbol={{ ios: "square.3.layers.3d", android: "layers" }}
+        />
         <GlassBtn
           active={extrasVisible}
           onPress={toggleExtras}
           accessibilityLabel="Toggle storm and lightning overlays"
-        >
-          <BoltIcon />
-        </GlassBtn>
+          symbol={{ ios: "bolt", android: "bolt" }}
+        />
         <GlassBtn
           active={inspectorActive}
           onPress={onToggleInspector}
           accessibilityLabel={
             inspectorActive ? "Clear pinned inspection" : "Inspect a point on the map"
           }
-        >
-          <CrosshairIcon />
-        </GlassBtn>
+          symbol={{ ios: "scope", android: "center_focus_strong" }}
+        />
         <GlassBtn
           onPress={() => {
             requestRecenter();
             refreshDeviceLocation();
           }}
           accessibilityLabel="Center map on your location"
-        >
-          <LocateIcon />
-        </GlassBtn>
-        <GlassBtn onPress={onOpenStylePicker} accessibilityLabel="Choose map style">
-          <MapStyleIcon />
-        </GlassBtn>
+          symbol={{ ios: "location", android: "near_me" }}
+        />
+        <GlassBtn
+          onPress={onOpenStylePicker}
+          accessibilityLabel="Choose map style"
+          symbol={{ ios: "map", android: "map" }}
+        />
         <GlassBtn
           onPress={onRefresh}
           accessibilityLabel={refreshing ? "Refreshing radar" : "Refresh radar"}
           disabled={refreshing}
-        >
-          <RefreshIcon spinning={refreshing} />
-        </GlassBtn>
+          symbol={{ ios: "arrow.clockwise", android: "refresh" }}
+          spinning={refreshing}
+        />
       </View>
 
       {layerOpen ? (
@@ -158,10 +157,10 @@ export function RadarFABs({
                   accessibilityLabel={`${opt.name} radar layer`}
                 >
                   <View style={styles.checkCol}>
-                    {isActive ? <CheckIcon /> : null}
+                    {isActive ? <SymbolView name={{ ios: "checkmark", android: "check" }} size={14} tintColor={ICON_COLOR} weight="bold" /> : null}
                   </View>
                   <View style={styles.iconCol}>
-                    <LayerOptionIcon kind={opt.icon} />
+                    <SymbolView name={LAYER_SYMBOLS[opt.icon]} size={20} tintColor={ICON_COLOR} />
                   </View>
                   <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.panelRowTitle, isActive && styles.panelRowTitleActive]}>
                     {opt.name}
@@ -177,13 +176,15 @@ export function RadarFABs({
 }
 
 function GlassBtn({
-  children,
+  symbol,
+  spinning = false,
   onPress,
   active,
   accessibilityLabel,
   disabled = false,
 }: {
-  children: React.ReactNode;
+  symbol: SymbolName;
+  spinning?: boolean;
   onPress?: () => void;
   active?: boolean;
   accessibilityLabel: string;
@@ -210,67 +211,31 @@ function GlassBtn({
         interactive
         pointerEvents="none"
       >
-        {children}
+        <SpinningSymbol name={symbol} color={active ? "#ffffff" : ICON_COLOR} spinning={spinning} />
       </MapChromeSurface>
     </Pressable>
   );
 }
 
-/** ─── Icon primitives (View-based, no svg dep) ─────────────────────── */
+/** ─── Symbols: SF Symbols on iOS, Material Symbols on Android ───────── */
 
-function LayersIcon() {
-  return (
-    <View style={styles.iconBox}>
-      <View style={[icons.diamond, { top: 0 }]} />
-      <View style={[icons.diamond, { top: 5, opacity: 0.55 }]} />
-    </View>
-  );
-}
+type SymbolName = SymbolViewProps["name"];
+const ICON_COLOR = "#1a2030";
 
-function CrosshairIcon() {
-  return (
-    <View style={styles.iconBox}>
-      <View style={icons.ring} />
-      <View style={[icons.hLine, { top: 8.5 }]} />
-      <View style={[icons.vLine, { left: 8.5 }]} />
-      <View style={icons.pinDot} />
-    </View>
-  );
-}
+const LAYER_SYMBOLS: Record<IconKind, SymbolName> = {
+  umbrella: { ios: "umbrella", android: "umbrella" },
+  thermo: { ios: "thermometer.medium", android: "thermostat" },
+  dust: { ios: "aqi.medium", android: "masks" },
+  wind: { ios: "wind", android: "air" },
+  bolt: { ios: "bolt", android: "bolt" },
+  layers: { ios: "square.3.layers.3d", android: "layers" },
+  drop: { ios: "drop", android: "water_drop" },
+  cloud: { ios: "cloud", android: "cloud" },
+  ozone: { ios: "circle.hexagongrid", android: "hexagon" },
+};
 
-function LocateIcon() {
-  return (
-    <View style={styles.iconBox}>
-      <View style={icons.locateRing} />
-      <View style={icons.locateDot} />
-    </View>
-  );
-}
-
-function BoltIcon() {
-  // Lightning bolt — toggles the storm-cell + lightning-strike overlays.
-  return (
-    <View style={styles.iconBox}>
-      <View style={icons.boltUpper} />
-      <View style={icons.boltLower} />
-    </View>
-  );
-}
-
-function MapStyleIcon() {
-  return (
-    <View style={styles.iconBox}>
-      <View style={icons.stackTop} />
-      <View style={icons.stackBottom} />
-    </View>
-  );
-}
-
-function RefreshIcon({ spinning = false }: { spinning?: boolean }) {
-  // Circular arrow — three-quarter ring + arrowhead at the top-right.
-  // Spins while a refresh is in flight so the tap reads as "actually doing
-  // something" — without this the FAB looked dead because the manifest
-  // request usually completes before any visible state change.
+/** Spins while a refresh is in flight so the tap reads as "doing something". */
+function SpinningSymbol({ name, color, spinning }: { name: SymbolName; color: string; spinning: boolean }) {
   const [rotation] = useState(() => new Animated.Value(0));
   useEffect(() => {
     if (!spinning) {
@@ -279,145 +244,17 @@ function RefreshIcon({ spinning = false }: { spinning?: boolean }) {
       return;
     }
     const loop = Animated.loop(
-      Animated.timing(rotation, {
-        toValue: 1,
-        duration: 800,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
+      Animated.timing(rotation, { toValue: 1, duration: 800, easing: Easing.linear, useNativeDriver: true }),
     );
     loop.start();
     return () => loop.stop();
   }, [spinning, rotation]);
-  const transform = [
-    {
-      rotate: rotation.interpolate({
-        inputRange: [0, 1],
-        outputRange: ["0deg", "360deg"],
-      }),
-    },
-  ];
+  const rotate = rotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
   return (
-    <Animated.View style={[styles.iconBox, { transform }]}>
-      <View style={icons.refreshRing} />
-      <View style={icons.refreshNotch} />
-      <View style={icons.refreshArrowA} />
-      <View style={icons.refreshArrowB} />
+    <Animated.View style={{ transform: [{ rotate }] }}>
+      <SymbolView name={name} size={20} tintColor={color} weight="semibold" />
     </Animated.View>
   );
-}
-
-function CheckIcon() {
-  return (
-    <View style={{ width: 14, height: 14 }}>
-      <View
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 6,
-          width: 6,
-          height: 2,
-          backgroundColor: "#1a2030",
-          borderRadius: 1,
-          transform: [{ rotate: "45deg" }],
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          left: 3,
-          top: 5,
-          width: 10,
-          height: 2,
-          backgroundColor: "#1a2030",
-          borderRadius: 1,
-          transform: [{ rotate: "-45deg" }],
-        }}
-      />
-    </View>
-  );
-}
-
-function LayerOptionIcon({ kind }: { kind: IconKind }) {
-  if (kind === "umbrella") {
-    return (
-      <View style={optIcon.box}>
-        <View style={optIcon.umbrellaDome} />
-        <View style={optIcon.umbrellaStem} />
-        <View style={optIcon.umbrellaHook} />
-      </View>
-    );
-  }
-  if (kind === "thermo") {
-    return (
-      <View style={optIcon.box}>
-        <View style={optIcon.thermoTube} />
-        <View style={optIcon.thermoBulb} />
-      </View>
-    );
-  }
-  if (kind === "dust") {
-    return (
-      <View style={optIcon.box}>
-        {Array.from({ length: 7 }).map((_, i) => (
-          <View
-            key={i}
-            style={[
-              optIcon.dustPt,
-              {
-                left: [3, 10, 16, 6, 13, 20, 9][i],
-                top: [4, 7, 5, 12, 14, 11, 18][i],
-              },
-            ]}
-          />
-        ))}
-      </View>
-    );
-  }
-  if (kind === "wind") {
-    return (
-      <View style={optIcon.box}>
-        <View style={[optIcon.windLine, { top: 4, width: 16 }]} />
-        <View style={[optIcon.windLine, { top: 10, width: 20 }]} />
-        <View style={[optIcon.windLine, { top: 16, width: 12 }]} />
-      </View>
-    );
-  }
-  if (kind === "bolt") {
-    return (
-      <View style={optIcon.box}>
-        <View style={optIcon.boltTop} />
-        <View style={optIcon.boltBottom} />
-      </View>
-    );
-  }
-  if (kind === "drop") {
-    return (
-      <View style={optIcon.box}>
-        <View style={optIcon.dropBody} />
-        <View style={optIcon.dropTip} />
-      </View>
-    );
-  }
-  if (kind === "cloud") {
-    return (
-      <View style={optIcon.box}>
-        <View style={optIcon.cloudBase} />
-        <View style={optIcon.cloudPuff1} />
-        <View style={optIcon.cloudPuff2} />
-      </View>
-    );
-  }
-  if (kind === "ozone") {
-    // O₃ — a ring with a small satellite dot.
-    return (
-      <View style={optIcon.box}>
-        <View style={optIcon.ozoneRing} />
-        <View style={optIcon.ozoneDot} />
-      </View>
-    );
-  }
-  return <View style={optIcon.box} />;
 }
 
 /** ─── Styles ───────────────────────────────────────────────────────── */
@@ -454,7 +291,6 @@ const styles = StyleSheet.create({
   },
   btnPressed: { transform: [{ scale: 0.96 }], opacity: 0.82 },
   btnDisabled: { opacity: 0.62 },
-  iconBox: { width: 20, height: 20, alignItems: "center", justifyContent: "center" },
 
   scrim: {
     position: "absolute",
@@ -500,289 +336,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 4,
     paddingBottom: 6,
-  },
-});
-
-const icons = StyleSheet.create({
-  diamond: {
-    position: "absolute",
-    width: 16,
-    height: 16,
-    borderWidth: 1.6,
-    borderColor: "#1a2030",
-    transform: [{ rotate: "45deg" }, { scaleY: 0.7 }],
-  },
-  ring: {
-    position: "absolute",
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 1.6,
-    borderColor: "#1a2030",
-  },
-  hLine: {
-    position: "absolute",
-    width: 18,
-    height: 1.6,
-    backgroundColor: "#1a2030",
-    borderRadius: 1,
-    left: 1,
-  },
-  vLine: {
-    position: "absolute",
-    width: 1.6,
-    height: 18,
-    backgroundColor: "#1a2030",
-    borderRadius: 1,
-    top: 1,
-  },
-  locateRing: {
-    position: "absolute",
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 1.6,
-    borderColor: "#1a2030",
-  },
-  locateDot: {
-    position: "absolute",
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: "#1a2030",
-  },
-  pinDot: {
-    position: "absolute",
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: "#1a2030",
-  },
-  stackTop: {
-    position: "absolute",
-    top: 2,
-    width: 16,
-    height: 10,
-    borderWidth: 1.6,
-    borderColor: "#1a2030",
-    borderRadius: 2,
-    backgroundColor: "transparent",
-  },
-  stackBottom: {
-    position: "absolute",
-    top: 8,
-    width: 16,
-    height: 10,
-    borderWidth: 1.6,
-    borderColor: "#1a2030",
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.9)",
-  },
-  boltUpper: {
-    position: "absolute",
-    left: 6,
-    top: 1,
-    width: 6,
-    height: 11,
-    backgroundColor: "#1a2030",
-    transform: [{ skewX: "-12deg" }],
-  },
-  boltLower: {
-    position: "absolute",
-    left: 9,
-    top: 9,
-    width: 6,
-    height: 10,
-    backgroundColor: "#1a2030",
-    transform: [{ skewX: "-12deg" }],
-  },
-  refreshRing: {
-    position: "absolute",
-    left: 1,
-    top: 1,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.8,
-    borderColor: "#1a2030",
-    backgroundColor: "transparent",
-  },
-  refreshNotch: {
-    position: "absolute",
-    right: 0,
-    top: -1,
-    width: 7,
-    height: 7,
-    backgroundColor: "rgba(255,255,255,0.9)",
-  },
-  refreshArrowA: {
-    position: "absolute",
-    right: 1,
-    top: 1,
-    width: 5,
-    height: 1.8,
-    backgroundColor: "#1a2030",
-    transform: [{ rotate: "45deg" }],
-    borderRadius: 1,
-  },
-  refreshArrowB: {
-    position: "absolute",
-    right: 1,
-    top: 1,
-    width: 1.8,
-    height: 5,
-    backgroundColor: "#1a2030",
-    transform: [{ rotate: "45deg" }],
-    borderRadius: 1,
-  },
-});
-
-const optIcon = StyleSheet.create({
-  box: { width: 22, height: 22 },
-  umbrellaDome: {
-    position: "absolute",
-    left: 1,
-    top: 4,
-    width: 20,
-    height: 10,
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-    backgroundColor: "#1a2030",
-  },
-  umbrellaStem: {
-    position: "absolute",
-    left: 10.5,
-    top: 12,
-    width: 1.5,
-    height: 7,
-    backgroundColor: "#1a2030",
-  },
-  umbrellaHook: {
-    position: "absolute",
-    left: 7,
-    top: 16,
-    width: 5,
-    height: 3,
-    borderBottomLeftRadius: 3,
-    borderLeftWidth: 1.5,
-    borderBottomWidth: 1.5,
-    borderColor: "#1a2030",
-  },
-  thermoTube: {
-    position: "absolute",
-    left: 10,
-    top: 1,
-    width: 3,
-    height: 14,
-    borderWidth: 1.4,
-    borderColor: "#1a2030",
-    borderRadius: 1.5,
-    backgroundColor: "transparent",
-  },
-  thermoBulb: {
-    position: "absolute",
-    left: 8.5,
-    top: 12,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#1a2030",
-  },
-  dustPt: {
-    position: "absolute",
-    width: 2.4,
-    height: 2.4,
-    borderRadius: 1.2,
-    backgroundColor: "#1a2030",
-  },
-  windLine: {
-    position: "absolute",
-    left: 1,
-    height: 1.6,
-    backgroundColor: "#1a2030",
-    borderRadius: 1,
-  },
-  boltTop: {
-    position: "absolute",
-    left: 6,
-    top: 1,
-    width: 7,
-    height: 11,
-    backgroundColor: "#1a2030",
-    transform: [{ skewX: "-12deg" }],
-  },
-  boltBottom: {
-    position: "absolute",
-    left: 9,
-    top: 9,
-    width: 7,
-    height: 11,
-    backgroundColor: "#1a2030",
-    transform: [{ skewX: "-12deg" }],
-  },
-  dropBody: {
-    position: "absolute",
-    left: 7,
-    top: 8,
-    width: 8,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#1a2030",
-  },
-  dropTip: {
-    position: "absolute",
-    left: 9,
-    top: 2,
-    width: 4,
-    height: 7,
-    borderRadius: 2,
-    backgroundColor: "#1a2030",
-    transform: [{ rotate: "0deg" }, { scaleY: 1.3 }],
-  },
-  cloudBase: {
-    position: "absolute",
-    left: 2,
-    top: 11,
-    width: 18,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#1a2030",
-  },
-  cloudPuff1: {
-    position: "absolute",
-    left: 5,
-    top: 6,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#1a2030",
-  },
-  cloudPuff2: {
-    position: "absolute",
-    left: 10,
-    top: 8,
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: "#1a2030",
-  },
-  ozoneRing: {
-    position: "absolute",
-    left: 3,
-    top: 4,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: "#1a2030",
-  },
-  ozoneDot: {
-    position: "absolute",
-    left: 16,
-    top: 2,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#1a2030",
   },
 });
