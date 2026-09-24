@@ -105,6 +105,9 @@ export function RadarMiniMap() {
             touchRotate={false}
             touchPitch={false}
             preferredFramesPerSecond={30}
+            // A SurfaceView inside Home's ScrollView tears and ghosts when
+            // scrolled; a TextureView composites with the rest of the screen.
+            androidView="texture"
           >
             <Camera center={[lon, lat]} zoom={MINI_ZOOM} minZoom={MINI_ZOOM} maxZoom={MINI_ZOOM} />
             {radarUrl ? (
