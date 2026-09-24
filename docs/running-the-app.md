@@ -1,6 +1,6 @@
 # Building and running the mobile app
 
-The app is an Expo SDK 57 / React Native 0.86 project living entirely in `frontend/`. It uses native modules (MapLibre Native, Skia, MMKV), so it **cannot run in Expo Go** — you build a dev client with `expo run:ios` / `expo run:android` (wrapped by the `bun run` scripts below).
+The app is an Expo SDK 58 (preview) / React Native 0.88 (RC) project living entirely in `frontend/`. It uses native modules (MapLibre Native, Skia, MMKV), so it **cannot run in Expo Go** — you build a dev client with `expo run:ios` / `expo run:android` (wrapped by the `bun run` scripts below).
 
 ## Prerequisites
 

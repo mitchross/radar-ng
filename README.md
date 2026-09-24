@@ -49,7 +49,7 @@ bun run ios:ipa
 The output lands at:
 
 ```text
-frontend/build/ios-standalone/export-debugging/radarng.ipa
+artifacts/ios/export-debugging/radarng.ipa
 ```
 
 This is a `Release` Xcode archive/export. It embeds the Hermes `main.jsbundle`
@@ -105,7 +105,7 @@ current + 3-day forecast) · **NWS** (alerts) · **NHC** (tropical) ·
 
 ## Stack
 
-Expo SDK 57 / TypeScript · MapLibre · Skia · Python 3.12 (pygrib · numpy ·
+Expo SDK 58 / TypeScript · MapLibre · Skia · Python 3.12 (pygrib · numpy ·
 Pillow · FastAPI) · Caddy 2 · Temporal · Open-Meteo · Protomaps · Kubernetes
 (Talos + ArgoCD) · OpenTelemetry.
 

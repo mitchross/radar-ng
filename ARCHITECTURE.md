@@ -12,7 +12,7 @@ The phone app is the windshield; the Kubernetes pipeline is the engine. radar-ng
 
 | component | what it is | what it does | key files |
 |---|---|---|---|
-| `frontend/` | Expo SDK 57 app (bun) | MapLibre map + Skia wind particles; react-query data hooks, zustand + MMKV state, opt-in OTel client | `src/components/map/RadarOverlay.tsx` · `src/lib/radarCarousel.ts` · `src/stores/useWeatherStore.ts` · `src/lib/telemetry.ts` |
+| `frontend/` | Expo SDK 58 (preview) app (bun) | MapLibre map + Skia wind particles; react-query data hooks, zustand + MMKV state, opt-in OTel client | `src/components/map/RadarOverlay.tsx` · `src/lib/radarCarousel.ts` · `src/stores/useWeatherStore.ts` · `src/lib/telemetry.ts` |
 | `backend/api/` | the tile-server pod: Caddy in front of FastAPI | serves tile pyramids as static files, proxies `/api/*` + `/v1/*` to FastAPI, fronts the basemap; FastAPI holds the manifest/forecast/inspect/metrics endpoints and starts Temporal workflows for mobile | `Caddyfile` · `api/server.py` · `api/routes_workflows.py` · `start.sh` |
 | `backend/ingest_mrms/` | MRMS radar activities | list/download/decode 2-min MRMS GRIB2 frames, render 3-palette tile pyramids, detect storm cells; env-driven prefix — the same code runs both `radar` and `radar-composite` | `activities.py` |
 | `backend/ingest_hrrr/` | HRRR forecast activities | per-forecast-hour simulated reflectivity out to 18–48 h; secondary variables are capacity-gated | `activities.py` |
@@ -111,7 +111,11 @@ itself: `/api/alerts` (NWS), `/api/geocode` and `/api/reverse-geocode` (a self-h
 
 Two clamps keep the wire quiet: `SOURCE_MAX_ZOOM` (MRMS: 7, nowcast/HRRR: 6) tells MapLibre the real pyramid ceiling so it upsamples the top tile instead of firing 404s at zooms that don't exist, and `SOURCE_MIN_ZOOM = 4` stops world-scale requests that CONUS-only coverage would never answer.
 
-Building and running the app: [docs/running-the-app.md](docs/running-the-app.md).
+**Widget, CarPlay and Watch follow the app.** `useSharedStatePublisher` (mounted at the root) serialises the server URL, palette, temperature unit and location (`city` or `device`, rounded, with a label) into one JSON string (`lib/sharedState.ts`). The local Expo module `modules/radar-shared-state` writes it to the App Group `group.com.vanillax.radar-ng`, which the widget and CarPlay read, and pushes it to the Watch as WatchConnectivity application context, since App Groups don't cross devices. Each target reads it through an identical `RadarShared.swift`. A city chosen in the app overrides the widget's and Watch's own GPS; the phone's device fix is only their fallback.
+
+**Chrome.** Tabs are expo-router `NativeTabs`: the Liquid Glass bar with SF Symbols on iOS 26+ and a Material bar on Android, hidden on the full-screen radar route. Map controls render as `GlassView` through `MapChromeSurface` when Liquid Glass is available and Reduce Transparency is off, with translucent fills otherwise. Icons are `expo-symbols` (SF Symbols / Material Symbols).
+
+Building and running the app: [docs/running-the-app.md](docs/running-the-app.md). Android releases: [docs/android-release.md](docs/android-release.md).
 
 ---
 

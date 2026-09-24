@@ -5,6 +5,7 @@ name: city selection and preferences survive relaunch
     clearState: true
     permissions:
       all: deny
+- runFlow: common/dismiss-system-prompts.yaml
 # Denied location must be labelled as the fallback city, never as "My Location".
 - extendedWaitUntil:
     visible: "Location is off · showing Grand Rapids"
@@ -25,6 +26,7 @@ name: city selection and preferences survive relaunch
 - takeScreenshot: chicago-home
 - stopApp
 - launchApp
+- runFlow: common/dismiss-system-prompts.yaml
 - extendedWaitUntil:
     visible: "Choose weather location. Current location: Chicago.*"
     timeout: 30000
@@ -38,6 +40,7 @@ name: city selection and preferences survive relaunch
 - takeScreenshot: dark-home
 - stopApp
 - launchApp
+- runFlow: common/dismiss-system-prompts.yaml
 - assertVisible: "Home"
 - takeScreenshot: dark-relaunch
 - tapOn: "Settings"

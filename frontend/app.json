@@ -16,6 +16,9 @@
       "buildNumber": "3",
       "appleTeamId": "FVU6RGL532",
       "icon": "./assets/expo.icon",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.vanillax.radar-ng"]
+      },
       "infoPlist": {
         "CFBundleDisplayName": "Radar NG",
         "NSLocalNetworkUsageDescription": "Radar NG connects to a weather server on your local network when you configure one."
@@ -71,6 +74,7 @@
       "./plugins/withScriptSandboxOff",
       "./plugins/withAndroidAppLabel",
       "./plugins/withAndroidNetworkSecurity",
+      "./plugins/withAndroidReleaseSigning",
       "@bacons/apple-targets",
       [
         "expo-font",

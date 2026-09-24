@@ -5,7 +5,7 @@ interface AppStateSubscription {
 }
 
 interface AppStateSource {
-  currentState: string | null;
+  currentState: string | null | undefined;
   addEventListener: (
     event: "change",
     listener: (state: string) => void,

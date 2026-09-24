@@ -8,8 +8,7 @@
 import { useMemo } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Camera, Layer, Map, RasterSource } from "@maplibre/maplibre-react-native";
-import { useRouter } from "expo-router";
-import { useIsFocused } from "expo-router/react-navigation";
+import { useIsFocused, useRouter } from "expo-router";
 import { useAppActive } from "../../hooks/useAppActive";
 import { useNow } from "../../hooks/useNow";
 import { useWeatherStore } from "../../stores/useWeatherStore";

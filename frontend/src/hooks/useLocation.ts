@@ -21,8 +21,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 let inFlight: Promise<void> | null = null;
 
-/** One device-location pass: permission, cached fix, then a bounded fresh fix. */
-function locateDevice(prompt: boolean): Promise<void> {
+/**
+ * One device-location pass: permission, cached fix, then a bounded fresh fix.
+ * `userInitiated` (the Locate button) is the only case allowed to raise
+ * Android's "turn on Location Accuracy" dialog; automatic launch and
+ * foreground fixes must not nag with it every time.
+ */
+function locateDevice(prompt: boolean, userInitiated = false): Promise<void> {
   if (inFlight) return inFlight;
   const store = useWeatherStore.getState;
 
@@ -46,7 +51,10 @@ function locateDevice(prompt: boolean): Promise<void> {
 
       try {
         const loc = await withTimeout(
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+            mayShowUserSettingsDialog: userInitiated,
+          }),
           FRESH_FIX_TIMEOUT_MS,
         );
         store().applyDeviceFix(loc.coords.latitude, loc.coords.longitude, loc.timestamp);
@@ -105,5 +113,5 @@ export function useLocationController() {
 
 /** Take a fresh device fix now (the Locate button), without prompting for permission again. */
 export function refreshDeviceLocation(): void {
-  if (useWeatherStore.getState().locationMode === "device") void locateDevice(false);
+  if (useWeatherStore.getState().locationMode === "device") void locateDevice(false, true);
 }

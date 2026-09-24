@@ -42,9 +42,14 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
                 Task { await self.refresh() }
             }
         }
-        requestLocationIfNeeded()
+        let city = RadarShared.current()?.chosenCity
+        if let city {
+            locationNotice = city.label.map { "Showing \($0)" } ?? "Showing your chosen city"
+        } else {
+            requestLocationIfNeeded()
+        }
         let revision = locationRevision
-        let coord = location ?? fallback
+        let coord = displayCoordinate()
         async let forecastResult = Self.capture { try await WatchAPI.fetchForecast(lat: coord.latitude, lon: coord.longitude) }
         async let alertResult = Self.capture { try await WatchAPI.fetchAlerts(lat: coord.latitude, lon: coord.longitude) }
         async let radarResult = Self.capture { try await WatchAPI.fetchLatestRadarFrame() }
@@ -70,6 +75,21 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
+    /// A city chosen on the iPhone, else this Watch's fix, else the iPhone's
+    /// last fix, else the default city.
+    private func displayCoordinate() -> CLLocationCoordinate2D {
+        let shared = RadarShared.current()
+        if let city = shared?.chosenCity { return CLLocationCoordinate2D(latitude: city.lat, longitude: city.lon) }
+        if let location { return location }
+        if let last = shared?.location { return CLLocationCoordinate2D(latitude: last.lat, longitude: last.lon) }
+        return fallback
+    }
+
+    private var fallbackNotice: String {
+        if location != nil { return "Using last known location" }
+        return RadarShared.current()?.location != nil ? "Using iPhone's location" : "Showing Grand Rapids"
+    }
+
     private func requestLocationIfNeeded() {
         if !requestedLocation || lastLocation.map({ Date().timeIntervalSince($0.timestamp) > 120 }) != false {
             requestedLocation = true
@@ -79,7 +99,7 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
             case .notDetermined:
                 clManager.requestWhenInUseAuthorization()
             default:
-                locationNotice = location == nil ? "Showing Grand Rapids" : "Using last known location"
+                locationNotice = fallbackNotice
             }
         }
     }
@@ -149,7 +169,7 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
             if status == .authorizedAlways || status == .authorizedWhenInUse {
                 self.clManager.requestLocation()
             } else if status == .denied || status == .restricted {
-                self.locationNotice = self.location == nil ? "Showing Grand Rapids" : "Using last known location"
+                self.locationNotice = self.fallbackNotice
             }
         }
     }
@@ -157,7 +177,7 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Task { @MainActor in
             // A denied/failed location must never recursively trigger more requests.
-            self.locationNotice = self.location == nil ? "Showing Grand Rapids" : "Using last known location"
+            self.locationNotice = self.fallbackNotice
         }
     }
 }

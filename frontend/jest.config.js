@@ -32,6 +32,9 @@ const render = {
   preset: "jest-expo/ios",
   roots: ["<rootDir>/__tests__/render"],
   setupFilesAfterEnv: ["<rootDir>/__tests__/render/setup.tsx"],
+  // jest-expo 58 previews add an "expo-source" condition that points at src/
+  // files the published packages don't ship; resolve their built output.
+  testEnvironmentOptions: { customExportConditions: ["react-native"] },
   // babel-preset-expo for tests only; the app has no babel.config.js and
   // Metro applies the same preset by default.
   transform: {

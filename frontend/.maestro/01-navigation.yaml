@@ -5,6 +5,7 @@ name: fresh install and primary screens
     clearState: true
     permissions:
       all: deny
+- runFlow: common/dismiss-system-prompts.yaml
 - extendedWaitUntil:
     visible: "Choose weather location.*"
     timeout: 60000

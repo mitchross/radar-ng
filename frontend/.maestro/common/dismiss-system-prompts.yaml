@@ -1,0 +1,11 @@
+appId: ${APP_ID}
+---
+# Android only; each tap is optional, so iOS runs pass straight through.
+# The runtime location prompt still appears after Maestro revokes the permission.
+- tapOn:
+    text: "Don.t [Aa]llow"
+    optional: true
+# Google Play services asks to enable Location Accuracy once location is granted.
+- tapOn:
+    text: "No thanks"
+    optional: true
