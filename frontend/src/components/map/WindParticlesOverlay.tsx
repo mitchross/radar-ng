@@ -37,7 +37,7 @@ import {
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { hourKey } from "../../lib/timeKeys";
 import { useAppActive } from "../../hooks/useAppActive";
-import { useIsFocused } from "expo-router/react-navigation";
+import { useIsFocused } from "expo-router";
 
 const PARTICLE_COUNT = 1200;
 const LIFETIME_FRAMES = 90; // ~1.5s at 60fps

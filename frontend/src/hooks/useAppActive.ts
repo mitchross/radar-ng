@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 
 // Android reports "unknown"/null briefly at launch — only background/inactive count as away.
-const isActive = (s: AppStateStatus | null) => s !== "background" && s !== "inactive";
+const isActive = (s: AppStateStatus | string | null | undefined) => s !== "background" && s !== "inactive";
 
 /** True while the app is foregrounded; drives pausing of timers that AppState-unaware libraries keep running. */
 export function useAppActive(): boolean {
