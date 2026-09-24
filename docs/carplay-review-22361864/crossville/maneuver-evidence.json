@@ -1,0 +1,140 @@
+{
+  "caseID" : "22361864",
+  "checks" : [
+    "required maneuver metadata",
+    "decreasing distance",
+    "next maneuver advancement",
+    "stale GPS rejected",
+    "end trip"
+  ],
+  "city" : "Crossville",
+  "destination" : "Knoxville Convention Center",
+  "mapSpanMeters" : 65000,
+  "presentation" : "Development review host, not CarPlay system UI",
+  "radarCheckScope" : "Nontransparent tile data delivered to MapKit; screenshot appearance requires visual inspection",
+  "radarTileCheckRequired" : true,
+  "route" : "I-40 E",
+  "snapshots" : [
+    {
+      "dashboardInstructionVariants" : [
+        "At the roundabout, turn left onto Peavine Rd"
+      ],
+      "file" : "01-approaching-turn.png",
+      "initialDistanceMeters" : 3929.4276354016215,
+      "initialTimeSeconds" : 138.3649947590865,
+      "instructionVariants" : [
+        "At the roundabout, turn left onto Peavine Rd"
+      ],
+      "nextInstruction" : "Turn right to merge onto I-40 East",
+      "radarFramePath" : "2026-09-22T04:29:59+00:00",
+      "radarFrameTimestamp" : "2026-09-22T04:29:59+00:00",
+      "radarTileNontransparentPixels" : {
+        "10\/268\/400" : 0,
+        "10\/268\/401" : 17980,
+        "10\/268\/402" : 5060,
+        "10\/268\/403" : 0,
+        "10\/269\/400" : 4498,
+        "10\/269\/401" : 614,
+        "10\/269\/402" : 3426,
+        "10\/269\/403" : 22813,
+        "10\/270\/400" : 59484,
+        "10\/270\/401" : 41741,
+        "10\/270\/402" : 52174,
+        "10\/270\/403" : 3246,
+        "10\/271\/400" : 65536,
+        "10\/271\/401" : 60484,
+        "10\/271\/402" : 29088,
+        "10\/271\/403" : 9180
+      },
+      "radarTilesDelivered" : 16,
+      "radarTilesWithEchoes" : 14,
+      "stepIndex" : 1,
+      "symbolImagePresent" : true,
+      "tripDistanceMeters" : 107518.05306679326,
+      "tripTimeSeconds" : 3785.9801043450193,
+      "updatedDistanceMeters" : 299.99999999928377,
+      "updatedTimeSeconds" : 10.563751843564416
+    },
+    {
+      "dashboardInstructionVariants" : [
+        "At the roundabout, turn left onto Peavine Rd"
+      ],
+      "file" : "02-near-turn.png",
+      "initialDistanceMeters" : 3929.4276354016215,
+      "initialTimeSeconds" : 138.3649947590865,
+      "instructionVariants" : [
+        "At the roundabout, turn left onto Peavine Rd"
+      ],
+      "nextInstruction" : "Turn right to merge onto I-40 East",
+      "radarFramePath" : "2026-09-22T04:29:59+00:00",
+      "radarFrameTimestamp" : "2026-09-22T04:29:59+00:00",
+      "radarTileNontransparentPixels" : {
+        "10\/268\/400" : 0,
+        "10\/268\/401" : 17980,
+        "10\/268\/402" : 5060,
+        "10\/268\/403" : 0,
+        "10\/269\/400" : 4498,
+        "10\/269\/401" : 614,
+        "10\/269\/402" : 3426,
+        "10\/269\/403" : 22813,
+        "10\/270\/400" : 59484,
+        "10\/270\/401" : 41741,
+        "10\/270\/402" : 52174,
+        "10\/270\/403" : 3246,
+        "10\/271\/400" : 65536,
+        "10\/271\/401" : 60484,
+        "10\/271\/402" : 29088,
+        "10\/271\/403" : 9180
+      },
+      "radarTilesDelivered" : 16,
+      "radarTilesWithEchoes" : 14,
+      "stepIndex" : 1,
+      "symbolImagePresent" : true,
+      "tripDistanceMeters" : 107258.05306679434,
+      "tripTimeSeconds" : 3776.8248527472797,
+      "updatedDistanceMeters" : 40.000000000355612,
+      "updatedTimeSeconds" : 1.4085002458244735
+    },
+    {
+      "dashboardInstructionVariants" : [
+        "Turn right to merge onto I-40 East"
+      ],
+      "file" : "03-next-maneuver.png",
+      "initialDistanceMeters" : 549.50160139313084,
+      "initialTimeSeconds" : 19.349328515907146,
+      "instructionVariants" : [
+        "Turn right to merge onto I-40 East"
+      ],
+      "nextInstruction" : "Take exit 388 onto Henley St, US-441 South toward Downtown",
+      "radarFramePath" : "2026-09-22T04:29:59+00:00",
+      "radarFrameTimestamp" : "2026-09-22T04:29:59+00:00",
+      "radarTileNontransparentPixels" : {
+        "10\/268\/400" : 0,
+        "10\/268\/401" : 17980,
+        "10\/268\/402" : 5060,
+        "10\/268\/403" : 0,
+        "10\/269\/400" : 4498,
+        "10\/269\/401" : 614,
+        "10\/269\/402" : 3426,
+        "10\/269\/403" : 22813,
+        "10\/270\/400" : 59484,
+        "10\/270\/401" : 41741,
+        "10\/270\/402" : 52174,
+        "10\/270\/403" : 3246,
+        "10\/271\/400" : 65536,
+        "10\/271\/401" : 60484,
+        "10\/271\/402" : 29088,
+        "10\/271\/403" : 9180
+      },
+      "radarTilesDelivered" : 16,
+      "radarTilesWithEchoes" : 14,
+      "stepIndex" : 2,
+      "symbolImagePresent" : true,
+      "tripDistanceMeters" : 107183.05306679488,
+      "tripTimeSeconds" : 3774.1839147864011,
+      "updatedDistanceMeters" : 514.50160139402396,
+      "updatedTimeSeconds" : 18.116890800853138
+    }
+  ],
+  "source" : "Live MapKit route; replayed GPS; native CPManeuver objects"
+}
