@@ -1,8 +1,16 @@
-import { assignSlots, CAROUSEL_WINDOW, clampWindow } from "../../src/lib/radarCarousel";
+import { assignSlots, CAROUSEL_WINDOW, clampWindow, parseCarouselWindow } from "../../src/lib/radarCarousel";
 
 describe("CAROUSEL_WINDOW", () => {
   it("defaults to 1 (single-source behaviour) until the on-device checklist passes", () => {
     expect(CAROUSEL_WINDOW).toBe(1);
+  });
+
+  it("accepts only 5 as a build-time override", () => {
+    expect(parseCarouselWindow("5")).toBe(5);
+    expect(parseCarouselWindow(" 5 ")).toBe(5);
+    expect(parseCarouselWindow(undefined)).toBe(1);
+    expect(parseCarouselWindow("3")).toBe(1);
+    expect(parseCarouselWindow("")).toBe(1);
   });
 });
 

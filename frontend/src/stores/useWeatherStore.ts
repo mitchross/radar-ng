@@ -11,6 +11,7 @@ import {
   parseTimelineMode,
   parseViewMode,
   parseOpacity,
+  parsePlaybackFps,
   type ViewMode,
 } from "../lib/persistedPrefs";
 import type { AppearanceMode } from "../theme/weatherClearTheme";
@@ -135,7 +136,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   frames: [],
   currentFrameIndex: -1,
   isPlaying: false,
-  playbackSpeed: DEFAULTS.PLAYBACK_FPS,
+  playbackSpeed: parsePlaybackFps(getString("playbackSpeed", ""), DEFAULTS.PLAYBACK_FPS),
   playbackWindow: null,
   latitude: initialCoords.latitude,
   longitude: initialCoords.longitude,
@@ -180,7 +181,11 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setCurrentFrameIndex: (index) => set({ currentFrameIndex: index }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   togglePlaying: () => set((s) => ({ isPlaying: !s.isPlaying })),
-  setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
+  setPlaybackSpeed: (speed) => {
+    const fps = parsePlaybackFps(String(speed), DEFAULTS.PLAYBACK_FPS);
+    setString("playbackSpeed", String(fps));
+    set({ playbackSpeed: fps });
+  },
   setPlaybackWindow: (window) =>
     set((s) =>
       s.playbackWindow?.start === window?.start && s.playbackWindow?.end === window?.end

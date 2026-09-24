@@ -33,6 +33,7 @@ import type { SelfHostedManifest } from "../../types/weather";
 import { formatPlaceLabel } from "../../lib/locationLabel";
 import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { SELF_HOSTED } from "../../lib/constants";
+import { PLAYBACK_FPS_RANGE } from "../../lib/persistedPrefs";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
 import { PaletteSelector } from "../../components/palette/PaletteSelector";
@@ -430,8 +431,8 @@ export default function SettingsScreen() {
             <View style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
               <Text style={styles.rowLabel}>Playback {playbackSpeed} FPS</Text>
               <Slider
-                minimumValue={1}
-                maximumValue={15}
+                minimumValue={PLAYBACK_FPS_RANGE.min}
+                maximumValue={PLAYBACK_FPS_RANGE.max}
                 step={1}
                 value={playbackSpeed}
                 onValueChange={setPlaybackSpeed}

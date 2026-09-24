@@ -29,6 +29,16 @@ bun run ios          # build + install + launch on iOS simulator (macOS only)
 
 First native build takes a while (Gradle / CocoaPods); subsequent runs are incremental.
 
+### Radar playback variants for device testing
+
+Playback mounts one raster source per frame slot. The default build uses one slot. To test the 5-slot carousel on a device, build a second variant with the value baked in:
+
+```bash
+EXPO_PUBLIC_CAROUSEL_WINDOW=5 bun run ios      # or: bun run android
+```
+
+`EXPO_PUBLIC_*` values are inlined when the JS bundle is built, so restart Metro with `--clear` when switching variants. Only `5` is recognised; anything else builds the 1-slot default. Run the checklist in ARCHITECTURE.md § "The app" on both builds.
+
 ## Android gotchas
 
 - Use an **API 35** emulator image.
@@ -60,7 +70,7 @@ The manifest fetch (`/api/manifest.json`) determines which layers the app offers
 
 ## Where preferences live
 
-User prefs (server URL, data source, palette, opacity, active layer, theme, extras visibility) persist in an **MMKV** store with id `radar-ng` (`frontend/src/lib/storage.ts`), read/written by `frontend/src/stores/useWeatherStore.ts`. They survive app restarts but not an uninstall. To reset to defaults, uninstall/reinstall or clear the app's storage.
+User prefs (server URL, data source, palette, opacity, playback speed, active layer, theme, extras visibility) persist in an **MMKV** store with id `radar-ng` (`frontend/src/lib/storage.ts`), read/written by `frontend/src/stores/useWeatherStore.ts`. They survive app restarts but not an uninstall. To reset to defaults, uninstall/reinstall or clear the app's storage.
 
 ## iOS extras: CarPlay + Apple Watch
 

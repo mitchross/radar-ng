@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
 import { findClosestIdx } from "../../lib/frameIndex";
+import { createThrottle } from "../../lib/throttle";
 import { useAppActive } from "../../hooks/useAppActive";
 import { useIsFocused } from "expo-router/react-navigation";
 import type { LayerType } from "../../types/weather";
@@ -17,6 +18,8 @@ import type { LayerType } from "../../types/weather";
 const NOWCAST_MIN = 60;
 const HRRR_MIN = 48 * 60;
 const NOW_REFRESH_MS = 60_000;
+// Each committed index remounts a raster source, so a drag commits at most this often.
+const SCRUB_COMMIT_MS = 100;
 // Built once: constructing a formatter per render showed up on every playback tick.
 const FRAME_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   weekday: "long",
@@ -52,6 +55,8 @@ export function TimelineBar() {
   const setPlaybackWindow = useWeatherStore((s) => s.setPlaybackWindow);
 
   const [zoom, setZoom] = useState<Zoom>("1h");
+  const [scrub] = useState(() => createThrottle(setCurrentFrameIndex, SCRUB_COMMIT_MS));
+  useEffect(() => () => scrub.cancel(), [scrub]);
 
   const idxRef = useRef(currentFrameIndex);
   useEffect(() => { idxRef.current = currentFrameIndex; }, [currentFrameIndex]);
@@ -100,7 +105,7 @@ export function TimelineBar() {
         ? startIdx
         : idxRef.current + 1;
       setCurrentFrameIndex(next);
-    }, 1000 / Math.max(1, Math.min(10, playbackSpeed)));
+    }, 1000 / playbackSpeed);
     return () => clearInterval(id);
   }, [appActive, focused, isPlaying, playbackSpeed, startIdx, endIdx, frames.length, setCurrentFrameIndex]);
 
@@ -224,10 +229,12 @@ export function TimelineBar() {
             maximumValue={endIdx}
             step={1}
             value={currentFrameIndex}
+            onSlidingStart={() => setIsPlaying(false)}
             onValueChange={(v) => {
               setIsPlaying(false);
-              setCurrentFrameIndex(Math.round(v));
+              scrub.call(Math.round(v));
             }}
+            onSlidingComplete={(v) => scrub.flush(Math.round(v))}
             minimumTrackTintColor="transparent"
             maximumTrackTintColor="transparent"
             thumbTintColor="#ffffff"
