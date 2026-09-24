@@ -26,21 +26,32 @@ and animated CarPlay radar are not included. Do not advertise them as 2.0 featur
 ## Build preparation
 
 The Expo config is the version source. Regenerate native projects before archiving
-so the iPhone, Watch, and widget all receive the new version and build number:
+so the iPhone, Watch, and widget all receive the new version and build number.
+The release order is **clean prebuild → pod install → preflight → archive**:
 
 ```sh
 cd frontend
-bunx expo prebuild --platform ios --no-install
+bunx expo prebuild --platform ios --clean --no-install
 cd ios
 pod install
+cd ..
+bash scripts/preflight-ios-release.sh          # add RADAR_CARPLAY=1 for a CarPlay build
+bash scripts/build-ios-standalone.sh           # runs the preflight again, then archives
 ```
 
+The preflight fails on the mixed native trees that have shipped before: CarPlay
+background modes or the `carplay-maps` entitlement in a build that is not a
+CarPlay build, `NSLocationAlways*`/`NSFaceID*`/`NSMotion*` permission strings,
+version drift between `app.json` and the Watch/widget targets, and a beta Xcode.
+The archive script defaults `DEVELOPER_DIR` to `/Applications/Xcode.app/Contents/Developer`
+(Xcode 27.0 release). Archiving with a beta needs both an explicit `DEVELOPER_DIR`
+and `ALLOW_BETA=1`.
+
 Use an installed, selected Xcode compatible with the app and accepted for the
-intended distribution. The existing archive script defaults to an Xcode-beta path;
-set `DEVELOPER_DIR` explicitly when invoking it on this Mac. Before uploading,
-check App Store Connect/Play Console for builds made outside this repository and
-advance the build counters further if necessary. This version bump does not
-create or upload an archive, publish a store listing, or deploy backend images.
+intended distribution. Before uploading, check App Store Connect/Play Console for
+builds made outside this repository and advance the build counters further if
+necessary. This version bump does not create or upload an archive, publish a store
+listing, or deploy backend images.
 
 - [iPhone/Watch QA](ios-watch-qa-2026-09-08.md)
 - [Widget/icon QA](widget-icon-qa-2026-09-09.md)

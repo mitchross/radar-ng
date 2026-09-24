@@ -4,7 +4,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode-beta.app/Contents/Developer}"
+# Archive with the release toolchain. Xcode 27.0 release is /Applications/Xcode.app;
+# xcode-select on this Mac points at the 27.0 beta, and the old default here
+# (/Applications/Xcode-beta.app) does not exist. A beta build is rejected for
+# submission, so opting into one requires both DEVELOPER_DIR and ALLOW_BETA=1.
+export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
 SCHEME="${SCHEME:-radarng}"
 WORKSPACE="${WORKSPACE:-ios/${SCHEME}.xcworkspace}"
@@ -70,6 +74,9 @@ fi
 if [[ "$QUIET" == "1" ]]; then
   XCODEBUILD_FLAGS+=(-quiet)
 fi
+
+echo "==> Preflight"
+bash ./scripts/preflight-ios-release.sh
 
 echo "==> Archiving ${SCHEME} (${CONFIGURATION})"
 echo "    export method: ${EXPORT_METHOD}"
