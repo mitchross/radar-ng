@@ -113,7 +113,7 @@ export default function RadarScreen() {
             accessibilityRole="alert"
             accessibilityLabel={alertStatus.accessibilityLabel}
             pointerEvents="none"
-            style={styles.alertStatus}
+            style={[styles.alertStatus, { top: chrome.statusTop, right: chrome.right }]}
           >
             ALERTS {alertStatus.label}
           </Text>

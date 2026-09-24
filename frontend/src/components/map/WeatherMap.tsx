@@ -111,7 +111,7 @@ export function WeatherMap({
         mapStyle={patchedStyle}
         logo={false}
         attribution={true}
-        attributionPosition={{ bottom: 8, left: 8 }}
+        attributionPosition={{ bottom: chrome.aboveTimeline + 8, left: chrome.left }}
         onLongPress={handleLongPress}
         onRegionIsChanging={trackCameraContinuously ? handleRegionChange : undefined}
         onRegionDidChange={handleRegionChange}
@@ -131,6 +131,7 @@ export function WeatherMap({
         style={[styles.zoomWrap, { right: chrome.right, bottom: chrome.aboveTimeline }]}
         fallbackStyle={styles.zoomFill}
         colorScheme="dark"
+        tintColor="rgba(15,18,30,0.6)"
         pointerEvents="box-none"
       >
         <Pressable
