@@ -87,9 +87,6 @@
           ]
         }
       ],
-      "expo-image",
-      "expo-web-browser",
-      "expo-localization",
       "expo-status-bar"
     ],
     "experiments": {
