@@ -90,6 +90,37 @@ def safe_error_label(failure: Exception) -> str:
     return label
 
 
+# Open-meteo `sync` downloads *stored* variables only. Names the API derives
+# at query time (weather_code, wind_speed_10m, wind_direction_10m,
+# apparent_temperature, dew_point_2m, surface_pressure) are not stored, so
+# listing them synced nothing and the forecast returned them as null. Sync the
+# raw inputs instead; the API derives:
+#   weather_code         <- cloud_cover, precipitation, showers,
+#                           snowfall_water_equivalent, frozen_precipitation_percent,
+#                           cape, lifted_index, visibility, wind_gusts_10m
+#   wind speed/direction <- wind_u_component_10m, wind_v_component_10m
+#   apparent_temperature <- temperature_2m, relative_humidity_2m, wind, shortwave_radiation
+#   dew_point_2m         <- temperature_2m, relative_humidity_2m
+#   surface_pressure     <- pressure_msl (+ static elevation)
+# Names come from the open-data bucket listing (s3://openmeteo/data/<model>/).
+# precipitation_probability needs an ensemble (GEFS) and stays unsynced.
+GFS013_VARIABLES = ",".join([
+    "temperature_2m", "relative_humidity_2m", "precipitation", "showers",
+    "snowfall_water_equivalent", "frozen_precipitation_percent", "cloud_cover",
+    "wind_u_component_10m", "wind_v_component_10m", "shortwave_radiation", "uv_index",
+])
+GFS025_SURFACE_VARIABLES = ",".join([
+    "wind_gusts_10m", "pressure_msl", "cape", "lifted_index", "visibility",
+    "categorical_freezing_rain",
+])
+HRRR_VARIABLES = ",".join([
+    "temperature_2m", "relative_humidity_2m", "precipitation",
+    "snowfall_water_equivalent", "frozen_precipitation_percent", "categorical_freezing_rain",
+    "cloud_cover", "wind_u_component_10m", "wind_v_component_10m", "wind_gusts_10m",
+    "pressure_msl", "cape", "lifted_index", "visibility", "shortwave_radiation",
+])
+
+
 @dataclass
 class ScheduleDef:
     schedule_id: str
@@ -213,7 +244,22 @@ SCHEDULES: list[ScheduleDef] = [
         workflow_input=[
             {
                 "model": "ncep_gfs013",
-                "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure,uv_index",
+                "variables": GFS013_VARIABLES,
+                "past_days": 2,
+            }
+        ],
+        interval=timedelta(hours=6),
+    ),
+    # The GFS surface fields that live in the 0.25° domain (gusts, pressure,
+    # CAPE, visibility). Open-meteo's GFS combines both domains at query time.
+    ScheduleDef(
+        "open-meteo-sync-gfs025",
+        "OpenMeteoSyncWorkflow",
+        max_runtime=timedelta(minutes=60),
+        workflow_input=[
+            {
+                "model": "ncep_gfs025",
+                "variables": GFS025_SURFACE_VARIABLES,
                 "past_days": 2,
             }
         ],
@@ -227,7 +273,7 @@ SCHEDULES: list[ScheduleDef] = [
         workflow_input=[
             {
                 "model": "ncep_hrrr_conus",
-                "variables": "temperature_2m,dew_point_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation,precipitation_probability,surface_pressure",
+                "variables": HRRR_VARIABLES,
                 "past_days": 1,
             }
         ],
