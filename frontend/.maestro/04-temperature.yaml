@@ -5,6 +5,7 @@ name: temperature units apply to Home and survive relaunch
     clearState: true
     permissions:
       all: deny
+- runFlow: common/dismiss-system-prompts.yaml
 - tapOn: "Settings"
 - scrollUntilVisible:
     element: "°C"
@@ -17,6 +18,7 @@ name: temperature units apply to Home and survive relaunch
 - takeScreenshot: celsius-home
 - stopApp
 - launchApp
+- runFlow: common/dismiss-system-prompts.yaml
 - extendedWaitUntil:
     visible: ".* degrees celsius"
     timeout: 30000

@@ -19,6 +19,8 @@ export default function TabLayout() {
     <NativeTabs
       hidden={onRadar}
       minimizeBehavior="onScrollDown"
+      // Material hides inactive labels with more than three tabs; keep all five named.
+      labelVisibilityMode="labeled"
       tintColor={theme.colors.accent}
       badgeBackgroundColor={theme.colors.destructive}
     >

@@ -5,6 +5,7 @@ name: radar playback styles layers and foreground recovery
     clearState: true
     permissions:
       all: deny
+- runFlow: common/dismiss-system-prompts.yaml
 - tapOn: "Radar"
 - extendedWaitUntil:
     visible: "Play radar animation"
@@ -39,6 +40,7 @@ name: radar playback styles layers and foreground recovery
 - pressKey: Home
 - launchApp:
     stopApp: false
+- runFlow: common/dismiss-system-prompts.yaml
 - assertVisible: "Choose radar layer"
 - takeScreenshot: radar-foreground
 - tapOn: "Close radar"
