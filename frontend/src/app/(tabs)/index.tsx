@@ -68,6 +68,7 @@ export default function HomeScreen() {
     isError,
     isFetching,
     refetch,
+    dataUpdatedAt,
   } = useForecast();
   const { data: alertData, alertStatus } = useAlerts();
   const { data: radarNowcast } = useRadarNowcast();
@@ -137,6 +138,7 @@ export default function HomeScreen() {
   }
 
   const now = new Date();
+  const forecastAgeMin = dataUpdatedAt > 0 ? Math.floor((now.getTime() - dataUpdatedAt) / 60_000) : 0;
   const { sunrise, sunset } = sunTimesFor(forecast.daily, now);
   const isNight = isNightAt(now, forecast.daily);
 
@@ -262,6 +264,11 @@ export default function HomeScreen() {
           {presentation.stale ? (
             <Text accessibilityRole="alert" style={styles.staleNotice}>
               Showing the last available forecast
+            </Text>
+          ) : forecastAgeMin >= 30 ? (
+            // A forecast restored from disk at cold start, shown while it refreshes.
+            <Text style={styles.staleNotice}>
+              Updated {formatAge(forecastAgeMin)} ago{isFetching ? " · refreshing" : ""}
             </Text>
           ) : null}
 
@@ -632,6 +639,12 @@ export default function HomeScreen() {
 }
 
 // ───────── helpers
+
+function formatAge(minutes: number): string {
+  if (minutes < 90) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hr`;
+}
 
 const CONDITION_LABELS: Record<ReturnType<typeof getCumulusCondition>, string> = {
   clearDay: "Sunny",

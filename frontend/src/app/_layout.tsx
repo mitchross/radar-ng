@@ -9,12 +9,14 @@ import { telemetryErrorType, telemetryQueryFamily } from "../lib/telemetryPrivac
 import { Stack } from "expo-router";
 import {
   QueryClient,
-  QueryClientProvider,
   QueryCache,
   MutationCache,
   focusManager,
   onlineManager,
 } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import Constants from "expo-constants";
 import NetInfo from "@react-native-community/netinfo";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -27,6 +29,8 @@ import {
 import { useStormTilePrefetch } from "../hooks/useStormTilePrefetch";
 import { useLocationController } from "../hooks/useLocation";
 import { bindAppFocus, bindNetworkOnline } from "../lib/queryLifecycle";
+import { PERSISTED_QUERY_FAMILIES, PERSIST_MAX_AGE_MS, shouldPersistQuery } from "../lib/queryPersistence";
+import { queryCacheStorage } from "../lib/storage";
 
 // Root-level error boundary: without it, a single throw anywhere in the tree
 // (a Skia worklet edge case, a MapLibre native error surfacing in JS) takes
@@ -71,15 +75,35 @@ const queryClient = new QueryClient({
   }),
 });
 
+// Restored entries must outlive the default 5-minute gcTime, or they're
+// collected before a cold start can render them.
+for (const family of PERSISTED_QUERY_FAMILIES) {
+  queryClient.setQueryDefaults([family], { gcTime: PERSIST_MAX_AGE_MS });
+}
+
+const persister = createSyncStoragePersister({
+  storage: queryCacheStorage,
+  key: "query-cache-v1",
+  throttleTime: 2_000,
+});
+
+const persistOptions = {
+  persister,
+  maxAge: PERSIST_MAX_AGE_MS,
+  // A new app version never reads data shaped by an older one.
+  buster: String(Constants.expoConfig?.version ?? "dev"),
+  dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
+};
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
+        <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
           <WeatherClearThemeProvider>
             <ThemedApp />
           </WeatherClearThemeProvider>
-        </QueryClientProvider>
+        </PersistQueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
