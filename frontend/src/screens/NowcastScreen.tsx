@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from "react";
 import { ScrollView, View, Text, StyleSheet, RefreshControl, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { ScreenBackground } from "../components/ui/ScreenBackground";
 import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../hooks/useForecast";
@@ -162,7 +163,7 @@ export default function NowcastScreen() {
   const radarResolution = pointNowcast?.spatial_resolution_km;
 
   return (
-    <LinearGradient colors={gradient} style={styles.container}>
+    <ScreenBackground colors={gradient} style={styles.container}>
       <SafeAreaView style={styles.flex} edges={["top"]}>
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -398,7 +399,7 @@ export default function NowcastScreen() {
           <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
-    </LinearGradient>
+    </ScreenBackground>
   );
 }
 

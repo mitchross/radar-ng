@@ -5,6 +5,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { ScrollView, View, Text, StyleSheet, Pressable, RefreshControl } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { ScreenBackground } from "../../components/ui/ScreenBackground";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -199,7 +200,7 @@ export default function HomeScreen() {
   const isAdv = viewMode === "advanced";
 
   return (
-    <LinearGradient
+    <ScreenBackground
       accessibilityLabel="Current weather"
       colors={gradient}
       style={styles.container}
@@ -634,7 +635,7 @@ export default function HomeScreen() {
           <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
-    </LinearGradient>
+    </ScreenBackground>
   );
 }
 

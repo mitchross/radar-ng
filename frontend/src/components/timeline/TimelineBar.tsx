@@ -17,6 +17,12 @@ import type { LayerType } from "../../types/weather";
 const NOWCAST_MIN = 60;
 const HRRR_MIN = 48 * 60;
 const NOW_REFRESH_MS = 60_000;
+// Built once: constructing a formatter per render showed up on every playback tick.
+const FRAME_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
+  weekday: "long",
+  hour: "numeric",
+  minute: "2-digit",
+});
 
 const LAYER_TITLE: Record<LayerType, string> = {
   radar: "Radar",
@@ -120,11 +126,7 @@ export function TimelineBar() {
   const offsetMin = currentFrame ? Math.round((currentFrame.time - nowSec) / 60) : 0;
   const layerTitle = LAYER_TITLE[activeLayer] ?? "Radar";
   const frameDate = new Date((currentFrame?.time ?? nowSec) * 1000);
-  const dateLabel = frameDate.toLocaleDateString([], {
-    weekday: "long",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const dateLabel = FRAME_DATE_FORMAT.format(frameDate);
 
   const mode = offsetMin === 0 ? "Now" : offsetMin > 0 ? "Forecast" : "Past";
 

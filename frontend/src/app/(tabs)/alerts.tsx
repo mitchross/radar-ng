@@ -5,7 +5,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { ScrollView, View, Text, StyleSheet, Pressable, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
+import { ScreenBackground } from "../../components/ui/ScreenBackground";
 import { useRouter } from "expo-router";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useWeatherStore } from "../../stores/useWeatherStore";
@@ -58,7 +58,7 @@ export default function AlertsScreen() {
   }, [refetch]);
 
   return (
-    <LinearGradient
+    <ScreenBackground
       accessibilityLabel="Weather alerts"
       colors={gradient}
       style={styles.container}
@@ -145,7 +145,7 @@ export default function AlertsScreen() {
           <View style={{ height: 120 }} />
         </ScrollView>
       </SafeAreaView>
-    </LinearGradient>
+    </ScreenBackground>
   );
 }
 

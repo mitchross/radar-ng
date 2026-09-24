@@ -16,7 +16,7 @@ import {
   Keyboard,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
+import { ScreenBackground } from "../../components/ui/ScreenBackground";
 import Slider from "@react-native-community/slider";
 import Constants from "expo-constants";
 import { useQuery } from "@tanstack/react-query";
@@ -48,9 +48,17 @@ import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 type SourceKey = "radar" | "satellite" | "forecast" | "airquality" | "basemap" | "alerts";
 type SourceStatus = "healthy" | "stale" | "error" | "disabled";
 
+// One StyleSheet per theme object, shared by every Settings row instead of
+// rebuilt in each component instance.
+const stylesByTheme = new WeakMap<WeatherClearTheme, ReturnType<typeof createStyles>>();
+
 function useSettingsTheme() {
   const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  let styles = stylesByTheme.get(theme);
+  if (!styles) {
+    styles = createStyles(theme);
+    stylesByTheme.set(theme, styles);
+  }
   return { theme, styles };
 }
 
@@ -135,7 +143,7 @@ export default function SettingsScreen() {
     : CONDITION_GRADIENTS.clearNight;
 
   return (
-    <LinearGradient
+    <ScreenBackground
       accessibilityLabel="Weather settings"
       colors={gradient}
       style={styles.container}
@@ -469,7 +477,7 @@ export default function SettingsScreen() {
           <View style={{ height: 140 }} />
         </ScrollView>
       </SafeAreaView>
-    </LinearGradient>
+    </ScreenBackground>
   );
 }
 
