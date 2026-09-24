@@ -10,6 +10,7 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { pickNowFrameIndex } from "../../hooks/useManifest";
 import { cumulus } from "../../lib/cumulusTheme";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
+import { refreshDeviceLocation } from "../../hooks/useLocation";
 import type { LayerType } from "../../types/weather";
 
 type IconKind = "umbrella" | "thermo" | "dust" | "wind" | "bolt" | "layers" | "drop" | "cloud" | "ozone";
@@ -49,6 +50,7 @@ export function RadarFABs({
   const toggleExtras = useWeatherStore((s) => s.toggleExtras);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
   const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
+  const requestRecenter = useWeatherStore((s) => s.requestRecenter);
   const queryClient = useQueryClient();
   const [layerOpen, setLayerOpen] = useState(false);
 
@@ -103,6 +105,15 @@ export function RadarFABs({
           }
         >
           <CrosshairIcon />
+        </GlassBtn>
+        <GlassBtn
+          onPress={() => {
+            requestRecenter();
+            refreshDeviceLocation();
+          }}
+          accessibilityLabel="Center map on your location"
+        >
+          <LocateIcon />
         </GlassBtn>
         <GlassBtn onPress={onOpenStylePicker} accessibilityLabel="Choose map style">
           <MapStyleIcon />
@@ -211,6 +222,15 @@ function CrosshairIcon() {
       <View style={[icons.hLine, { top: 8.5 }]} />
       <View style={[icons.vLine, { left: 8.5 }]} />
       <View style={icons.pinDot} />
+    </View>
+  );
+}
+
+function LocateIcon() {
+  return (
+    <View style={styles.iconBox}>
+      <View style={icons.locateRing} />
+      <View style={icons.locateDot} />
     </View>
   );
 }
@@ -500,6 +520,21 @@ const icons = StyleSheet.create({
     backgroundColor: "#1a2030",
     borderRadius: 1,
     top: 1,
+  },
+  locateRing: {
+    position: "absolute",
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.6,
+    borderColor: "#1a2030",
+  },
+  locateDot: {
+    position: "absolute",
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#1a2030",
   },
   pinDot: {
     position: "absolute",

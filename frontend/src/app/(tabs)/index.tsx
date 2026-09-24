@@ -10,8 +10,7 @@ import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../../hooks/useForecast";
 import { useAlerts } from "../../hooks/useAlerts";
-import { useLocation } from "../../hooks/useLocation";
-import { activeLocationLabel, activeLocationName } from "../../lib/locationLabel";
+import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { getAlertEndTime } from "../../lib/alertLifecycle";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { useWeatherStore } from "../../stores/useWeatherStore";
@@ -44,13 +43,11 @@ import {
 } from "../../components/home/StatWidgets";
 
 export default function HomeScreen() {
-  useLocation();
   const router = useRouter();
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const locationMode = useWeatherStore((s) => s.locationMode);
-  const selectedPlace = useWeatherStore((s) => s.selectedPlace);
-  const devicePlace = useWeatherStore((s) => s.devicePlace);
+  const location = useActiveLocation();
+  const hasCoordinates = useWeatherStore((s) => s.latitude !== null);
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
   const viewMode = useWeatherStore((s) => s.viewMode);
   const setViewMode = useWeatherStore((s) => s.setViewMode);
@@ -88,6 +85,19 @@ export default function HomeScreen() {
     isError,
     isFetching,
   });
+
+  // Device mode with no fix yet: the forecast query is simply waiting, not failing.
+  if (!hasCoordinates) {
+    return (
+      <View style={styles.stateContainer}>
+        <ScreenState
+          kind="loading"
+          title="Finding your location"
+          message="Weather appears as soon as your position is known."
+        />
+      </View>
+    );
+  }
 
   if (presentation.kind === "error") {
     return (
@@ -135,8 +145,8 @@ export default function HomeScreen() {
   const lo = temperature(forecast.daily.temperature_2m_min[0] ?? currentFahrenheit);
 
   const conditionLabel = CONDITION_LABELS[condition];
-  const locationLabel = activeLocationLabel(locationMode, selectedPlace, devicePlace);
-  const locationName = activeLocationName(locationMode, selectedPlace, devicePlace);
+  const locationLabel = location.label;
+  const locationName = location.name;
 
   // Nowcast banner logic
   const nowcastHeadline = buildNowcastHeadline(forecast.minutely_15);
@@ -231,7 +241,9 @@ export default function HomeScreen() {
             >
               <View style={styles.locationRow}>
                 <View style={styles.locationDot} />
-                <Text style={styles.locationLabelText}>MY LOCATION</Text>
+                <Text style={styles.locationLabelText}>
+                  {location.isDevice && !location.isFallback ? "MY LOCATION" : location.isFallback ? "DEFAULT LOCATION" : "LOCATION"}
+                </Text>
               </View>
               <View style={styles.locationNameRow}>
                 <Text
@@ -254,6 +266,14 @@ export default function HomeScreen() {
               onChange={setViewMode}
             />
           </View>
+          {location.notice ? (
+            <Text
+              accessibilityRole={location.isFallback ? "alert" : undefined}
+              style={styles.staleNotice}
+            >
+              {location.notice}
+            </Text>
+          ) : null}
           {presentation.stale ? (
             <Text accessibilityRole="alert" style={styles.staleNotice}>
               Showing the last available forecast

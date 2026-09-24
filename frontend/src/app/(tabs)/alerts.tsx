@@ -8,7 +8,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useAlerts } from "../../hooks/useAlerts";
-import { useLocation } from "../../hooks/useLocation";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
 import { getAlertEndTime } from "../../lib/alertLifecycle";
@@ -23,7 +22,6 @@ import type { NWSAlert } from "../../types/weather";
 const TIME_FMT = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" });
 
 export default function AlertsScreen() {
-  useLocation();
   const router = useRouter();
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);

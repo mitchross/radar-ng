@@ -13,7 +13,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { useForecast } from "../../hooks/useForecast";
 import { displayTemperature } from "../../lib/temperature";
-import { activeLocationLabel } from "../../lib/locationLabel";
+import { useActiveLocation } from "../../hooks/useActiveLocation";
+import { DEFAULTS } from "../../lib/constants";
 import { cumulus, getWindDirection } from "../../lib/cumulusTheme";
 import { inspectPoint, type InspectReading } from "../../lib/inspector";
 import { locationKey, PRECISION } from "../../lib/coordinates";
@@ -24,24 +25,26 @@ export function LayerLocationMarker() {
   const longitude = useWeatherStore((s) => s.longitude);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
-  const locationMode = useWeatherStore((s) => s.locationMode);
-  const selectedPlace = useWeatherStore((s) => s.selectedPlace);
-  const devicePlace = useWeatherStore((s) => s.devicePlace);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
-  const frames = useWeatherStore((s) => s.frames);
-  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
+  const { label } = useActiveLocation();
   const { data: forecast } = useForecast();
 
   // Open-Meteo carries no pollutant fields, so the AQ pill samples the AQM
   // grid at the pinned frame via the same /api/inspect the eyedropper uses.
   const isAqLayer = activeLayer === "air-quality" || activeLayer === "ozone";
-  const frameTimestamp = frames[currentFrameIndex]?.timestamp ?? null;
+  // Only AQ layers need the frame; selecting null elsewhere keeps this
+  // native marker from re-rendering on every playback tick.
+  const frameTimestamp = useWeatherStore((s) =>
+    s.activeLayer === "air-quality" || s.activeLayer === "ozone"
+      ? (s.frames[s.currentFrameIndex]?.timestamp ?? null)
+      : null,
+  );
   const { data: aqReading } = useQuery({
     queryKey: [
       "aq-point",
       activeLayer,
       frameTimestamp,
-      locationKey(latitude as number, longitude as number, PRECISION.POINT),
+      latitude != null && longitude != null ? locationKey(latitude, longitude, PRECISION.POINT) : null,
       serverUrl,
     ],
     queryFn: () =>
@@ -56,14 +59,19 @@ export function LayerLocationMarker() {
     staleTime: 60_000,
   });
 
-  if (latitude == null || longitude == null) return null;
-
+  // Always mounted (hidden until a location exists) so the map's native child count never churns.
+  const hidden = latitude == null || longitude == null;
   const body = renderBody(activeLayer, forecast, temperatureUnit, aqReading);
-  const label = activeLocationLabel(locationMode, selectedPlace, devicePlace);
 
   return (
-    <Marker lngLat={[longitude, latitude]} anchor="bottom">
-      <View style={styles.wrap} pointerEvents="none" accessibilityLabel={label}>
+    <Marker lngLat={[longitude ?? DEFAULTS.LONGITUDE, latitude ?? DEFAULTS.LATITUDE]} anchor="bottom">
+      <View
+        style={[styles.wrap, hidden ? styles.hidden : null]}
+        pointerEvents="none"
+        accessibilityLabel={label}
+        accessibilityElementsHidden={hidden}
+        importantForAccessibility={hidden ? "no-hide-descendants" : "auto"}
+      >
         <View style={styles.pill}>{body}</View>
         <View style={styles.tail} />
         <View style={styles.dot} />
@@ -121,6 +129,7 @@ const PILL_BORDER = "rgba(10,20,40,0.08)";
 
 const styles = StyleSheet.create({
   wrap: { alignItems: "center" },
+  hidden: { opacity: 0 },
   pill: {
     backgroundColor: PILL_BG,
     borderRadius: 18,

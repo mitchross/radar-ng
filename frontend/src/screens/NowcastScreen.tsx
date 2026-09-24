@@ -10,8 +10,7 @@ import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../hooks/useForecast";
 import { useRadarNowcast } from "../hooks/useRadarNowcast";
-import { useLocation } from "../hooks/useLocation";
-import { activeLocationName } from "../lib/locationLabel";
+import { useActiveLocation } from "../hooks/useActiveLocation";
 import { runOnlineRefresh } from "../lib/queryLifecycle";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { CONDITION_GRADIENTS, getCumulusCondition, isNightAt } from "../lib/cumulusTheme";
@@ -34,13 +33,11 @@ import type { RadarNowcastPoint } from "../types/weather";
 type Minute = { i: number; intensity: number };
 
 export default function NowcastScreen() {
-  useLocation();
   const router = useRouter();
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const locationMode = useWeatherStore((s) => s.locationMode);
-  const selectedPlace = useWeatherStore((s) => s.selectedPlace);
-  const devicePlace = useWeatherStore((s) => s.devicePlace);
+  const activeLocation = useActiveLocation();
+  const hasCoordinates = useWeatherStore((s) => s.latitude !== null);
   const viewMode = useWeatherStore((s) => s.viewMode);
   const setViewMode = useWeatherStore((s) => s.setViewMode);
   const setActiveLayer = useWeatherStore((s) => s.setActiveLayer);
@@ -86,6 +83,18 @@ export default function NowcastScreen() {
     isError,
     isFetching,
   });
+
+  if (!hasCoordinates) {
+    return (
+      <View style={styles.stateContainer}>
+        <ScreenState
+          kind="loading"
+          title="Finding your location"
+          message="The next-hour outlook appears as soon as your position is known."
+        />
+      </View>
+    );
+  }
 
   if (presentation.kind === "error") {
     return (
@@ -155,7 +164,7 @@ export default function NowcastScreen() {
   // Chart intensity is inches/hour; integrate sixty one-minute samples.
   const totalIn = minutes.reduce((sum, minute) => sum + minute.intensity / 60, 0);
 
-  const location = activeLocationName(locationMode, selectedPlace, devicePlace);
+  const location = activeLocation.name;
   const isAdv = viewMode === "advanced";
   const radarFrameCount = pointNowcast?.points.length ?? 0;
   const radarResolution = pointNowcast?.spatial_resolution_km;

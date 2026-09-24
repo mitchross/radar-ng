@@ -29,7 +29,8 @@ import {
 } from "../../lib/api";
 import { useManifestQuery } from "../../hooks/useManifest";
 import type { SelfHostedManifest } from "../../types/weather";
-import { activeLocationLabel, formatPlaceLabel } from "../../lib/locationLabel";
+import { formatPlaceLabel } from "../../lib/locationLabel";
+import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { SELF_HOSTED } from "../../lib/constants";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
@@ -66,7 +67,7 @@ export default function SettingsScreen() {
   const setServerUrl = useWeatherStore((s) => s.setServerUrl);
   const locationMode = useWeatherStore((s) => s.locationMode);
   const selectedPlace = useWeatherStore((s) => s.selectedPlace);
-  const devicePlace = useWeatherStore((s) => s.devicePlace);
+  const activeLocation = useActiveLocation();
   const setSelectedPlace = useWeatherStore((s) => s.setSelectedPlace);
   const useDeviceLocation = useWeatherStore((s) => s.useDeviceLocation);
 
@@ -123,7 +124,7 @@ export default function SettingsScreen() {
   );
 
   const stackHost = useMemo(() => hostOf(serverUrl), [serverUrl]);
-  const locationLabel = activeLocationLabel(locationMode, selectedPlace, devicePlace);
+  const locationLabel = activeLocation.notice ? `${activeLocation.label} · ${activeLocation.notice}` : activeLocation.label;
   const isAdv = viewMode === "advanced";
   const gradient = theme.dark
     ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)

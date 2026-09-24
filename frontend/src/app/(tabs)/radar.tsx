@@ -33,12 +33,10 @@ import { MapStylePicker } from "../../components/map/MapStylePicker";
 import { EyedropperPin, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
 import { useAlerts } from "../../hooks/useAlerts";
-import { useLocation } from "../../hooks/useLocation";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 
 export default function RadarScreen() {
   useManifest();
-  useLocation();
   const { alertStatus } = useAlerts();
   const router = useRouter();
 

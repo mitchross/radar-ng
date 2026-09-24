@@ -5,6 +5,11 @@ name: iOS city selection and preferences survive relaunch
     clearState: true
     permissions:
       all: deny
+# Denied location must be labelled as the fallback city, never as "My Location".
+- extendedWaitUntil:
+    visible: "Location is off · showing Grand Rapids"
+    timeout: 20000
+- assertNotVisible: "MY LOCATION"
 - tapOn: "Settings"
 - tapOn: "Search city"
 - eraseText

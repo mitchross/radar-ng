@@ -11,15 +11,16 @@ describe("WeatherMap", () => {
     expect(source).not.toContain("UserLocation");
   });
 
-  it("recenters the MapLibre camera when the store location changes", () => {
+  it("recenters only on an explicit request, never on GPS drift", () => {
     const source = readFileSync(
       path.join(__dirname, "../../src/components/map/WeatherMap.tsx"),
       "utf8",
     );
 
-    expect(source).toContain("cameraRef.current?.setStop({");
     expect(source).toContain("center: centerCoord");
-    expect(source).toContain("[latitude, longitude]");
+    expect(source).toContain("[recenterNonce]");
+    // A zoom here would snap the user's chosen zoom back on every recenter.
+    expect(source).not.toMatch(/setStop\(\{\s*center: centerCoord,\s*zoom/);
   });
 
   it("keeps zoom controls accessible with minimum native targets", () => {

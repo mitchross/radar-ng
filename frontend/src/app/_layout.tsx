@@ -25,6 +25,7 @@ import {
   useWeatherClearTheme,
 } from "../theme/WeatherClearThemeProvider";
 import { useStormTilePrefetch } from "../hooks/useStormTilePrefetch";
+import { useLocationController } from "../hooks/useLocation";
 import { bindAppFocus, bindNetworkOnline } from "../lib/queryLifecycle";
 
 // Root-level error boundary: without it, a single throw anywhere in the tree
@@ -86,6 +87,8 @@ export default function RootLayout() {
 
 function ThemedApp() {
   const { resolvedAppearance, theme } = useWeatherClearTheme();
+  // The single owner of device location; screens only read it from the store.
+  useLocationController();
   // Start warming the three predicted storm regions while the user is still
   // on the home screen, before MapLibre mounts on the radar tab.
   useStormTilePrefetch();

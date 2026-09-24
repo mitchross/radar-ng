@@ -6,7 +6,7 @@ import {
   type PressEvent,
   type ViewStateChangeEvent,
 } from "@maplibre/maplibre-react-native";
-import { Children, isValidElement, useEffect, useMemo, useRef } from "react";
+import { Children, isValidElement, useEffect, useEffectEvent, useMemo, useRef } from "react";
 import { Pressable, StyleSheet, Text, View, type NativeSyntheticEvent } from "react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS } from "../../lib/constants";
@@ -28,7 +28,8 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const latitude = useWeatherStore((s) => s.latitude);
   const longitude = useWeatherStore((s) => s.longitude);
-  const initialZoom = latitude != null ? 7 : DEFAULTS.ZOOM;
+  const recenterNonce = useWeatherStore((s) => s.recenterNonce);
+  const initialZoom = 7;
   // Mirror current camera zoom so the +/- buttons can clamp without round-tripping.
   const zoomRef = useRef<number>(initialZoom);
 
@@ -48,14 +49,14 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
     cameraRef.current?.setStop({ zoom: next, duration: 220 });
   }
 
+  // Recenter only on intent (first fix, a new place, the Locate button), never
+  // on GPS drift, and keep whatever zoom the user chose.
+  const recenter = useEffectEvent(() => {
+    cameraRef.current?.setStop({ center: centerCoord, duration: 350 });
+  });
   useEffect(() => {
-    cameraRef.current?.setStop({
-      center: centerCoord,
-      zoom: initialZoom,
-      duration: 0,
-    });
-    zoomRef.current = initialZoom;
-  }, [centerCoord, initialZoom]);
+    if (recenterNonce > 0) recenter();
+  }, [recenterNonce]);
 
   if (!patchedStyle) return null;
 
