@@ -151,23 +151,25 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
 export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   const legend = LEGENDS[activeLayer] ?? LEGENDS.radar;
   const timelineMode = useWeatherStore((s) => s.timelineMode);
-  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
-  const frames = useWeatherStore((s) => s.frames);
+  // Scalars, not the frame array: the card re-renders only when the tag can
+  // change, not on every playback tick.
+  const frameSource = useWeatherStore((s) => s.frames[s.currentFrameIndex]?.source ?? null);
+  const frameIsLater = useWeatherStore(
+    (s) => (s.frames[s.currentFrameIndex]?.time ?? 0) > Math.floor(Date.now() / 1000) + 30 * 60,
+  );
 
   // For the radar layer, the source tag shifts based on which frame the
   // user is sitting on: past = OBSERVED, near-future = NOWCAST, far-future
   // = FORECAST (HRRR). Other layers are statically tagged.
   let source = LAYER_SOURCE[activeLayer] ?? "Now";
   if ((activeLayer === "radar" || activeLayer === "radar-hrrr") && timelineMode === "forecast") {
-    const frame = frames[currentFrameIndex];
-    if (frame?.source === "nowcast") source = "Soon";
-    else if (frame?.source === "radar-hrrr") source = "Later";
+    if (frameSource === "nowcast") source = "Soon";
+    else if (frameSource === "radar-hrrr") source = "Later";
     else source = "Now";
   } else if (activeLayer === "air-quality" || activeLayer === "ozone") {
     // A single AQM run spans the current hour plus 3 days out, so the tag
     // tracks whichever frame the scrubber is on.
-    const frame = frames[currentFrameIndex];
-    if (frame && frame.time > Math.floor(Date.now() / 1000) + 30 * 60) source = "Later";
+    if (frameIsLater) source = "Later";
   }
 
   return (

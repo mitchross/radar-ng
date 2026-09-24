@@ -9,11 +9,14 @@
 import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useStormCells } from "../../hooks/useStormCells";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { useIsFocused } from "expo-router/react-navigation";
 import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 export function StormCellsOverlay() {
   const extrasVisible = useWeatherStore((s) => s.extrasVisible);
-  const { data } = useStormCells(extrasVisible);
+  // The Radar tab stays mounted behind other tabs; only poll while it's on screen.
+  const focused = useIsFocused();
+  const { data } = useStormCells(extrasVisible && focused);
   const geojson = extrasVisible && data ? (data as GeoJSON.FeatureCollection) : EMPTY_FEATURE_COLLECTION;
 
   return (

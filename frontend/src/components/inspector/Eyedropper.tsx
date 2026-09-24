@@ -42,24 +42,27 @@ interface Props {
 
 export function EyedropperPin({ pinned, onClear }: Props) {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
-  const frames = useWeatherStore((s) => s.frames);
-  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const isPlaying = useWeatherStore((s) => s.isPlaying);
 
   const [reading, setReading] = useState<InspectReading | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Key on the timestamp, not the frame object: every manifest poll rebuilds the frame array.
-  const frameTimestamp = frames[currentFrameIndex]?.timestamp ?? null;
+  // The timestamp only matters with a pin and paused playback; selecting null
+  // otherwise keeps this native marker from re-rendering on every tick.
+  // (Keyed on the timestamp, not the frame object, which every manifest poll rebuilds.)
+  const hasPin = pinned != null;
+  const frameTimestamp = useWeatherStore((s) =>
+    hasPin && !s.isPlaying ? (s.frames[s.currentFrameIndex]?.timestamp ?? null) : null,
+  );
 
   useEffect(() => {
-    if (!pinned || !frameTimestamp) {
+    if (!pinned) {
       setReading(null);
       return;
     }
     // Keep the last reading on screen while frames tick by; refetch once paused.
-    if (isPlaying) {
+    if (isPlaying || !frameTimestamp) {
       setLoading(false);
       return;
     }

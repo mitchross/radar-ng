@@ -20,6 +20,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import Slider from "@react-native-community/slider";
 import Constants from "expo-constants";
 import { useQuery } from "@tanstack/react-query";
+import { useIsFocused } from "expo-router/react-navigation";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import {
   fetchServerStatus,
@@ -86,9 +87,12 @@ export default function SettingsScreen() {
   // Live stack data for the Advanced cards. The old build shipped a
   // hard-coded container list ("versions are wrong") — everything shown
   // now comes from /api/health + /api/manifest.json.
+  const focused = useIsFocused();
   const { data: serverStatus, refetch: refetchStatus } = useQuery({
     queryKey: ["server-status", serverUrl],
     queryFn: ({ signal }) => fetchServerStatus(serverUrl, signal),
+    // Only the Advanced cards show health; don't poll a tab nobody is looking at.
+    enabled: viewMode === "advanced" && focused,
     refetchInterval: 60_000,
   });
   const { data: stackManifest, refetch: refetchManifest } = useManifestQuery();

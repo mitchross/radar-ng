@@ -35,6 +35,7 @@ import {
   useWindField,
 } from "../../hooks/useWindField";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { hourKey } from "../../lib/timeKeys";
 import { useAppActive } from "../../hooks/useAppActive";
 import { useIsFocused } from "expo-router/react-navigation";
 
@@ -93,12 +94,13 @@ export function WindParticlesOverlay({
 function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
   const enabled = true;
   const { width, height } = useWindowDimensions();
-  const frames = useWeatherStore((s) => s.frames);
-  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
-
-  const frame = frames[currentFrameIndex];
-  const timestamp = frame?.timestamp ?? null;
+  // The field is hourly, so select the hour: this canvas re-renders once an
+  // hour of playback, not on every tick.
+  const timestamp = useWeatherStore((s) => {
+    const ts = s.frames[s.currentFrameIndex]?.timestamp;
+    return ts ? hourKey(ts) : null;
+  });
   const shouldFetch =
     enabled &&
     (activeLayer === "wind" ||
