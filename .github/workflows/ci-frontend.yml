@@ -21,7 +21,7 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: frontend
@@ -43,3 +43,16 @@ jobs:
 
       - name: Test
         run: bun run test -- --runInBand
+
+      - name: Expo doctor
+        run: bunx expo-doctor
+
+      - name: SDK-pinned versions
+        run: bunx expo install --check
+
+      # Both production bundles must build; nothing here needs a native toolchain.
+      - name: Export iOS bundle
+        run: bunx expo export --platform ios --output-dir dist/ios
+
+      - name: Export Android bundle
+        run: bunx expo export --platform android --output-dir dist/android
