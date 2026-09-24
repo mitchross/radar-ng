@@ -90,6 +90,13 @@ Why Temporal instead of CronJobs — the concrete list:
 
 ## The app
 
+**Self-hosted only.** Every request a client makes goes to the operator's own servers: the tile
+server, plus, in this deployment, VersaTiles at `maps.vanillax.me` for the basemap, satellite
+imagery and raster renders. The tile server fetches public data that clients need and serves it
+itself: `/api/alerts` (NWS), `/api/geocode` and `/api/reverse-geocode` (a self-hosted Photon), and
+`/basemap/imagery` (USGS orthoimagery). No API keys exist anywhere in the stack. See
+[CONTRIBUTING.md](CONTRIBUTING.md#self-hosted-only).
+
 <img src="docs/diagrams/frontend-architecture.svg" width="100%">
 
 **Hooks → zustand → MapLibre composition.**
