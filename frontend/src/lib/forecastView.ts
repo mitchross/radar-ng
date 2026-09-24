@@ -5,8 +5,10 @@
  * "normal" pressure.
  */
 import { getIconKind, type IconKind } from "./cumulusTheme";
+import { interpolateRadarNowcast } from "./radarNowcast";
+import { getNowcastVerdict } from "./weatherPresentation";
 import { displayTemperature } from "./temperature";
-import type { OpenMeteoResponse, TemperatureUnit } from "../types/weather";
+import type { OpenMeteoResponse, RadarNowcastResponse, TemperatureUnit } from "../types/weather";
 
 type Daily = OpenMeteoResponse["daily"];
 type Minutely = NonNullable<OpenMeteoResponse["minutely_15"]>;
@@ -156,5 +158,34 @@ export function nowcastHeadline(
   return {
     headline: minutes === 0 ? `${kind} now` : `${kind} starts in ${minutes} min`,
     sub: `Lasts ~${lastsMin} min · ${total.toFixed(2)}" total`,
+  };
+}
+
+/** The radar nowcast when it has usable points; the Nowcast tab uses the same rule. */
+export function usableRadarNowcast(radar: RadarNowcastResponse | undefined): RadarNowcastResponse | null {
+  return radar && (radar.status === "ok" || radar.status === "degraded") && radar.points.length > 0 ? radar : null;
+}
+
+/**
+ * The next-hour rain banner. Prefers the radar (pySTEPS) nowcast, like the
+ * Nowcast tab, so the two screens can't disagree; falls back to the model's
+ * 15-minute series only when the radar nowcast is unavailable.
+ */
+export function nextHourBanner(
+  radar: RadarNowcastResponse | undefined,
+  minutely: Minutely | undefined,
+  now = Date.now(),
+): { headline: string; sub: string } | null {
+  const usable = usableRadarNowcast(radar);
+  if (!usable) return nowcastHeadline(minutely, now);
+  const perMinute = interpolateRadarNowcast(usable.points);
+  const verdict = getNowcastVerdict(perMinute);
+  if (verdict.kind !== "raining" && verdict.kind !== "starting") return null;
+  const start = verdict.kind === "starting" ? verdict.startMinute : 0;
+  const heavy = perMinute.some((inchesPerHour) => inchesPerHour > 0.3);
+  const kind = heavy ? "Heavy rain" : "Rain";
+  return {
+    headline: start === 0 ? `${kind} now` : `${kind} starts in ${start} min`,
+    sub: `Lasts ~${Math.max(1, verdict.endMinute - start)} min \u00B7 from radar`,
   };
 }

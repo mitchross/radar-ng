@@ -10,6 +10,7 @@ import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForecast } from "../../hooks/useForecast";
 import { useAlerts } from "../../hooks/useAlerts";
+import { useRadarNowcast } from "../../hooks/useRadarNowcast";
 import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { getAlertEndTime } from "../../lib/alertLifecycle";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
@@ -26,7 +27,7 @@ import {
   dailyView,
   hourlyView,
   isNightAt,
-  nowcastHeadline,
+  nextHourBanner,
   precipitationNext24h,
   startHourIndex,
   sunTimesFor,
@@ -69,6 +70,7 @@ export default function HomeScreen() {
     refetch,
   } = useForecast();
   const { data: alertData, alertStatus } = useAlerts();
+  const { data: radarNowcast } = useRadarNowcast();
   const firstAlert = alertData?.features[0];
   const firstAlertEndAt = firstAlert ? getAlertEndTime(firstAlert) : null;
   const queryClient = useQueryClient();
@@ -156,7 +158,7 @@ export default function HomeScreen() {
   const locationLabel = location.label;
   const locationName = location.name;
 
-  const nowcastBanner = nowcastHeadline(forecast.minutely_15);
+  const nowcastBanner = nextHourBanner(radarNowcast, forecast.minutely_15, now.getTime());
 
   const hourly = hourlyView(forecast, temperatureUnit, now.getTime());
   const precipTotal = precipitationNext24h(forecast, now.getTime());

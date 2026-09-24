@@ -14,7 +14,7 @@ import { useActiveLocation } from "../hooks/useActiveLocation";
 import { runOnlineRefresh } from "../lib/queryLifecycle";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { CONDITION_GRADIENTS, getCumulusCondition } from "../lib/cumulusTheme";
-import { isNightAt } from "../lib/forecastView";
+import { isNightAt, usableRadarNowcast } from "../lib/forecastView";
 import {
   describeNowcast,
   getForecastScreenState,
@@ -130,12 +130,7 @@ export default function NowcastScreen() {
     ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
     : CONDITION_GRADIENTS[condition];
 
-  const pointNowcast =
-    radarNowcast.data &&
-    (radarNowcast.data.status === "ok" || radarNowcast.data.status === "degraded") &&
-    radarNowcast.data.points.length > 0
-      ? radarNowcast.data
-      : null;
+  const pointNowcast = usableRadarNowcast(radarNowcast.data);
   const usingRadarNowcast = pointNowcast !== null;
   // Null when the model series has gaps in the next hour: unknown is not dry.
   const minuteSeries = pointNowcast

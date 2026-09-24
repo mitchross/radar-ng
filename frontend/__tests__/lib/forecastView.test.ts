@@ -2,6 +2,7 @@ import {
   dailyView,
   hourlyView,
   isNightAt,
+  nextHourBanner,
   nowcastHeadline,
   precipitationNext24h,
   weekRange,
@@ -133,5 +134,36 @@ describe("nowcast headline", () => {
 
   it("does not treat unknown quarters as rain or as dry", () => {
     expect(nowcastHeadline(minutely([null, null, null]), today.getTime())).toBeNull();
+  });
+});
+
+describe("next-hour banner source", () => {
+  const minutelyWet = {
+    time: Array.from({ length: 4 }, (_, i) => localIso(new Date(today.getTime() + i * 15 * 60_000))),
+    precipitation: [0, 0.2, 0.2, 0],
+  };
+  const radar = (mmPerHour: number[]) => ({
+    status: "ok" as const,
+    points: mmPerHour.map((mm, i) => ({
+      timestamp: "",
+      lead_minutes: (i + 1) * 5,
+      dbz: null,
+      precipitation_mm_h: mm,
+    })),
+  });
+
+  it("prefers the radar nowcast so Home and the Nowcast tab agree", () => {
+    // The model says rain soon; radar says dry. Radar wins, as on the Nowcast tab.
+    expect(nextHourBanner(radar(Array(12).fill(0)), minutelyWet, today.getTime())).toBeNull();
+    expect(nextHourBanner(radar([0, 0, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]), undefined, today.getTime())?.headline).toMatch(
+      /^Rain starts in \d+ min$/,
+    );
+  });
+
+  it("falls back to the model series only without a usable radar nowcast", () => {
+    expect(nextHourBanner(undefined, minutelyWet, today.getTime())?.headline).toBe("Rain starts in 15 min");
+    expect(
+      nextHourBanner({ status: "unavailable", points: [] }, minutelyWet, today.getTime())?.headline,
+    ).toBe("Rain starts in 15 min");
   });
 });
