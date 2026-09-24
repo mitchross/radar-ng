@@ -1,5 +1,5 @@
-appId: com.vanillax.radar-ng
-name: iOS city selection and preferences survive relaunch
+appId: ${APP_ID}
+name: city selection and preferences survive relaunch
 ---
 - launchApp:
     clearState: true

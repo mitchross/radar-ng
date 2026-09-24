@@ -1,5 +1,5 @@
-appId: com.vanillax.radar-ng
-name: iOS fresh install and primary screens
+appId: ${APP_ID}
+name: fresh install and primary screens
 ---
 - launchApp:
     clearState: true

@@ -1,5 +1,5 @@
-appId: com.vanillax.radar-ng
-name: iOS temperature units apply to Home and survive relaunch
+appId: ${APP_ID}
+name: temperature units apply to Home and survive relaunch
 ---
 - launchApp:
     clearState: true
