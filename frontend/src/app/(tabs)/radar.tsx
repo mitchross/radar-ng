@@ -63,6 +63,7 @@ export default function RadarScreen() {
     <View style={styles.container}>
       <WeatherMap
         onLongPress={(lat, lon) => setPinned({ lat, lon })}
+        trackCameraContinuously={windParticlesOn}
         onCameraChanged={(c) => {
           camera.lon.set(c.lon);
           camera.lat.set(c.lat);

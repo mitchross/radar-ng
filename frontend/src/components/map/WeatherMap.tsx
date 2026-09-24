@@ -19,9 +19,19 @@ interface WeatherMapProps {
   children?: React.ReactNode;
   onLongPress?: (lat: number, lon: number) => void;
   onCameraChanged?: (camera: { lon: number; lat: number; zoom: number }) => void;
+  /**
+   * Report every camera frame during a gesture, not just where it settles.
+   * Only a live overlay (wind particles) needs this; each event crosses the bridge.
+   */
+  trackCameraContinuously?: boolean;
 }
 
-export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMapProps) {
+export function WeatherMap({
+  children,
+  onLongPress,
+  onCameraChanged,
+  trackCameraContinuously = false,
+}: WeatherMapProps) {
   const mapRef = useRef<MapRef>(null);
   const cameraRef = useRef<CameraRef>(null);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
@@ -100,7 +110,7 @@ export function WeatherMap({ children, onLongPress, onCameraChanged }: WeatherMa
         attribution={true}
         attributionPosition={{ bottom: 8, left: 8 }}
         onLongPress={handleLongPress}
-        onRegionIsChanging={handleRegionChange}
+        onRegionIsChanging={trackCameraContinuously ? handleRegionChange : undefined}
         onRegionDidChange={handleRegionChange}
       >
         <Camera
