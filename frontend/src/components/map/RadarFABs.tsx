@@ -14,6 +14,7 @@ import { refreshDeviceLocation } from "../../hooks/useLocation";
 import type { LayerType } from "../../types/weather";
 import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
+import { MapChromeSurface } from "../ui/MapChromeSurface";
 
 type IconKind = "umbrella" | "thermo" | "dust" | "wind" | "bolt" | "layers" | "drop" | "cloud" | "ozone";
 
@@ -193,8 +194,7 @@ function GlassBtn({
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [
-        styles.btn,
-        active ? styles.btnActive : null,
+        styles.btnTarget,
         pressed ? styles.btnPressed : null,
         disabled ? styles.btnDisabled : null,
       ]}
@@ -202,7 +202,16 @@ function GlassBtn({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected: Boolean(active), disabled }}
     >
-      {children}
+      <MapChromeSurface
+        style={styles.btn}
+        fallbackStyle={[styles.btnFill, active ? styles.btnActive : null]}
+        colorScheme="light"
+        tintColor={active ? cumulus.accent : undefined}
+        interactive
+        pointerEvents="none"
+      >
+        {children}
+      </MapChromeSurface>
     </Pressable>
   );
 }
@@ -421,13 +430,16 @@ const styles = StyleSheet.create({
     zIndex: 20,
     gap: 10,
   },
+  btnTarget: { width: 44, height: 44, minWidth: 44, minHeight: 44 },
   btn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.9)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  btnFill: {
+    backgroundColor: "rgba(255,255,255,0.9)",
     shadowColor: "#000",
     shadowOpacity: 0.12,
     shadowRadius: 6,
