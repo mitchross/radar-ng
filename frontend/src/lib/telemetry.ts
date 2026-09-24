@@ -15,21 +15,6 @@ import {
   Tracer,
 } from "@opentelemetry/api";
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
-import { resourceFromAttributes } from "@opentelemetry/resources";
-import {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
-} from "@opentelemetry/semantic-conventions";
-import {
-  WebTracerProvider,
-  BatchSpanProcessor,
-} from "@opentelemetry/sdk-trace-web";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import {
-  LoggerProvider,
-  BatchLogRecordProcessor,
-} from "@opentelemetry/sdk-logs";
-import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 
 import Constants from "expo-constants";
 import { Platform } from "react-native";
@@ -43,17 +28,31 @@ const OTLP_BASE = process.env.EXPO_PUBLIC_OTLP_BASE as string | undefined;
 const TELEMETRY_ENABLED =
   process.env.EXPO_PUBLIC_TELEMETRY_ENABLED === "1" && Boolean(OTLP_BASE);
 
-const resource = resourceFromAttributes({
-  [ATTR_SERVICE_NAME]: "radar-ng-mobile",
-  [ATTR_SERVICE_VERSION]:
-    (Constants.expoConfig?.version as string | undefined) ?? "dev",
-  "deployment.environment":
-    (process.env.EXPO_PUBLIC_ENV as string | undefined) ?? "dev",
-  "device.platform": Platform.OS,
-  "device.os_version": String(Platform.Version),
-});
-
+// The SDK and exporters (~300 KB) are required only inside this branch.
+// EXPO_PUBLIC_* values are inlined at build time, so a build without telemetry
+// constant-folds the branch away and never bundles them. With it off, the API
+// packages above hand out no-op tracers and loggers.
 if (TELEMETRY_ENABLED && OTLP_BASE) {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const { resourceFromAttributes } = require("@opentelemetry/resources") as typeof import("@opentelemetry/resources");
+  const { WebTracerProvider, BatchSpanProcessor } =
+    require("@opentelemetry/sdk-trace-web") as typeof import("@opentelemetry/sdk-trace-web");
+  const { OTLPTraceExporter } =
+    require("@opentelemetry/exporter-trace-otlp-http") as typeof import("@opentelemetry/exporter-trace-otlp-http");
+  const { LoggerProvider, BatchLogRecordProcessor } =
+    require("@opentelemetry/sdk-logs") as typeof import("@opentelemetry/sdk-logs");
+  const { OTLPLogExporter } =
+    require("@opentelemetry/exporter-logs-otlp-http") as typeof import("@opentelemetry/exporter-logs-otlp-http");
+  /* eslint-enable @typescript-eslint/no-require-imports */
+
+  const resource = resourceFromAttributes({
+    "service.name": "radar-ng-mobile",
+    "service.version": (Constants.expoConfig?.version as string | undefined) ?? "dev",
+    "deployment.environment": (process.env.EXPO_PUBLIC_ENV as string | undefined) ?? "dev",
+    "device.platform": Platform.OS,
+    "device.os_version": String(Platform.Version),
+  });
+
   const tracerProvider = new WebTracerProvider({
     resource,
     spanProcessors: [
