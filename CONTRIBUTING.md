@@ -20,6 +20,11 @@ See **[GETTING_STARTED.md](GETTING_STARTED.md)** — it covers running the stack
   bunx expo start
   ```
 
+  Jest runs two projects. `unit` covers pure logic and config plugins with ts-jest in node.
+  `render` mounts real components under the jest-expo preset (`__tests__/render`, `*.test.tsx`)
+  and asserts on roles, labels and behaviour, not on source text. Native-only modules are
+  stubbed in `__tests__/render/setup.tsx`; wrap components in `renderWithProviders`.
+
 ## Making changes
 
 1. **Branch** off `master`.

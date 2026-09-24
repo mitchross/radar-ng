@@ -13,20 +13,6 @@ describe("Weather Clear native UI contracts", () => {
     expect(appConfig).toContain("SplineSans_700Bold.ttf");
   });
 
-  it("keeps all tab controls accessible and at least 44 points tall", () => {
-    const tabs = source("app/(tabs)/_layout.tsx");
-    expect(tabs).toContain('accessibilityRole="tab"');
-    expect(tabs).toContain("accessibilityState={{ selected: active }}");
-    expect(tabs).toContain("minHeight: 44");
-    expect(tabs).toContain("adjustsFontSizeToFit");
-    expect(tabs).toContain("numberOfLines={1}");
-  });
-
-  it("hides the tab bar only on the full-screen radar route", () => {
-    const tabs = source("app/(tabs)/_layout.tsx");
-    expect(tabs).toContain('activeRoute === "radar"');
-  });
-
   it("offers Light, Dark, and System independently of radar map style", () => {
     const settings = source("app/(tabs)/settings.tsx");
     expect(settings).toContain('value: "light"');
@@ -37,17 +23,10 @@ describe("Weather Clear native UI contracts", () => {
     expect(settings).toContain('flexWrap: "wrap"');
   });
 
-  it("keeps radar close, playback, layers, and map style controls labeled", () => {
-    const radar = source("app/(tabs)/radar.tsx");
-    const fabs = source("components/map/RadarFABs.tsx");
-    const timeline = source("components/timeline/TimelineBar.tsx");
-    const mapStyle = source("components/map/MapStylePicker.tsx");
-    expect(radar).toContain('accessibilityLabel="Close radar"');
-    expect(fabs).toContain("accessibilityLabel");
-    expect(timeline).toContain("accessibilityLabel");
-    expect(mapStyle).toContain('accessibilityLabel="Close map style picker"');
-    expect(mapStyle).toContain('accessibilityRole="radio"');
-    expect(mapStyle).toContain("minHeight: 44");
+  // Tabs, radar buttons, the timeline and the style picker are covered by
+  // render tests in __tests__/render; only the radar screen itself is not.
+  it("keeps the radar close control labeled", () => {
+    expect(source("app/(tabs)/radar.tsx")).toContain('accessibilityLabel="Close radar"');
   });
 
   it("wires native foreground and connectivity state into React Query", () => {

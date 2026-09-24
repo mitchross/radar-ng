@@ -27,7 +27,7 @@ export default function TabLayout() {
   );
 }
 
-function CumulusTabBar({ state, descriptors, navigation }: ExpoTabBarProps) {
+export function CumulusTabBar({ state, descriptors, navigation }: ExpoTabBarProps) {
   const activeRoute = state.routes[state.index]?.name;
   const alertsQuery = useAlerts();
   const alertCount = alertsQuery.data?.features?.length ?? 0;
