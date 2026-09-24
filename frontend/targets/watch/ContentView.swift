@@ -25,7 +25,10 @@ struct ForecastPage: View {
                         Label("Saved forecast", systemImage: "wifi.slash")
                             .font(.caption2).foregroundStyle(.orange)
                     }
-                    if let alert = store.alerts.first {
+                    if let message = store.alertErrorMessage {
+                        Label(message, systemImage: "wifi.slash").font(.caption2).foregroundStyle(.orange)
+                    }
+                    if let alert = store.alerts.first(where: { $0.isActive(at: Date()) }) {
                         AlertBadge(alert: alert)
                     }
                     if let f = store.forecast {

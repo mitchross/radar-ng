@@ -26,9 +26,9 @@ enum WatchAPI {
         guard let layer = manifest.layers["radar"] else {
             throw WatchAPIError.radarUnavailable
         }
-        let frame = layer.latest.flatMap { latest in
-            layer.frames?.first(where: { $0.timestamp == latest })
-        } ?? layer.frames?.max(by: { $0.timestamp < $1.timestamp })
+        let frame = layer.frames?.filter {
+            WatchRadarFrame.date($0.timestamp).map { $0.timeIntervalSinceNow <= 60 } == true
+        }.max { WatchRadarFrame.date($0.timestamp)! < WatchRadarFrame.date($1.timestamp)! }
         guard let frame else {
             throw WatchAPIError.radarUnavailable
         }
@@ -39,7 +39,7 @@ enum WatchAPI {
             timestamp: frame.timestamp,
             path: frame.path,
             palette: palette,
-            maxZoom: min(max(frame.maxZoom ?? 7, 4), 7)
+            maxZoom: min(max(frame.maxZoom ?? 7, 1), 7)
         )
     }
 
@@ -78,8 +78,24 @@ struct WatchRadarFrame: Equatable {
     let palette: String
     let maxZoom: Int
 
+    static func date(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
+    func isFresh(at now: Date) -> Bool {
+        guard let date = Self.date(timestamp) else { return false }
+        return (-60...900).contains(now.timeIntervalSince(date))
+    }
+
     func tileURL(z: Int, x: Int, y: Int) -> URL? {
-        URL(string: "\(WatchAPI.serverURL)/tiles/radar/\(palette)/\(path)/\(z)/\(x)/\(y).png")
+        guard maxZoom >= 1, (1...min(maxZoom, 7)).contains(z), (0..<(1 << z)).contains(x), (0..<(1 << z)).contains(y),
+              !path.isEmpty, !palette.isEmpty,
+              path.allSatisfy({ $0.isLetter || $0.isNumber || "_:+-".contains($0) || $0 == "." }),
+              path != ".", path != "..",
+              palette.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else { return nil }
+        return URL(string: "\(WatchAPI.serverURL)/tiles/radar/\(palette)/\(path)/\(z)/\(x)/\(y).png")
     }
 }
 
@@ -152,4 +168,7 @@ struct Alert: Decodable, Identifiable {
     let severity: String
     let areaDesc: String
     let expires: String
+    func isActive(at now: Date) -> Bool {
+        WatchRadarFrame.date(expires).map { $0 > now } ?? false
+    }
 }
