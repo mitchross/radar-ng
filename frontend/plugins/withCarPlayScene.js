@@ -2,6 +2,7 @@ const {
   withInfoPlist,
   withDangerousMod,
   withXcodeProject,
+  withEntitlementsPlist,
 } = require("@expo/config-plugins");
 const fs = require("fs");
 const path = require("path");
@@ -9,7 +10,11 @@ const path = require("path");
 const CARPLAY_SRC = "targets/carplay";
 const CARPLAY_FILES = [
   "RadarCarPlaySceneDelegate.swift",
+  "RadarCarPlayDashboardSceneDelegate.swift",
   "RadarMapController.swift",
+  "RadarDrivingSession.swift",
+  "RadarManeuverFactory.swift",
+  "RadarRouteProgress.swift",
   "RadarTileOverlay.swift",
   "RadarLocationManager.swift",
   "RadarAPI.swift",
@@ -20,10 +25,8 @@ const CARPLAY_FILES = [
   "MainSceneDelegate.swift",
 ];
 
-// Device builds need Apple's CarPlay navigation capability in BOTH the app's
-// entitlements and provisioning profile. Do not inject it into ordinary phone
-// builds or claim post-archive re-signing bypasses provisioning validation.
-// See docs/carplay-watch-setup.md for supported device and simulator setup.
+// app.config.js enables the navigation entitlement with RADAR_CARPLAY=1.
+// The signing profile must contain Apple's matching approved capability.
 
 // Declare BOTH the iPhone window scene and the CarPlay template scene. On
 // iOS 13+, presence of UIApplicationSceneManifest puts the app into
@@ -36,7 +39,8 @@ function withCarPlaySceneManifest(config) {
     // the Expo template still emits it, so strip it whenever we touch Info.plist.
     delete c.modResults.UIRequiresFullScreen;
     c.modResults.UIApplicationSceneManifest = {
-      UIApplicationSupportsMultipleScenes: false,
+      UIApplicationSupportsMultipleScenes: true,
+      CPSupportsDashboardNavigationScene: true,
       UISceneConfigurations: {
         UIWindowSceneSessionRoleApplication: [
           {
@@ -49,6 +53,13 @@ function withCarPlaySceneManifest(config) {
             UISceneClassName: "CPTemplateApplicationScene",
             UISceneConfigurationName: "CarPlay",
             UISceneDelegateClassName: `${projectName}.RadarCarPlaySceneDelegate`,
+          },
+        ],
+        CPTemplateApplicationDashboardSceneSessionRoleApplication: [
+          {
+            UISceneClassName: "CPTemplateApplicationDashboardScene",
+            UISceneConfigurationName: "CarPlay Dashboard",
+            UISceneDelegateClassName: `${projectName}.RadarCarPlayDashboardSceneDelegate`,
           },
         ],
       },
@@ -80,9 +91,12 @@ function withCarPlayPbxproj(config) {
   return withXcodeProject(config, (c) => {
     const proj = c.modResults;
     const appName = c.modRequest.projectName;
-    const groupKey = proj.pbxCreateGroup("CarPlay", `${appName}/CarPlay`);
-    const mainGroup = proj.getFirstProject().firstProject.mainGroup;
-    proj.addToPbxGroup(groupKey, mainGroup);
+    let groupKey = proj.findPBXGroupKey({ name: "CarPlay" });
+    if (!groupKey) {
+      groupKey = proj.pbxCreateGroup("CarPlay", `${appName}/CarPlay`);
+      const mainGroup = proj.getFirstProject().firstProject.mainGroup;
+      proj.addToPbxGroup(groupKey, mainGroup);
+    }
     const target = proj.getFirstTarget().uuid;
     for (const f of CARPLAY_FILES) {
       proj.addSourceFile(f, { target }, groupKey);
@@ -177,6 +191,16 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
 }
 
 module.exports = (config) => {
+  config = withEntitlementsPlist(config, (c) => {
+    // Prebuild merges existing native entitlements. Remove a previous opt-in
+    // when returning to ordinary development signing.
+    if (process.env.RADAR_CARPLAY === "1") {
+      c.modResults["com.apple.developer.carplay-maps"] = true;
+    } else {
+      delete c.modResults["com.apple.developer.carplay-maps"];
+    }
+    return c;
+  });
   config = withCarPlaySceneManifest(config);
   config = withCarPlayFiles(config);
   config = withCarPlayPbxproj(config);
