@@ -1,7 +1,7 @@
 import Foundation
 
 enum WatchAPI {
-    static let serverURL = "https://radar-ng-api.vanillax.me"
+    static var serverURL: String { RadarShared.serverURL }
     private static let userAgent = "radar-ng/2.0 (watchOS)"
 
     /// Mirrors `PRECISION` in `src/lib/coordinates.ts` so the watch and the phone
@@ -49,8 +49,7 @@ enum WatchAPI {
             throw WatchAPIError.radarUnavailable
         }
 
-        let palettes = frame.palettes ?? layer.palettes ?? []
-        let palette = palettes.contains("classic") ? "classic" : (palettes.first ?? "classic")
+        let palette = RadarShared.palette(among: frame.palettes ?? layer.palettes ?? [])
         return WatchRadarFrame(
             timestamp: frame.timestamp,
             path: frame.path,

@@ -2,12 +2,14 @@ import MapKit
 
 final class RadarTileOverlay: MKTileOverlay {
     let frame: RadarAPI.Frame
+    let palette: String
     var onFailure: (() -> Void)?
     /// Optional diagnostics receive the exact tile data delivered to MapKit.
     var onTileLoaded: ((MKTileOverlayPath, Data) -> Void)?
 
     init(frame: RadarAPI.Frame) {
         self.frame = frame
+        self.palette = RadarShared.palette(among: frame.palettes ?? [])
         super.init(urlTemplate: nil)
         canReplaceMapContent = false
         tileSize = CGSize(width: 256, height: 256)
@@ -19,7 +21,7 @@ final class RadarTileOverlay: MKTileOverlay {
 
     override func url(forTilePath path: MKTileOverlayPath) -> URL {
         // Radar NG publishes XYZ tiles; the old IEM feed required inverted Y.
-        URL(string: "\(RadarAPI.serverURL)/tiles/radar/classic/\(frame.path)/\(path.z)/\(path.x)/\(path.y).png")!
+        URL(string: "\(RadarAPI.serverURL)/tiles/radar/\(palette)/\(frame.path)/\(path.z)/\(path.x)/\(path.y).png")!
     }
 
     override func loadTile(at path: MKTileOverlayPath, result: @escaping (Data?, Error?) -> Void) {

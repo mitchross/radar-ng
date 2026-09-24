@@ -6,5 +6,8 @@ module.exports = {
   bundleIdentifier: ".radar-widget",
   deploymentTarget: "26.0",
   frameworks: ["CoreLocation"],
-  entitlements: {},
+  // Reads the app's shared server, palette and location (RadarShared.swift).
+  entitlements: {
+    "com.apple.security.application-groups": ["group.com.vanillax.radar-ng"],
+  },
 };

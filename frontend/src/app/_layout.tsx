@@ -28,6 +28,7 @@ import {
 } from "../theme/WeatherClearThemeProvider";
 import { useStormTilePrefetch } from "../hooks/useStormTilePrefetch";
 import { useLocationController } from "../hooks/useLocation";
+import { useSharedStatePublisher } from "../hooks/useSharedStatePublisher";
 import { bindAppFocus, bindNetworkOnline } from "../lib/queryLifecycle";
 import { PERSISTED_QUERY_FAMILIES, PERSIST_MAX_AGE_MS, shouldPersistQuery } from "../lib/queryPersistence";
 import { queryCacheStorage } from "../lib/storage";
@@ -113,6 +114,7 @@ function ThemedApp() {
   const { resolvedAppearance, theme } = useWeatherClearTheme();
   // The single owner of device location; screens only read it from the store.
   useLocationController();
+  useSharedStatePublisher();
   // Start warming the three predicted storm regions while the user is still
   // on the home screen, before MapLibre mounts on the radar tab.
   useStormTilePrefetch();

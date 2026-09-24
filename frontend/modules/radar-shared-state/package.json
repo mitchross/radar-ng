@@ -1,0 +1,8 @@
+{
+  "name": "radar-shared-state",
+  "version": "1.0.0",
+  "description": "Shares the app's server, palette and location with the widget, CarPlay (App Group) and Watch (WatchConnectivity).",
+  "main": "index.ts",
+  "license": "MIT",
+  "private": true
+}
