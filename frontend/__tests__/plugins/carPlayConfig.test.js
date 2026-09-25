@@ -62,8 +62,8 @@ test("returning from a CarPlay prebuild removes only its restricted entitlement"
   expect(native.modResults).toEqual({ "aps-environment": "development" });
 });
 
-// The window scene belongs to expo-build-properties' ios.enableSceneSupport,
-// which points UIWindowSceneSessionRoleApplication at EXExpoAppSceneDelegate.
+// The window scene belongs to Expo's prebuild, which points
+// UIWindowSceneSessionRoleApplication at its generated SceneDelegate.
 const windowSceneManifest = () => ({
   UIApplicationSupportsMultipleScenes: false,
   UISceneConfigurations: {
