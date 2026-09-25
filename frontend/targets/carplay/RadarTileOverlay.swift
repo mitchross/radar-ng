@@ -2,6 +2,8 @@ import MapKit
 
 final class RadarTileOverlay: MKTileOverlay {
     let frame: RadarAPI.Frame
+    /// Identifies CarPlay traffic in server logs; the scene shares the app's process.
+    static let userAgent = "RadarNG-CarPlay/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")"
     let palette: String
     var onFailure: (() -> Void)?
     /// Optional diagnostics receive the exact tile data delivered to MapKit.
@@ -29,15 +31,16 @@ final class RadarTileOverlay: MKTileOverlay {
         let factor = 1 << (path.z - level)
         let source = MKTileOverlayPath(x: path.x / factor, y: path.y / factor,
                                        z: level, contentScaleFactor: path.contentScaleFactor)
-        load(source, requested: path, result: result)
+        load(source, requested: path, onlyNotFound: true, result: result)
     }
 
-    private func load(_ path: MKTileOverlayPath, requested: MKTileOverlayPath,
+    private func load(_ path: MKTileOverlayPath, requested: MKTileOverlayPath, onlyNotFound: Bool,
                       result: @escaping (Data?, Error?) -> Void) {
         var request = URLRequest(url: url(forTilePath: path))
         request.timeoutInterval = 8
-        request.setValue("radar-ng/2.0 (CarPlay)", forHTTPHeaderField: "User-Agent")
+        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            let notFound = error == nil && (response as? HTTPURLResponse)?.statusCode == 404
             if error == nil, (response as? HTTPURLResponse)?.statusCode == 200,
                let data, let image = UIImage(data: data)?.cgImage {
                 if path.z == requested.z {
@@ -60,11 +63,16 @@ final class RadarTileOverlay: MKTileOverlay {
                 }
             }
             // Sparse high-zoom coverage is backed by the same observation's
-            // lower-resolution tile. Never silently turn a failed tile clear.
+            // lower-resolution tile. The tiler writes no file for a tile without
+            // precipitation, so 404 at every level means clear; any other
+            // failure still reports rather than silently turning clear.
+            let stillOnlyNotFound = onlyNotFound && notFound
             if path.z > 4, let self {
                 let parent = MKTileOverlayPath(x: path.x / 2, y: path.y / 2,
                                                z: path.z - 1, contentScaleFactor: path.contentScaleFactor)
-                self.load(parent, requested: requested, result: result)
+                self.load(parent, requested: requested, onlyNotFound: stillOnlyNotFound, result: result)
+            } else if stillOnlyNotFound {
+                result(nil, nil)  // clear: nothing to draw
             } else {
                 DispatchQueue.main.async { self?.onFailure?() }
                 result(nil, error ?? URLError(.badServerResponse))

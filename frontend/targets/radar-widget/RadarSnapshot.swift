@@ -58,12 +58,20 @@ enum RadarSnapshot {
     }
 
     private static func fetch(_ url: URL) async throws -> Data {
+        guard let data = try await fetchTile(url) else { throw SnapshotError.unavailable }
+        return data
+    }
+
+    /// The tiler writes no file for a tile without precipitation, so a 404 for a
+    /// frame the manifest advertises means "clear here" (nil). Other statuses
+    /// and network errors still fail, so a broken server never reads as dry.
+    private static func fetchTile(_ url: URL) async throws -> Data? {
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw SnapshotError.unavailable
-        }
+        guard let http = response as? HTTPURLResponse else { throw SnapshotError.unavailable }
+        if http.statusCode == 404 { return nil }
+        guard http.statusCode == 200 else { throw SnapshotError.unavailable }
         return data
     }
 
@@ -89,18 +97,19 @@ enum RadarSnapshot {
         }()
 
         // At this viewport size at most four tiles intersect the image.
-        var requests: [(Int, Int, Task<Data, Error>)] = []
+        var requests: [(Int, Int, Task<Data?, Error>)] = []
         for x in Int(floor(origin.x / 256))...Int(floor((origin.x + size.width) / 256)) {
             for y in Int(floor(origin.y / 256))...Int(floor((origin.y + size.height) / 256)) {
                 guard (0..<count).contains(x), (0..<count).contains(y),
                       let url = URL(string: "\(server)/tiles/radar/\(palette)/\(frame.path)/\(zoom)/\(x)/\(y).png") else { throw SnapshotError.unavailable }
-                requests.append((x, y, Task { try await fetch(url) }))
+                requests.append((x, y, Task { try await fetchTile(url) }))
             }
         }
         defer { for (_, _, request) in requests { request.cancel() } }
         var tiles: [(UIImage, CGRect)] = []
         for (x, y, request) in requests {
-            guard let image = UIImage(data: try await request.value) else { throw SnapshotError.unavailable }
+            guard let data = try await request.value else { continue }  // no precipitation in this tile
+            guard let image = UIImage(data: data) else { throw SnapshotError.unavailable }
             tiles.append((image, CGRect(x: CGFloat(x) * 256 - origin.x, y: CGFloat(y) * 256 - origin.y,
                                         width: 256, height: 256)))
         }
