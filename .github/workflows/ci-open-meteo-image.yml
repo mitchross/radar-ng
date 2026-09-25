@@ -58,9 +58,9 @@ jobs:
           test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}' "$IMAGE")" = \
             'MIT AND AGPL-3.0-only'
           test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.base.name" }}' "$IMAGE")" = \
-            'ghcr.io/open-meteo/open-meteo:1.5.6'
+            'ghcr.io/open-meteo/open-meteo:1.6.0'
           test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.base.digest" }}' "$IMAGE")" = \
-            'sha256:4e30cdc550702e7ebe3a27d61a6640e94a5d70798e58392361dab06e6210df35'
+            'sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da'
 
       - name: Verify sync CLI
         run: |

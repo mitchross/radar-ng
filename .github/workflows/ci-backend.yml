@@ -54,6 +54,7 @@ jobs:
           backend/ingest_mrms
           backend/ingest_tropical
           backend/nowcast
+          backend/open_meteo_sync
           backend/shared
           backend/tile_cleanup
           temporal'

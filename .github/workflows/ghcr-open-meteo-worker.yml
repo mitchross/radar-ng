@@ -90,7 +90,7 @@ jobs:
           labels: |
             ${{ steps.meta.outputs.labels }}
             org.opencontainers.image.licenses=MIT AND AGPL-3.0-only
-            org.opencontainers.image.base.name=ghcr.io/open-meteo/open-meteo:1.5.6
-            org.opencontainers.image.base.digest=sha256:4e30cdc550702e7ebe3a27d61a6640e94a5d70798e58392361dab06e6210df35
+            org.opencontainers.image.base.name=ghcr.io/open-meteo/open-meteo:1.6.0
+            org.opencontainers.image.base.digest=sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da
           cache-from: type=gha
           cache-to: type=gha,mode=max

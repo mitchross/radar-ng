@@ -191,7 +191,7 @@ services:
     # shipped broken builds (e.g. 1.5.3 missing libparquet-glib -> the serve
     # binary crash-loops with exit 127). Keep this in lockstep with the tag in
     # temporal/open_meteo_worker.Dockerfile.
-    image: ghcr.io/open-meteo/open-meteo:1.5.2
+    image: ghcr.io/open-meteo/open-meteo:1.6.0@sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da
     command: ["serve", "--bind", "0.0.0.0:8080"]
     volumes:
       - openmeteo-data:/app/data
