@@ -50,6 +50,10 @@ EXTENDED_FORECAST_HOURS = int(os.environ.get("EXTENDED_FORECAST_HOURS", "48"))
 EXTENDED_RUNS = {0, 6, 12, 18}
 # Keep polling a partially published run this long before a newer run may supersede it.
 INCOMPLETE_RUN_MAX_AGE = timedelta(hours=3)
+# Hourly runs reach 18 h; only 00/06/12/18z reach 48 h. A newer hourly run
+# keeps the latest extended run's hours beyond its own, while that run is
+# at most this old, so the forecast doesn't collapse to 18 h five hours in six.
+EXTENDED_TAIL_MAX_AGE = timedelta(hours=12)
 # HRRR is a 3 km model. z6 is its honest display ceiling; higher zooms were
 # interpolated pixels and dominated the forecast fanout.
 ZOOM_LEVELS = [4, 5, 6]
@@ -944,7 +948,7 @@ def _publish_hrrr_run_sync(
         )
         if not palettes:
             continue
-        frames = [
+        own_frames = [
             {
                 "timestamp": result.valid_timestamp,
                 "path": f"runs/{run_id}/{result.valid_timestamp}",
@@ -958,6 +962,11 @@ def _publish_hrrr_run_sync(
             }
             for result in ordered
         ]
+        frames = own_frames + _extended_tail(
+            read_manifest_file(state_dir or STATE_DIR).get("layers", {}).get(layer, {}),
+            run_id,
+            own_frames[-1]["timestamp"],
+        )
         replace_layer_manifest(
             layer,
             [frame["timestamp"] for frame in frames],
@@ -975,6 +984,43 @@ def _publish_hrrr_run_sync(
         )
         published.append(layer)
     return published
+
+
+def _extended_tail(
+    layer: dict, run_id: str, last_valid_timestamp: str
+) -> list[dict]:
+    """Published frames of an older extended run that are valid after this run's last hour."""
+    run_start = _run_init_time(run_id)
+    last_valid = datetime.fromisoformat(last_valid_timestamp)
+    tail: list[dict] = []
+    for frame in layer.get("frames", []):
+        frame_run = frame.get("run_id") if isinstance(frame, dict) else None
+        if not frame_run or frame_run == run_id:
+            continue
+        try:
+            frame_run_start = _run_init_time(frame_run)
+            valid = datetime.fromisoformat(frame["timestamp"])
+        except (KeyError, ValueError):
+            continue
+        if (
+            frame_run_start.hour in EXTENDED_RUNS
+            and frame_run_start < run_start
+            and run_start - frame_run_start <= EXTENDED_TAIL_MAX_AGE
+            and valid > last_valid
+        ):
+            tail.append(frame)
+    return tail
+
+
+def _referenced_runs(layer: dict) -> set[str]:
+    """Run ids whose tiles the layer's published frames point at."""
+    runs = {str(layer["run_id"])} if layer.get("run_id") else set()
+    runs.update(
+        str(frame["run_id"])
+        for frame in layer.get("frames", [])
+        if isinstance(frame, dict) and frame.get("run_id")
+    )
+    return runs
 
 
 @activity.defn(name="hrrr_publish_run")
@@ -1003,7 +1049,8 @@ async def hrrr_cleanup(retention_hours: int) -> HrrrCleanupResult:
         cutoff = time.time() - (retention_hours * 3600)
         removed = 0
         for layer in HRRR_TILE_LAYERS:
-            current_run = manifest.get("layers", {}).get(layer, {}).get("run_id")
+            # A carried extended tail keeps an older run published; never delete it.
+            live_runs = _referenced_runs(manifest.get("layers", {}).get(layer, {}))
             layer_dir = tile_base / layer
             if not layer_dir.exists():
                 continue
@@ -1019,7 +1066,7 @@ async def hrrr_cleanup(retention_hours: int) -> HrrrCleanupResult:
                     for run_dir in runs_root.iterdir():
                         if not run_dir.is_dir():
                             continue
-                        if run_dir.name == current_run:
+                        if run_dir.name in live_runs:
                             continue
                         try:
                             run_dt = datetime.strptime(
