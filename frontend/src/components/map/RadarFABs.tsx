@@ -92,13 +92,14 @@ export function RadarFABs({
           active={layerOpen}
           onPress={() => setLayerOpen((v) => !v)}
           accessibilityLabel="Choose radar layer"
-          symbol={{ ios: "square.3.layers.3d", android: "layers" }}
+          // Shows the active layer, so the rail says what's on the map.
+          symbol={LAYER_SYMBOLS[activeOpt.icon]}
         />
         <GlassBtn
           active={extrasVisible}
           onPress={toggleExtras}
           accessibilityLabel="Toggle storm and lightning overlays"
-          symbol={{ ios: "bolt", android: "bolt" }}
+          symbol={{ ios: extrasVisible ? "cloud.bolt.fill" : "cloud.bolt", android: "thunderstorm" }}
         />
         <GlassBtn
           active={inspectorActive}
@@ -106,7 +107,7 @@ export function RadarFABs({
           accessibilityLabel={
             inspectorActive ? "Clear pinned inspection" : "Inspect a point on the map"
           }
-          symbol={{ ios: "scope", android: "center_focus_strong" }}
+          symbol={{ ios: inspectorActive ? "mappin.slash" : "hand.point.up.left", android: inspectorActive ? "location_off" : "touch_app" }}
         />
         <GlassBtn
           onPress={() => {
@@ -114,12 +115,12 @@ export function RadarFABs({
             refreshDeviceLocation();
           }}
           accessibilityLabel="Center map on your location"
-          symbol={{ ios: "location", android: "near_me" }}
+          symbol={{ ios: "location.fill", android: "near_me" }}
         />
         <GlassBtn
           onPress={onOpenStylePicker}
           accessibilityLabel="Choose map style"
-          symbol={{ ios: "map", android: "map" }}
+          symbol={{ ios: "map.fill", android: "map" }}
         />
         <GlassBtn
           onPress={onRefresh}
@@ -160,7 +161,7 @@ export function RadarFABs({
                     {isActive ? <SymbolView name={{ ios: "checkmark", android: "check" }} size={14} tintColor={ICON_COLOR} weight="bold" /> : null}
                   </View>
                   <View style={styles.iconCol}>
-                    <SymbolView name={LAYER_SYMBOLS[opt.icon]} size={20} tintColor={ICON_COLOR} />
+                    <SymbolView name={LAYER_SYMBOLS[opt.icon]} size={20} tintColor={ICON_COLOR} type="hierarchical" />
                   </View>
                   <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.panelRowTitle, isActive && styles.panelRowTitleActive]}>
                     {opt.name}
@@ -223,15 +224,15 @@ type SymbolName = SymbolViewProps["name"];
 const ICON_COLOR = "#1a2030";
 
 const LAYER_SYMBOLS: Record<IconKind, SymbolName> = {
-  umbrella: { ios: "umbrella", android: "umbrella" },
+  umbrella: { ios: "cloud.rain.fill", android: "rainy" },
   thermo: { ios: "thermometer.medium", android: "thermostat" },
   dust: { ios: "aqi.medium", android: "masks" },
   wind: { ios: "wind", android: "air" },
-  bolt: { ios: "bolt", android: "bolt" },
+  bolt: { ios: "cloud.bolt.fill", android: "thunderstorm" },
   layers: { ios: "square.3.layers.3d", android: "layers" },
-  drop: { ios: "drop", android: "water_drop" },
-  cloud: { ios: "cloud", android: "cloud" },
-  ozone: { ios: "circle.hexagongrid", android: "hexagon" },
+  drop: { ios: "drop.fill", android: "water_drop" },
+  cloud: { ios: "cloud.fill", android: "cloud" },
+  ozone: { ios: "sun.haze.fill", android: "hexagon" },
 };
 
 /** Spins while a refresh is in flight so the tap reads as "doing something". */
@@ -252,7 +253,7 @@ function SpinningSymbol({ name, color, spinning }: { name: SymbolName; color: st
   const rotate = rotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
   return (
     <Animated.View style={{ transform: [{ rotate }] }}>
-      <SymbolView name={name} size={20} tintColor={color} weight="semibold" />
+      <SymbolView name={name} size={19} tintColor={color} weight="semibold" type="hierarchical" />
     </Animated.View>
   );
 }

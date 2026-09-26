@@ -8,6 +8,7 @@ import {
 } from "@maplibre/maplibre-react-native";
 import { Children, isValidElement, useEffect, useEffectEvent, useMemo, useRef } from "react";
 import { Pressable, StyleSheet, Text, View, type NativeSyntheticEvent } from "react-native";
+import { useIsFocused } from "expo-router";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { useBasemapStyle } from "../../hooks/useBasemapStyle";
@@ -65,13 +66,20 @@ export function WeatherMap({
   }
 
   // Recenter only on intent (first fix, a new place, the Locate button), never
-  // on GPS drift, and keep whatever zoom the user chose.
+  // on GPS drift, and keep whatever zoom the user chose. Native tabs keep this
+  // map mounted while hidden, and MapLibre drops camera moves on a hidden map,
+  // so a request made elsewhere (choosing a city in Settings) waits until the
+  // map is on screen.
+  const focused = useIsFocused();
+  const appliedRecenter = useRef(0);
   const recenter = useEffectEvent(() => {
     cameraRef.current?.setStop({ center: centerCoord, duration: 350 });
   });
   useEffect(() => {
-    if (recenterNonce > 0) recenter();
-  }, [recenterNonce]);
+    if (!focused || recenterNonce === appliedRecenter.current) return;
+    appliedRecenter.current = recenterNonce;
+    recenter();
+  }, [recenterNonce, focused]);
 
   // Frame a requested area (e.g. "Open in Radar" from an alert) once, clearing
   // top chrome and the timeline card, then drop the request.

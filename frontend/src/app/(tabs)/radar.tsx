@@ -13,6 +13,7 @@ import { View, StyleSheet, Pressable, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useIsFocused, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { SymbolView } from "expo-symbols";
 import { WeatherMap } from "../../components/map/WeatherMap";
 import { RadarOverlay } from "../../components/map/RadarOverlay";
 import { WeatherLayerOverlay } from "../../components/map/WeatherLayerOverlay";
@@ -31,7 +32,7 @@ import { LayerLocationMarker } from "../../components/map/LayerLocationMarker";
 import { TimelineBar } from "../../components/timeline/TimelineBar";
 import { RadarFABs } from "../../components/map/RadarFABs";
 import { MapStylePicker } from "../../components/map/MapStylePicker";
-import { EyedropperPin, type PinnedPoint } from "../../components/inspector/Eyedropper";
+import { EyedropperPin, InspectorPanel, useInspectReading, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { useAlerts } from "../../hooks/useAlerts";
@@ -45,10 +46,12 @@ export default function RadarScreen() {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
+  const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
   const focused = useIsFocused();
   const chrome = useMapChromeInsets();
 
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
+  const inspect = useInspectReading(pinned);
   const [selectedTropical, setSelectedTropical] = useState<TropicalStormDetails | null>(null);
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
   const [inspectHint, setInspectHint] = useState(false);
@@ -69,7 +72,11 @@ export default function RadarScreen() {
       {/* Status text follows the basemap, not the app theme; only while this tab shows. */}
       {focused ? <StatusBar style={mapStyle === "light" ? "dark" : "light"} /> : null}
       <WeatherMap
-        onLongPress={(lat, lon) => setPinned({ lat, lon })}
+        onLongPress={(lat, lon) => {
+          // Readings load only while paused, so pinning a point stops the loop.
+          setIsPlaying(false);
+          setPinned({ lat, lon });
+        }}
         trackCameraContinuously={windParticlesOn}
         onCameraChanged={(c) => {
           camera.lon.set(c.lon);
@@ -93,7 +100,7 @@ export default function RadarScreen() {
         <StormCellsOverlay />
         <LightningOverlay />
         <LayerLocationMarker />
-        <EyedropperPin pinned={pinned} onClear={() => setPinned(null)} />
+        <EyedropperPin pinned={pinned} readout={inspect.readout} />
       </WeatherMap>
 
       {/* Top safe area — close button only. Alerts live on the Alerts tab. */}
@@ -105,8 +112,7 @@ export default function RadarScreen() {
           accessibilityRole="button"
           accessibilityLabel="Close radar"
         >
-          <View style={[styles.closeLine, styles.closeLineA]} />
-          <View style={[styles.closeLine, styles.closeLineB]} />
+          <SymbolView name={{ ios: "xmark", android: "close" }} size={15} tintColor="#FFFFFF" weight="bold" />
         </Pressable>
         {alertStatus.kind !== "current" ? (
           <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE}
@@ -125,6 +131,9 @@ export default function RadarScreen() {
 
       {/* Vertical legend card (top-left) */}
       <LayerLegendCard activeLayer={activeLayer} />
+
+      {/* Readout for a long-pressed point: above the map chrome, clear of legend and buttons. */}
+      <InspectorPanel pinned={pinned} inspect={inspect} onClear={() => setPinned(null)} />
 
       {/* Right-side controls — crosshair button clears a pinned inspector if any. */}
       <RadarFABs
@@ -180,15 +189,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  closeLine: {
-    position: "absolute",
-    width: 16,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: "#FFFFFF",
-  },
-  closeLineA: { transform: [{ rotate: "45deg" }] },
-  closeLineB: { transform: [{ rotate: "-45deg" }] },
   hint: {
     position: "absolute",
     top: 112,
