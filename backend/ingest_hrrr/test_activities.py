@@ -578,3 +578,53 @@ def test_resume_incomplete_run_prefers_young_partial_run(monkeypatch):
     assert activities._resume_incomplete_run({"layers": {}}, now) is None
     garbage = {"layers": {"radar-hrrr": {"run_id": "not-a-run", "complete": False}}}
     assert activities._resume_incomplete_run(garbage, now) is None
+
+
+def test_hourly_run_keeps_the_extended_runs_later_hours(monkeypatch, tmp_path):
+    activities = import_activities_without_pygrib(monkeypatch)
+    result = activities.ForecastHourResult
+    palettes = {"classic": {"reflectivity": {}}}
+
+    def hours(run_id, count):
+        from datetime import datetime, timedelta, timezone
+
+        start = datetime.strptime(run_id, "%Y%m%d_%H").replace(tzinfo=timezone.utc)
+        return [
+            result(fhr, ["radar-hrrr"], valid_timestamp=(start + timedelta(hours=fhr)).isoformat())
+            for fhr in range(1, count + 1)
+        ]
+
+    # 12z extended run reaches +48 h (valid through 2026-07-18T12).
+    activities._publish_hrrr_run_sync(
+        "20260716_12", hours("20260716_12", 48), palettes, state_dir=tmp_path, horizon=48
+    )
+    # 13z hourly run reaches +18 h; the 12z hours beyond 2026-07-17T07 stay.
+    activities._publish_hrrr_run_sync(
+        "20260716_13", hours("20260716_13", 18), palettes, state_dir=tmp_path, horizon=18
+    )
+    layer = json.loads((tmp_path / "manifest.json").read_text())["layers"]["radar-hrrr"]
+    runs = [frame["run_id"] for frame in layer["frames"]]
+    assert runs[:18] == ["20260716_13"] * 18
+    assert runs[18:] == ["20260716_12"] * 29
+    assert layer["frames"][-1]["timestamp"] == "2026-07-18T12:00:00+00:00"
+    assert layer["run_id"] == "20260716_13"
+    assert activities._referenced_runs(layer) == {"20260716_12", "20260716_13"}
+
+    # An hourly run more than 12 h after the extended run drops the stale tail.
+    activities._publish_hrrr_run_sync(
+        "20260717_01", hours("20260717_01", 18), palettes, state_dir=tmp_path, horizon=18
+    )
+    layer = json.loads((tmp_path / "manifest.json").read_text())["layers"]["radar-hrrr"]
+    assert {frame["run_id"] for frame in layer["frames"]} == {"20260717_01"}
+
+
+def test_hourly_run_tail_ignores_non_extended_runs(monkeypatch):
+    activities = import_activities_without_pygrib(monkeypatch)
+    layer = {
+        "frames": [
+            {"timestamp": "2026-07-17T10:00:00+00:00", "run_id": "20260716_13"},
+            {"timestamp": "2026-07-17T10:00:00+00:00", "run_id": "20260716_12"},
+        ]
+    }
+    tail = activities._extended_tail(layer, "20260716_14", "2026-07-17T08:00:00+00:00")
+    assert [frame["run_id"] for frame in tail] == ["20260716_12"]
