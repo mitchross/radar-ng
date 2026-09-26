@@ -1,0 +1,85 @@
+# In-cluster load test for the radar-ng tile-server. Each pod is its own client
+# IP, so each stays under the per-IP API rate limit (20 rps, burst 60);
+# total load = parallelism x VUS. Apply, read the per-pod summaries from the
+# logs, then delete the namespace:
+#
+#   kubectl create namespace radar-ng-loadtest
+#   kubectl -n radar-ng-loadtest create configmap k6-script --from-file=load/k6-radar.js
+#   kubectl -n radar-ng-loadtest apply -f load/k8s/k6-job.yaml
+#   kubectl -n radar-ng-loadtest logs -l job-name=k6-radar --tail=1   # or Loki: {k8s_namespace_name="radar-ng-loadtest"} |= "metrics"
+#   kubectl delete namespace radar-ng-loadtest
+#
+# Stress (find the knee): set completions/parallelism/maxFailedIndexes to 60,
+# VUS to 20 and add env PROFILE=stress (four 3-minute steps to 1,200 users).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-radar
+spec:
+  completionMode: Indexed
+  completions: 10
+  parallelism: 10
+  # One lost pod must not fail the other nine (the first run lost two to the
+  # descheduler after 3 min and backoffLimit 0 then killed the whole Job).
+  backoffLimitPerIndex: 0
+  maxFailedIndexes: 10
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: k6-radar
+      annotations:
+        # The descheduler's RemoveDuplicates evicts same-owner pods sharing a node.
+        descheduler.alpha.kubernetes.io/prevent-eviction: "true"
+    spec:
+      restartPolicy: Never
+      # Keep load generators off the tile-server's node so they don't steal its CPU.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: tile-server
+              namespaces: [radar-ng]
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 12345
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: k6
+          image: grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34
+          args: ["run", "--quiet", "/scripts/k6-radar.js"]
+          env:
+            - name: BASE_URL
+              value: http://tile-server.radar-ng.svc.cluster.local:8080
+            - name: VUS
+              value: "10"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: script, mountPath: /scripts }
+      volumes:
+        - name: script
+          configMap:
+            name: k6-script
+---
+# The descheduler evicts through the eviction API, which honours PDBs.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: k6-radar
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: k6-radar
