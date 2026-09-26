@@ -20,11 +20,18 @@ jest.mock("@maplibre/maplibre-react-native", () => {
   };
 });
 
+const mockFocus = { current: true };
+jest.mock("expo-router", () => ({
+  ...jest.requireActual("expo-router"),
+  useIsFocused: () => mockFocus.current,
+}));
+
 jest.mock("../../src/hooks/useBasemapStyle", () => ({
   useBasemapStyle: () => ({ style: { version: 8, sources: {}, layers: [] }, labelFont: ["Noto Sans Regular"] }),
 }));
 
 beforeEach(() => {
+  mockFocus.current = true;
   mockCamera.setStop.mockClear();
   mockCamera.fitBounds.mockClear();
   useWeatherStore.setState({ latitude: 42.96, longitude: -85.67, recenterNonce: 0, focusBounds: null });
@@ -62,4 +69,24 @@ test("an alert's area is framed once, then the request is dropped", async () => 
   expect(mockCamera.fitBounds).toHaveBeenCalledTimes(1);
   expect(mockCamera.fitBounds.mock.calls[0][0]).toEqual(bounds);
   expect(useWeatherStore.getState().focusBounds).toBeNull();
+});
+
+test("a recenter requested while the map is hidden is applied when it comes on screen", async () => {
+  // Native tabs keep the radar map mounted while another tab is showing.
+  mockFocus.current = false;
+  const { rerender } = await renderWithProviders(<WeatherMap />);
+  await act(async () => {
+    useWeatherStore.setState({ latitude: 42.36, longitude: -71.06 });
+    useWeatherStore.getState().requestRecenter();
+  });
+  expect(mockCamera.setStop).not.toHaveBeenCalled();
+
+  mockFocus.current = true;
+  await rerender(<WeatherMap />);
+  expect(mockCamera.setStop).toHaveBeenCalledTimes(1);
+  expect(mockCamera.setStop.mock.calls[0][0].center).toEqual([-71.06, 42.36]);
+
+  // Focusing again without a new request doesn't move the camera again.
+  await rerender(<WeatherMap />);
+  expect(mockCamera.setStop).toHaveBeenCalledTimes(1);
 });

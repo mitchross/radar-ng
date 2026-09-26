@@ -72,9 +72,13 @@ describe("map overlays keep a constant native child count", () => {
   });
 
   it("the eyedropper pin hides instead of unmounting", () => {
+    // Only the marker is a <Map> child; the readout panel lives outside the
+    // map and may unmount freely.
     const source = read("components/inspector/Eyedropper.tsx");
-    expect(source).not.toMatch(/if \(!pinned\) return null/);
-    expect(source).toContain("hidden ? styles.hidden : null");
+    const pin = source.slice(source.indexOf("export function EyedropperPin"), source.indexOf("export function InspectorPanel"));
+    expect(pin).toContain("<Marker");
+    expect(pin).not.toMatch(/return null/);
+    expect(pin).toContain("hidden ? styles.hidden : null");
   });
 
   it("the radar screen mounts the data overlays unconditionally", () => {

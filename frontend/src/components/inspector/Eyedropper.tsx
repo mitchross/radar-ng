@@ -36,13 +36,15 @@ export interface PinnedPoint {
   lon: number;
 }
 
-interface Props {
-  pinned: PinnedPoint | null;
-  onClear: () => void;
+export interface InspectResult {
+  /** The value at the pinned point, "…" while loading, "—" when unknown. */
+  readout: string;
+  sourceLabel: string;
+  layerLabel: string;
 }
 
-export function EyedropperPin({ pinned, onClear }: Props) {
-  const chrome = useMapChromeInsets();
+/** The active layer's value at `pinned`, refetched when playback pauses on a new frame. */
+export function useInspectReading(pinned: PinnedPoint | null): InspectResult {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const isPlaying = useWeatherStore((s) => s.isPlaying);
@@ -53,7 +55,7 @@ export function EyedropperPin({ pinned, onClear }: Props) {
   const [pendingRequest, setPendingRequest] = useState<string | null>(null);
 
   // The timestamp only matters with a pin and paused playback; selecting null
-  // otherwise keeps this native marker from re-rendering on every tick.
+  // otherwise keeps the marker from re-rendering on every tick.
   // (Keyed on the timestamp, not the frame object, which every manifest poll rebuilds.)
   const hasPin = pinned != null;
   const frameTimestamp = useWeatherStore((s) =>
@@ -94,7 +96,15 @@ export function EyedropperPin({ pinned, onClear }: Props) {
 
   const reading = result && result.pin === pinned ? result.reading : null;
   const loading = requestKey !== null && pendingRequest === requestKey;
+  return {
+    readout: loading ? "…" : reading ? formatReading(activeLayer, reading) : "\u2014",
+    sourceLabel: reading?.source === "grid" ? "Grid" : "N/A",
+    layerLabel: LAYER_LABEL[activeLayer],
+  };
+}
 
+/** The pin on the map. A native child of <Map>, so it hides instead of unmounting. */
+export function EyedropperPin({ pinned, readout }: { pinned: PinnedPoint | null; readout: string }) {
   // Always mounted: the Marker is a native child of <Map>, so it hides (opacity 0,
   // parked at the last pin) instead of unmounting to keep the child count constant.
   const [lastPin, setLastPin] = useState<PinnedPoint>({ lat: DEFAULTS.LATITUDE, lon: DEFAULTS.LONGITUDE });
@@ -102,49 +112,62 @@ export function EyedropperPin({ pinned, onClear }: Props) {
   const shown = pinned ?? lastPin;
   const hidden = pinned == null;
 
-  const readout = loading ? "…" : reading ? formatReading(activeLayer, reading) : "\u2014";
-  const sourceLabel = reading?.source === "grid" ? "Grid" : "N/A";
-
   return (
-    <>
-      <Marker lngLat={[shown.lon, shown.lat]} anchor="bottom">
-        <View style={[styles.markerWrap, hidden ? styles.hidden : null]} pointerEvents="none">
-          <View style={styles.marker}>
-            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.markerText}>{readout}</Text>
-          </View>
-          <View style={styles.tail} />
-          <View style={styles.crosshairDot} />
+    <Marker lngLat={[shown.lon, shown.lat]} anchor="bottom">
+      <View style={[styles.markerWrap, hidden ? styles.hidden : null]} pointerEvents="none">
+        <View style={styles.marker}>
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.markerText}>{readout}</Text>
         </View>
-      </Marker>
-
-      <View
-        style={[styles.panel, { top: chrome.top, left: chrome.left, right: chrome.right }, hidden ? styles.hidden : null]}
-        pointerEvents={hidden ? "none" : "box-none"}
-        accessibilityElementsHidden={hidden}
-        importantForAccessibility={hidden ? "no-hide-descendants" : "auto"}
-      >
-        <View style={styles.panelHeader}>
-          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelKicker}>{LAYER_LABEL[activeLayer]}</Text>
-          <Pressable
-            onPress={onClear}
-            style={styles.closeBtn}
-            accessibilityRole="button"
-            accessibilityLabel="Clear inspected point"
-          >
-            <View style={styles.closeCircle}>
-              <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.closeX}>✕</Text>
-            </View>
-          </Pressable>
-        </View>
-        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelValue}>{readout}</Text>
-        <View style={styles.panelMeta}>
-          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelMetaText}>
-            {shown.lat.toFixed(4)}, {shown.lon.toFixed(4)}
-          </Text>
-          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelSource}>{sourceLabel}</Text>
-        </View>
+        <View style={styles.tail} />
+        <View style={styles.crosshairDot} />
       </View>
-    </>
+    </Marker>
+  );
+}
+
+/**
+ * The readout card. Rendered by the radar screen above the map chrome (not
+ * inside <Map>, where the legend and buttons covered it), just above the
+ * timeline and clear of the zoom control.
+ */
+export function InspectorPanel({
+  pinned,
+  inspect,
+  onClear,
+}: {
+  pinned: PinnedPoint | null;
+  inspect: InspectResult;
+  onClear: () => void;
+}) {
+  const chrome = useMapChromeInsets();
+  if (!pinned) return null;
+  return (
+    <View
+      style={[styles.panel, { bottom: chrome.aboveTimeline + 8, left: chrome.left, right: chrome.right + 56 }]}
+      accessibilityLabel={`${inspect.layerLabel} at pinned point: ${inspect.readout}`}
+    >
+      <View style={styles.panelHeader}>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelKicker}>{inspect.layerLabel}</Text>
+        <Pressable
+          onPress={onClear}
+          style={styles.closeBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Clear inspected point"
+          hitSlop={8}
+        >
+          <View style={styles.closeCircle}>
+            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.closeX}>✕</Text>
+          </View>
+        </Pressable>
+      </View>
+      <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelValue}>{inspect.readout}</Text>
+      <View style={styles.panelMeta}>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelMetaText}>
+          {pinned.lat.toFixed(4)}, {pinned.lon.toFixed(4)}
+        </Text>
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelSource}>{inspect.sourceLabel}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -195,10 +218,7 @@ const styles = StyleSheet.create({
 
   panel: {
     position: "absolute",
-    left: 12,
-    right: 12,
-    top: 112,
-    zIndex: 18,
+    zIndex: 25,
     backgroundColor: "rgba(10,14,26,0.9)",
     borderWidth: 1,
     borderColor: "rgba(139,124,255,0.45)",
@@ -232,9 +252,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  closeX: { color: cumulus.ink, fontSize: 12, fontWeight: "600" },
+  // The card is dark in both themes, so its text is light, not theme ink.
+  closeX: { color: "#FFFFFF", fontSize: 12, fontWeight: "600" },
   panelValue: {
-    color: cumulus.ink,
+    color: "#FFFFFF",
     fontSize: 24,
     fontWeight: "700",
     marginTop: 6,
@@ -246,7 +267,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   panelMetaText: {
-    color: cumulus.inkMuted,
+    color: "rgba(255,255,255,0.65)",
     fontSize: 10,
     fontVariant: ["tabular-nums"],
   },

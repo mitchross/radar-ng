@@ -31,7 +31,7 @@ import { LayerLocationMarker } from "../../components/map/LayerLocationMarker";
 import { TimelineBar } from "../../components/timeline/TimelineBar";
 import { RadarFABs } from "../../components/map/RadarFABs";
 import { MapStylePicker } from "../../components/map/MapStylePicker";
-import { EyedropperPin, type PinnedPoint } from "../../components/inspector/Eyedropper";
+import { EyedropperPin, InspectorPanel, useInspectReading, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { useAlerts } from "../../hooks/useAlerts";
@@ -49,6 +49,7 @@ export default function RadarScreen() {
   const chrome = useMapChromeInsets();
 
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
+  const inspect = useInspectReading(pinned);
   const [selectedTropical, setSelectedTropical] = useState<TropicalStormDetails | null>(null);
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
   const [inspectHint, setInspectHint] = useState(false);
@@ -93,7 +94,7 @@ export default function RadarScreen() {
         <StormCellsOverlay />
         <LightningOverlay />
         <LayerLocationMarker />
-        <EyedropperPin pinned={pinned} onClear={() => setPinned(null)} />
+        <EyedropperPin pinned={pinned} readout={inspect.readout} />
       </WeatherMap>
 
       {/* Top safe area — close button only. Alerts live on the Alerts tab. */}
@@ -125,6 +126,9 @@ export default function RadarScreen() {
 
       {/* Vertical legend card (top-left) */}
       <LayerLegendCard activeLayer={activeLayer} />
+
+      {/* Readout for a long-pressed point: above the map chrome, clear of legend and buttons. */}
+      <InspectorPanel pinned={pinned} inspect={inspect} onClear={() => setPinned(null)} />
 
       {/* Right-side controls — crosshair button clears a pinned inspector if any. */}
       <RadarFABs
