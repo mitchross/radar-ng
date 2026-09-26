@@ -19,13 +19,30 @@ def _run_timestamps(activities, run_id: str) -> list[str]:
     ]
 
 
-def test_grib_url_layout(monkeypatch):
+def test_grib_urls_try_aws_then_nomads(monkeypatch):
     activities = import_activities_without_pygrib(monkeypatch)
-    url = activities._grib_url("20260716_12", "ave_1hr_pm25_bc")
-    assert url == (
+    assert activities._grib_urls("20260716_12", "ave_1hr_pm25_bc") == [
         "https://noaa-nws-naqfc-pds.s3.amazonaws.com/AQMv7/CS/20260716/12/"
-        "aqm.t12z.ave_1hr_pm25_bc.20260716.227.grib2"
-    )
+        "aqm.t12z.ave_1hr_pm25_bc.20260716.227.grib2",
+        "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aqm/prod/aqm.20260716/12/"
+        "aqm.t12z.ave_1hr_pm25_bc.227.grib2",
+    ]
+
+
+def test_find_latest_run_falls_back_to_nomads(monkeypatch):
+    activities = import_activities_without_pygrib(monkeypatch)
+    seen = []
+
+    class Client:
+        # The AWS mirror has nothing; NOMADS has every run.
+        def head(self, url, timeout):
+            seen.append(url)
+            return types.SimpleNamespace(status_code=200 if "nomads" in url else 404)
+
+    run_id = activities._find_latest_run_sync(Client())
+    assert run_id is not None
+    # The newest run is found on NOMADS right after AWS missed it.
+    assert seen == activities._grib_urls(run_id, "ave_1hr_pm25_bc")
 
 
 def test_publish_run_rejects_incomplete_layers(monkeypatch, tmp_path):

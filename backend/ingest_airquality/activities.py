@@ -45,6 +45,10 @@ from backend.shared.tiler import (
 
 
 AQM_BASE = "https://noaa-nws-naqfc-pds.s3.amazonaws.com/AQMv7/CS"
+# NCEP's own server, which keeps about two days of runs. The AWS mirror stopped
+# receiving AQM after 2026-09-22 12z while NOMADS kept publishing, so every
+# run is tried on AWS first and NOMADS second.
+AQM_NOMADS_BASE = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aqm/prod"
 TILE_DIR = os.environ.get("TILE_DIR", "/data/tiles")
 STATE_DIR = os.environ.get("STATE_DIR", "/data/state")
 TMP_ROOT = Path(os.environ.get("AQM_TMP_ROOT", "/tmp/aqm_work"))
@@ -97,9 +101,13 @@ def _state_path() -> Path:
     return Path(STATE_DIR) / "ingest-airquality.json"
 
 
-def _grib_url(run_id: str, product: str) -> str:
+def _grib_urls(run_id: str, product: str) -> list[str]:
+    """Where a run's file may be, in the order to try: the AWS mirror, then NOMADS."""
     date_str, cycle = run_id.split("_")
-    return f"{AQM_BASE}/{date_str}/{cycle}/aqm.t{cycle}z.{product}.{date_str}.227.grib2"
+    return [
+        f"{AQM_BASE}/{date_str}/{cycle}/aqm.t{cycle}z.{product}.{date_str}.227.grib2",
+        f"{AQM_NOMADS_BASE}/aqm.{date_str}/{cycle}/aqm.t{cycle}z.{product}.227.grib2",
+    ]
 
 
 def _find_latest_run_sync(client: httpx.Client) -> str | None:
@@ -113,12 +121,12 @@ def _find_latest_run_sync(client: httpx.Client) -> str | None:
             if run_dt > now:
                 continue
             run_id = f"{date_str}_{cycle:02d}"
-            try:
-                r = client.head(_grib_url(run_id, "ave_1hr_pm25_bc"), timeout=10)
-                if r.status_code == 200:
-                    return run_id
-            except httpx.HTTPError:
-                continue
+            for url in _grib_urls(run_id, "ave_1hr_pm25_bc"):
+                try:
+                    if client.head(url, timeout=10).status_code == 200:
+                        return run_id
+                except httpx.HTTPError:
+                    continue
     return None
 
 
@@ -374,18 +382,24 @@ async def aqm_render_chunk(run_id: str, layer: str, start_msg: int) -> AqmChunkR
     end_msg = min(start_msg + CHUNK_MESSAGES, FORECAST_MESSAGES)
     palette_tables = _load_palette_tables()
     tmp_dir = _current_activity_tmp_dir("aqm", run_id, layer, f"m{start_msg:02d}")
-    url = _grib_url(run_id, config["product"])
+    urls = _grib_urls(run_id, config["product"])
 
     activity.heartbeat({"phase": "download", "layer": layer, "start_msg": start_msg})
 
     def _download() -> Path:
         out = tmp_dir / f"{config['product']}.grib2"
-        with httpx.Client() as client, client.stream("GET", url, timeout=300) as resp:
-            resp.raise_for_status()
-            with out.open("wb") as fh:
-                for chunk in resp.iter_bytes(chunk_size=1 << 20):
-                    fh.write(chunk)
-        return out
+        with httpx.Client() as client:
+            for url in urls:
+                with client.stream("GET", url, timeout=300) as resp:
+                    # A 404 means this source doesn't have the run; try the next.
+                    if resp.status_code == 404 and url != urls[-1]:
+                        continue
+                    resp.raise_for_status()
+                    with out.open("wb") as fh:
+                        for chunk in resp.iter_bytes(chunk_size=1 << 20):
+                            fh.write(chunk)
+                    return out
+        raise RuntimeError(f"no AQM source for {run_id}")
 
     try:
         grib_path = await asyncio.to_thread(_download)
