@@ -202,8 +202,11 @@ private struct TileImage: View {
             reportedKey = requestKey
             image = nil
             failed = false
-            // The service may omit high-zoom tiles. Crop the same frame's
-            // parent tile instead of displaying missing precipitation as clear.
+            // The tiler writes no file for a tile without precipitation, so 404
+            // means clear. A 404 can also mean the zoom exceeds the product's
+            // coverage, so try the same frame's parent tiles first; only when
+            // every level is 404 is the area clear. Other failures still report.
+            var onlyNotFound = true
             for level in stride(from: z, through: min(4, z), by: -1) {
                 guard !Task.isCancelled else { return }
                 let factor = 1 << (z - level)
@@ -211,11 +214,11 @@ private struct TileImage: View {
                 do {
                     var request = URLRequest(url: url)
                     request.timeoutInterval = 8
-                    request.setValue("radar-ng/2.0 (watchOS)", forHTTPHeaderField: "User-Agent")
                     let (data, response) = try await URLSession.shared.data(for: request)
                     guard !Task.isCancelled else { return }
-                    guard (response as? HTTPURLResponse)?.statusCode == 200,
-                          let decoded = UIImage(data: data)?.cgImage else { continue }
+                    let status = (response as? HTTPURLResponse)?.statusCode
+                    if status != 404 { onlyNotFound = false }
+                    guard status == 200, let decoded = UIImage(data: data)?.cgImage else { continue }
                     let size = CGFloat(decoded.width) / CGFloat(factor)
                     let rect = CGRect(x: CGFloat(x % factor) * size, y: CGFloat(y % factor) * size,
                                       width: size, height: size)
@@ -225,8 +228,10 @@ private struct TileImage: View {
                     }
                 } catch {
                     if Task.isCancelled { return }
+                    onlyNotFound = false
                 }
             }
+            if onlyNotFound { return }  // clear: no precipitation at any level
             failed = true
             reportFailure(requestKey, true)
         }

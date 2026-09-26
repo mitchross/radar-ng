@@ -88,8 +88,13 @@
         respond "{err.status_code} {err.status_text}" {err.status_code}
     }
 
+    # JSON access logs: Loki parses status, URI, duration and User-Agent, which
+    # tells the app, widget, Watch and CarPlay apart on the Grafana dashboard.
+    # Kubelet probes are skipped; they were most of the log volume.
+    @probes path /api/livez /api/health
+    log_skip @probes
     log {
         output stdout
-        format console
+        format json
     }
 }

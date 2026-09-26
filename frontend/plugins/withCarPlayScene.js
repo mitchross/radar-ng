@@ -25,17 +25,12 @@ const CARPLAY_FILES = [
 // The signing profile must contain Apple's matching approved capability.
 const carPlayEnabled = () => process.env.RADAR_CARPLAY === "1";
 
-// The iPhone window scene is declared by expo-build-properties'
-// `ios.enableSceneSupport`, which points UIWindowSceneSessionRoleApplication at
-// Expo's own EXExpoAppSceneDelegate. That delegate rebuilds the launch options
-// from the scene's connectionOptions, so a link that cold-starts the app still
-// reaches Linking.getInitialURL(). This plugin therefore never writes the window
-// scene, and never replaces AppDelegate.swift.
-//
-// Order matters: config-plugin mods run last-registered-first, so this plugin
-// must be listed BEFORE expo-build-properties in app.json for the window scene
-// to exist by the time the CarPlay roles are appended. enableSceneSupport also
-// throws when it finds a scene manifest it does not own.
+// The iPhone window scene is Expo's: from SDK 58 prebuild generates
+// SceneDelegate.swift (a subclass of ExpoAppSceneDelegate) and points
+// UIWindowSceneSessionRoleApplication at it. That delegate rebuilds the launch
+// options from the scene's connectionOptions, so a link that cold-starts the app
+// still reaches Linking.getInitialURL(). This plugin therefore never writes the
+// window scene, and never replaces AppDelegate.swift or SceneDelegate.swift.
 //
 // It only appends the CarPlay roles, and only for RADAR_CARPLAY=1 builds.
 // Compiling CarPlay scenes into an ordinary release would ship background modes
