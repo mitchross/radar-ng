@@ -25,7 +25,7 @@ from threading import Lock
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from backend.shared.manifest import read_manifest_file
 from backend.shared.storm_prefetch import build_storm_prefetch_plan
@@ -97,7 +97,9 @@ _nowcast_point_cache_lock = Lock()
 # maintained by ingest/cleanup activities, so a cold API hit only reads one
 # small JSON file instead of crawling the tile PVC.
 _MANIFEST_TTL_S = 15.0
-_manifest_cache: dict[str, object] = {"expires_at": 0.0, "body": None}
+# The parsed body plus its serialized bytes: the manifest is ~130 KB, and
+# re-encoding it per request was a large share of the API's single core.
+_manifest_cache: dict[str, object] = {"expires_at": 0.0, "body": None, "encoded": None}
 _metrics = {
     "forecast_requests_total": 0,
     "forecast_cache_hits_total": 0,
@@ -242,17 +244,32 @@ def _layer_age_seconds(manifest: dict, layer_name: str, now: float | None = None
 # freezing the event loop. Only /api/forecast (pure httpx) and /api/livez
 # stay `async def`; livez in particular MUST remain on the event loop so the
 # k8s probe keeps answering while disk-bound requests are stuck.
-@app.get("/api/manifest.json")
-def get_manifest() -> JSONResponse:
-    _metrics["manifest_requests_total"] += 1
+def _cached_manifest() -> tuple[dict, bytes]:
+    """The manifest and its JSON bytes, re-read from disk at most every _MANIFEST_TTL_S."""
     now = time.time()
-    cached_body = _manifest_cache.get("body")
-    if cached_body is not None and float(_manifest_cache.get("expires_at", 0)) > now:
-        return _cached(cached_body, max_age=15)
+    body = _manifest_cache.get("body")
+    encoded = _manifest_cache.get("encoded")
+    if (
+        isinstance(body, dict)
+        and isinstance(encoded, bytes)
+        and float(_manifest_cache.get("expires_at", 0)) > now
+    ):
+        return body, encoded
     body = _build_manifest()
-    _manifest_cache["body"] = body
-    _manifest_cache["expires_at"] = now + _MANIFEST_TTL_S
-    return _cached(body, max_age=15)
+    encoded = JSONResponse(body).body
+    _manifest_cache.update(body=body, encoded=encoded, expires_at=now + _MANIFEST_TTL_S)
+    return body, encoded
+
+
+@app.get("/api/manifest.json")
+def get_manifest() -> Response:
+    _metrics["manifest_requests_total"] += 1
+    _, encoded = _cached_manifest()
+    return Response(
+        encoded,
+        media_type="application/json",
+        headers={"Cache-Control": "public, max-age=15"},
+    )
 
 
 @app.get("/api/forecast/{lat}/{lon}")
@@ -419,7 +436,9 @@ def nowcast_point(lat: float, lon: float) -> JSONResponse:
     if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
         raise HTTPException(422, "lat/lon out of range")
 
-    manifest = _build_manifest()
+    # Cached: parsing the manifest from disk on every call made this the
+    # API's most expensive route under load.
+    manifest, _ = _cached_manifest()
     layer = manifest.get("layers", {}).get("nowcast")
     if not isinstance(layer, dict) or not layer.get("frames"):
         status = _read_nowcast_status() or {}

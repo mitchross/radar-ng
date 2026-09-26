@@ -6,8 +6,17 @@ import numpy as np
 
 os.environ.setdefault("DISABLE_WORKFLOW_ROUTES", "1")
 
+import pytest
+
 from backend.api.api import server
 from backend.shared import grid_dump
+
+
+@pytest.fixture(autouse=True)
+def _uncached_manifest(monkeypatch):
+    # These tests swap the manifest between calls; read it fresh every time.
+    monkeypatch.setattr(server, "_MANIFEST_TTL_S", 0.0)
+    monkeypatch.setattr(server, "_manifest_cache", {"expires_at": 0.0, "body": None, "encoded": None})
 
 
 def _manifest(

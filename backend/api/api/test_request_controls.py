@@ -1,3 +1,4 @@
+import json
 import os
 from types import SimpleNamespace
 
@@ -53,3 +54,22 @@ def test_build_manifest_serves_last_good_copy_then_503(monkeypatch):
     with pytest.raises(HTTPException) as excinfo:
         server._build_manifest()
     assert excinfo.value.status_code == 503
+
+
+def test_manifest_is_read_and_encoded_once_per_ttl(monkeypatch):
+    from backend.api.api import server
+
+    reads = []
+    body = {"layers": {"nowcast": {"frames": []}}, "schema_version": 1}
+    monkeypatch.setattr(server, "_manifest_cache", {"expires_at": 0.0, "body": None, "encoded": None})
+    monkeypatch.setattr(server, "_build_manifest", lambda: reads.append(1) or body)
+
+    first = server.get_manifest()
+    second = server.get_manifest()
+    server.nowcast_point(42.5, -85.5)  # shares the cached manifest
+
+    assert len(reads) == 1
+    assert first.body == second.body
+    assert json.loads(first.body) == body
+    assert first.media_type == "application/json"
+    assert first.headers["cache-control"] == "public, max-age=15"
