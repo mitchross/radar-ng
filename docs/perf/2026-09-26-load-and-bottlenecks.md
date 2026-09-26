@@ -67,3 +67,22 @@ Options, most promising first:
 - **Air-quality ingest** renders 6 chunks, 2 at a time, about 35 min per run, twice a day. Each chunk downloads the whole 70–90 MB GRIB file again (3 downloads per layer). That's acceptable at this cadence.
 - **MRMS**: `mrms_process_frame` median 35 s (p95 58 s). Radar data was 246 s old during the evening run; the 10-minute target was never at risk.
 - **HRRR**: after radar-ng#67, the published forecast reaches +48 h (2026-09-28T18:00 for the 18z run).
+
+## Stress test (evening, 21:01–21:14 UTC)
+
+`PROFILE=stress`: 60 pods climb 5 → 10 → 15 → 20 users in 3-minute steps (300 → 1,200 users). Load pods are kept off the tile-server's node, and their nodes peaked at 62% CPU. There were 1.81 M requests, zero 429s and 26 5xx.
+
+| Users | Tile req/s | API req/s | API p95 (Caddy) | Tile-server CPU (limit 2) |
+|---:|---:|---:|---:|---:|
+| 300 | 1,800–2,470 | 150–197 | 0.3 s | 1.94, 49% of periods throttled |
+| 600 | 2,220–2,430 | 180–196 | 3 s | 1.89 |
+| 900 | 2,120–2,250 | 171–182 | 7 s | 1.83 |
+| 1,200 | 1,700–2,190 | 138–178 | 10–12 s | 1.82 |
+
+- **The API caps at about 190 req/s.** It's one uvicorn process, about 1 core, and it saturates between 300 and 600 users. Caddy uses the other core.
+- **Liveness killed the container twice** (exit 137). `/api/livez` queues behind real API requests and missed the default 1 s timeout. Readiness on the same path had already emptied the one-replica Service, so clients got `connection refused`; that caused most of the 17,011 failed requests. The fix is in talos (branch `radar-ng/tile-server-probes-stress`): TCP readiness, a 5 s × 4 liveness allowance, and CPU limit 3.
+- **The API's CPU goes to avoidable work:**
+  - `/api/nowcast/{lat}/{lon}` parses the 130 KB manifest from disk on every call, bypassing the 15 s manifest cache.
+  - `/api/manifest.json` re-serializes the cached dict on every call.
+  - uvicorn's access log duplicates Caddy's.
+- **Tiles never bottlenecked** (p95 30 ms). They plateaued only because each simulated user's session waited on the API.

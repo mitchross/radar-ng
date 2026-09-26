@@ -20,14 +20,24 @@ const playbackFrame = new Trend("playback_frame_ms", true);
 // point), so it must not count toward http_req_failed. 5xx and 429 still do.
 http.setResponseCallback(http.expectedStatuses(200, 404));
 
+// PROFILE=stress climbs in four 3-minute steps to VUS per pod (keep VUS <= 20
+// so no pod reaches the API rate limit) to find where latency bends; scale
+// with more pods, not more VUs per pod.
+const STAIRS = [0.25, 0.5, 0.75, 1].flatMap((f) => [
+  { duration: "30s", target: Math.round(VUS * f) },
+  { duration: "2m30s", target: Math.round(VUS * f) },
+]);
+
 export const options = {
-  stages: [
-    { duration: "1m", target: VUS },          // ramp
-    { duration: "5m", target: VUS },          // steady: 10 pods x VUS
-    { duration: "1m", target: VUS * 2 },      // step up
-    { duration: "3m", target: VUS * 2 },      // 2x load
-    { duration: "1m", target: 0 },
-  ],
+  stages: __ENV.PROFILE === "stress"
+    ? [...STAIRS, { duration: "1m", target: 0 }]
+    : [
+        { duration: "1m", target: VUS },          // ramp
+        { duration: "5m", target: VUS },          // steady: 10 pods x VUS
+        { duration: "1m", target: VUS * 2 },      // step up
+        { duration: "3m", target: VUS * 2 },      // 2x load
+        { duration: "1m", target: 0 },
+      ],
   thresholds: {
     http_req_failed: ["rate<0.01"],
     server_errors: ["rate<0.005"],

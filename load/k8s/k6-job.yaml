@@ -8,6 +8,9 @@
 #   kubectl -n radar-ng-loadtest apply -f load/k8s/k6-job.yaml
 #   kubectl -n radar-ng-loadtest logs -l job-name=k6-radar --tail=1   # or Loki: {k8s_namespace_name="radar-ng-loadtest"} |= "metrics"
 #   kubectl delete namespace radar-ng-loadtest
+#
+# Stress (find the knee): set completions/parallelism/maxFailedIndexes to 60,
+# VUS to 20 and add env PROFILE=stress (four 3-minute steps to 1,200 users).
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -30,6 +33,15 @@ spec:
         descheduler.alpha.kubernetes.io/prevent-eviction: "true"
     spec:
       restartPolicy: Never
+      # Keep load generators off the tile-server's node so they don't steal its CPU.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: tile-server
+              namespaces: [radar-ng]
+              topologyKey: kubernetes.io/hostname
       securityContext:
         runAsNonRoot: true
         runAsUser: 12345
@@ -49,7 +61,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
           resources:
-            requests: { cpu: 200m, memory: 256Mi }
+            requests: { cpu: 50m, memory: 128Mi }
             limits: { memory: 1Gi }
           securityContext:
             allowPrivilegeEscalation: false
