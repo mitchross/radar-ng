@@ -6,10 +6,12 @@
  */
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import Slider from "@react-native-community/slider";
+import { SymbolView } from "expo-symbols";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
 import { findClosestIdx } from "../../lib/frameIndex";
+import { offsetLabel, playbackSequence, positionOf, type TimelineZoom } from "../../lib/playbackSequence";
 import { createThrottle } from "../../lib/throttle";
 import { useAppActive } from "../../hooks/useAppActive";
 import { useNow } from "../../hooks/useNow";
@@ -20,7 +22,6 @@ import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { MapChromeSurface } from "../ui/MapChromeSurface";
 
 const NOWCAST_MIN = 60;
-const HRRR_MIN = 48 * 60;
 const NOW_REFRESH_MS = 60_000;
 // Each committed index remounts a raster source, so a drag commits at most this often.
 const SCRUB_COMMIT_MS = 100;
@@ -45,7 +46,9 @@ const LAYER_TITLE: Record<LayerType, string> = {
   ozone: "Ozone",
 };
 
-type Zoom = "1h" | "48h";
+type Zoom = TimelineZoom;
+// Axis ticks at these fractions of the sequence, labelled with the frame's real offset.
+const AXIS_FRACTIONS = [0, 0.25, 0.5, 0.75, 1];
 
 export function TimelineBar() {
   const chrome = useMapChromeInsets();
@@ -63,72 +66,70 @@ export function TimelineBar() {
   const [scrub] = useState(() => createThrottle(setCurrentFrameIndex, SCRUB_COMMIT_MS));
   useEffect(() => () => scrub.cancel(), [scrub]);
 
-  const idxRef = useRef(currentFrameIndex);
-  useEffect(() => { idxRef.current = currentFrameIndex; }, [currentFrameIndex]);
-
   // Frozen-at-mount "now" drifted the 1h window and NOW marker into the past after ~30 min on the tab.
   const nowSec = useNowSec();
   const appActive = useAppActive();
   const focused = useIsFocused();
 
-  // Zoom window indices
-  const { startIdx, endIdx } = useMemo(() => {
-    if (frames.length === 0) return { startIdx: 0, endIdx: 0 };
-    if (zoom === "48h") return { startIdx: 0, endIdx: frames.length - 1 };
-    let s = 0, e = frames.length - 1;
-    const lo = nowSec - 60 * 60;
-    const hi = nowSec + 60 * 60;
-    while (s < frames.length - 1 && frames[s].time < lo) s++;
-    while (e > 0 && frames[e].time > hi) e--;
-    if (e < s) e = s;
-    return { startIdx: s, endIdx: e };
-  }, [frames, zoom, nowSec]);
+  // The frames playback visits, in order. 1h is every frame within an hour of
+  // now; 48h thins the dense past so the loop is mostly forecast. The slider
+  // and the track both run over positions in this sequence, not frame indices.
+  const sequence = useMemo(() => playbackSequence(frames, zoom, nowSec), [frames, zoom, nowSec]);
+  const lastPos = Math.max(0, sequence.length - 1);
+  const position = positionOf(sequence, frames, currentFrameIndex);
+  const posRef = useRef(position);
+  useEffect(() => { posRef.current = position; }, [position]);
+  const inSequence = sequence.includes(currentFrameIndex);
 
-  // Publish the zoom window so the raster carousel prefetches the frames playback
+  // Publish the sequence so the raster carousel prefetches the frames playback
   // will visit (incl. the loop wrap). Cleared on unmount so it can't go stale.
   useEffect(() => {
-    if (frames.length === 0) return;
-    setPlaybackWindow({ start: startIdx, end: endIdx });
-  }, [startIdx, endIdx, frames.length, setPlaybackWindow]);
+    if (sequence.length === 0) return;
+    setPlaybackWindow({ start: sequence[0], end: sequence[lastPos], sequence });
+  }, [sequence, lastPos, setPlaybackWindow]);
   useEffect(() => () => setPlaybackWindow(null), [setPlaybackWindow]);
 
-  // Snap current frame into zoom window when switching
+  // Snap the current frame onto the sequence when switching zoom.
   useEffect(() => {
-    if (frames.length === 0) return;
-    if (currentFrameIndex < startIdx || currentFrameIndex > endIdx) {
-      const nowIdx = findClosestIdx(frames, nowSec);
-      setCurrentFrameIndex(Math.max(startIdx, Math.min(endIdx, nowIdx)));
-    }
+    if (sequence.length === 0 || inSequence) return;
+    const nowPos = positionOf(sequence, frames, findClosestIdx(frames, nowSec));
+    setCurrentFrameIndex(sequence[nowPos]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoom, startIdx, endIdx, frames.length]);
+  }, [zoom, sequence]);
 
-  // Playback tick within zoom window; paused while backgrounded (each tick remounts a RasterSource).
+  // Playback tick along the sequence; paused while backgrounded (each tick remounts a RasterSource).
   useEffect(() => {
-    if (!appActive || !focused || !isPlaying || frames.length === 0 || endIdx <= startIdx) return;
+    if (!appActive || !focused || !isPlaying || sequence.length < 2) return;
     const id = setInterval(() => {
-      const next = idxRef.current < startIdx || idxRef.current >= endIdx
-        ? startIdx
-        : idxRef.current + 1;
-      setCurrentFrameIndex(next);
+      const next = posRef.current >= sequence.length - 1 ? 0 : posRef.current + 1;
+      posRef.current = next;
+      setCurrentFrameIndex(sequence[next]);
     }, 1000 / playbackSpeed);
     return () => clearInterval(id);
-  }, [appActive, focused, isPlaying, playbackSpeed, startIdx, endIdx, frames.length, setCurrentFrameIndex]);
+  }, [appActive, focused, isPlaying, playbackSpeed, sequence, setCurrentFrameIndex]);
 
-  // Segment boundaries don't depend on the playback index — memoize so the
-  // playback tick doesn't re-run three O(n) frame scans. Must stay above the
+  // Segment boundaries and axis labels don't depend on the playback index —
+  // memoize so the playback tick doesn't rescan frames. Must stay above the
   // early return below (rules-of-hooks).
-  const { nowPct, nowcastPct, hrrrPct } = useMemo(() => {
-    const winLen = Math.max(1, endIdx - startIdx);
-    const toPct = (i: number) => ((i - startIdx) / winLen) * 100;
-    const nowIdx = findClosestIdx(frames, nowSec);
-    const nowcastEndIdx = findClosestIdx(frames, nowSec + NOWCAST_MIN * 60);
-    const hrrrEndIdx = findClosestIdx(frames, nowSec + HRRR_MIN * 60);
-    return {
-      nowPct: clampPct(toPct(nowIdx)),
-      nowcastPct: clampPct(toPct(nowcastEndIdx)),
-      hrrrPct: clampPct(toPct(hrrrEndIdx)),
+  const { nowPct, nowcastPct, axisLabels } = useMemo(() => {
+    const toPct = (p: number) => (lastPos === 0 ? 0 : (p / lastPos) * 100);
+    // Last position at or before a time; -1 when the sequence starts after it.
+    const lastPosAtOrBefore = (sec: number) => {
+      let p = -1;
+      while (p + 1 < sequence.length && frames[sequence[p + 1]].time <= sec) p++;
+      return p;
     };
-  }, [frames, nowSec, startIdx, endIdx]);
+    const nowP = lastPosAtOrBefore(nowSec);
+    const nowcastP = lastPosAtOrBefore(nowSec + NOWCAST_MIN * 60);
+    const labels = sequence.length === 0
+      ? []
+      : AXIS_FRACTIONS.map((f) => offsetLabel(frames[sequence[Math.round(f * lastPos)]].time, nowSec));
+    return {
+      nowPct: nowP < 0 ? 0 : clampPct(toPct(nowP)),
+      nowcastPct: nowcastP < 0 ? 0 : clampPct(toPct(nowcastP)),
+      axisLabels: labels,
+    };
+  }, [frames, sequence, lastPos, nowSec]);
 
   if (frames.length === 0) return null;
 
@@ -138,7 +139,8 @@ export function TimelineBar() {
   const frameDate = new Date((currentFrame?.time ?? nowSec) * 1000);
   const dateLabel = FRAME_DATE_FORMAT.format(frameDate);
 
-  const mode = offsetMin === 0 ? "Now" : offsetMin > 0 ? "Forecast" : "Past";
+  // MRMS lands a few minutes late; the latest scan within 5 min reads as "Now".
+  const mode = Math.abs(offsetMin) <= 5 ? "Now" : `${offsetMin > 0 ? "Forecast" : "Past"} ${offsetLabel(currentFrame?.time ?? nowSec, nowSec)}`;
 
   return (
     <View style={[styles.container, { left: chrome.left, right: chrome.right, bottom: chrome.bottom }]}>
@@ -151,14 +153,11 @@ export function TimelineBar() {
             accessibilityLabel={isPlaying ? "Pause radar animation" : "Play radar animation"}
             accessibilityState={{ selected: isPlaying }}
           >
-            {isPlaying ? (
-              <View style={styles.pauseIcon}>
-                <View style={styles.pauseBar} />
-                <View style={styles.pauseBar} />
-              </View>
-            ) : (
-              <View style={styles.playIcon} />
-            )}
+            <SymbolView
+              name={isPlaying ? { ios: "pause.fill", android: "pause" } : { ios: "play.fill", android: "play_arrow" }}
+              size={18}
+              tintColor="#0b1220"
+            />
           </Pressable>
 
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -202,26 +201,15 @@ export function TimelineBar() {
               ]}
             />
           )}
-          {/* HRRR */}
-          {hrrrPct > nowcastPct && (
+          {/* model forecast */}
+          {100 > nowcastPct && (
             <View
               style={[
                 styles.segmentHrrr,
-                { left: `${nowcastPct}%`, width: `${hrrrPct - nowcastPct}%` },
+                { left: `${nowcastPct}%`, width: `${100 - nowcastPct}%` },
               ]}
             >
               <DashedRow color="rgba(139,124,255,0.5)" />
-            </View>
-          )}
-          {/* long-range */}
-          {100 > hrrrPct && (
-            <View
-              style={[
-                styles.segmentLongRange,
-                { left: `${hrrrPct}%`, width: `${100 - hrrrPct}%` },
-              ]}
-            >
-              <DashedRow color="rgba(139,124,255,0.28)" />
             </View>
           )}
           {/* NOW marker */}
@@ -230,16 +218,17 @@ export function TimelineBar() {
           )}
           <Slider
             style={styles.slider}
-            minimumValue={startIdx}
-            maximumValue={endIdx}
+            minimumValue={0}
+            maximumValue={Math.max(1, lastPos)}
             step={1}
-            value={currentFrameIndex}
+            value={position}
+            disabled={sequence.length < 2}
             onSlidingStart={() => setIsPlaying(false)}
             onValueChange={(v) => {
               setIsPlaying(false);
-              scrub.call(Math.round(v));
+              scrub.call(sequence[Math.round(v)] ?? currentFrameIndex);
             }}
-            onSlidingComplete={(v) => scrub.flush(Math.round(v))}
+            onSlidingComplete={(v) => scrub.flush(sequence[Math.round(v)] ?? currentFrameIndex)}
             minimumTrackTintColor="transparent"
             maximumTrackTintColor="transparent"
             thumbTintColor="#ffffff"
@@ -248,10 +237,7 @@ export function TimelineBar() {
         </View>
 
         <View style={styles.axisRow}>
-          {(zoom === "1h"
-            ? ["-60", "-30", "Now", "+30", "+60"]
-            : ["Past", "Now", "+12h", "+24h", "+48h"]
-          ).map((label, i) => (
+          {axisLabels.map((label, i) => (
             <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE}
               key={i}
               style={[
@@ -312,16 +298,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  playIcon: {
-    width: 0, height: 0,
-    borderLeftWidth: 8, borderTopWidth: 5, borderBottomWidth: 5,
-    borderLeftColor: "#0b1220",
-    borderTopColor: "transparent",
-    borderBottomColor: "transparent",
-    marginLeft: 2,
-  },
-  pauseIcon: { flexDirection: "row", gap: 3 },
-  pauseBar: { width: 3, height: 11, backgroundColor: "#0b1220", borderRadius: 1 },
 
   layerTitle: { color: "#0b1220", fontSize: 14, fontWeight: "700", letterSpacing: -0.2 },
   dateLabel: { color: "rgba(11,18,32,0.58)", fontSize: 12, marginTop: 1 },
@@ -361,7 +337,6 @@ const styles = StyleSheet.create({
     backgroundColor: cumulus.accent, borderRadius: 2,
   },
   segmentHrrr: { position: "absolute", top: 9, height: 3, borderRadius: 2, overflow: "hidden" },
-  segmentLongRange: { position: "absolute", top: 9, height: 3, borderRadius: 2, overflow: "hidden" },
   dashRow: { flexDirection: "row", height: "100%" },
   nowMarker: {
     position: "absolute", top: 4, width: 2, height: 14,

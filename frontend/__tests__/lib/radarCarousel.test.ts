@@ -1,4 +1,4 @@
-import { assignSlots, CAROUSEL_WINDOW, clampWindow, parseCarouselWindow } from "../../src/lib/radarCarousel";
+import { assignSlots, assignSlotsInSequence, CAROUSEL_WINDOW, clampWindow, parseCarouselWindow } from "../../src/lib/radarCarousel";
 
 describe("CAROUSEL_WINDOW", () => {
   it("defaults to 1 (single-source behaviour) until the on-device checklist passes", () => {
@@ -133,5 +133,34 @@ describe("clampWindow", () => {
 
   it("passes a valid window through unchanged", () => {
     expect(clampWindow({ start: 2, end: 6 }, 10)).toEqual({ start: 2, end: 6 });
+  });
+});
+
+describe("assignSlotsInSequence", () => {
+  const N = 5;
+  const seq = [0, 8, 16, 24, 30, 31, 32, 40, 41]; // thinned past, dense future
+
+  it("prefetches the next frames along the sequence, not by index", () => {
+    const { slots, visibleSlot } = assignSlotsInSequence(16, seq, N)!;
+    expect(slots[visibleSlot]).toBe(16);
+    expect([...slots].sort((a, b) => a - b)).toEqual([16, 24, 30, 31, 32]);
+  });
+
+  it("shows only prefetched frames across a full loop including the wrap", () => {
+    for (let step = 0; step < seq.length * 2; step++) {
+      const pos = step % seq.length;
+      const prev = assignSlotsInSequence(seq[pos], seq, N)!;
+      const next = seq[(pos + 1) % seq.length];
+      const cur = assignSlotsInSequence(next, seq, N)!;
+      expect(prev.slots[cur.visibleSlot]).toBe(next);
+      // Mid-loop an advance changes one slot; the wrap may realign the padding.
+      if (pos + 1 < seq.length) {
+        expect(cur.slots.filter((f, s) => prev.slots[s] !== f)).toHaveLength(1);
+      }
+    }
+  });
+
+  it("returns null for a frame outside the sequence so callers fall back", () => {
+    expect(assignSlotsInSequence(9, seq, N)).toBeNull();
   });
 });

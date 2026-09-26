@@ -186,7 +186,9 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   },
   setPlaybackWindow: (window) =>
     set((s) =>
-      s.playbackWindow?.start === window?.start && s.playbackWindow?.end === window?.end
+      s.playbackWindow?.start === window?.start &&
+      s.playbackWindow?.end === window?.end &&
+      sameSequence(s.playbackWindow?.sequence, window?.sequence)
         ? s
         : { playbackWindow: window },
     ),
@@ -293,3 +295,9 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     set({ appearanceMode: mode });
   },
 }));
+
+function sameSequence(a?: readonly number[], b?: readonly number[]): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((v, i) => v === b[i]);
+}

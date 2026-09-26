@@ -1,5 +1,5 @@
 import { Layer, RasterSource } from "@maplibre/maplibre-react-native";
-import { assignSlots, CAROUSEL_WINDOW, clampWindow, type PlaybackWindow } from "../../lib/radarCarousel";
+import { assignSlots, assignSlotsInSequence, CAROUSEL_WINDOW, clampWindow, type PlaybackWindow } from "../../lib/radarCarousel";
 import type { RadarFrame } from "../../types/weather";
 
 export interface CarouselFrameSpec {
@@ -42,8 +42,10 @@ export function RasterFrameCarousel({
   if (frames.length === 0 || currentFrameIndex < 0) return null;
   const clampedIndex = Math.min(currentFrameIndex, frames.length - 1);
 
-  const { start, end } = clampWindow(playbackWindow, frames.length);
-  const { slots, visibleSlot } = assignSlots(clampedIndex, start, end, CAROUSEL_WINDOW);
+  const { start, end, sequence } = clampWindow(playbackWindow, frames.length);
+  const { slots, visibleSlot } =
+    (sequence && assignSlotsInSequence(clampedIndex, sequence, CAROUSEL_WINDOW)) ||
+    assignSlots(clampedIndex, start, end, CAROUSEL_WINDOW);
 
   return slots.map((frameIndex, slot) => {
     // assignSlots only yields indices inside the clamped window; the fallback

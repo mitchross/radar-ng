@@ -98,7 +98,8 @@ export function useInspectReading(pinned: PinnedPoint | null): InspectResult {
   const loading = requestKey !== null && pendingRequest === requestKey;
   return {
     readout: loading ? "…" : reading ? formatReading(activeLayer, reading) : "\u2014",
-    sourceLabel: reading?.source === "grid" ? "Grid" : "N/A",
+    // "N/A" only once a fetch for this pin came back empty, not while waiting.
+    sourceLabel: reading?.source === "grid" ? "Grid" : result?.pin === pinned && !loading ? "N/A" : "",
     layerLabel: LAYER_LABEL[activeLayer],
   };
 }

@@ -41,6 +41,11 @@ export const CAROUSEL_WINDOW = parseCarouselWindow(process.env.EXPO_PUBLIC_CAROU
 export interface PlaybackWindow {
   start: number;
   end: number;
+  /**
+   * The frame indices playback actually visits, in order, when it skips
+   * frames (the 48h view thins the past). Absent means every index.
+   */
+  sequence?: readonly number[];
 }
 
 export interface SlotAssignment {
@@ -75,6 +80,30 @@ export function assignSlots(
 }
 
 /**
+ * assignSlots along an explicit playback sequence: slot k holds the frame k
+ * steps ahead in the sequence, so prefetch follows what playback will show
+ * and a one-step advance still changes exactly one slot. Falls back to
+ * contiguous assignment when the current frame isn't in the sequence (a
+ * scrub to a skipped frame).
+ */
+export function assignSlotsInSequence(
+  currentIndex: number,
+  sequence: readonly number[],
+  slotCount: number,
+): SlotAssignment | null {
+  const pos = sequence.indexOf(currentIndex);
+  if (pos < 0 || sequence.length === 0) return null;
+  const len = sequence.length;
+  const padded = Math.max(1, Math.ceil(len / slotCount)) * slotCount;
+  const slots = new Array<number>(slotCount);
+  for (let k = 0; k < slotCount; k++) {
+    const pPadded = (pos + k) % padded;
+    slots[pPadded % slotCount] = sequence[pPadded % len];
+  }
+  return { slots, visibleSlot: pos % slotCount };
+}
+
+/**
  * Clamp a possibly-stale playback window (frames list may have shrunk on a
  * manifest refresh) to valid frame indices. Falls back to the full range.
  */
@@ -86,5 +115,6 @@ export function clampWindow(
   if (!window) return { start: 0, end: last };
   const end = Math.max(0, Math.min(window.end, last));
   const start = Math.max(0, Math.min(window.start, end));
-  return { start, end };
+  const sequence = window.sequence?.filter((i) => i >= 0 && i <= last);
+  return sequence && sequence.length > 0 ? { start, end, sequence } : { start, end };
 }
