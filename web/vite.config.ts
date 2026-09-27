@@ -26,6 +26,7 @@ export default defineConfig({
   // MapLibre 6 loads its worker via new URL("./maplibre-gl-worker.mjs", import.meta.url);
   // pre-bundling moves the entry into .vite/deps and breaks that relative URL.
   optimizeDeps: { exclude: ["maplibre-gl"] },
+  worker: { format: "es" },
   server: { port: 5173, proxy },
   preview: { port: 4173, proxy },
 });

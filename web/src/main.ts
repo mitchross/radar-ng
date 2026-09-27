@@ -1,5 +1,8 @@
 import * as maplibregl from "maplibre-gl";
 import type { Map as MLMap, StyleSpecification } from "maplibre-gl";
+// MapLibre picks its worker file by name at runtime, which a bundler can't
+// follow; importing it explicitly bundles the worker (and its shared chunk).
+import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { buildFrames, nowIndex, offsetLabel, playbackSequence, type Frame, type Manifest, type Zoom } from "./frames";
@@ -19,6 +22,8 @@ import {
   type Forecast,
   type Place,
 } from "./weather";
+
+maplibregl.setWorkerUrl(workerUrl);
 
 // ---------- configuration ----------
 
@@ -476,9 +481,16 @@ let searchAbort: AbortController | null = null;
 let results: Place[] = [];
 let activeResult = -1;
 
+/** A status row instead of results: "Searching…", "No places found", or a retry hint. */
+let searchStatus: string | null = null;
+
 function renderResults() {
   const list = $("search-results");
-  list.hidden = results.length === 0;
+  list.hidden = results.length === 0 && !searchStatus;
+  if (searchStatus && results.length === 0) {
+    list.innerHTML = `<li class="status" aria-disabled="true">${escapeHtml(searchStatus)}</li>`;
+    return;
+  }
   list.innerHTML = results
     .map((p, i) => `<li role="option" data-i="${i}" aria-selected="${i === activeResult}">${escapeHtml(p.name)}<small>${escapeHtml(p.admin1 ?? "")}</small></li>`)
     .join("");
@@ -489,6 +501,7 @@ $("search-input").addEventListener("input", (e) => {
   searchAbort?.abort();
   if (q.length < 2) {
     results = [];
+    searchStatus = null;
     renderResults();
     return;
   }
@@ -496,13 +509,19 @@ $("search-input").addEventListener("input", (e) => {
   const signal = searchAbort.signal;
   window.setTimeout(async () => {
     if (signal.aborted) return;
+    results = [];
+    searchStatus = "Searching…";
+    renderResults();
     try {
       results = await searchPlaces(q, signal);
       activeResult = results.length ? 0 : -1;
-      renderResults();
+      searchStatus = results.length ? null : "No places found";
     } catch {
-      /* superseded or offline */
+      if (signal.aborted) return;
+      // The geocoder can take several seconds on a cold query; a retry is usually instant.
+      searchStatus = "Search is slow right now — press Enter to try again";
     }
+    renderResults();
   }, 200);
 });
 
@@ -520,15 +539,18 @@ $("search-input").addEventListener("keydown", (e) => {
 $("search").addEventListener("submit", (e) => {
   e.preventDefault();
   if (results[activeResult]) choose(results[activeResult]);
+  // No results yet (slow or failed search): Enter searches again.
+  else $("search-input").dispatchEvent(new Event("input"));
 });
 
 $("search-results").addEventListener("click", (e) => {
-  const li = (e.target as HTMLElement).closest("li");
-  if (li) choose(results[Number(li.dataset.i)]);
+  const li = (e.target as HTMLElement).closest("li[data-i]");
+  if (li instanceof HTMLElement) choose(results[Number(li.dataset.i)]);
 });
 
 function choose(p: Place) {
   results = [];
+  searchStatus = null;
   renderResults();
   $<HTMLInputElement>("search-input").value = "";
   setPlace(p);

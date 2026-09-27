@@ -66,6 +66,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .search-results li { padding: 9px 10px; border-radius: 8px; cursor: pointer; }
 .search-results li[aria-selected="true"], .search-results li:hover { background: var(--accent-soft); }
 .search-results small { color: var(--ink-3); margin-left: 6px; }
+.search-results li.status { color: var(--ink-3); cursor: default; background: none; }
 
 .icon-btn {
   width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--border);
