@@ -22,17 +22,17 @@
 /**
  * Number of carousel slots mounted under <Map> per raster overlay.
  *
- * 1 = today's single-source behaviour (one remount per tick, frame blank until
- * its tiles land). 5 = opacity-swap playback with 2 s of hidden prefetch per
- * slot at the default 500 ms tick. Changing this changes the native child
- * count under MLRNMapView — flip the default to 5 only after the on-device
- * checklist in ARCHITECTURE.md § "The app" passes on a physical iPhone.
+ * 5 = opacity-swap playback: each frame's tiles load in a hidden slot for
+ * 2 s (at the default 500 ms tick) before it shows, so the loop doesn't
+ * flash blank frames. 1 = the old single remounting source, a frame blank
+ * until its tiles land. The slot count is the native child count under
+ * MLRNMapView and never changes at runtime (see ARCHITECTURE.md § "The app").
  *
- * A build can set EXPO_PUBLIC_CAROUSEL_WINDOW=5 for device testing. The value
+ * EXPO_PUBLIC_CAROUSEL_WINDOW=1 builds the single-slot kill switch. The value
  * is inlined at build time, so it never changes while the app runs.
  */
 export function parseCarouselWindow(value: string | undefined): 1 | 5 {
-  return value?.trim() === "5" ? 5 : 1;
+  return value?.trim() === "1" ? 1 : 5;
 }
 
 export const CAROUSEL_WINDOW = parseCarouselWindow(process.env.EXPO_PUBLIC_CAROUSEL_WINDOW);

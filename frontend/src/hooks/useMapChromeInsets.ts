@@ -3,8 +3,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 /** Spacing for chrome over the full-bleed radar map, added to the safe area. */
 export const MAP_CHROME = {
-  /** Just below the status bar; the radar tab has no close-button row. */
+  /** Just below the status bar: the close button and the map controls. */
   TOP: 8,
+  /** The close button's height plus a gap; the legend sits below it. */
+  CLOSE_ROW: 58,
   SIDE: 12,
   BOTTOM: 10,
   /** Height the timeline card takes above its bottom edge. */
@@ -18,6 +20,7 @@ export function useMapChromeInsets() {
     const bottom = insets.bottom + MAP_CHROME.BOTTOM;
     return {
       top: insets.top + MAP_CHROME.TOP,
+      belowClose: insets.top + MAP_CHROME.TOP + MAP_CHROME.CLOSE_ROW,
       bottom,
       left: insets.left + MAP_CHROME.SIDE,
       right: insets.right + MAP_CHROME.SIDE,

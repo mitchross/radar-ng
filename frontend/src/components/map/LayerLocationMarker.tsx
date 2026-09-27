@@ -20,7 +20,8 @@ import { inspectPoint, type InspectReading } from "../../lib/inspector";
 import { locationKey, PRECISION } from "../../lib/coordinates";
 import type { LayerType } from "../../types/weather";
 
-export function LayerLocationMarker() {
+/** `inspecting`: a point is pinned, so only the dot shows and its readout bubble has the stage. */
+export function LayerLocationMarker({ inspecting = false }: { inspecting?: boolean }) {
   const latitude = useWeatherStore((s) => s.latitude);
   const longitude = useWeatherStore((s) => s.longitude);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
@@ -72,8 +73,8 @@ export function LayerLocationMarker() {
         accessibilityElementsHidden={hidden}
         importantForAccessibility={hidden ? "no-hide-descendants" : "auto"}
       >
-        <View style={styles.pill}>{body}</View>
-        <View style={styles.tail} />
+        <View style={[styles.pill, inspecting ? styles.hidden : null]}>{body}</View>
+        <View style={[styles.tail, inspecting ? styles.hidden : null]} />
         <View style={styles.dot} />
       </View>
     </Marker>

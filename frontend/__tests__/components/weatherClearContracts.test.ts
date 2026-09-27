@@ -25,8 +25,9 @@ describe("Weather Clear native UI contracts", () => {
 
   // Tabs, radar buttons, the timeline and the style picker are covered by
   // render tests in __tests__/render; only the radar screen itself is not.
-  it("puts every map option behind the one map options sheet", () => {
+  it("keeps a labelled way back (the tab bar is hidden on radar) and one map options sheet", () => {
     const radar = source("app/(tabs)/radar.tsx");
+    expect(radar).toContain('accessibilityLabel="Close radar"');
     expect(radar).toContain("<MapOptionsSheet");
     expect(radar).toContain("onOpenMapOptions");
   });

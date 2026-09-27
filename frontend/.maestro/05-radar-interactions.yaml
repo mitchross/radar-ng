@@ -41,5 +41,5 @@ name: radar playback styles layers and foreground recovery
 - runFlow: common/dismiss-system-prompts.yaml
 - assertVisible: "Choose radar layer"
 - takeScreenshot: radar-foreground
-- tapOn: "Home"
+- tapOn: "Close radar"
 - assertVisible: "Current weather"

@@ -11,6 +11,7 @@ import { Canvas, Path, Circle, LinearGradient as SkiaLinearGradient, vec, Skia, 
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import { getUVInfo, getWindDirection } from "../../lib/cumulusTheme";
+import { aqiCategory, usAqiFromPm25 } from "../../lib/airQuality";
 import { formatDegrees } from "../../lib/temperature";
 import {
   daylightNote,
@@ -45,9 +46,14 @@ export interface ConditionsInput {
   sunrise: Date | null;
   sunset: Date | null;
   now: Date;
+  /** PM2.5 (µg/m³) and ozone (ppb) at this location; null until loaded or when stale. */
+  pm25: number | null;
+  ozonePpb: number | null;
 }
 
 const UV_COLORS = ["#4ADE80", "#FFC14D", "#FF9F2E", "#FF4D6D", "#B24BFF"] as const;
+// US AQI bands to 300: good, moderate, sensitive, unhealthy, very unhealthy.
+const AQI_COLORS = ["#3bb273", "#e0b400", "#ff8c2e", "#e5484d", "#8f3f97"] as const;
 const PRESSURE_MIN_INHG = 28.9;
 const PRESSURE_MAX_INHG = 30.7;
 
@@ -57,6 +63,8 @@ export function ConditionTiles(props: ConditionsInput) {
   const { uv, windMph, gustMph, windFromDeg, humidity, dew, dewF, pressureHPa } = props;
   const uvInfo = uv === null ? null : getUVInfo(uv);
   const inHg = pressureHPa === null ? null : hPaToInHg(pressureHPa);
+  const aqi = props.pm25 === null ? null : usAqiFromPm25(props.pm25);
+  const aqiInfo = aqi === null ? null : aqiCategory(aqi);
   const rainPeak = Math.max(0.05, ...props.rainNext.map((v) => v ?? 0));
   const sunTimes = (d: Date | null) =>
     d ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase() : "—";
@@ -130,6 +138,18 @@ export function ConditionTiles(props: ConditionsInput) {
             {props.actual !== null ? (
               <Text style={styles.footnote}>Actual {formatDegrees(props.actual)}</Text>
             ) : null}
+          </Tile>
+        ) : null}
+
+        {/* Last, so it spans the row: the grid has an odd tile count with it. */}
+        {aqi !== null && aqiInfo && props.pm25 !== null ? (
+          <Tile styles={styles} symbol={{ ios: "aqi.medium", android: "masks" }} label="AIR QUALITY"
+            value={String(aqi)} unit="AQI" caption={aqiInfo.label} captionColor={aqiInfo.color}
+            a11y={`Air quality index ${aqi}, ${aqiInfo.label}. PM2.5 ${Math.round(props.pm25)} micrograms per cubic meter${props.ozonePpb === null ? "" : `, ozone ${Math.round(props.ozonePpb)} parts per billion`}`}>
+            <ScaleBar styles={styles} pct={Math.min(1, aqi / 300)} colors={AQI_COLORS} markerColor={aqiInfo.color} />
+            <Text style={[styles.footnote, { marginTop: 8 }]}>
+              PM2.5 {Math.round(props.pm25)} µg/m³{props.ozonePpb === null ? "" : ` · Ozone ${Math.round(props.ozonePpb)} ppb`}
+            </Text>
           </Tile>
         ) : null}
       </View>

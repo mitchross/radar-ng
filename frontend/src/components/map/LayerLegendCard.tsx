@@ -177,7 +177,7 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   }
 
   return (
-    <View style={[styles.wrap, { top: chrome.top, left: chrome.left }]}>
+    <View style={[styles.wrap, { top: chrome.belowClose, left: chrome.left }]}>
       <MapChromeSurface style={styles.card} fallbackStyle={styles.cardFill} colorScheme="light">
         <View style={styles.headerRow}>
           <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.title} numberOfLines={1}>

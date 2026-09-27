@@ -5,7 +5,7 @@
 import type { LayerType } from "../types/weather";
 import { PRECISION, roundCoords } from "./coordinates";
 import { recordSpanError, trace } from "./telemetry";
-import { fetchWithTimeout } from "./api";
+import { fetchRadarNowcast, fetchWithTimeout } from "./api";
 
 export interface InspectReading {
   ok: boolean;
@@ -57,6 +57,40 @@ export async function inspectPoint(opts: InspectOptions): Promise<InspectReading
       "inspector.timestamp": opts.timestamp,
     },
   );
+}
+
+const RADAR_FAMILY = new Set<LayerType>(["radar", "radar-composite", "radar-hrrr"]);
+
+/**
+ * Where a frame's value lives. The radar timeline mixes observed MRMS,
+ * nowcast and HRRR frames under one layer; each has its own grids.
+ */
+export function inspectSourceFor(layer: LayerType, frameSource: string | null | undefined): "nowcast" | LayerType {
+  if (!RADAR_FAMILY.has(layer)) return layer;
+  if (frameSource === "nowcast") return "nowcast";
+  if (frameSource === "radar-hrrr") return "radar-hrrr";
+  return layer;
+}
+
+/**
+ * The value at a point for one timeline frame. Nowcast grids are stored per
+ * run, so they're read from the point series /api/nowcast returns rather
+ * than /api/inspect.
+ */
+export async function inspectFrame(
+  opts: InspectOptions & { frameSource?: string | null },
+): Promise<InspectReading> {
+  const source = inspectSourceFor(opts.layer, opts.frameSource);
+  if (source !== "nowcast") return inspectPoint({ ...opts, layer: source });
+  try {
+    const series = await fetchRadarNowcast(opts.serverUrl, opts.lat, opts.lon, opts.signal);
+    const at = Date.parse(opts.timestamp);
+    const point = series.points.find((p) => Date.parse(p.timestamp) === at);
+    if (point && point.dbz != null) return { ok: true, value: point.dbz, unit: "dBZ", source: "grid" };
+    return { ok: false, value: null, unit: "dBZ", source: "unavailable", reason: series.reason ?? "no_point" };
+  } catch {
+    return { ok: false, value: null, unit: "dBZ", source: "unavailable", reason: "no_source" };
+  }
 }
 
 export function formatReading(layer: LayerType, r: InspectReading): string {

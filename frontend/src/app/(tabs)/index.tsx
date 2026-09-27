@@ -43,12 +43,14 @@ import WeatherIcon from "../../components/weather/WeatherIcon";
 import { RadarMiniMap } from "../../components/home/RadarMiniMap";
 import { ConditionTiles } from "../../components/home/ConditionTiles";
 import { hourlyPrecipitation } from "../../lib/conditions";
+import { useAirQualityNow } from "../../hooks/useAirQualityNow";
 
 export default function HomeScreen() {
   const router = useRouter();
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const location = useActiveLocation();
+  const airQuality = useAirQualityNow().data;
   const hasCoordinates = useWeatherStore((s) => s.latitude !== null);
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
   const viewMode = useWeatherStore((s) => s.viewMode);
@@ -189,6 +191,8 @@ export default function HomeScreen() {
     sunrise,
     sunset,
     now,
+    pm25: airQuality?.pm25 ?? null,
+    ozonePpb: airQuality?.ozonePpb ?? null,
   };
 
   const isAdv = viewMode === "advanced";

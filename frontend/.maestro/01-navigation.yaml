@@ -35,5 +35,5 @@ name: fresh install and primary screens
 - takeScreenshot: map-options
 - tapOn: "Light map style"
 - tapOn: "Radar radar layer"
-- tapOn: "Home"
+- tapOn: "Close radar"
 - assertVisible: "Current weather"

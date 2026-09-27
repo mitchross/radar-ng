@@ -3,15 +3,18 @@
  *
  *   • LayerLegendCard  (top-left, layer-aware vertical scale)
  *   • LayerLocationMarker  (user location pill w/ live layer value + tail)
+ *   • Close button     (the tab bar is hidden on this route)
  *   • RadarFABs        (map options + locate capsule)
  *   • MapOptionsSheet  (layer, map style, storm overlays)
  *   • EyedropperPin    (long-press map → readout)
  *   • TimelineBar      ("Reflectivity / Sunday, April 19 2026" header)
  */
 import { useState } from "react";
-import { View, StyleSheet, Text } from "react-native";
-import { useIsFocused } from "expo-router";
+import { View, StyleSheet, Text, Pressable } from "react-native";
+import { useIsFocused, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { SymbolView } from "expo-symbols";
+import { MapChromeSurface } from "../../components/ui/MapChromeSurface";
 import { WeatherMap } from "../../components/map/WeatherMap";
 import { RadarOverlay } from "../../components/map/RadarOverlay";
 import { WeatherLayerOverlay } from "../../components/map/WeatherLayerOverlay";
@@ -39,6 +42,7 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 export default function RadarScreen() {
   useManifest();
   const { alertStatus } = useAlerts();
+  const router = useRouter();
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
@@ -90,9 +94,26 @@ export default function RadarScreen() {
         <TropicalOverlay onSelect={setSelectedTropical} />
         <StormCellsOverlay />
         <LightningOverlay />
-        <LayerLocationMarker />
+        <LayerLocationMarker inspecting={pinned != null} />
         <EyedropperPin pinned={pinned} readout={inspect.readout} />
       </WeatherMap>
+
+      {/* The tab bar is hidden on this full-screen route, so this is the way back. */}
+      <MapChromeSurface
+        style={[styles.close, { top: chrome.top, left: chrome.left }]}
+        fallbackStyle={styles.closeFill}
+        colorScheme="light"
+        interactive
+      >
+        <Pressable
+          onPress={() => router.navigate("/")}
+          style={({ pressed }) => [styles.closeButton, pressed ? { opacity: 0.55 } : null]}
+          accessibilityRole="button"
+          accessibilityLabel="Close radar"
+        >
+          <SymbolView name={{ ios: "xmark", android: "close" }} size={17} tintColor="#1a2030" weight="bold" />
+        </Pressable>
+      </MapChromeSurface>
 
       {/* Only when alerts are stale or failing; left of the map controls. */}
       {alertStatus.kind !== "current" ? (
@@ -132,6 +153,18 @@ export default function RadarScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0a0e1a" },
+  close: { position: "absolute", zIndex: 15, width: 48, height: 48, borderRadius: 24, overflow: "hidden" },
+  closeFill: {
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(10,20,40,0.12)",
+    shadowColor: "#000",
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  closeButton: { width: 48, height: 48, alignItems: "center", justifyContent: "center" },
   alertStatus: {
     position: "absolute",
     zIndex: 15,
