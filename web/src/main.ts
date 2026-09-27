@@ -5,6 +5,7 @@ import type { Map as MLMap, StyleSpecification } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
+import { initAnalytics, track } from "./analytics";
 import { buildFrames, nowIndex, offsetLabel, playbackSequence, type Frame, type Manifest, type Zoom } from "./frames";
 import {
   aqiLabel,
@@ -24,6 +25,7 @@ import {
 } from "./weather";
 
 maplibregl.setWorkerUrl(workerUrl);
+void initAnalytics();
 
 // ---------- configuration ----------
 
@@ -549,6 +551,7 @@ $("search-results").addEventListener("click", (e) => {
 });
 
 function choose(p: Place) {
+  track("place_chosen", { place: p.name, region: p.admin1 });
   results = [];
   searchStatus = null;
   renderResults();
@@ -568,6 +571,7 @@ $("layers").addEventListener("click", (e) => {
   if (!b || b.dataset.layer === state.layer) return;
   state.layer = b.dataset.layer!;
   store("rng.layer", state.layer);
+  track("layer_changed", { layer: state.layer });
   clearFrames();
   renderChips();
   rebuildFrames();
@@ -575,18 +579,25 @@ $("layers").addEventListener("click", (e) => {
 
 $("styles").addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-style]");
-  if (b && b.dataset.style !== state.mapStyle) void applyMapStyle(b.dataset.style as MapStyleId);
+  if (b && b.dataset.style !== state.mapStyle) {
+    track("map_style_changed", { style: b.dataset.style });
+    void applyMapStyle(b.dataset.style as MapStyleId);
+  }
 });
 
 $("zoom").addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-zoom]");
   if (!b || b.dataset.zoom === state.zoom) return;
   state.zoom = b.dataset.zoom as Zoom;
+  track("timeline_range_changed", { range: state.zoom });
   renderChips();
   rebuildFrames(state.frames[state.seq[state.pos]]?.time);
 });
 
-$("play").addEventListener("click", () => setPlaying(!state.playing));
+$("play").addEventListener("click", () => {
+  setPlaying(!state.playing);
+  track(state.playing ? "playback_started" : "playback_paused", { range: state.zoom, layer: state.layer });
+});
 
 $("slider").addEventListener("input", (e) => {
   setPlaying(false);
@@ -629,6 +640,7 @@ map.on("click", async (e) => {
   const { lat, lng } = e.lngLat;
   popup.setLngLat(e.lngLat).setHTML('<div class="readout"><small>Reading…</small></div>').addTo(map);
   const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng).catch(() => null);
+  track("point_inspected", { layer: state.layer, source: frame.source, has_value: value != null });
   const title = frame.source === "nowcast" ? "NOWCAST" : frame.source === "radar-hrrr" ? "HRRR FORECAST" : (LAYERS.find((l) => l.id === state.layer)?.name ?? "").toUpperCase();
   let text = "No data here";
   if (value != null) {

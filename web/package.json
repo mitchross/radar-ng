@@ -10,7 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "maplibre-gl": "^6.11.2"
+    "maplibre-gl": "^6.11.2",
+    "posthog-js": "^1.434.15"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
