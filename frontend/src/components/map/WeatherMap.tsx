@@ -7,10 +7,11 @@ import {
   type ViewStateChangeEvent,
 } from "@maplibre/maplibre-react-native";
 import { Children, isValidElement, useEffect, useEffectEvent, useMemo, useRef } from "react";
-import { Pressable, StyleSheet, Text, View, type NativeSyntheticEvent } from "react-native";
+import { Pressable, StyleSheet, View, type NativeSyntheticEvent } from "react-native";
+import { SymbolView } from "expo-symbols";
 import { useIsFocused } from "expo-router";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
+import { DEFAULTS } from "../../lib/constants";
 import { useBasemapStyle } from "../../hooks/useBasemapStyle";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { MapChromeSurface } from "../ui/MapChromeSurface";
@@ -138,8 +139,7 @@ export function WeatherMap({
       <MapChromeSurface
         style={[styles.zoomWrap, { right: chrome.right, bottom: chrome.aboveTimeline }]}
         fallbackStyle={styles.zoomFill}
-        colorScheme="dark"
-        tintColor="rgba(15,18,30,0.6)"
+        colorScheme="light"
         pointerEvents="box-none"
       >
         <Pressable
@@ -149,7 +149,7 @@ export function WeatherMap({
           accessibilityRole="button"
           accessibilityLabel="Zoom in"
         >
-          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.zoomLabel}>+</Text>
+          <SymbolView name={{ ios: "plus", android: "add" }} size={18} tintColor={ZOOM_ICON} weight="semibold" />
         </Pressable>
         <View style={styles.zoomDivider} />
         <Pressable
@@ -159,12 +159,14 @@ export function WeatherMap({
           accessibilityRole="button"
           accessibilityLabel="Zoom out"
         >
-          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.zoomLabel}>−</Text>
+          <SymbolView name={{ ios: "minus", android: "remove" }} size={18} tintColor={ZOOM_ICON} weight="semibold" />
         </Pressable>
       </MapChromeSurface>
     </View>
   );
 }
+
+const ZOOM_ICON = "#1a2030";
 
 const styles = StyleSheet.create({
   map: {
@@ -172,31 +174,29 @@ const styles = StyleSheet.create({
   },
   zoomWrap: {
     position: "absolute",
-    right: 12,
-    bottom: 240,            // sits above the timeline bar
     zIndex: 14,
-    borderRadius: 14,
+    width: 48,
+    borderRadius: 24,
     overflow: "hidden",
   },
   zoomFill: {
-    backgroundColor: "rgba(15,18,30,0.86)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(10,20,40,0.12)",
+    shadowColor: "#000",
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
   zoomBtn: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     minWidth: 44,
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
   },
-  zoomBtnPressed: { backgroundColor: "rgba(255,255,255,0.08)" },
-  zoomDivider: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(255,255,255,0.1)" },
-  zoomLabel: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "300",
-    lineHeight: 24,
-  },
+  zoomBtnPressed: { opacity: 0.55 },
+  zoomDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 10, backgroundColor: "rgba(10,20,40,0.18)" },
 });

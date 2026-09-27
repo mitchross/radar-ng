@@ -25,8 +25,10 @@ describe("Weather Clear native UI contracts", () => {
 
   // Tabs, radar buttons, the timeline and the style picker are covered by
   // render tests in __tests__/render; only the radar screen itself is not.
-  it("keeps the radar close control labeled", () => {
-    expect(source("app/(tabs)/radar.tsx")).toContain('accessibilityLabel="Close radar"');
+  it("puts every map option behind the one map options sheet", () => {
+    const radar = source("app/(tabs)/radar.tsx");
+    expect(radar).toContain("<MapOptionsSheet");
+    expect(radar).toContain("onOpenMapOptions");
   });
 
   it("wires native foreground and connectivity state into React Query", () => {
@@ -39,7 +41,6 @@ describe("Weather Clear native UI contracts", () => {
     "app/(tabs)/index.tsx",
     "screens/NowcastScreen.tsx",
     "app/(tabs)/settings.tsx",
-    "components/map/RadarFABs.tsx",
     "app/(tabs)/alerts.tsx",
   ])("guards awaited manual refreshes while offline in %s", (file) => {
     expect(source(file)).toContain("runOnlineRefresh");

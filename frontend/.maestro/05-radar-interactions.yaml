@@ -19,23 +19,21 @@ name: radar playback styles layers and foreground recovery
       - tapOn: "48h radar timeline"
       - tapOn: "1h radar timeline"
 - tapOn: "Pause radar animation"
-- tapOn: "Choose map style"
+- tapOn: "Choose radar layer"
 - tapOn: "Dark map style"
 - takeScreenshot: dark-radar
-- tapOn: "Choose map style"
 - tapOn: "Satellite map style"
 - takeScreenshot: satellite-radar
-- tapOn: "Choose map style"
 - tapOn: "Light map style"
-- tapOn: "Choose radar layer"
 - tapOn: "Air Quality radar layer"
 - takeScreenshot: air-quality
 - tapOn: "Choose radar layer"
 - tapOn: "Radar radar layer"
+- tapOn: "Choose radar layer"
 - tapOn: "Toggle storm and lightning overlays"
 - takeScreenshot: storm-overlays
 - tapOn: "Toggle storm and lightning overlays"
-- tapOn: "Refresh radar"
+- tapOn: "Close map options"
 - assertVisible: "Play radar animation"
 - pressKey: Home
 - launchApp:
@@ -43,5 +41,5 @@ name: radar playback styles layers and foreground recovery
 - runFlow: common/dismiss-system-prompts.yaml
 - assertVisible: "Choose radar layer"
 - takeScreenshot: radar-foreground
-- tapOn: "Close radar"
-- assertVisible: "Home"
+- tapOn: "Home"
+- assertVisible: "Current weather"

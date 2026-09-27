@@ -31,11 +31,9 @@ name: fresh install and primary screens
     visible: "Choose radar layer"
     timeout: 30000
 - takeScreenshot: radar
-- tapOn: "Choose map style"
-- takeScreenshot: map-styles
-- tapOn: "Light map style"
 - tapOn: "Choose radar layer"
-- takeScreenshot: radar-layers
+- takeScreenshot: map-options
+- tapOn: "Light map style"
 - tapOn: "Radar radar layer"
-- tapOn: "Close radar"
-- assertVisible: "Home"
+- tapOn: "Home"
+- assertVisible: "Current weather"
