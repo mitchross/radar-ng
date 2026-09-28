@@ -3,17 +3,18 @@
  *
  *   • LayerLegendCard  (top-left, layer-aware vertical scale)
  *   • LayerLocationMarker  (user location pill w/ live layer value + tail)
- *   • RadarFABs        (right rail + layer-tinted popover)
- *   • MapStylePicker   (theme + projection, summoned by the rail)
+ *   • Close button     (the tab bar is hidden on this route)
+ *   • RadarFABs        (map options + locate capsule)
+ *   • MapOptionsSheet  (layer, map style, storm overlays)
  *   • EyedropperPin    (long-press map → readout)
  *   • TimelineBar      ("Reflectivity / Sunday, April 19 2026" header)
  */
-import { useEffect, useState } from "react";
-import { View, StyleSheet, Pressable, Text } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useState } from "react";
+import { View, StyleSheet, Text, Pressable } from "react-native";
 import { useIsFocused, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SymbolView } from "expo-symbols";
+import { MapChromeSurface } from "../../components/ui/MapChromeSurface";
 import { WeatherMap } from "../../components/map/WeatherMap";
 import { RadarOverlay } from "../../components/map/RadarOverlay";
 import { WeatherLayerOverlay } from "../../components/map/WeatherLayerOverlay";
@@ -31,7 +32,7 @@ import { LayerLegendCard } from "../../components/map/LayerLegendCard";
 import { LayerLocationMarker } from "../../components/map/LayerLocationMarker";
 import { TimelineBar } from "../../components/timeline/TimelineBar";
 import { RadarFABs } from "../../components/map/RadarFABs";
-import { MapStylePicker } from "../../components/map/MapStylePicker";
+import { MapOptionsSheet } from "../../components/map/MapOptionsSheet";
 import { EyedropperPin, InspectorPanel, useInspectReading, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
@@ -53,13 +54,7 @@ export default function RadarScreen() {
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
   const inspect = useInspectReading(pinned);
   const [selectedTropical, setSelectedTropical] = useState<TropicalStormDetails | null>(null);
-  const [stylePickerOpen, setStylePickerOpen] = useState(false);
-  const [inspectHint, setInspectHint] = useState(false);
-  useEffect(() => {
-    if (!inspectHint) return;
-    const timer = setTimeout(() => setInspectHint(false), 3000);
-    return () => clearTimeout(timer);
-  }, [inspectHint]);
+  const [mapOptionsOpen, setMapOptionsOpen] = useState(false);
 
   const camera = useSharedCamera(DEFAULTS.LONGITUDE, DEFAULTS.LATITUDE, DEFAULTS.ZOOM);
   // Particles also run over the air-quality heatmap (the IQAir Earth look):
@@ -99,32 +94,38 @@ export default function RadarScreen() {
         <TropicalOverlay onSelect={setSelectedTropical} />
         <StormCellsOverlay />
         <LightningOverlay />
-        <LayerLocationMarker />
+        <LayerLocationMarker inspecting={pinned != null} />
         <EyedropperPin pinned={pinned} readout={inspect.readout} />
       </WeatherMap>
 
-      {/* Top safe area — close button only. Alerts live on the Alerts tab. */}
-      <SafeAreaView style={styles.safeTop} edges={["top", "left", "right"]} pointerEvents="box-none">
+      {/* The tab bar is hidden on this full-screen route, so this is the way back. */}
+      <MapChromeSurface
+        style={[styles.close, { top: chrome.top, left: chrome.left }]}
+        fallbackStyle={styles.closeFill}
+        colorScheme="light"
+        interactive
+      >
         <Pressable
-          style={styles.closeBtn}
           onPress={() => router.navigate("/")}
-          hitSlop={10}
+          style={({ pressed }) => [styles.closeButton, pressed ? { opacity: 0.55 } : null]}
           accessibilityRole="button"
           accessibilityLabel="Close radar"
         >
-          <SymbolView name={{ ios: "xmark", android: "close" }} size={15} tintColor="#FFFFFF" weight="bold" />
+          <SymbolView name={{ ios: "xmark", android: "close" }} size={17} tintColor="#1a2030" weight="bold" />
         </Pressable>
-        {alertStatus.kind !== "current" ? (
-          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE}
-            accessibilityRole="alert"
-            accessibilityLabel={alertStatus.accessibilityLabel}
-            pointerEvents="none"
-            style={[styles.alertStatus, { top: chrome.statusTop, right: chrome.right }]}
-          >
-            ALERTS {alertStatus.label}
-          </Text>
-        ) : null}
-      </SafeAreaView>
+      </MapChromeSurface>
+
+      {/* Only when alerts are stale or failing; left of the map controls. */}
+      {alertStatus.kind !== "current" ? (
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE}
+          accessibilityRole="alert"
+          accessibilityLabel={alertStatus.accessibilityLabel}
+          pointerEvents="none"
+          style={[styles.alertStatus, { top: chrome.top, right: chrome.right + 58 }]}
+        >
+          ALERTS {alertStatus.label}
+        </Text>
+      ) : null}
 
       {/* Wind particles — Skia canvas overlay, active on the wind layer */}
       <WindParticlesOverlay enabled={windParticlesOn} camera={camera} />
@@ -135,25 +136,10 @@ export default function RadarScreen() {
       {/* Readout for a long-pressed point: above the map chrome, clear of legend and buttons. */}
       <InspectorPanel pinned={pinned} inspect={inspect} onClear={() => setPinned(null)} />
 
-      {/* Right-side controls — crosshair button clears a pinned inspector if any. */}
-      <RadarFABs
-        inspectorActive={pinned != null}
-        onToggleInspector={() => {
-          // With nothing pinned, explain the gesture instead of doing nothing.
-          if (pinned) setPinned(null);
-          else setInspectHint(true);
-        }}
-        onOpenStylePicker={() => setStylePickerOpen(true)}
-      />
+      {/* Map options + locate. The inspector panel's own button clears a pin. */}
+      <RadarFABs onOpenMapOptions={() => setMapOptionsOpen(true)} />
 
-      {inspectHint ? (
-        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} accessibilityRole="alert" style={[styles.hint, { top: chrome.top, left: chrome.left + 58, right: chrome.right + 58 }]} pointerEvents="none">
-          Long-press the map to inspect a point
-        </Text>
-      ) : null}
-
-      {/* Map style + projection picker */}
-      <MapStylePicker visible={stylePickerOpen} onClose={() => setStylePickerOpen(false)} />
+      <MapOptionsSheet visible={mapOptionsOpen} onClose={() => setMapOptionsOpen(false)} />
 
       {/* Timeline — past observed + nowcast + HRRR forecast in one stream */}
       <TimelineBar />
@@ -167,48 +153,21 @@ export default function RadarScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0a0e1a" },
-  safeTop: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 15,
+  close: { position: "absolute", zIndex: 15, width: 48, height: 48, borderRadius: 24, overflow: "hidden" },
+  closeFill: {
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(10,20,40,0.12)",
+    shadowColor: "#000",
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
-  closeBtn: {
-    alignSelf: "flex-start",
-    marginLeft: 12,
-    marginTop: 8,
-    width: 36,
-    height: 36,
-    minWidth: 44,
-    minHeight: 44,
-    borderRadius: 18,
-    backgroundColor: "rgba(10,10,20,0.78)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  hint: {
-    position: "absolute",
-    top: 112,
-    left: 70,
-    right: 70,
-    zIndex: 22,
-    textAlign: "center",
-    color: "#FFFFFF",
-    backgroundColor: "rgba(10,10,20,0.82)",
-    borderRadius: 12,
-    overflow: "hidden",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 13,
-    fontWeight: "600",
-  },
+  closeButton: { width: 48, height: 48, alignItems: "center", justifyContent: "center" },
   alertStatus: {
     position: "absolute",
-    top: 8,
-    right: 12,
+    zIndex: 15,
     minHeight: 44,
     paddingHorizontal: 12,
     lineHeight: 44,

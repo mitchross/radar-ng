@@ -314,7 +314,8 @@ function FogBars({ size }: { size: number }) {
             width: b.w * u,
             height: h,
             borderRadius: h / 2,
-            backgroundColor: "#E8ECF5",
+            // The cloud shade tone: the cloud's own near-white fill vanished on white cards.
+            backgroundColor: "#9AA4BE",
             opacity: b.o,
           }}
         />

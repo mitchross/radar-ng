@@ -29,15 +29,15 @@ bun run ios          # build + install + launch on iOS simulator (macOS only)
 
 First native build takes a while (Gradle / CocoaPods); subsequent runs are incremental.
 
-### Radar playback variants for device testing
+### Radar playback kill switch
 
-Playback mounts one raster source per frame slot. The default build uses one slot. To test the 5-slot carousel on a device, build a second variant with the value baked in:
+Playback mounts five raster sources and swaps their opacity, so each frame's tiles load while hidden. If that misbehaves on a device, build the old single-source variant:
 
 ```bash
-EXPO_PUBLIC_CAROUSEL_WINDOW=5 bun run ios      # or: bun run android
+EXPO_PUBLIC_CAROUSEL_WINDOW=1 bun run ios      # or: bun run android
 ```
 
-`EXPO_PUBLIC_*` values are inlined when the JS bundle is built, so restart Metro with `--clear` when switching variants. Only `5` is recognised; anything else builds the 1-slot default. Run the checklist in ARCHITECTURE.md § "The app" on both builds.
+`EXPO_PUBLIC_*` values are inlined when the JS bundle is built, so restart Metro with `--clear` when switching variants. Only `1` is recognised; anything else builds the 5-slot default. The checklist is in ARCHITECTURE.md § "The app".
 
 ## Android gotchas
 

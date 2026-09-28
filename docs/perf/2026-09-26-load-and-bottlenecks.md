@@ -86,3 +86,20 @@ Options, most promising first:
   - `/api/manifest.json` re-serializes the cached dict on every call.
   - uvicorn's access log duplicates Caddy's.
 - **Tiles never bottlenecked** (p95 30 ms). They plateaued only because each simulated user's session waited on the API.
+
+## Stress rerun after the fixes (2026-09-27 03:14 UTC)
+
+Tile-server v1.1.21 (#71: cached manifest bytes, no duplicate access log), with talos #2592's probes (TCP readiness, 5 s × 4 liveness) and a CPU limit of 3. Same 60-pod profile.
+
+| | Before | After |
+|---|---:|---:|
+| Requests | 1.81 M | 3.40 M |
+| Average throughput | 2,318 req/s | 4,340 req/s |
+| Failed requests | 17,011 | 19 |
+| Tile-server restarts | 2 | 0 |
+| API ceiling | ~190 req/s | ~400 req/s |
+| API p95 at 600 users | 3 s | 0.17–0.44 s |
+| API p95 at 1,200 users | 10–12 s | 3.4–4.5 s |
+| Tile p95 | 30 ms | 23 ms |
+
+Manifest and nowcast point are still the first to degrade, at 900+ users. If more headroom is ever needed, the options are more uvicorn workers (after moving the rate-limit buckets and metrics out of process memory) or serving the manifest as a static file through Caddy. The per-minute table is in talos `docs/inventory/2026-09-26-radar-ng-stress-test.md`.

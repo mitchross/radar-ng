@@ -177,7 +177,7 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   }
 
   return (
-    <View style={[styles.wrap, { top: chrome.top, left: chrome.left }]}>
+    <View style={[styles.wrap, { top: chrome.belowClose, left: chrome.left }]}>
       <MapChromeSurface style={styles.card} fallbackStyle={styles.cardFill} colorScheme="light">
         <View style={styles.headerRow}>
           <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.title} numberOfLines={1}>
@@ -217,10 +217,10 @@ const styles = StyleSheet.create({
     zIndex: 12,
   },
   card: {
-    width: 120,
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    width: 108,
+    borderRadius: 16,
+    paddingVertical: 9,
+    paddingHorizontal: 11,
   },
   cardFill: {
     backgroundColor: CARD_BG,
@@ -258,12 +258,12 @@ const styles = StyleSheet.create({
   },
   scaleRow: {
     flexDirection: "row",
-    height: 140,
-    gap: 8,
+    height: 104,
+    gap: 7,
   },
   gradient: {
-    width: 10,
-    borderRadius: 5,
+    width: 8,
+    borderRadius: 4,
   },
   labels: {
     flex: 1,

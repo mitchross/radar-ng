@@ -20,8 +20,6 @@ import {
   CONDITION_GRADIENTS,
   getCumulusCondition,
   getIconKind,
-  getUVInfo,
-  getWindDirection,
 } from "../../lib/cumulusTheme";
 import { displayTemperature, formatDegrees } from "../../lib/temperature";
 import {
@@ -30,7 +28,6 @@ import {
   isNightAt,
   nextHourBanner,
   precipitationNext24h,
-  startHourIndex,
   sunTimesFor,
   weekRange,
 } from "../../lib/forecastView";
@@ -44,20 +41,16 @@ import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import WeatherIcon from "../../components/weather/WeatherIcon";
 import { RadarMiniMap } from "../../components/home/RadarMiniMap";
-import {
-  UVBar,
-  WindDial,
-  FillRing,
-  VisBars,
-  PressureGauge,
-  SunArc,
-} from "../../components/home/StatWidgets";
+import { ConditionTiles } from "../../components/home/ConditionTiles";
+import { hourlyPrecipitation } from "../../lib/conditions";
+import { useAirQualityNow } from "../../hooks/useAirQualityNow";
 
 export default function HomeScreen() {
   const router = useRouter();
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const location = useActiveLocation();
+  const airQuality = useAirQualityNow().data;
   const hasCoordinates = useWeatherStore((s) => s.latitude !== null);
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
   const viewMode = useWeatherStore((s) => s.viewMode);
@@ -176,26 +169,31 @@ export default function HomeScreen() {
   }));
   const week = weekRange(daily);
 
-  // Stats
-  const uv = forecast.daily.uv_index_max?.[0] ?? null;
-  const uvInfo = uv === null ? null : getUVInfo(uv);
-  const windMph = forecast.current.wind_speed_10m == null ? null : Math.round(forecast.current.wind_speed_10m);
-  const windDeg = forecast.current.wind_direction_10m;
-  const windCompass = windDeg == null ? "\u2014" : getWindDirection(windDeg);
-  const humidity =
-    forecast.current.relative_humidity_2m == null ? null : Math.round(forecast.current.relative_humidity_2m);
-  const dewFahrenheit = forecast.current.dew_point_2m;
-  const dew = temperature(dewFahrenheit);
-  const visM = forecast.hourly.visibility?.[startHourIndex(forecast.hourly.time, now.getTime())];
-  const visibility = visM == null ? null : Math.min(10, visM / 1609);
-  const pressure = forecast.current.surface_pressure == null ? null : Math.round(forecast.current.surface_pressure);
-  const dayProgress =
-    sunrise && sunset
-      ? Math.max(0, Math.min(1, (now.getTime() - sunrise.getTime()) / (sunset.getTime() - sunrise.getTime())))
-      : null;
-  const fmt = (value: number | null) => (value === null ? "\u2014" : String(value));
-  const sunLabel = (d: Date | null) =>
-    d ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase() : "\u2014";
+  const precipHours = hourlyPrecipitation(forecast, now.getTime(), 24);
+  const precipPeak = Math.max(0.05, ...precipHours.map((v) => v ?? 0));
+  const mph = (v: number | null | undefined) => (v == null ? null : Math.round(v));
+  const conditions = {
+    uv: forecast.daily.uv_index_max?.[0] ?? null,
+    windMph: mph(forecast.current.wind_speed_10m),
+    gustMph: mph(forecast.current.wind_gusts_10m),
+    windFromDeg: forecast.current.wind_direction_10m ?? null,
+    humidity: mph(forecast.current.relative_humidity_2m),
+    dew: temperature(forecast.current.dew_point_2m),
+    dewF: forecast.current.dew_point_2m ?? null,
+    pressureHPa: forecast.current.surface_pressure ?? null,
+    rainTodayIn: forecast.daily.precipitation_sum?.[0] ?? null,
+    rainTomorrowIn: forecast.daily.precipitation_sum?.[1] ?? null,
+    rainNext: precipHours.slice(0, 12),
+    feels,
+    actual: temp,
+    feelsF: forecast.current.apparent_temperature ?? null,
+    actualF: forecast.current.temperature_2m ?? null,
+    sunrise,
+    sunset,
+    now,
+    pm25: airQuality?.pm25 ?? null,
+    ozonePpb: airQuality?.ozonePpb ?? null,
+  };
 
   const isAdv = viewMode === "advanced";
 
@@ -405,24 +403,20 @@ export default function HomeScreen() {
             accessible
             accessibilityLabel={
               precipTotal === null
-                ? "Precipitation over the next 24 hours unavailable. Bars show the hourly chance of precipitation."
-                : `${precipTotal.toFixed(2)} inches of precipitation expected over the next 24 hours. Bars show the hourly chance of precipitation.`
+                ? "Precipitation over the next 24 hours unavailable."
+                : `${precipTotal.toFixed(2)} inches of precipitation expected over the next 24 hours. Bars show each hour's amount.`
             }
             style={styles.card}
           >
             <View style={styles.precipChart}>
-              {hourly.map((h, i) => {
-                // Bars are the chance of precipitation; an unknown hour is a flat stub.
-                const pct = (h.chance ?? 0) / 100;
-                const barH = h.chance === null ? 2 : Math.max(2, pct * 42);
+              {precipHours.map((amount, i) => {
+                // Bars are each hour's amount, scaled to the wettest hour; dry or
+                // unknown hours are a faint stub. (The self-hosted Open-Meteo has
+                // no precipitation probability, so amounts are what we can show.)
+                const barH = amount ? Math.max(3, (amount / precipPeak) * 42) : 2;
                 return (
                   <View key={i} style={styles.precipBarSlot}>
-                    <View
-                      style={[
-                        styles.precipBar,
-                        { height: barH, opacity: h.chance !== null && pct > 0.05 ? 1 : 0.25 },
-                      ]}
-                    />
+                    <View style={[styles.precipBar, { height: barH, opacity: amount ? 1 : 0.25 }]} />
                   </View>
                 );
               })}
@@ -498,137 +492,13 @@ export default function HomeScreen() {
           {/* Mini radar map */}
           <RadarMiniMap />
 
-          {/* Advanced Mode: Stats grid & Twilight sun path */}
+          {/* Advanced mode: condition tiles and daylight */}
           {isAdv ? (
             <>
               <View style={styles.sectionWrap}>
                 <SectionLabel>CONDITIONS</SectionLabel>
               </View>
-              <View style={styles.statGrid}>
-                {/* 1. UV Index */}
-                <View style={styles.statCard}>
-                  <Text style={styles.statLabel}>UV INDEX</Text>
-                  <Text style={styles.statValue}>{uv === null ? "\u2014" : Math.round(uv)}</Text>
-                  <Text style={[styles.statSubText, uvInfo ? { color: uvInfo.color } : null]}>
-                    {uvInfo?.label ?? "Unavailable"}
-                  </Text>
-                  {uv !== null ? (
-                    <View style={styles.widgetWrapper}>
-                      <UVBar value={uv} />
-                    </View>
-                  ) : null}
-                </View>
-
-                {/* 2. Wind compass */}
-                <View style={styles.statCard}>
-                  <Text style={styles.statLabel}>WIND</Text>
-                  <View style={styles.statValueRow}>
-                    <Text style={styles.statValue}>{fmt(windMph)}</Text>
-                    <Text style={styles.statUnit}>mph</Text>
-                  </View>
-                  <Text style={styles.statSubText}>{windCompass}</Text>
-                  {windDeg != null ? (
-                    <View style={styles.widgetWrapper}>
-                      <WindDial dir={windDeg} />
-                    </View>
-                  ) : null}
-                </View>
-
-                {/* 3. Humidity */}
-                <View style={styles.statCard}>
-                  <Text style={styles.statLabel}>HUMIDITY</Text>
-                  <View style={styles.statValueRow}>
-                    <Text style={styles.statValue}>{fmt(humidity)}</Text>
-                    <Text style={styles.statUnit}>%</Text>
-                  </View>
-                  <Text style={styles.statSubText}>Dew pt {formatDegrees(dew)}</Text>
-                  {humidity !== null ? (
-                    <View style={styles.widgetWrapper}>
-                      <FillRing value={humidity / 100} color={theme.colors.rain} />
-                    </View>
-                  ) : null}
-                </View>
-
-                {/* 4. Visibility */}
-                <View style={styles.statCard}>
-                  <Text style={styles.statLabel}>VISIBILITY</Text>
-                  <View style={styles.statValueRow}>
-                    <Text style={styles.statValue}>{visibility === null ? "\u2014" : Math.round(visibility)}</Text>
-                    <Text style={styles.statUnit}>mi</Text>
-                  </View>
-                  <Text style={styles.statSubText}>
-                    {visibility === null ? "Unavailable" : visibility >= 9 ? "Clear view" : "Hazy"}
-                  </Text>
-                  {visibility !== null ? (
-                    <View style={styles.widgetWrapper}>
-                      <VisBars value={visibility} />
-                    </View>
-                  ) : null}
-                </View>
-
-                {/* 5. Pressure */}
-                <View style={styles.statCard}>
-                  <Text style={styles.statLabel}>PRESSURE</Text>
-                  <View style={styles.statValueRow}>
-                    <Text style={styles.statValue}>{fmt(pressure)}</Text>
-                    <Text style={styles.statUnit}>hPa</Text>
-                  </View>
-                  <Text style={styles.statSubText}>
-                    {pressure === null ? "Unavailable" : pressure < 1010 ? "Low press." : "Normal"}
-                  </Text>
-                  {pressure !== null ? (
-                    <View style={styles.widgetWrapper}>
-                      <PressureGauge value={pressure} />
-                    </View>
-                  ) : null}
-                </View>
-
-                {/* 6. Dew point */}
-                <View style={styles.statCard}>
-                  <Text style={styles.statLabel}>DEW POINT</Text>
-                  <View style={styles.statValueRow}>
-                    <Text style={styles.statValue}>{fmt(dew)}</Text>
-                    {dew !== null ? <Text style={styles.statUnit}>°</Text> : null}
-                  </View>
-                  <Text style={styles.statSubText}>
-                    {dewFahrenheit == null ? "Unavailable" : dewFahrenheit > 60 ? "Humid air" : "Comfortable"}
-                  </Text>
-                  {dewFahrenheit != null ? (
-                    <View style={styles.widgetWrapper}>
-                      <FillRing value={Math.max(0, Math.min(1, (dewFahrenheit - 20) / 60))} color={theme.colors.hot} />
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-
-              {/* Sunrise/Sunset widgets grid row */}
-              <View style={styles.sunriseSunsetGrid}>
-                <View style={[styles.statCard, styles.rowLayoutCard]}>
-                  <Text style={styles.widgetIconText}>🌅</Text>
-                  <View>
-                    <Text style={styles.rowLayoutLabel}>SUNRISE</Text>
-                    <Text style={styles.rowLayoutVal}>
-                      {sunLabel(sunrise)}
-                    </Text>
-                  </View>
-                </View>
-                <View style={[styles.statCard, styles.rowLayoutCard]}>
-                  <Text style={styles.widgetIconText}>🌇</Text>
-                  <View>
-                    <Text style={styles.rowLayoutLabel}>SUNSET</Text>
-                    <Text style={styles.rowLayoutVal}>
-                      {sunLabel(sunset)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Sun Arc */}
-              {dayProgress !== null ? (
-                <View style={[styles.card, styles.sunArcCard]}>
-                  <SunArc sunrise={sunLabel(sunrise)} sunset={sunLabel(sunset)} progress={dayProgress} />
-                </View>
-              ) : null}
+              <ConditionTiles {...conditions} />
             </>
           ) : null}
 
@@ -1038,98 +908,5 @@ function createStyles(theme: WeatherClearTheme) {
   },
 
   // Stats Grid
-  statGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginHorizontal: 16,
-    gap: 9,
-  },
-  statCard: {
-    flexBasis: "47%",
-    flexGrow: 1,
-    backgroundColor: theme.colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: 12,
-    minHeight: 110,
-    position: "relative",
-  },
-  statLabel: {
-    color: cumulus.inkMuted,
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    fontFamily: cumulusFonts.ui,
-  },
-  statValue: {
-    color: cumulus.ink,
-    fontSize: 22,
-    fontFamily: cumulusFonts.display,
-    fontWeight: "500",
-    marginTop: 4,
-  },
-  statValueRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    marginTop: 4,
-    gap: 2,
-  },
-  statUnit: {
-    color: cumulus.inkMuted,
-    fontSize: 10,
-    fontFamily: cumulusFonts.ui,
-    fontWeight: "500",
-  },
-  statSubText: {
-    color: cumulus.inkMuted,
-    fontSize: 10,
-    fontWeight: "500",
-    fontFamily: cumulusFonts.ui,
-    marginTop: 1,
-  },
-  widgetWrapper: {
-    position: "absolute",
-    right: 12,
-    bottom: 12,
-  },
-
-  // Sunrise sunset cells
-  sunriseSunsetGrid: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    marginTop: 9,
-    gap: 9,
-  },
-  rowLayoutCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    minHeight: 52,
-    paddingVertical: 10,
-  },
-  widgetIconText: {
-    fontSize: 24,
-  },
-  rowLayoutLabel: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: cumulus.inkMuted,
-    letterSpacing: 0.6,
-    fontFamily: cumulusFonts.ui,
-  },
-  rowLayoutVal: {
-    fontSize: 18,
-    fontFamily: cumulusFonts.display,
-    fontWeight: "500",
-    color: cumulus.ink,
-    marginTop: 2,
-  },
-
-  // Sun Arc Card
-  sunArcCard: {
-    marginTop: 12,
-    paddingVertical: 14,
-  },
   });
 }

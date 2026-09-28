@@ -1,16 +1,16 @@
 import { assignSlots, assignSlotsInSequence, CAROUSEL_WINDOW, clampWindow, parseCarouselWindow } from "../../src/lib/radarCarousel";
 
 describe("CAROUSEL_WINDOW", () => {
-  it("defaults to 1 (single-source behaviour) until the on-device checklist passes", () => {
-    expect(CAROUSEL_WINDOW).toBe(1);
+  it("defaults to 5 (prefetching opacity-swap playback)", () => {
+    expect(CAROUSEL_WINDOW).toBe(5);
   });
 
-  it("accepts only 5 as a build-time override", () => {
-    expect(parseCarouselWindow("5")).toBe(5);
-    expect(parseCarouselWindow(" 5 ")).toBe(5);
-    expect(parseCarouselWindow(undefined)).toBe(1);
-    expect(parseCarouselWindow("3")).toBe(1);
-    expect(parseCarouselWindow("")).toBe(1);
+  it("accepts only 1 as a build-time kill switch", () => {
+    expect(parseCarouselWindow("1")).toBe(1);
+    expect(parseCarouselWindow(" 1 ")).toBe(1);
+    expect(parseCarouselWindow(undefined)).toBe(5);
+    expect(parseCarouselWindow("3")).toBe(5);
+    expect(parseCarouselWindow("")).toBe(5);
   });
 });
 

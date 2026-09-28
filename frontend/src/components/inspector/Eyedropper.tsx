@@ -10,7 +10,7 @@ import { Marker } from "@maplibre/maplibre-react-native";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { cumulus } from "../../lib/cumulusTheme";
-import { formatReading, inspectPoint, type InspectReading } from "../../lib/inspector";
+import { formatReading, inspectFrame, inspectSourceFor, type InspectReading } from "../../lib/inspector";
 import type { LayerType } from "../../types/weather";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 
@@ -26,6 +26,12 @@ const LAYER_LABEL: Record<LayerType, string> = {
   cape: "CAPE",
   "air-quality": "PM2.5",
   ozone: "OZONE",
+};
+
+// Radar-family frames that aren't observed MRMS say where their value comes from.
+const FRAME_LABEL: Partial<Record<string, string>> = {
+  nowcast: "NOWCAST",
+  "radar-hrrr": "HRRR FORECAST",
 };
 
 // One /api/inspect per playback tick was a fetch storm.
@@ -61,11 +67,15 @@ export function useInspectReading(pinned: PinnedPoint | null): InspectResult {
   const frameTimestamp = useWeatherStore((s) =>
     hasPin && !s.isPlaying ? (s.frames[s.currentFrameIndex]?.timestamp ?? null) : null,
   );
+  // Observed, nowcast or HRRR: each frame kind is read from its own grids.
+  const frameSource = useWeatherStore((s) =>
+    hasPin && !s.isPlaying ? (s.frames[s.currentFrameIndex]?.source ?? null) : null,
+  );
 
   // Keep the last reading on screen while frames tick by; refetch once paused.
   const requestKey =
     pinned && !isPlaying && frameTimestamp
-      ? `${serverUrl}|${activeLayer}|${frameTimestamp}|${pinned.lat}|${pinned.lon}`
+      ? `${serverUrl}|${activeLayer}|${frameSource}|${frameTimestamp}|${pinned.lat}|${pinned.lon}`
       : null;
 
   useEffect(() => {
@@ -73,9 +83,10 @@ export function useInspectReading(pinned: PinnedPoint | null): InspectResult {
     const ctrl = new AbortController();
     const timer = setTimeout(() => {
       setPendingRequest(requestKey);
-      inspectPoint({
+      inspectFrame({
         serverUrl,
         layer: activeLayer,
+        frameSource,
         timestamp: frameTimestamp,
         lat: pinned.lat,
         lon: pinned.lon,
@@ -92,7 +103,7 @@ export function useInspectReading(pinned: PinnedPoint | null): InspectResult {
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [pinned, requestKey, activeLayer, frameTimestamp, serverUrl]);
+  }, [pinned, requestKey, activeLayer, frameSource, frameTimestamp, serverUrl]);
 
   const reading = result && result.pin === pinned ? result.reading : null;
   const loading = requestKey !== null && pendingRequest === requestKey;
@@ -100,7 +111,7 @@ export function useInspectReading(pinned: PinnedPoint | null): InspectResult {
     readout: loading ? "…" : reading ? formatReading(activeLayer, reading) : "\u2014",
     // "N/A" only once a fetch for this pin came back empty, not while waiting.
     sourceLabel: reading?.source === "grid" ? "Grid" : result?.pin === pinned && !loading ? "N/A" : "",
-    layerLabel: LAYER_LABEL[activeLayer],
+    layerLabel: FRAME_LABEL[inspectSourceFor(activeLayer, frameSource)] ?? LAYER_LABEL[activeLayer],
   };
 }
 
