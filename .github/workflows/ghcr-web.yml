@@ -1,0 +1,95 @@
+name: ghcr · web
+
+# The web radar (radar.vanillax.me): static build served by nginx.
+# Runs on push to master, or manually with an explicit version.
+# PostHog: set the repository variable POSTHOG_PROJECT_KEY to the project's
+# public phc_ key (gh variable set POSTHOG_PROJECT_KEY); unset builds ship
+# with analytics off.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'web/**'
+      - '.github/workflows/ghcr-web.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional explicit version tag to publish (e.g. v1.2.3)'
+        required: false
+        default: ''
+
+concurrency:
+  group: ghcr-web-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compute next semver from registry
+        id: ver
+        run: |
+          set -euo pipefail
+          IMAGE="radar-ng-web"
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            NEXT="${{ github.event.inputs.version }}"
+          else
+            TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${{ github.repository_owner }}/${IMAGE}:pull" | jq -r .token)
+            LATEST=$(curl -s -H "Authorization: Bearer $TOKEN" "https://ghcr.io/v2/${{ github.repository_owner }}/${IMAGE}/tags/list" \
+              | jq -r '.tags[]?' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -1 \
+              || true)
+            if [ -z "${LATEST:-}" ]; then
+              NEXT="v0.1.0"
+            else
+              STRIPPED=${LATEST#v}
+              MAJOR=${STRIPPED%%.*}
+              REST=${STRIPPED#*.}
+              MINOR=${REST%%.*}
+              PATCH=${REST#*.}
+              NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+            fi
+          fi
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Calculated version: $NEXT"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/radar-ng-web
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=raw,value=${{ steps.ver.outputs.version }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          provenance: false
+          context: web
+          file: web/Dockerfile
+          build-args: |
+            VITE_POSTHOG_KEY=${{ vars.POSTHOG_PROJECT_KEY }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=ghcr-web
+          cache-to: type=gha,mode=max,scope=ghcr-web
