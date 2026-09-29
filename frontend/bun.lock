@@ -22,7 +22,7 @@
         "@tanstack/query-sync-storage-persister": "^5.103.2",
         "@tanstack/react-query": "^5.103.2",
         "@tanstack/react-query-persist-client": "^5.103.2",
-        "expo": "~58.0.0-preview.8",
+        "expo": "58.0.0-preview.8",
         "expo-build-properties": "~58.0.8",
         "expo-constants": "~58.0.8",
         "expo-font": "~58.0.3",
