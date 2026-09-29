@@ -9,7 +9,8 @@
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    MPLCONFIGDIR=/tmp/matplotlib
 
 # System deps for scientific Python (cfgrib/eccodes, gdal, pyproj) +
 # build chain for pysteps which has no cp312 wheel on PyPI.

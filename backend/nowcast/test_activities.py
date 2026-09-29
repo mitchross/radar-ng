@@ -106,7 +106,9 @@ def test_nowcast_publishes_run_scoped_grid_keys_before_pruning(monkeypatch, tmp_
     assert all(key.startswith(f"runs/{anchor}/") for key in grid_keys)
     assert [name for name, _ in events] == ["finalize", "publish", "prune"]
     published_frames = events[1][1][2]["frames"]
-    assert [frame["grid_key"] for frame in published_frames] == grid_keys
+    # Leads render concurrently; the manifest must still list them in lead order.
+    assert sorted(frame["grid_key"] for frame in published_frames) == sorted(grid_keys)
+    assert [frame["lead_minutes"] for frame in published_frames] == list(range(5, 61, 5))
     assert events[2][1] == ("nowcast", activities.POINT_GRID_RETENTION_RUNS, anchor)
 
 
@@ -218,3 +220,18 @@ def test_point_grid_retention_prunes_whole_runs_and_preserves_active(
         assert len(list(generation.glob("*.bin"))) == 12
         assert (generation / grid_dump._GENERATION_COMPLETE_FILE).is_file()
     assert (tmp_path / "nowcast" / grid_dump._LAYER_LOCK_FILE).is_file()
+
+
+def test_fast_cdf_match_equals_pysteps_reference():
+    from pysteps.postprocessing.probmatching import nonparam_match_empirical_cdf as reference
+
+    from backend.nowcast.activities import _match_empirical_cdf
+
+    rng = np.random.default_rng(7)
+    for wet_fraction in (0.0, 0.05, 0.4, 1.0):
+        initial = np.full((60, 80), 5.0)
+        mask = rng.random(initial.shape) < wet_fraction
+        initial[mask] = 5.0 + rng.random(mask.sum()) * 50  # continuous: no ties
+        target = np.where(rng.random(initial.shape) < 0.2, 5.0 + rng.gamma(2.0, 8.0, initial.shape), 0.0)
+        target[0, :5] = np.nan
+        np.testing.assert_allclose(_match_empirical_cdf(initial, target), reference(initial, target))

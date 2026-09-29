@@ -13,6 +13,7 @@ import os
 import shutil
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -54,6 +55,7 @@ ZOOM_LEVELS = [4, 5, 6]
 # user location without decoding colorized tiles. Keep these much smaller
 # than the seven-million-cell science inputs used by pySTEPS itself.
 POINT_GRID_MAX_CELLS = int(os.environ.get("NOWCAST_POINT_GRID_MAX_CELLS", "900000"))
+RENDER_WORKERS = max(1, int(os.environ.get("NOWCAST_RENDER_WORKERS", "4")))
 # Retain the published run plus one complete rollback/debug generation. The
 # shared prune helper also preserves recent writer orphans and its lock inode.
 POINT_GRID_RETENTION_RUNS = 2
@@ -145,6 +147,52 @@ def _degraded_result(
     return None, "unavailable"
 
 
+def _match_empirical_cdf(initial_array, target_array, ignore_indices=None):
+    """pysteps' nonparam_match_empirical_cdf with the same output, sorting only wet cells.
+
+    Minimum-valued (dry) cells map to the target minimum, so only the k wet ranks need the
+    k largest target values: a partition plus two k-element sorts instead of two full
+    argsorts of the ~6M-cell CONUS grid, which were over half of every S-PROG run.
+    """
+    initial = np.array(initial_array, dtype=float)
+    target = np.array(target_array, dtype=float)
+    if np.all(np.isnan(initial)):
+        raise ValueError("Initial array contains only nans.")
+    if initial.size != target.size:
+        raise ValueError("dimension mismatch between initial_array and target_array")
+    zvalue = np.nanmin(initial)
+    if ignore_indices is not None:
+        initial[ignore_indices] = zvalue
+    if np.any(~np.isfinite(initial)):
+        raise ValueError("Initial array contains non-finite values outside ignore_indices mask.")
+    zvalue_trg = np.nanmin(target)
+    target = np.where(np.isnan(target), zvalue_trg, target).reshape(-1)
+    wet = (initial > zvalue).reshape(-1)
+    k = int(wet.sum())
+    if np.sum(target > zvalue_trg) > k:
+        p = np.percentile(target, 100 * (1 - k / initial.size))
+        target[target < p] = zvalue_trg
+    out = np.full(initial.size, zvalue_trg, dtype=float)
+    if k:
+        n = target.size
+        top = np.sort(np.partition(target, n - k)[n - k:])
+        idx = np.flatnonzero(wet)
+        out[idx[np.argsort(initial.reshape(-1)[idx])]] = top
+    out = out.reshape(initial.shape)
+    if ignore_indices is not None:
+        out[ignore_indices] = np.asarray(initial_array)[ignore_indices]
+    return out
+
+
+def _install_fast_cdf_match() -> None:
+    try:
+        from pysteps.postprocessing import probmatching
+    except ImportError:
+        return
+    # S-PROG calls this once per internal step through the module attribute.
+    probmatching.nonparam_match_empirical_cdf = _match_empirical_cdf
+
+
 def _run_nowcast(
     frames: list[np.ndarray], lead_steps: list[float]
 ) -> tuple[np.ndarray | None, str]:
@@ -164,6 +212,7 @@ def _run_nowcast(
         oflow = motion.get_method("LK")
         uv = oflow(stack)
         nowcaster = nowcasts.get_method("sprog")
+        _install_fast_cdf_match()
         try:
             forecast = nowcaster(
                 stack[-3:, :, :],
@@ -387,48 +436,20 @@ async def nowcast_run() -> NowcastResult:
         2,
     )
 
-    for i in range(n_lead):
+    def _render_lead(i: int) -> tuple[set[str], dict] | None:
         valid = latest_dt + timedelta(minutes=(i + 1) * STEP_MIN)
         ts = valid.isoformat()
         tile_path = _nowcast_tile_path(latest_iso, ts)
-        frame = forecast[i]
-        frame = np.where(frame < 5, -9999.0, frame)
-        palettes = await run_sync_with_heartbeat(
-            _render_frame,
-            TILE_DIR,
-            palette_tables,
-            tile_path,
-            frame,
-            lats_arr,
-            lons_arr,
-            heartbeat_every=30,
-            heartbeat_details=lambda i=i: {"phase": "render", "leadtime": i},
-        )
+        frame = np.where(forecast[i] < 5, -9999.0, forecast[i])
+        palettes = _render_frame(TILE_DIR, palette_tables, tile_path, frame, lats_arr, lons_arr)
         if set(palettes) == expected_palettes:
             grid_key = _nowcast_grid_key(latest_iso, ts)
-            grid_file = await asyncio.to_thread(
-                write_grid,
-                "nowcast",
-                ts,
-                frame,
-                lats_arr,
-                lons_arr,
-                "dBZ",
-                -9999.0,
-                POINT_GRID_MAX_CELLS,
-                grid_key=grid_key,
+            grid_file = write_grid(
+                "nowcast", ts, frame, lats_arr, lons_arr, "dBZ", -9999.0,
+                POINT_GRID_MAX_CELLS, grid_key=grid_key,
             )
-            if not grid_file:
-                for palette in palettes:
-                    shutil.rmtree(
-                        TILE_DIR / "nowcast" / palette / tile_path,
-                        ignore_errors=True,
-                    )
-                continue
-            rendered_palettes.update(palettes)
-            rendered_timestamps.append(ts)
-            manifest_frames.append(
-                {
+            if grid_file:
+                return set(palettes), {
                     "timestamp": ts,
                     "path": tile_path,
                     "grid_key": grid_key,
@@ -441,14 +462,26 @@ async def nowcast_run() -> NowcastResult:
                     "spatial_resolution_km": resolution_km,
                     "max_zoom": max(ZOOM_LEVELS),
                 }
-            )
-        else:
-            for palette in palettes:
-                shutil.rmtree(
-                    TILE_DIR / "nowcast" / palette / tile_path, ignore_errors=True
-                )
-        if i % 4 == 0:
-            activity.heartbeat({"phase": "render", "leadtime": i})
+        for palette in palettes:
+            shutil.rmtree(TILE_DIR / "nowcast" / palette / tile_path, ignore_errors=True)
+        return None
+
+    def _render_all() -> list[tuple[set[str], dict] | None]:
+        # Tile encoding releases the GIL; leads are independent pyramids under one publish lock root.
+        with ThreadPoolExecutor(max_workers=RENDER_WORKERS) as pool:
+            return list(pool.map(_render_lead, range(n_lead)))
+
+    for rendered in await run_sync_with_heartbeat(
+        _render_all,
+        heartbeat_every=30,
+        heartbeat_details={"phase": "render", "leadtimes": n_lead},
+    ):
+        if rendered is None:
+            continue
+        palettes, frame_meta = rendered
+        rendered_palettes.update(palettes)
+        rendered_timestamps.append(frame_meta["timestamp"])
+        manifest_frames.append(frame_meta)
 
     def _commit() -> None:
         if len(rendered_timestamps) != n_lead:
