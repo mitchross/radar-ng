@@ -6,6 +6,8 @@ runtime. These routes source public data server-side and hand it back:
 - GET /api/alerts?lat=&lon=           — NWS active alerts for a point. NWS does
   the zone/county matching, so we proxy its `point=` query rather than
   re-implement it; the response is the NWS GeoJSON unchanged.
+- GET /api/alerts/map                 — every active alert that has its own polygon
+  (storm-based warnings), slimmed for drawing on the map.
 - GET /api/geocode?q=                 — place search via a self-hosted Photon.
 - GET /api/reverse-geocode?lat=&lon=  — nearest place name via the same Photon.
 
@@ -118,6 +120,43 @@ async def get_alerts(request: Request, lat: float, lon: float) -> JSONResponse:
 
     _alerts_cache.put(key, body)
     return JSONResponse(body, headers={"Cache-Control": f"public, max-age={ALERTS_TTL_S}"})
+
+
+_MAP_ALERT_FIELDS = ("id", "event", "severity", "urgency", "headline", "sent", "expires", "ends", "areaDesc")
+
+
+@router.get("/api/alerts/map")
+async def get_map_alerts(request: Request) -> JSONResponse:
+    cached = _alerts_cache.get("__map__")
+    if cached is not None:
+        return JSONResponse(cached, headers={"Cache-Control": f"public, max-age={ALERTS_TTL_S}"})
+    try:
+        resp = await _client(request).get(
+            NWS_ALERTS_BASE,
+            params={"status": "actual"},
+            headers={"User-Agent": NWS_USER_AGENT, "Accept": "application/geo+json"},
+            timeout=UPSTREAM_TIMEOUT_S * 2,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+    except (httpx.HTTPError, ValueError):
+        return _upstream_error()
+    if not isinstance(body, dict) or not isinstance(body.get("features"), list):
+        return _upstream_error()
+
+    # Zone-based alerts arrive without geometry; only storm-based polygons are drawable.
+    features = [
+        {
+            "type": "Feature",
+            "geometry": f["geometry"],
+            "properties": {k: (f.get("properties") or {}).get(k) for k in _MAP_ALERT_FIELDS},
+        }
+        for f in body["features"]
+        if isinstance(f, dict) and f.get("geometry")
+    ]
+    out = {"type": "FeatureCollection", "features": features}
+    _alerts_cache.put("__map__", out)
+    return JSONResponse(out, headers={"Cache-Control": f"public, max-age={ALERTS_TTL_S}"})
 
 
 def _not_configured() -> JSONResponse:

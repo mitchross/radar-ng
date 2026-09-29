@@ -40,10 +40,14 @@ function layerFrames(manifest: Manifest, key: string): Frame[] {
   }));
 }
 
-/** Radar merges observed MRMS, the 0–60 min nowcast and HRRR beyond; other layers are their own series. */
-export function buildFrames(manifest: Manifest, layer: string, nowSec: number): Frame[] {
+/**
+ * Radar merges observed MRMS, the 0–60 min nowcast and HRRR beyond; other layers are their own series.
+ * `observed` picks the MRMS product for the past frames (base or composite reflectivity).
+ */
+export function buildFrames(manifest: Manifest, layer: string, nowSec: number, observed = "radar"): Frame[] {
   if (layer !== "radar") return layerFrames(manifest, layer);
-  const past = layerFrames(manifest, "radar").filter((f) => f.time <= nowSec);
+  const source = manifest.layers[observed] ? observed : "radar";
+  const past = layerFrames(manifest, source).filter((f) => f.time <= nowSec);
   const nowcast = layerFrames(manifest, "nowcast").filter((f) => f.time > nowSec && f.time <= nowSec + 3600);
   const hrrr = layerFrames(manifest, "radar-hrrr").filter((f) => f.time > nowSec + 3600);
   const seen = new Set<number>();

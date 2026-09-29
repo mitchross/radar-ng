@@ -185,3 +185,37 @@ def test_bundled_styles_reference_no_external_hosts():
             urls += src.get("tiles", []) + [src.get("url")]
         external = [u for u in urls if isinstance(u, str) and u.startswith("http")]
         assert external == [], f"{path.name} fetches from {external}"
+
+
+MAP_ALERTS = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "geometry": {"type": "Polygon", "coordinates": [[[-86, 42], [-85, 42], [-85, 43], [-86, 42]]]},
+            "properties": {"id": "urn:2", "event": "Severe Thunderstorm Warning", "severity": "Severe", "description": "long text"},
+        },
+        {"geometry": None, "properties": {"id": "urn:3", "event": "Small Craft Advisory"}},
+    ],
+}
+
+
+def test_map_alerts_keep_only_polygons_and_slim_properties(upstream):
+    client, calls, state = upstream
+    state["handler"] = lambda req: httpx.Response(200, json=MAP_ALERTS)
+
+    resp = client.get("/api/alerts/map")
+
+    assert resp.status_code == 200
+    features = resp.json()["features"]
+    assert [f["properties"]["id"] for f in features] == ["urn:2"]
+    assert "description" not in features[0]["properties"]
+    assert calls[0].url.params["status"] == "actual"
+    client.get("/api/alerts/map")
+    assert len(calls) == 1
+
+
+def test_map_alert_upstream_failure_is_502(upstream):
+    client, _, state = upstream
+    state["handler"] = lambda req: httpx.Response(503)
+
+    assert client.get("/api/alerts/map").status_code == 502
