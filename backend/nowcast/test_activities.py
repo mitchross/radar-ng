@@ -235,3 +235,33 @@ def test_fast_cdf_match_equals_pysteps_reference():
         target = np.where(rng.random(initial.shape) < 0.2, 5.0 + rng.gamma(2.0, 8.0, initial.shape), 0.0)
         target[0, :5] = np.nan
         np.testing.assert_allclose(_match_empirical_cdf(initial, target), reference(initial, target))
+
+
+def _metas(minutes):
+    from datetime import datetime, timedelta, timezone
+    from pathlib import Path
+
+    base = datetime(2026, 9, 29, 22, 0, tzinfo=timezone.utc)
+    return [Path((base + timedelta(minutes=m)).isoformat() + ".meta.json") for m in minutes]
+
+
+def test_inputs_are_picked_about_five_minutes_apart():
+    from backend.nowcast.activities import select_input_grids
+
+    metas = _metas([0, 1.9, 4.1, 6.0, 8.2, 10.1, 12.0, 14.2, 16.1])
+    chosen = select_input_grids(metas, 5.0, 4)
+    assert [p.name[14:19] for p in chosen] == ["01:54", "06:00", "12:00", "16:06"]
+
+
+def test_short_history_falls_back_to_the_newest_consecutive_grids():
+    from backend.nowcast.activities import select_input_grids
+
+    metas = _metas([0, 2, 4, 6, 8])
+    assert select_input_grids(metas, 5.0, 4) == metas[-4:]
+
+
+def test_a_missing_mark_falls_back_instead_of_stretching_the_step():
+    from backend.nowcast.activities import select_input_grids
+
+    metas = _metas([0, 2, 11, 13, 15, 17, 19, 21])  # nothing near t-10 and t-15 from 21
+    assert select_input_grids(metas, 5.0, 4) == metas[-4:]

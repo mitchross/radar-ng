@@ -29,8 +29,8 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
   const setMapStyle = useWeatherStore((s) => s.setMapStyle);
   const extrasVisible = useWeatherStore((s) => s.extrasVisible);
   const toggleExtras = useWeatherStore((s) => s.toggleExtras);
-  // Matches the iOS 26 floating sheet's own insets (measured on device).
-  const contentWidth = width - 32;
+  // Match phone sheet insets and keep the iPad form sheet compact.
+  const contentWidth = Math.min(500, width - 32);
   const tileWidth = (contentWidth - 2 * 10) / 3;
 
   return (

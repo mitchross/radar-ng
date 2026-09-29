@@ -48,6 +48,9 @@ ALLOW_PERSISTENCE_FALLBACK = (
     os.environ.get("NOWCAST_ALLOW_PERSISTENCE_FALLBACK", "0") == "1"
 )
 MAX_INPUT_GAP_MIN = float(os.environ.get("NOWCAST_MAX_INPUT_GAP_MIN", "6"))
+# Inputs are picked ~5 min apart from the 2-min MRMS stream: S-PROG then needs 12
+# internal steps for the hour instead of ~30, each a full-CONUS advection.
+INPUT_STEP_MIN = float(os.environ.get("NOWCAST_INPUT_STEP_MIN", "5"))
 # The science grid is ~2 km after its bounded downsample. z6 is its honest
 # display ceiling; z7 added 4x work while only magnifying interpolated pixels.
 ZOOM_LEVELS = [4, 5, 6]
@@ -104,8 +107,36 @@ def _list_recent_grids() -> list[Path]:
         radar_grid = GRID_DIR / "radar"
     if not radar_grid.exists():
         return []
-    metas = sorted(radar_grid.glob("*.meta.json"), key=lambda p: p.name)
-    return metas[-N_INPUT_FRAMES:]
+    return select_input_grids(sorted(radar_grid.glob("*.meta.json"), key=lambda p: p.name))
+
+
+def _grid_time(path: Path) -> datetime | None:
+    try:
+        return datetime.fromisoformat(path.name.replace(".meta.json", ""))
+    except ValueError:
+        return None
+
+
+def select_input_grids(metas: list[Path], step_min: float | None = None, frames: int | None = None) -> list[Path]:
+    """Newest grid plus the ones nearest each earlier ``step_min`` mark; newest N if none fit."""
+    step = INPUT_STEP_MIN if step_min is None else step_min
+    frames = N_INPUT_FRAMES if frames is None else frames
+    timed = [(t, p) for p in metas if (t := _grid_time(p)) is not None]
+    if not timed:
+        return metas[-frames:]
+    chosen = [timed[-1]]
+    for k in range(1, frames):
+        target = timed[-1][0] - timedelta(minutes=k * step)
+        earlier = [c for c in timed if (chosen[-1][0] - c[0]).total_seconds() >= 0.6 * step * 60]
+        if not earlier:
+            break
+        best = min(earlier, key=lambda c: abs((c[0] - target).total_seconds()))
+        if abs((best[0] - target).total_seconds()) > 0.45 * step * 60:
+            break
+        chosen.append(best)
+    if len(chosen) < frames:
+        return metas[-frames:]
+    return [p for _, p in reversed(chosen)]
 
 
 def _persistence_fallback(frames: list[np.ndarray], n_leadtimes: int) -> np.ndarray:
@@ -355,7 +386,7 @@ async def nowcast_run() -> NowcastResult:
             (current - previous).total_seconds() / 60.0
             for previous, current in zip(grid_times, grid_times[1:])
         ]
-        if not intervals or min(intervals) <= 0 or max(intervals) > MAX_INPUT_GAP_MIN:
+        if not intervals or min(intervals) <= 0 or max(intervals) > max(MAX_INPUT_GAP_MIN, 1.5 * INPUT_STEP_MIN):
             _write_nowcast_status(
                 "degraded",
                 reason="invalid_input_cadence",

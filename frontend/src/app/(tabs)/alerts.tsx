@@ -17,6 +17,7 @@ import { ScreenState } from "../../components/ui/WeatherClearUI";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { NWSAlert } from "../../types/weather";
+import { readingColumnStyle } from "../../lib/tabletLayout";
 
 // Hoisted: Intl formatter construction is expensive relative to a render.
 const TIME_FMT = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" });
@@ -64,7 +65,7 @@ export default function AlertsScreen() {
       style={styles.container}
     >
       <SafeAreaView style={styles.flex} edges={["top"]}>
-        <View style={styles.header}>
+        <View style={[styles.header, readingColumnStyle]}>
           <View>
             <Text style={styles.kicker}>ACTIVE ALERTS</Text>
             <Text style={styles.title}>
@@ -91,7 +92,7 @@ export default function AlertsScreen() {
 
         <ScrollView
           contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[styles.scroll, readingColumnStyle]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl

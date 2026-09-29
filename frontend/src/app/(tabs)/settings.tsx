@@ -46,6 +46,7 @@ import { useCitySearch } from "../../hooks/useCitySearch";
 import type { SelectedPlace } from "../../types/location";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
+import { readingColumnStyle } from "../../lib/tabletLayout";
 
 type SourceKey = "radar" | "satellite" | "forecast" | "airquality" | "basemap" | "alerts";
 type SourceStatus = "healthy" | "stale" | "error" | "disabled";
@@ -156,7 +157,7 @@ export default function SettingsScreen() {
         <ScrollView
           keyboardShouldPersistTaps="handled"
           style={styles.flex}
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[styles.scroll, readingColumnStyle]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
