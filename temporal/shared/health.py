@@ -25,15 +25,33 @@ def touch(path: Path = HEALTH_FILE) -> None:
     path.touch()
 
 
-async def check_once(client: Client, *, timeout: timedelta = HEALTH_RPC_TIMEOUT) -> bool:
-    """One frontend health RPC; False (never raises) on any failure."""
-    try:
-        return bool(await client.service_client.check_health(timeout=timeout))
-    except asyncio.CancelledError:
-        raise
-    except Exception as exc:  # noqa: BLE001 — a probe failure is data, not a crash
-        logger.warning("temporal health check failed: {!r}", exc)
-        return False
+HEALTH_RETRY_DELAY = timedelta(seconds=1)
+
+
+async def check_once(
+    client: Client,
+    *,
+    timeout: timedelta = HEALTH_RPC_TIMEOUT,
+    retries: int = 1,
+    retry_delay: timedelta = HEALTH_RETRY_DELAY,
+) -> bool:
+    """Frontend health RPC, retried once; False (never raises) on any failure.
+
+    ~2% of calls on the shared worker connection end in a transient client-side
+    Cancelled; warn only when the retry fails too, so a real outage still shows.
+    """
+    for attempt in range(retries + 1):
+        try:
+            return bool(await client.service_client.check_health(timeout=timeout))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — a probe failure is data, not a crash
+            if attempt == retries:
+                logger.warning("temporal health check failed: {!r}", exc)
+                return False
+            logger.debug("temporal health check retrying after: {!r}", exc)
+            await asyncio.sleep(retry_delay.total_seconds())
+    return False
 
 
 async def health_file_loop(

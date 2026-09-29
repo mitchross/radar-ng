@@ -135,6 +135,20 @@ def _extract_timestamp(key: str) -> str:
     return dt.isoformat()
 
 
+def _grid_axes(grb) -> tuple[np.ndarray, np.ndarray]:
+    """1D lat/lon axes; regular_ll comes from the header, not latlons().
+
+    latlons() builds two full 7000x3500 float64 meshes (~400 MB) while holding the GIL
+    for over a second, long enough to trip Temporal's 2 s workflow deadlock detector.
+    """
+    if grb["gridType"] == "regular_ll":
+        lat = np.linspace(grb["latitudeOfFirstGridPointInDegrees"], grb["latitudeOfLastGridPointInDegrees"], grb["Nj"])
+        lon = np.linspace(grb["longitudeOfFirstGridPointInDegrees"], grb["longitudeOfLastGridPointInDegrees"], grb["Ni"])
+        return lat, lon
+    lats, lons = grb.latlons()
+    return lats[:, 0], lons[0, :]
+
+
 def _download_and_decode_sync(
     client: httpx.Client, key: str, tmp_dir: Path
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
@@ -154,11 +168,9 @@ def _download_and_decode_sync(
         try:
             grb = grbs[1]
             data = grb.values
-            lats, lons = grb.latlons()
+            lat_col, lon_row = _grid_axes(grb)
         finally:
             grbs.close()
-        lat_col = lats[:, 0]
-        lon_row = lons[0, :]
         lon_row = np.where(lon_row > 180.0, lon_row - 360.0, lon_row)
         if hasattr(data, "filled"):
             data = data.filled(np.nan)

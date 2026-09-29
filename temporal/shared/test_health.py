@@ -25,7 +25,21 @@ class HealthTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await health.check_once(_Client(True)))
 
     async def test_check_once_false_on_rpc_error_without_raising(self):
-        self.assertFalse(await health.check_once(_Client(RuntimeError("dns error"))))
+        self.assertFalse(await health.check_once(_Client(RuntimeError("dns error")), retry_delay=timedelta(0)))
+
+    async def test_check_once_retries_a_transient_failure(self):
+        client = _Client(True)
+        calls = []
+
+        async def flaky(**_kwargs):
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("operation was canceled")
+            return True
+
+        client.service_client.check_health = flaky
+        self.assertTrue(await health.check_once(client, retry_delay=timedelta(0)))
+        self.assertEqual(len(calls), 2)
 
     async def test_loop_touches_file_only_on_success(self):
         import tempfile
