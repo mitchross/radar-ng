@@ -34,6 +34,7 @@ from backend.shared.palettes import get_palette_names, load_palette
 from backend.shared.state import ProcessedSet
 from backend.shared.tiler import (
     MultiPaletteRenderResult,
+    _axis_to_fractional_indices,
     complete_pyramid_identity,
     frame_pyramid_identity_is_compatible,
     render_frame_palettes,
@@ -62,6 +63,8 @@ ENABLED_LAYERS = {
     for value in os.environ.get("HRRR_ENABLED_LAYERS", "radar-hrrr").split(",")
     if value.strip()
 }
+# Point-inspect and wind-field grids are resampled from HRRR's Lambert grid onto this lat/lon step.
+GRID_DUMP_STEP_DEG = float(os.environ.get("HRRR_GRID_DUMP_STEP_DEG", "0.03"))
 
 log = get_logger("ingest-hrrr-activities")
 
@@ -117,6 +120,28 @@ VAR_SELECTORS = {
     "apcp": {"name": "Total Precipitation", "typeOfLevel": "surface"},
     "tcdc": {"name": "Total Cloud Cover", "typeOfLevel": "atmosphere"},
 }
+
+# Each tile layer downloads only its own GRIB fields; radar-hrrr is always on.
+LAYER_VARS = {
+    "radar-hrrr": ("refc",),
+    "temperature": ("t2m",),
+    "dewpoint": ("dpt2m",),
+    "humidity": ("rh2m",),
+    "wind": ("u10", "v10"),
+    "cape": ("cape",),
+    "precip-type": ("crain", "csnow", "cfrzr", "cicep"),
+    "precip-accum": ("apcp",),
+    "cloud": ("tcdc",),
+}
+
+
+def _layer_enabled(layer: str) -> bool:
+    return layer == "radar-hrrr" or layer in ENABLED_LAYERS or "all" in ENABLED_LAYERS
+
+
+def _needed_vars() -> list[str]:
+    return sorted({v for layer, fields in LAYER_VARS.items() if _layer_enabled(layer) for v in fields})
+
 
 HRRR_TILE_LAYERS = [
     "radar-hrrr",
@@ -181,6 +206,8 @@ class ExtractedGrid:
     source_crs: str | None = None
     source_x: np.ndarray | None = None
     source_y: np.ndarray | None = None
+    # GRIB2 resolutionAndComponentFlags bit 3: u/v are along the grid axes, not east/north.
+    uv_grid_relative: bool = False
 
 
 # ---------- helpers ----------
@@ -419,6 +446,10 @@ def _extract_variable(grib_path: Path, match: dict) -> ExtractedGrid | None:
                 if hasattr(data, "filled"):
                     data = data.filled(np.nan)
                 native = _extract_native_projection(grb, lats, lons)
+                try:
+                    grid_relative = bool(int(grb["resolutionAndComponentFlags"]) & 8)
+                except Exception:  # noqa: BLE001
+                    grid_relative = False
                 grbs.close()
                 if native is not None:
                     source_crs, source_x, source_y = native
@@ -429,6 +460,7 @@ def _extract_variable(grib_path: Path, match: dict) -> ExtractedGrid | None:
                         source_crs=source_crs,
                         source_x=source_x,
                         source_y=source_y,
+                        uv_grid_relative=grid_relative,
                     )
                 return ExtractedGrid(
                     data=data.astype(np.float32),
@@ -457,14 +489,80 @@ def _grid_dump_axes(grid: ExtractedGrid) -> tuple[np.ndarray, np.ndarray]:
     return grid.lats[:, col].astype(np.float64), grid.lons[row, :].astype(np.float64)
 
 
+_regrid_cache: dict[tuple, tuple[np.ndarray, ...]] = {}
+
+
+def _latlon_resampler(grid: ExtractedGrid, step_deg: float) -> tuple[np.ndarray, ...]:
+    """Regular lat/lon axes, fractional source indices, and grid-x-axis angle from east (radians)."""
+    assert grid.source_crs is not None and grid.source_x is not None and grid.source_y is not None
+    key = (
+        grid.source_crs, step_deg, len(grid.source_x), len(grid.source_y),
+        float(grid.source_x[0]), float(grid.source_x[-1]), float(grid.source_y[0]), float(grid.source_y[-1]),
+    )
+    hit = _regrid_cache.get(key)
+    if hit is not None:
+        return hit
+    from pyproj import Transformer
+
+    lats_t = np.arange(float(np.nanmin(grid.lats)), float(np.nanmax(grid.lats)), step_deg)
+    lons_t = np.arange(float(np.nanmin(grid.lons)), float(np.nanmax(grid.lons)), step_deg)
+    lon_mesh, lat_mesh = np.meshgrid(lons_t, lats_t)
+    fwd = Transformer.from_crs("EPSG:4326", grid.source_crs, always_xy=True)
+    inv = Transformer.from_crs(grid.source_crs, "EPSG:4326", always_xy=True)
+    xs, ys = fwd.transform(lon_mesh, lat_mesh)
+    cols = _axis_to_fractional_indices(xs, grid.source_x)
+    rows = _axis_to_fractional_indices(ys, grid.source_y)
+    east_lon, east_lat = inv.transform(xs + 1000.0, ys)
+    theta = np.arctan2(east_lat - lat_mesh, (east_lon - lon_mesh) * np.cos(np.radians(lat_mesh)))
+    out = (lats_t, lons_t, rows, cols, theta.astype(np.float32))
+    _regrid_cache.clear()
+    _regrid_cache[key] = out
+    return out
+
+
+def _resample(data: np.ndarray, rows: np.ndarray, cols: np.ndarray) -> np.ndarray:
+    import scipy.ndimage
+
+    return scipy.ndimage.map_coordinates(
+        data.astype(np.float32, copy=False), [rows, cols], order=1, mode="constant", cval=np.nan
+    ).astype(np.float32)
+
+
+def _dump_fields(ts: str, fields: dict[str, np.ndarray], grid: ExtractedGrid, unit: str) -> None:
+    if grid.source_crs is None:
+        lats, lons = _grid_dump_axes(grid)
+        for layer, data in fields.items():
+            write_grid(layer, ts, data, lats, lons, unit=unit)
+        return
+    lats_t, lons_t, rows, cols, _ = _latlon_resampler(grid, GRID_DUMP_STEP_DEG)
+    for layer, data in fields.items():
+        write_grid(layer, ts, _resample(data, rows, cols), lats_t, lons_t, unit=unit)
+
+
 def _safe_grid_dump(
     layer: str, ts: str, data: np.ndarray, grid: ExtractedGrid, unit: str
 ) -> None:
     try:
-        lats, lons = _grid_dump_axes(grid)
-        write_grid(layer, ts, data, lats, lons, unit=unit)
+        _dump_fields(ts, {layer: data}, grid, unit)
     except Exception as exc:  # noqa: BLE001
         log.warning("grid_dump_failed", extra={"layer": layer, "err": str(exc)})
+
+
+def _safe_wind_dump(ts: str, u: np.ndarray, v: np.ndarray, grid: ExtractedGrid) -> None:
+    """Dump earth-relative (east, north) wind components on a regular lat/lon grid."""
+    try:
+        if grid.source_crs is None:
+            _dump_fields(ts, {"wind_u": u, "wind_v": v}, grid, "mph")
+            return
+        lats_t, lons_t, rows, cols, theta = _latlon_resampler(grid, GRID_DUMP_STEP_DEG)
+        u_t, v_t = _resample(u, rows, cols), _resample(v, rows, cols)
+        if grid.uv_grid_relative:
+            c, s = np.cos(theta), np.sin(theta)
+            u_t, v_t = u_t * c - v_t * s, u_t * s + v_t * c
+        write_grid("wind_u", ts, u_t, lats_t, lons_t, unit="mph")
+        write_grid("wind_v", ts, v_t, lats_t, lons_t, unit="mph")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("grid_dump_failed", extra={"layer": "wind", "err": str(exc)})
 
 
 def _write_palette_tiles(
@@ -573,13 +671,7 @@ def _process_forecast_hour_sync(
         rendered.append("radar-hrrr")
         _safe_grid_dump("radar-hrrr", ts, d, r, "dBZ")
 
-    # Radar is the latency-critical product. Production defaults to this fast
-    # path; secondary layers can be re-enabled explicitly once their separate
-    # capacity budget exists.
-    if ENABLED_LAYERS == {"radar-hrrr"}:
-        return rendered
-
-    r = _extract_variable(grib_path, VAR_SELECTORS["t2m"])
+    r = _extract_variable(grib_path, VAR_SELECTORS["t2m"]) if _layer_enabled("temperature") else None
     if r:
         d = r.data
         d = _kelvin_to_f(d)
@@ -590,7 +682,7 @@ def _process_forecast_hour_sync(
             rendered.append("temperature")
             _safe_grid_dump("temperature", ts, d, r, "°F")
 
-    if any("dewpoint" in t for t in palette_tables.values()):
+    if _layer_enabled("dewpoint") and any("dewpoint" in t for t in palette_tables.values()):
         r = _extract_variable(grib_path, VAR_SELECTORS["dpt2m"])
         if r:
             d = r.data
@@ -601,7 +693,7 @@ def _process_forecast_hour_sync(
             if palettes:
                 rendered.append("dewpoint")
 
-    if any("humidity" in t for t in palette_tables.values()):
+    if _layer_enabled("humidity") and any("humidity" in t for t in palette_tables.values()):
         r = _extract_variable(grib_path, VAR_SELECTORS["rh2m"])
         if r:
             d = r.data
@@ -611,7 +703,7 @@ def _process_forecast_hour_sync(
             if palettes:
                 rendered.append("humidity")
 
-    r = _extract_variable(grib_path, VAR_SELECTORS["cape"])
+    r = _extract_variable(grib_path, VAR_SELECTORS["cape"]) if _layer_enabled("cape") else None
     if r:
         d = r.data
         palettes = _render_per_palette(
@@ -621,8 +713,8 @@ def _process_forecast_hour_sync(
             rendered.append("cape")
             _safe_grid_dump("cape", ts, d, r, "J/kg")
 
-    u = _extract_variable(grib_path, VAR_SELECTORS["u10"])
-    v = _extract_variable(grib_path, VAR_SELECTORS["v10"])
+    u = _extract_variable(grib_path, VAR_SELECTORS["u10"]) if _layer_enabled("wind") else None
+    v = _extract_variable(grib_path, VAR_SELECTORS["v10"]) if u else None
     if u and v:
         u_data = u.data
         v_data = v.data
@@ -635,10 +727,9 @@ def _process_forecast_hour_sync(
         if palettes:
             rendered.append("wind")
             _safe_grid_dump("wind", ts, speed, u, "mph")
-            _safe_grid_dump("wind_u", ts, u_mph, u, "mph")
-            _safe_grid_dump("wind_v", ts, v_mph, u, "mph")
+            _safe_wind_dump(ts, u_mph, v_mph, u)
 
-    r = _extract_variable(grib_path, VAR_SELECTORS["apcp"])
+    r = _extract_variable(grib_path, VAR_SELECTORS["apcp"]) if _layer_enabled("precip-accum") else None
     if r:
         d = r.data
         d_in = d / 25.4
@@ -655,7 +746,7 @@ def _process_forecast_hour_sync(
             rendered.append("precip-accum")
             _safe_grid_dump("precip-accum", ts, d_in, r, "in")
 
-    r = _extract_variable(grib_path, VAR_SELECTORS["tcdc"])
+    r = _extract_variable(grib_path, VAR_SELECTORS["tcdc"]) if _layer_enabled("cloud") else None
     if r:
         d = r.data
         palettes = _render_per_palette(
@@ -667,7 +758,7 @@ def _process_forecast_hour_sync(
 
     precip: dict[str, np.ndarray] = {}
     pgrid: ExtractedGrid | None = None
-    for k in ("crain", "csnow", "cfrzr", "cicep"):
+    for k in ("crain", "csnow", "cfrzr", "cicep") if _layer_enabled("precip-type") else ():
         r = _extract_variable(grib_path, VAR_SELECTORS[k])
         if r:
             precip[k] = r.data
@@ -702,12 +793,10 @@ def _process_forecast_hour_sync(
 
 def _required_layers(palette_tables: dict[str, dict]) -> set[str]:
     """Layers an hour must have on disk before it counts as already rendered."""
-    if ENABLED_LAYERS == {"radar-hrrr"}:
-        return {"radar-hrrr"}
     return {
         layer
         for layer, color_key in LAYER_COLOR_KEYS.items()
-        if any(color_key in tables for tables in palette_tables.values())
+        if _layer_enabled(layer) and any(color_key in tables for tables in palette_tables.values())
     }
 
 
@@ -821,7 +910,7 @@ async def hrrr_process_forecast_hour(run_id: str, fhr: int) -> ForecastHourResul
     palette_tables = _load_palette_tables()
     tile_base = Path(TILE_DIR)
     date_str, run_hour = run_id.split("_")
-    needed = ["refc"] if ENABLED_LAYERS == {"radar-hrrr"} else list(IDX_MATCHERS.keys())
+    needed = _needed_vars()
     valid_timestamp = (_run_init_time(run_id) + timedelta(hours=fhr)).isoformat()
 
     # Idempotent resume: marker-validated run paths are immutable and complete.

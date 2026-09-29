@@ -17,7 +17,7 @@ export interface WindField {
   u_max: number;
   v_min: number;
   v_max: number;
-  u: number[]; // int8 scaled; convert via u_min + (n + 127) / 254 * (u_max - u_min)
+  u: number[]; // int8 scaled; convert via u_min + (n + 127) / 254 * (u_max - u_min); -128 = no data
   v: number[];
 }
 
@@ -84,6 +84,10 @@ export function sampleWindField(field: WindField, lat: number, lon: number): [nu
   const i10 = y0 * field.width + x1;
   const i01 = y1 * field.width + x0;
   const i11 = y1 * field.width + x1;
+  // -128 marks cells outside the model domain.
+  if (field.u[i00] === -128 || field.u[i10] === -128 || field.u[i01] === -128 || field.u[i11] === -128) {
+    return [0, 0];
+  }
 
   const u00 = unscaleU(field.u[i00]);
   const u10 = unscaleU(field.u[i10]);

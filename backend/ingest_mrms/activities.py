@@ -208,6 +208,7 @@ def _render_all_palettes(
         nodata_value=None,
         min_valid_weight=1.0,
         renderer=tile_renderer_for_role("mrms"),
+        overview="max",
         source_id=f"mrms:{layer_name}:{timestamp}",
         publication_lock_root=tile_base / layer_name,
     )

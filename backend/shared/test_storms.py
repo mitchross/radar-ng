@@ -97,3 +97,54 @@ def test_prefetch_plan_has_exactly_three_bboxes_and_existing_tile_urls(tmp_path:
     assert plan["tile_urls"]
     assert all(url.startswith("https://radar.example/tiles/") for url in plan["tile_urls"])
     assert all(bbox["style_url"] for bbox in plan["bboxes"])
+
+
+def _cell_frame(lon_center: float, lat_center: float = 42.0, size: int = 5):
+    lats = 41.0 + 0.01 * np.arange(200)
+    lons = -86.0 + 0.01 * np.arange(300)
+    data = np.zeros((200, 300), dtype=np.float32)
+    r = int(round((lat_center - 41.0) / 0.01))
+    c = int(round((lon_center + 86.0) / 0.01))
+    data[r:r + size, c:c + size] = 55.0
+    return data, lats, lons
+
+
+def test_motion_is_fitted_over_history_not_one_noisy_step():
+    # 60 km/h due east with ±1 cell centroid wobble, sampled every 2 minutes.
+    km_per_deg = 111.320 * np.cos(np.radians(42.0))
+    wobble = [0.0, 0.01, -0.01, 0.01, 0.0, -0.01, 0.01, 0.0]
+    previous = None
+    for step, jitter in enumerate(wobble):
+        lon = -85.5 + (60.0 * step * 2 / 60.0) / km_per_deg + jitter
+        data, lats, lons = _cell_frame(lon)
+        previous = detect_storms(data, lats, lons, timestamp=f"2026-07-10T12:{step * 2:02d}:00+00:00", previous=previous)
+    props = previous["features"][0]["properties"]
+    assert len(props["track_history"]) == len(wobble)
+    assert 45 < props["tracking_vector"]["speed_kmh"] < 75
+    assert 75 < props["tracking_vector"]["bearing_deg"] < 105
+    assert props["tracking_confidence"] > 0.5
+
+
+def test_new_cells_report_no_motion_until_history_spans_enough_time():
+    data, lats, lons = _cell_frame(-85.5)
+    first = detect_storms(data, lats, lons, timestamp="2026-07-10T12:00:00+00:00")
+    data, _, _ = _cell_frame(-85.48)
+    second = detect_storms(data, lats, lons, timestamp="2026-07-10T12:02:00+00:00", previous=first)
+    props = second["features"][0]["properties"]
+    assert props["cell_id"] == first["features"][0]["properties"]["cell_id"]
+    assert props["tracking_vector"]["speed_kmh"] == 0.0 and props["tracking_confidence"] == 0.0
+
+
+def test_distant_cell_is_not_associated_as_impossible_motion():
+    data, lats, lons = _cell_frame(-85.5)
+    first = detect_storms(data, lats, lons, timestamp="2026-07-10T12:00:00+00:00")
+    data, _, _ = _cell_frame(-85.3)  # ~16 km in 2 minutes
+    second = detect_storms(data, lats, lons, timestamp="2026-07-10T12:02:00+00:00", previous=first)
+    assert second["features"][0]["properties"]["cell_id"] != first["features"][0]["properties"]["cell_id"]
+
+
+def test_area_uses_the_source_grid_cell_size():
+    data, lats, lons = _cell_frame(-85.5, size=10)
+    props = detect_storms(data, lats, lons, timestamp="2026-07-10T12:00:00+00:00")["features"][0]["properties"]
+    expected = 100 * (0.01 * 110.574) * (0.01 * 111.320 * np.cos(np.radians(42.05)))
+    assert abs(props["area_km2"] - expected) / expected < 0.05

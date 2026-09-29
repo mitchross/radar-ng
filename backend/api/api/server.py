@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import time
 from collections import OrderedDict, defaultdict
@@ -607,26 +608,37 @@ def wind_field(timestamp: str) -> JSONResponse:
             u_vals.append(struct.unpack_from("<f", u_bin, src_i * 4)[0])
             v_vals.append(struct.unpack_from("<f", v_bin, src_i * 4)[0])
 
-    u_min = min(u_vals)
-    u_max = max(u_vals)
-    v_min = min(v_vals)
-    v_max = max(v_vals)
+    # Resampled HRRR grids are NaN outside the model domain; NaN is sent as the -128 fill.
+    finite = [
+        (u, v) for u, v in zip(u_vals, v_vals) if math.isfinite(u) and math.isfinite(v)
+    ]
+    if not finite:
+        return JSONResponse({"ok": False, "reason": "grid_empty"}, status_code=200)
+    u_min = min(u for u, _ in finite)
+    u_max = max(u for u, _ in finite)
+    v_min = min(v for _, v in finite)
+    v_max = max(v for _, v in finite)
     u_span = max(1e-6, u_max - u_min)
     v_span = max(1e-6, v_max - v_min)
 
-    # Scale to int8 [-127..127]. -128 is reserved as a fill sentinel (unused now).
-    u_scaled = [int(round((u - u_min) / u_span * 254 - 127)) for u in u_vals]
-    v_scaled = [int(round((v - v_min) / v_span * 254 - 127)) for v in v_vals]
+    def _scale(value: float, low: float, span: float) -> int:
+        return int(round((value - low) / span * 254 - 127)) if math.isfinite(value) else -128
 
+    u_scaled = [_scale(u, u_min, u_span) for u in u_vals]
+    v_scaled = [_scale(v, v_min, v_span) for v in v_vals]
+
+    # Striding drops the far edge's remainder; report the bounds of the samples actually sent.
+    lat_step = (float(u_m["lat_max"]) - float(u_m["lat_min"])) / max(1, H - 1)
+    lon_step = (float(u_m["lon_max"]) - float(u_m["lon_min"])) / max(1, W - 1)
     body = {
         "ok": True,
-        "timestamp": timestamp,
+        "timestamp": safe_ts,
         "width": out_w,
         "height": out_h,
-        "lat_min": u_m["lat_min"],
-        "lat_max": u_m["lat_max"],
-        "lon_min": u_m["lon_min"],
-        "lon_max": u_m["lon_max"],
+        "lat_min": float(u_m["lat_max"]) - (out_h - 1) * sy * lat_step,
+        "lat_max": float(u_m["lat_max"]),
+        "lon_min": float(u_m["lon_min"]),
+        "lon_max": float(u_m["lon_min"]) + (out_w - 1) * sx * lon_step,
         "u_min": u_min,
         "u_max": u_max,
         "v_min": v_min,

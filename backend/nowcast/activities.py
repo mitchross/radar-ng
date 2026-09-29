@@ -241,6 +241,7 @@ def _render_frame(
         nodata_value=-9999.0,
         min_valid_weight=1.0,
         renderer=tile_renderer_for_role("nowcast"),
+        overview="max",
         source_id=f"nowcast:{tile_path}",
         publication_lock_root=tile_base / "nowcast",
     )

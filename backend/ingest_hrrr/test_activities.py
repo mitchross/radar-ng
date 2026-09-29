@@ -628,3 +628,59 @@ def test_hourly_run_tail_ignores_non_extended_runs(monkeypatch):
     }
     tail = activities._extended_tail(layer, "20260716_14", "2026-07-17T08:00:00+00:00")
     assert [frame["run_id"] for frame in tail] == ["20260716_12"]
+
+
+def test_layers_gate_individually_and_download_only_their_fields(monkeypatch):
+    activities = import_activities_without_pygrib(monkeypatch)
+    monkeypatch.setattr(activities, "ENABLED_LAYERS", {"radar-hrrr", "wind"})
+    assert activities._needed_vars() == ["refc", "u10", "v10"]
+    tables = {"classic": {"reflectivity": {}, "wind_speed": {}, "temperature": {}}}
+    assert activities._required_layers(tables) == {"radar-hrrr", "wind"}
+    monkeypatch.setattr(activities, "ENABLED_LAYERS", {"radar-hrrr"})
+    assert activities._needed_vars() == ["refc"]
+
+
+def _lcc_grid(activities, uv_grid_relative: bool):
+    from pyproj import CRS, Transformer
+
+    crs = CRS.from_proj4("+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +R=6371229 +units=m")
+    xs = np.linspace(-2_600_000, 2_600_000, 120)
+    ys = np.linspace(-1_600_000, 1_600_000, 80)
+    xm, ym = np.meshgrid(xs, ys)
+    lons, lats = Transformer.from_crs(crs, "EPSG:4326", always_xy=True).transform(xm, ym)
+    return activities.ExtractedGrid(
+        data=np.zeros_like(xm, dtype=np.float32), lats=lats, lons=lons,
+        source_crs=crs.to_wkt(), source_x=xs, source_y=ys, uv_grid_relative=uv_grid_relative,
+    )
+
+
+def test_grid_relative_wind_is_rotated_to_true_east_north(monkeypatch):
+    activities = import_activities_without_pygrib(monkeypatch)
+    written: dict[str, tuple] = {}
+    monkeypatch.setattr(activities, "GRID_DUMP_STEP_DEG", 0.5)
+    monkeypatch.setattr(activities, "write_grid", lambda layer, ts, data, lats, lons, unit: written.setdefault(layer, (data, lats, lons)))
+    activities._regrid_cache.clear()
+    grid = _lcc_grid(activities, uv_grid_relative=True)
+    u = np.ones(grid.data.shape, dtype=np.float32)  # 1 mph along the grid x-axis everywhere
+    activities._safe_wind_dump("t", u, np.zeros_like(u), grid)
+    ue, lats, lons = written["wind_u"]
+    ve = written["wind_v"][0]
+    r = int(np.argmin(abs(lats - 47.5)))
+    c = int(np.argmin(abs(lons - (-122.5))))
+    expected = np.radians(-np.sin(np.radians(38.5)) * (lons[c] + 97.5))
+    assert np.degrees(np.arctan2(ve[r, c], ue[r, c])) == pytest.approx(np.degrees(expected), abs=0.5)
+    assert np.hypot(ue[r, c], ve[r, c]) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_earth_relative_wind_is_resampled_but_not_rotated(monkeypatch):
+    activities = import_activities_without_pygrib(monkeypatch)
+    written: dict[str, tuple] = {}
+    monkeypatch.setattr(activities, "GRID_DUMP_STEP_DEG", 0.5)
+    monkeypatch.setattr(activities, "write_grid", lambda layer, ts, data, lats, lons, unit: written.setdefault(layer, (data, lats, lons)))
+    activities._regrid_cache.clear()
+    grid = _lcc_grid(activities, uv_grid_relative=False)
+    u = np.ones(grid.data.shape, dtype=np.float32)
+    activities._safe_wind_dump("t", u, np.zeros_like(u), grid)
+    ue, ve = written["wind_u"][0], written["wind_v"][0]
+    finite = np.isfinite(ue)
+    assert finite.any() and np.allclose(ue[finite], 1.0) and np.allclose(ve[finite], 0.0)

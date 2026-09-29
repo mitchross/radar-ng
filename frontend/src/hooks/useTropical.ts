@@ -6,11 +6,13 @@ import { fetchWithTimeout } from "../lib/api";
 type TropicalFeature = GeoJSON.Feature<
   GeoJSON.Point | GeoJSON.LineString | GeoJSON.Polygon,
   {
-    kind: "position" | "track" | "cone";
+    kind: "position" | "track" | "cone" | "forecast_point";
     storm_id: string;
     name: string;
     classification?: string;
     wind_mph?: number;
+    wind_kt?: number;
+    category?: number | null;
     pressure_mb?: number;
   }
 >;

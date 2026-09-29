@@ -460,6 +460,7 @@ TILE_GEOMETRY_CACHE_ENTRIES = _bounded_int_env(
 PNG_COMPRESS_LEVEL = _bounded_int_env("TILE_PNG_COMPRESS_LEVEL", 6, 0, 9)
 
 _RENDERER_ROLES = frozenset({"mrms", "nowcast", "hrrr", "aux"})
+OVERVIEW_MODES = frozenset({"max"})
 
 
 def tile_renderer_for_role(role: str) -> str:
@@ -1429,7 +1430,10 @@ def _frame_render_contract(
     category_map: dict[int, str] | None = None,
     nodata_value: float | None = None,
     min_valid_weight: float = 1.0,
+    overview: str | None = None,
 ) -> tuple[str, object, object, ClassModel | None]:
+    if overview is not None and overview not in OVERVIEW_MODES:
+        raise ValueError(f"unknown overview {overview!r}; expected one of {sorted(OVERVIEW_MODES)}")
     tables = dict(color_tables)
     semantic_policy: object
     policy: object
@@ -1480,6 +1484,10 @@ def _frame_render_contract(
         raise ValueError(
             f"unknown tile renderer {renderer!r}; expected 'legacy' or 'indexed'"
         )
+    # Only stamped when set, so existing layers keep their published identities.
+    if overview is not None:
+        semantic_policy = {**semantic_policy, "overview": overview}
+        policy = {**policy, "overview": overview}
     return algorithm, semantic_policy, policy, model
 
 
@@ -1495,6 +1503,7 @@ def frame_pyramid_identity_is_compatible(
     category_map: dict[int, str] | None = None,
     nodata_value: float | None = None,
     min_valid_weight: float = 1.0,
+    overview: str | None = None,
 ) -> bool:
     """Validate a stored marker against today's frame-render contract.
 
@@ -1513,6 +1522,7 @@ def frame_pyramid_identity_is_compatible(
         category_map=category_map,
         nodata_value=nodata_value,
         min_valid_weight=min_valid_weight,
+        overview=overview,
     )
 
     expected = PyramidIdentity(
@@ -2155,6 +2165,108 @@ def render_continuous_tiles_atomic(
     )
 
 
+def _max_block_factors(
+    lats: np.ndarray, lons: np.ndarray, zoom: int, tile_size: int
+) -> tuple[int, int]:
+    """Largest (row, col) block that fits inside one output pixel everywhere in the grid."""
+    px_deg = 360.0 / (tile_size * 2**zoom)
+    dlat = abs(float(lats[1] - lats[0]))
+    dlon = abs(float(lons[1] - lons[0]))
+    # Mercator pixels are shortest in latitude at the grid's poleward edge.
+    min_cos = math.cos(math.radians(min(89.0, max(abs(float(lats.min())), abs(float(lats.max()))))))
+    return max(1, int(px_deg * min_cos / dlat)), max(1, int(px_deg / dlon))
+
+
+def _footprint_edges(edge_coords: np.ndarray, axis: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Map pixel edge coordinates to [start, stop) source-cell ranges; empty ranges mean off-grid."""
+    frac = _axis_to_fractional_indices(edge_coords, axis)
+    lo = np.minimum(frac[:-1], frac[1:])
+    hi = np.maximum(frac[:-1], frac[1:])
+    n = len(axis)
+    start = np.clip(np.floor(lo + 0.5), 0, n).astype(np.int64)
+    stop = np.clip(np.floor(hi + 0.5), 0, n).astype(np.int64)
+    # A pixel narrower than a cell still takes the cell under it.
+    thin = (stop <= start) & (hi >= -0.5) & (lo <= n - 0.5)
+    stop = np.where(thin, np.minimum(start + 1, n), stop)
+    start = np.where(thin & (start >= n), n - 1, start)
+    return start, stop
+
+
+def _reduce_ranges(values: np.ndarray, start: np.ndarray, stop: np.ndarray, axis: int) -> np.ndarray:
+    """nan-aware max of values[start[i]:stop[i]] along `axis`; empty ranges yield NaN."""
+    pad = [(0, 0)] * values.ndim
+    pad[axis] = (0, 1)
+    padded = np.pad(values, pad, constant_values=np.nan)
+    empty = stop <= start
+    idx = np.empty(2 * len(start), dtype=np.int64)
+    idx[0::2] = np.where(empty, values.shape[axis], start)
+    idx[1::2] = np.where(empty, values.shape[axis], stop)
+    with np.errstate(invalid="ignore"):
+        out = np.fmax.reduceat(padded, idx, axis=axis)
+    out = np.take(out, np.arange(0, 2 * len(start), 2), axis=axis)
+    if empty.any():
+        shape = [1] * values.ndim
+        shape[axis] = len(start)
+        out = np.where(empty.reshape(shape), np.nan, out)
+    return out
+
+
+def render_footprint_max_tiles(
+    data: np.ndarray,
+    lats: np.ndarray,
+    lons: np.ndarray,
+    output_dirs: dict[str, str],
+    color_tables: Mapping[str, dict],
+    zoom_levels: list[int],
+    *,
+    indexed: bool,
+    nodata_value: float | None = None,
+    tile_size: int = 256,
+) -> int:
+    """Colour each pixel by the strongest source cell inside its footprint (regular lat/lon grids)."""
+    if not output_dirs:
+        return 0
+    values = np.asarray(data, dtype=np.float32)
+    if nodata_value is not None:
+        values = np.where(values == np.float32(nodata_value), np.nan, values)
+    model = build_class_model({p: color_tables[p] for p in output_dirs})
+    palettes, plte, trns = _palette_chunks(output_dirs, model.luts)
+    made_dirs: set[Path] = set()
+    edges = np.arange(tile_size + 1, dtype=np.float64) / tile_size
+    count = 0
+    for z in zoom_levels:
+        n = 2**z
+        tx_min, ty_min = _lat_lon_to_tile(float(lats.max()), float(lons.min()), z)
+        tx_max, ty_max = _lat_lon_to_tile(float(lats.min()), float(lons.max()), z)
+        for tx in range(tx_min, tx_max + 1):
+            c_start, c_stop = _footprint_edges((tx + edges) / n * 360.0 - 180.0, lons)
+            if not (c_stop > c_start).any():
+                continue
+            c0, c1 = int(c_start.min()), int(c_stop.max())
+            cols = _reduce_ranges(values[:, c0:c1], c_start - c0, c_stop - c0, axis=1)
+            for ty in range(ty_min, ty_max + 1):
+                lat_edges = np.degrees(np.arctan(np.sinh(np.pi * (1.0 - 2.0 * (ty + edges) / n))))
+                r_start, r_stop = _footprint_edges(lat_edges, lats)
+                if not (r_stop > r_start).any():
+                    continue
+                r0, r1 = int(r_start.min()), int(r_stop.max())
+                tile_vals = _reduce_ranges(cols[r0:r1], r_start - r0, r_stop - r0, axis=0)
+                tile = model.classify(tile_vals)
+                if not tile.any():
+                    continue
+                if indexed:
+                    _write_index_tile(tile, z, tx, ty, output_dirs, palettes, plte, trns, made_dirs)
+                else:
+                    for palette in palettes:
+                        tile_dir = Path(output_dirs[palette]) / str(z) / str(tx)
+                        tile_dir.mkdir(parents=True, exist_ok=True)
+                        Image.fromarray(model.luts[palette][tile], "RGBA").save(
+                            str(tile_dir / f"{ty}.png"), "PNG", optimize=False, compress_level=1
+                        )
+                count += 1
+    return count
+
+
 def render_frame_palettes(
     data: np.ndarray,
     lats: np.ndarray,
@@ -2169,6 +2281,7 @@ def render_frame_palettes(
     renderer: str = "indexed",
     source_id: str = "unspecified-frame",
     publication_lock_root: str | Path | None = None,
+    overview: str | None = None,
     **kwargs,
 ) -> MultiPaletteRenderResult:
     """Render and atomically publish every palette's pyramid.
@@ -2202,7 +2315,36 @@ def render_frame_palettes(
         category_map=category_map,
         nodata_value=nodata_value,
         min_valid_weight=min_valid_weight,
+        overview=overview,
     )
+    native_zooms = list(zoom_levels)
+    pooled_zooms: list[int] = []
+    if overview is not None:
+        if category_map is not None or kwargs.get("source_crs") is not None:
+            raise ValueError("overview pooling needs a continuous regular lat/lon grid")
+        if lats.ndim != 1 or lons.ndim != 1:
+            raise ValueError("overview pooling needs 1D lat/lon axes")
+        tile_size = int(kwargs.get("tile_size", 256))
+        pooled_zooms = [
+            z for z in zoom_levels if _max_block_factors(lats, lons, z, tile_size) != (1, 1)
+        ]
+        native_zooms = [z for z in zoom_levels if z not in pooled_zooms]
+
+    def _render_pooled(staging: dict[str, str]) -> int:
+        if not pooled_zooms:
+            return 0
+        return render_footprint_max_tiles(
+            data,
+            lats,
+            lons,
+            staging,
+            tables,
+            pooled_zooms,
+            indexed=renderer != "legacy",
+            nodata_value=nodata_value,
+            tile_size=int(kwargs.get("tile_size", 256)),
+        )
+
     identities = _publication_identities(
         renderer=renderer,
         algorithm=algorithm,
@@ -2213,6 +2355,7 @@ def render_frame_palettes(
     if renderer == "legacy":
 
         def _render_legacy(staging: dict[str, str]) -> dict[str, int]:
+            pooled = _render_pooled(staging)
             counts: dict[str, int] = {}
             for palette, output_dir in staging.items():
                 if category_map is None:
@@ -2223,12 +2366,12 @@ def render_frame_palettes(
                         tables[palette]["categories"],
                         category_map,
                     )
-                counts[palette] = render_tiles(
+                counts[palette] = pooled + render_tiles(
                     rgba,
                     lats,
                     lons,
                     output_dir,
-                    zoom_levels,
+                    native_zooms,
                     **kwargs,
                 )
             return counts
@@ -2258,13 +2401,14 @@ def render_frame_palettes(
         )
     return _render_and_publish_atomic(
         output_dirs,
-        lambda staging: render_continuous_tiles(
+        lambda staging: _render_pooled(staging)
+        + render_continuous_tiles(
             data,
             lats,
             lons,
             staging,
             model,
-            zoom_levels,
+            native_zooms,
             nodata_value=nodata_value,
             min_valid_weight=min_valid_weight,
             **kwargs,
