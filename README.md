@@ -38,7 +38,7 @@ Prebuilt images: `ghcr.io/mitchross/radar-ng-{tile-server,temporal-worker,open-m
 
 ## Local iOS/watch IPA
 
-To build a signed standalone iPhone IPA with the watch app embedded, without
+To build a signed standalone iPhone and iPad IPA with the watch app embedded, without
 Metro or EAS:
 
 ```bash

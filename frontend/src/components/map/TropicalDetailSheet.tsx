@@ -114,7 +114,10 @@ const styles = StyleSheet.create({
   },
   safeArea: { justifyContent: "flex-end" },
   sheet: {
-    margin: 12,
+    alignSelf: "center",
+    width: "94%",
+    maxWidth: 540,
+    marginVertical: 12,
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 18,

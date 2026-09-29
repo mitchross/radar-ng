@@ -44,6 +44,7 @@ import { RadarMiniMap } from "../../components/home/RadarMiniMap";
 import { ConditionTiles } from "../../components/home/ConditionTiles";
 import { hourlyPrecipitation } from "../../lib/conditions";
 import { useAirQualityNow } from "../../hooks/useAirQualityNow";
+import { readingColumnStyle } from "../../lib/tabletLayout";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -207,7 +208,7 @@ export default function HomeScreen() {
         <ScrollView
           contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[styles.scroll, readingColumnStyle]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

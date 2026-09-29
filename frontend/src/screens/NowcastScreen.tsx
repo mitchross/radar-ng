@@ -33,6 +33,7 @@ import type { WeatherClearTheme } from "../theme/weatherClearTheme";
 import WeatherIcon from "../components/weather/WeatherIcon";
 import { interpolateRadarNowcast } from "../lib/radarNowcast";
 import type { RadarNowcastPoint } from "../types/weather";
+import { readingColumnStyle } from "../lib/tabletLayout";
 
 type Minute = { i: number; intensity: number };
 
@@ -172,7 +173,7 @@ export default function NowcastScreen() {
       <SafeAreaView style={styles.flex} edges={["top"]}>
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[styles.scroll, readingColumnStyle]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

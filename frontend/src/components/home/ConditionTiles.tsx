@@ -4,7 +4,7 @@
  * Tiles with no source data are left out rather than shown as "Unavailable".
  */
 import React, { useMemo } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, useWindowDimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
 import { Canvas, Path, Circle, LinearGradient as SkiaLinearGradient, vec, Skia, Group } from "@shopify/react-native-skia";
@@ -59,7 +59,9 @@ const PRESSURE_MAX_INHG = 30.7;
 
 export function ConditionTiles(props: ConditionsInput) {
   const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { width } = useWindowDimensions();
+  const useThreeColumns = width >= 760;
+  const styles = useMemo(() => createStyles(theme, useThreeColumns), [theme, useThreeColumns]);
   const { uv, windMph, gustMph, windFromDeg, humidity, dew, dewF, pressureHPa } = props;
   const uvInfo = uv === null ? null : getUVInfo(uv);
   const inHg = pressureHPa === null ? null : hPaToInHg(pressureHPa);
@@ -287,11 +289,11 @@ function SunTime({ styles, theme, symbol, label, time, alignEnd }: {
   );
 }
 
-function createStyles(theme: WeatherClearTheme) {
+function createStyles(theme: WeatherClearTheme, useThreeColumns = false) {
   return StyleSheet.create({
     grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: 16, gap: 10 },
     tile: {
-      flexBasis: "47%",
+      flexBasis: useThreeColumns ? "30%" : "47%",
       flexGrow: 1,
       minHeight: 128,
       backgroundColor: theme.colors.surface,

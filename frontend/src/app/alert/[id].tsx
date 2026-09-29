@@ -15,8 +15,10 @@ import { ScreenState } from "../../components/ui/WeatherClearUI";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { NWSAlert } from "../../types/weather";
+import { readingColumnStyle } from "../../lib/tabletLayout";
 
 type Severity = NWSAlert["properties"]["severity"];
+const ALERT_DETAIL_WIDTH = 640;
 
 export default function AlertDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -61,7 +63,7 @@ export default function AlertDetailScreen() {
       <SafeAreaView style={styles.flex} edges={["top"]}>
         <ScrollView
           contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[styles.scroll, readingColumnStyle, { maxWidth: ALERT_DETAIL_WIDTH }]}
           showsVerticalScrollIndicator={false}
         >
           {alertData.alertStatus.kind !== "current" ? (
@@ -234,7 +236,7 @@ function PolygonMap({
 }) {
   const { theme } = useWeatherClearTheme();
   const { width } = useWindowDimensions();
-  const W = Math.min(360, width - 32);
+  const W = Math.min(ALERT_DETAIL_WIDTH - 34, width - 34);
   const H = 160;
   const rawCoords = alert.geometry?.coordinates?.[0] ?? [];
 
@@ -306,7 +308,7 @@ function PolygonMap({
   return (
     <Canvas
       accessibilityLabel={`Warning polygon for ${alert.properties.areaDesc}`}
-      style={{ width: "100%", height: H, backgroundColor: theme.colors.surfaceStrong }}
+      style={{ width: W, height: H, backgroundColor: theme.colors.surfaceStrong }}
     >
       <SkRect x={0} y={0} width={W} height={H} color={theme.colors.surfaceStrong} />
       <SkPath

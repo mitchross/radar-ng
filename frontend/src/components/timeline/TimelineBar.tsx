@@ -4,7 +4,7 @@
  * track (past / nowcast / HRRR / long-range) + NOW marker + draggable thumb.
  * Playback follows the configured speed within the active zoom window.
  */
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet, useWindowDimensions } from "react-native";
 import Slider from "@react-native-community/slider";
 import { SymbolView } from "expo-symbols";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -52,6 +52,8 @@ const AXIS_FRACTIONS = [0, 0.25, 0.5, 0.75, 1];
 
 export function TimelineBar() {
   const chrome = useMapChromeInsets();
+  const { width } = useWindowDimensions();
+  const tabletInset = Math.max(0, (width - 720) / 2);
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
@@ -143,7 +145,11 @@ export function TimelineBar() {
   const mode = Math.abs(offsetMin) <= 5 ? "Now" : `${offsetMin > 0 ? "Forecast" : "Past"} ${offsetLabel(currentFrame?.time ?? nowSec, nowSec)}`;
 
   return (
-    <View style={[styles.container, { left: chrome.left, right: chrome.right, bottom: chrome.bottom }]}>
+    <View style={[styles.container, {
+      left: Math.max(chrome.left, tabletInset),
+      right: Math.max(chrome.right, tabletInset),
+      bottom: chrome.bottom,
+    }]}>
       <MapChromeSurface style={styles.card} fallbackStyle={styles.cardFill} colorScheme="light">
         <View style={styles.headerRow}>
           <Pressable
