@@ -69,6 +69,8 @@ export default function SettingsScreen() {
   const { theme, styles } = useSettingsTheme();
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const setMapStyle = useWeatherStore((s) => s.setMapStyle);
+  const aiNarration = useWeatherStore((s) => s.aiNarration);
+  const setAiNarration = useWeatherStore((s) => s.setAiNarration);
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
   const setTemperatureUnit = useWeatherStore((s) => s.setTemperatureUnit);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
@@ -396,6 +398,13 @@ export default function SettingsScreen() {
                 onChange={setAppearanceMode}
               />
             </Row>
+            <Sep />
+            <ToggleRow
+              label="AI narration"
+              sub="Local-LLM weather summaries; hides itself if the model is down"
+              value={aiNarration}
+              onChange={setAiNarration}
+            />
             <Sep />
             <ToggleRow
               label="Dark basemap"

@@ -16,6 +16,8 @@ import {
   describeDbz,
   fetchAlerts,
   fetchForecast,
+  explainAlert,
+  fetchBriefing,
   fetchManifest,
   iconSvg,
   readPoint,
@@ -97,6 +99,7 @@ const state = {
   speed: stored<number>("rng.speed", 1),
   overlays: new Set<OverlayId>(stored<OverlayId[]>("rng.overlays", ["warnings", "storms", "tropical"])),
   wind: stored<boolean>("rng.wind", false),
+  ai: stored<boolean>("rng.ai", true),
   zoom: "1h" as Zoom,
   manifest: null as Manifest | null,
   frames: [] as Frame[],
@@ -464,7 +467,11 @@ function renderSheet() {
       .map(([id, name, hint]) => `<button role="radio" data-value="${id}" aria-checked="${id === current}"${hint ? ` title="${hint}"` : ""}>${name}</button>`)
       .join("")}</div>`;
   const composite = layerAvailable("radar-composite");
-  const toggles = [...OVERLAYS.map((o) => ({ id: o.id, name: o.name, hint: o.hint, on: state.overlays.has(o.id) })), { id: "wind", name: "Wind flow", hint: "Animated HRRR surface wind", on: state.wind }];
+  const toggles = [
+    ...OVERLAYS.map((o) => ({ id: o.id, name: o.name, hint: o.hint, on: state.overlays.has(o.id) })),
+    { id: "wind", name: "Wind flow", hint: "Animated HRRR surface wind", on: state.wind },
+    { id: "ai", name: "AI narration", hint: "Local-LLM summaries; hides itself if the model is down", on: state.ai },
+  ];
   $("sheet-body").innerHTML = `
     <div class="sheet-section"><div class="section-label">RADAR</div>
       ${composite ? seg("product", (Object.keys(PRODUCTS) as ProductId[]).map((id) => [id, PRODUCTS[id].name, PRODUCTS[id].hint]), state.product) : ""}
@@ -530,6 +537,7 @@ async function renderForecast() {
       ${iconSvg(cond, 84)}
     </div>
     <div class="now-meta">Feels ${deg(c.apparent_temperature)} · H ${deg(fc.daily.temperature_2m_max[0])} L ${deg(fc.daily.temperature_2m_min[0])}</div>
+    <div id="briefing" class="briefing" hidden></div>
     <div id="threat" class="threat" hidden></div>
     ${alerts.length ? `<div class="section">${alerts.slice(0, 3).map((a) => `<div class="alert"><strong>${escapeHtml(a.event)}</strong><span>${a.ends ? `Until ${new Date(a.ends).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : escapeHtml(a.severity)}</span></div>`).join("")}</div>` : ""}
     <div class="section">
@@ -561,6 +569,25 @@ async function renderForecast() {
       </div>
     </div>`;
   renderThreat();
+  void renderBriefing();
+}
+
+let briefingAbort: AbortController | null = null;
+
+/** Optional LLM narration: the card stays hidden unless a briefing actually arrives. */
+async function renderBriefing() {
+  briefingAbort?.abort();
+  const el = document.getElementById("briefing");
+  if (!el) return;
+  if (!state.ai) {
+    el.hidden = true;
+    return;
+  }
+  briefingAbort = new AbortController();
+  const b = await fetchBriefing(state.place, briefingAbort.signal);
+  if (!b || !document.body.contains(el)) return;
+  el.hidden = false;
+  el.innerHTML = `<div class="briefing-head"><span class="spark">✦</span><strong>${escapeHtml(b.headline || "Right now")}</strong></div><p>${escapeHtml(b.body)}</p><small>AI summary · ${escapeHtml(b.model ?? "local model")}</small>`;
 }
 
 /** "Storm arriving in ~20 min" when a tracked cell's path crosses the chosen place. */
@@ -791,9 +818,13 @@ $("sheet-body").addEventListener("input", (e) => {
   if (id) map.setPaintProperty(id, "raster-opacity", state.opacity);
 });
 
-function setOverlay(id: OverlayId | "wind", on: boolean) {
+function setOverlay(id: OverlayId | "wind" | "ai", on: boolean) {
   track("overlay_toggled", { overlay: id, on });
-  if (id === "wind") {
+  if (id === "ai") {
+    state.ai = on;
+    store("rng.ai", on);
+    void renderBriefing();
+  } else if (id === "wind") {
     state.wind = on;
     store("rng.wind", on);
     wind.setEnabled(on);
@@ -807,7 +838,7 @@ function setOverlay(id: OverlayId | "wind", on: boolean) {
 
 $("sheet-body").addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement;
-  if (el.dataset.overlay) setOverlay(el.dataset.overlay as OverlayId | "wind", el.checked);
+  if (el.dataset.overlay) setOverlay(el.dataset.overlay as OverlayId | "wind" | "ai", el.checked);
 });
 
 $("locate").addEventListener("click", () => {
@@ -853,8 +884,10 @@ map.on("click", async (e) => {
   if (hit) {
     const html = describeFeature(hit, overlays.cells);
     if (html) {
-      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      const alertId = hit.layer.id.startsWith("ov-warnings") && state.ai ? String(hit.properties?.id ?? "") : "";
+      popup.setLngLat(e.lngLat).setHTML(alertId ? `${html}<div class="explain muted">✦ Explaining…</div>` : html).addTo(map);
       track("overlay_inspected", { layer: hit.layer.id });
+      if (alertId) void fillExplanation(alertId);
       return;
     }
   }
@@ -874,6 +907,16 @@ map.on("click", async (e) => {
   }
   popup.setHTML(`<div class="readout"><b>${title}</b><div class="v">${text}</div><small>${lat.toFixed(3)}, ${lng.toFixed(3)}</small></div>`);
 });
+
+/** Adds the LLM's plain-English take to an open warning popup, or quietly removes the placeholder. */
+async function fillExplanation(alertId: string) {
+  const x = await explainAlert(alertId);
+  const slot = popup.getElement()?.querySelector<HTMLElement>(".explain");
+  if (!slot) return;
+  if (!x) return slot.remove();
+  slot.classList.remove("muted");
+  slot.innerHTML = `<b>✦ In plain English</b><p>${escapeHtml(x.what)}</p><p><strong>Do:</strong> ${escapeHtml(x.do)}</p>`;
+}
 
 for (const id of ["ov-storm-cells", "ov-warnings-fill", "ov-tropical-position", "ov-tropical-points"]) {
   map.on("mouseenter", id, () => (map.getCanvas().style.cursor = "pointer"));
@@ -903,4 +946,5 @@ overlays.onStorms = renderThreat;
   window.setInterval(refreshManifest, MANIFEST_POLL_MS);
   // Keep "Live · N min ago" honest between manifest polls.
   window.setInterval(renderTimeline, 30_000);
+  window.setInterval(() => void renderBriefing(), 10 * 60_000);
 })();

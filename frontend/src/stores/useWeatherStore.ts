@@ -51,6 +51,8 @@ interface WeatherState {
   // Power-user overlays — off by default. Lightning + storm-cell dots
   // overwhelm the radar view for casual users; opt-in via this flag.
   extrasVisible: boolean;
+  /** Optional local-LLM briefing card; the card hides itself whenever the model is unavailable. */
+  aiNarration: boolean;
   serverUrl: string;
   viewMode: ViewMode;
   appearanceMode: AppearanceMode;
@@ -76,6 +78,7 @@ interface WeatherState {
   setActivePalette: (palette: Palette) => void;
   setTimelineMode: (mode: TimelineMode) => void;
   toggleExtras: () => void;
+  setAiNarration: (on: boolean) => void;
   setActiveLayer: (layer: LayerType) => void;
   setServerUrl: (url: string) => void;
   setViewMode: (mode: ViewMode) => void;
@@ -158,6 +161,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   // as one merged stream out of the box. Less UI to flip, less to explain.
   timelineMode: parseTimelineMode(getString("timelineMode", "forecast")),
   extrasVisible: getString("extrasVisible", "0") === "1",
+  aiNarration: getString("aiNarration", "1") === "1",
   serverUrl: parseServerUrl(getString("serverUrl", SELF_HOSTED.DEFAULT_URL), SELF_HOSTED.DEFAULT_URL),
   viewMode: parseViewMode(getString("viewMode", "simple")),
   appearanceMode: parseAppearanceMode(getString("appearanceMode", "system")),
@@ -280,6 +284,10 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     setString("extrasVisible", next ? "1" : "0");
     return { extrasVisible: next };
   }),
+  setAiNarration: (on) => {
+    setString("aiNarration", on ? "1" : "0");
+    set({ aiNarration: on });
+  },
   setActiveLayer: (layer) => set({ activeLayer: layer }),
   setServerUrl: (url) => {
     const next = parseServerUrl(url, get().serverUrl);

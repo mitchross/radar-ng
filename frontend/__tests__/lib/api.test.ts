@@ -221,3 +221,22 @@ describe("fetchServerStatus / healthLevelOf", () => {
     expect(healthLevelOf(undefined)).toBe("error");
   });
 });
+
+describe("fetchBriefing", () => {
+  const { fetchBriefing } = jest.requireActual("../../src/lib/api");
+
+  it("returns the briefing when the server has one", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ available: true, headline: "Dry evening", body: "No rain tonight.", model: "qwen3.8-27b" }) });
+    await expect(fetchBriefing("https://radar.example", 42.96, -85.67, "Grand Rapids")).resolves.toEqual({ headline: "Dry evening", body: "No rain tonight.", model: "qwen3.8-27b" });
+    expect(calledUrl()).toContain("/api/briefing?lat=");
+  });
+
+  it("is null, never an error, when the model is off, failing or unreachable", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ available: false, reason: "llm_unavailable" }) });
+    await expect(fetchBriefing("https://radar.example", 1, 2, "x")).resolves.toBeNull();
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    await expect(fetchBriefing("https://radar.example", 1, 2, "x")).resolves.toBeNull();
+    mockFetch.mockRejectedValueOnce(new TypeError("Network request failed"));
+    await expect(fetchBriefing("https://radar.example", 1, 2, "x")).resolves.toBeNull();
+  });
+});

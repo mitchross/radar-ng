@@ -70,6 +70,32 @@ export async function fetchAlerts(lat: number, lon: number): Promise<Alert[]> {
   return (body.features ?? []).map((f) => f.properties);
 }
 
+export interface Briefing {
+  headline: string;
+  body: string;
+  model?: string;
+}
+
+/** Optional LLM summary for a place; null whenever the server has no model or it's down. */
+export async function fetchBriefing(place: Place, signal?: AbortSignal): Promise<Briefing | null> {
+  const q = new URLSearchParams({ lat: String(round(place.latitude, 2)), lon: String(round(place.longitude, 2)), place: place.name });
+  try {
+    const body = await json<{ available: boolean } & Partial<Briefing>>(`/api/briefing?${q}`, signal);
+    return body.available && body.body ? { headline: body.headline ?? "", body: body.body, model: body.model } : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function explainAlert(id: string): Promise<{ what: string; do: string } | null> {
+  try {
+    const body = await json<{ available: boolean; what?: string; do?: string }>(`/api/alerts/explain?id=${encodeURIComponent(id)}`);
+    return body.available && body.what ? { what: body.what, do: body.do ?? "" } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The value of a timeline frame at a point. Nowcast grids are per run, so they come from /api/nowcast's series. */
 export async function readPoint(
   layer: string,

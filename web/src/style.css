@@ -209,6 +209,17 @@ kbd { font: 11px var(--ui); padding: 1px 5px; border-radius: 5px; border: 1px so
 .toggle input:checked + i::after { transform: translateX(16px); }
 .toggle input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* AI briefing (optional) */
+.briefing { margin-top: 14px; padding: 12px 14px; border-radius: 16px; background: linear-gradient(135deg, rgba(124,92,255,0.12), rgba(52,168,246,0.10)); border: 1px solid rgba(124,92,255,0.25); animation: fade-in .35s ease; }
+.briefing-head { display: flex; align-items: center; gap: 8px; }
+.briefing-head strong { font-size: 15px; }
+.briefing p { margin: 6px 0 4px; font-size: 14px; line-height: 1.45; color: var(--ink); }
+.briefing small { font-size: 11px; color: var(--ink-3); }
+.spark { color: #7c5cff; font-size: 14px; }
+.explain { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 12px; }
+.explain p { margin: 3px 0; }
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
 /* Incoming storm card */
 .threat { margin-top: 14px; padding: 10px 12px; border-radius: 14px; background: rgba(52,120,246,0.1); border: 1px solid rgba(52,120,246,0.3); }
 .threat strong { display: block; color: #2f6fe0; }

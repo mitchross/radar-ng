@@ -81,6 +81,10 @@ app = FastAPI(title="radar-ng Tile API", lifespan=_lifespan)
 from backend.api.api.routes_places import router as places_router  # noqa: E402
 app.include_router(places_router)
 
+# Optional LLM narration; answers {"available": false} whenever the LLM is absent or failing.
+from backend.api.api.routes_briefing import router as briefing_router  # noqa: E402
+app.include_router(briefing_router)
+
 # Storm-watch + push-token endpoints are workflow-driven — see
 # routes_workflows.py. Register lazily so a deploy that doesn't have
 # Temporal in front of it (e.g. a static-tile-only fork) can still boot

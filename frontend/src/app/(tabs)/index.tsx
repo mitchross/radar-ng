@@ -42,6 +42,8 @@ import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import WeatherIcon from "../../components/weather/WeatherIcon";
 import { RadarMiniMap } from "../../components/home/RadarMiniMap";
 import { ConditionTiles } from "../../components/home/ConditionTiles";
+import { AiBriefingCard } from "../../components/home/AiBriefingCard";
+import { useBriefing } from "../../hooks/useBriefing";
 import { hourlyPrecipitation } from "../../lib/conditions";
 import { useAirQualityNow } from "../../hooks/useAirQualityNow";
 import { readingColumnStyle } from "../../lib/tabletLayout";
@@ -66,6 +68,7 @@ export default function HomeScreen() {
     dataUpdatedAt,
   } = useForecast();
   const { data: alertData, alertStatus } = useAlerts();
+  const briefing = useBriefing(location.name);
   const { data: radarNowcast } = useRadarNowcast();
   const firstAlert = alertData?.features[0];
   const firstAlertEndAt = firstAlert ? getAlertEndTime(firstAlert) : null;
@@ -292,6 +295,8 @@ export default function HomeScreen() {
               Feels {formatDegrees(feels)}   {"\u00B7"}   H {formatDegrees(hi)}   L {formatDegrees(lo)}
             </Text>
           </View>
+
+          <AiBriefingCard briefing={briefing} />
 
           {/* Nowcast banner */}
           {nowcastBanner ? (
