@@ -18,6 +18,7 @@ from __future__ import annotations
 import errno
 import fcntl
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -35,11 +36,13 @@ MAX_CELLS = int(os.environ.get("GRID_MAX_CELLS", str(900 * 900)))
 GRID_ORPHAN_GRACE_S = max(0, int(os.environ.get("GRID_ORPHAN_GRACE_S", "300")))
 # Layers that only ever need their newest few generations (keep-N beats 12 h of 24.5 MB dumps).
 # Nowcast reads NOWCAST_INPUT_FRAMES; +2 covers a run that starts while MRMS publishes the next.
+# Nowcast picks inputs ~NOWCAST_INPUT_STEP_MIN apart from ~2-min MRMS frames, so keep enough history to span them.
+_NOWCAST_FRAMES = max(3, int(os.environ.get("NOWCAST_INPUT_FRAMES", "4")))
+_NOWCAST_STEP_MIN = float(os.environ.get("NOWCAST_INPUT_STEP_MIN", "5"))
 GRID_KEEP_LAST: dict[str, int] = {
-    os.environ.get("NOWCAST_GRID_INPUT_LAYER", "radar-nowcast-input"): max(
-        3, int(os.environ.get("NOWCAST_INPUT_FRAMES", "4"))
-    )
-    + 2,
+    os.environ.get("NOWCAST_GRID_INPUT_LAYER", "radar-nowcast-input"): (_NOWCAST_FRAMES - 1)
+    * max(1, math.ceil(_NOWCAST_STEP_MIN / 1.8))
+    + 3,
 }
 
 _LAYER_LOCK_FILE = ".grid.lock"
