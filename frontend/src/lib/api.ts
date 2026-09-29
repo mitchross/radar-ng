@@ -182,3 +182,33 @@ export async function fetchServerStatus(
     }
   });
 }
+
+
+export interface Briefing {
+  headline: string;
+  body: string;
+  model?: string;
+}
+
+/**
+ * Optional LLM weather briefing. Never throws: a missing model, a slow model or
+ * any error is simply "no briefing", so the card disappears instead of breaking.
+ */
+export async function fetchBriefing(
+  serverUrl: string,
+  lat: number,
+  lon: number,
+  place: string,
+  signal?: AbortSignal,
+): Promise<Briefing | null> {
+  const { lat: rLat, lon: rLon } = roundCoords(lat, lon, PRECISION.WEATHER);
+  const q = `lat=${rLat}&lon=${rLon}&place=${encodeURIComponent(place.slice(0, 60))}`;
+  try {
+    const res = await fetchWithTimeout(`${serverUrl}/api/briefing?${q}`, {}, signal, 25_000);
+    if (!res.ok) return null;
+    const body = (await res.json()) as { available?: boolean } & Partial<Briefing>;
+    return body.available && body.body ? { headline: body.headline ?? "", body: body.body, model: body.model } : null;
+  } catch {
+    return null;
+  }
+}
