@@ -3,6 +3,8 @@
   "reflectivity": {
     "unit": "dBZ",
     "ranges": [
+      { "min": 5, "max": 10, "rgba": [215, 238, 250, 75] },
+      { "min": 10, "max": 15, "rgba": [198, 234, 255, 115] },
       { "min": 15, "max": 20, "rgba": [180, 230, 255, 150] },
       { "min": 20, "max": 25, "rgba": [80, 200, 255, 190] },
       { "min": 25, "max": 30, "rgba": [0, 170, 255, 210] },
@@ -15,7 +17,7 @@
       { "min": 60, "max": 65, "rgba": [220, 60, 220, 245] },
       { "min": 65, "max": 75, "rgba": [140, 40, 255, 250] }
     ],
-    "no_data_below": 15
+    "no_data_below": 5
   },
   "temperature": {
     "unit": "fahrenheit",

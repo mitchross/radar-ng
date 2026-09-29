@@ -28,7 +28,11 @@ THRESHOLD_DBZ = float(os.environ.get("STORM_THRESHOLD_DBZ", "40"))
 MIN_PIXELS = int(os.environ.get("STORM_MIN_PIXELS", "5"))
 MAX_STORMS = int(os.environ.get("STORM_MAX_CELLS", "500"))
 MAX_TRACK_SPEED_KMH = float(os.environ.get("STORM_MAX_TRACK_SPEED_KMH", "160"))
-MIN_TRACK_RADIUS_KM = float(os.environ.get("STORM_MIN_TRACK_RADIUS_KM", "20"))
+# Match gate around each cell's predicted position; a fixed 20 km floor paired split/merged cells.
+MATCH_SLACK_KM = float(os.environ.get("STORM_MATCH_SLACK_KM", "8"))
+# Motion is a line fit over this window: 2-min frames make one-step centroid deltas pure noise.
+TRACK_HISTORY_MIN = float(os.environ.get("STORM_TRACK_HISTORY_MIN", "20"))
+MIN_TRACK_SPAN_MIN = float(os.environ.get("STORM_MIN_TRACK_SPAN_MIN", "5"))
 PREFETCH_PADDING_KM = float(os.environ.get("STORM_PREFETCH_PADDING_KM", "12"))
 PREDICTION_MINUTES = (0, 5, 10)
 EARTH_RADIUS_KM = 6371.0088
@@ -101,8 +105,32 @@ def _previous_motion(properties: dict) -> tuple[float, float]:
         return 0.0, 0.0
 
 
+def _advance(coords: tuple[float, float], east_kmh: float, north_kmh: float, minutes: float) -> tuple[float, float]:
+    lon, lat = coords
+    hours = minutes / 60.0
+    lon_scale = max(1e-6, 111.320 * math.cos(math.radians(lat)))
+    return lon + east_kmh * hours / lon_scale, lat + north_kmh * hours / 110.574
+
+
+def _fit_motion(history: list[list[float]]) -> tuple[float, float, float]:
+    """Least-squares (east_kmh, north_kmh, rms_km) over [epoch_s, lon, lat] samples."""
+    t = np.array([h[0] for h in history], dtype=np.float64) / 3600.0
+    lon = np.array([h[1] for h in history], dtype=np.float64)
+    lat = np.array([h[2] for h in history], dtype=np.float64)
+    x = (lon - lon[-1]) * 111.320 * math.cos(math.radians(float(lat[-1])))
+    y = (lat - lat[-1]) * 110.574
+    tc = t - t.mean()
+    denom = float((tc * tc).sum())
+    if denom <= 0:
+        return 0.0, 0.0, 0.0
+    ve = float((tc * (x - x.mean())).sum() / denom)
+    vn = float((tc * (y - y.mean())).sum() / denom)
+    resid = np.hypot(x - (x.mean() + ve * tc), y - (y.mean() + vn * tc))
+    return ve, vn, float(np.sqrt((resid * resid).mean()))
+
+
 def _attach_tracking(features: list[dict], previous: dict | None, timestamp: str) -> None:
-    """Mutate features with stable ids, vectors, and three predicted bboxes."""
+    """Mutate features with stable ids, fitted vectors, track history and three predicted bboxes."""
     previous_features = previous.get("features", []) if isinstance(previous, dict) else []
     previous_features = [f for f in previous_features if isinstance(f, dict)]
     current_dt = _parse_timestamp(timestamp)
@@ -110,6 +138,7 @@ def _attach_tracking(features: list[dict], previous: dict | None, timestamp: str
     elapsed_minutes = 0.0
     if current_dt is not None and previous_dt is not None:
         elapsed_minutes = (current_dt - previous_dt).total_seconds() / 60.0
+    now_s = current_dt.timestamp() if current_dt is not None else time.time()
 
     previous_ids = []
     for feature in previous_features:
@@ -123,50 +152,56 @@ def _attach_tracking(features: list[dict], previous: dict | None, timestamp: str
     # Backfilled/out-of-order frames must not produce backwards vectors.
     if features and previous_features and 0 < elapsed_minutes <= 15:
         distances = np.full((len(features), len(previous_features)), 1e9, dtype=np.float64)
+        predicted = []
+        for old in previous_features:
+            try:
+                old_coords = tuple(old["geometry"]["coordinates"])
+                east, north = _previous_motion(old.get("properties", {}))
+                predicted.append(_advance(old_coords, east, north, elapsed_minutes))
+            except (KeyError, TypeError, ValueError):
+                predicted.append(None)
         for current_index, current in enumerate(features):
             current_coords = tuple(current["geometry"]["coordinates"])
-            for previous_index, old in enumerate(previous_features):
-                try:
-                    old_coords = tuple(old["geometry"]["coordinates"])
-                    distances[current_index, previous_index] = _haversine_km(current_coords, old_coords)
-                except (KeyError, TypeError, ValueError):
-                    continue
+            for previous_index, guess in enumerate(predicted):
+                if guess is not None:
+                    distances[current_index, previous_index] = _haversine_km(current_coords, guess)
         rows, cols = linear_sum_assignment(distances)
-        max_distance = max(MIN_TRACK_RADIUS_KM, MAX_TRACK_SPEED_KMH * elapsed_minutes / 60.0)
+        base_gate = max(MATCH_SLACK_KM, MAX_TRACK_SPEED_KMH * elapsed_minutes / 60.0 * 0.5)
         for row, col in zip(rows.tolist(), cols.tolist()):
-            if distances[row, col] <= max_distance:
+            # Big cells' centroids shift as parts cross the threshold; allow half their width.
+            area = float(features[row]["properties"].get("area_km2", 0.0))
+            if distances[row, col] <= max(base_gate, 0.5 * math.sqrt(max(area, 0.0))):
                 matches[row] = col
 
     for index, feature in enumerate(features):
         props = feature["properties"]
         lon, lat = feature["geometry"]["coordinates"]
-        east_kmh = 0.0
-        north_kmh = 0.0
-        confidence = 0.0
-
+        history: list[list[float]] = []
         if index in matches:
-            old = previous_features[matches[index]]
-            old_props = old.get("properties", {})
-            old_lon, old_lat = old["geometry"]["coordinates"]
-            hours = elapsed_minutes / 60.0
-            measured_north = (lat - old_lat) * 110.574 / hours
-            measured_east = (lon - old_lon) * 111.320 * math.cos(math.radians((lat + old_lat) / 2)) / hours
-            old_east, old_north = _previous_motion(old_props)
-            # Damp cell-centroid wobble while still reacting within one frame.
-            east_kmh = 0.7 * measured_east + 0.3 * old_east
-            north_kmh = 0.7 * measured_north + 0.3 * old_north
+            old_props = previous_features[matches[index]].get("properties", {})
             props["cell_id"] = int(old_props.get("cell_id", next_id))
-            confidence = min(1.0, float(old_props.get("tracking_confidence", 0.0)) + 0.35)
+            history = [
+                h for h in old_props.get("track_history") or []
+                if isinstance(h, list) and len(h) == 3 and now_s - float(h[0]) <= TRACK_HISTORY_MIN * 60
+            ]
         else:
             props["cell_id"] = next_id
             next_id += 1
+        history.append([round(now_s, 1), round(float(lon), 5), round(float(lat), 5)])
+        props["track_history"] = history
+
+        east_kmh = north_kmh = 0.0
+        confidence = 0.0
+        span_min = (history[-1][0] - history[0][0]) / 60.0
+        if len(history) >= 2 and span_min >= MIN_TRACK_SPAN_MIN:
+            east_kmh, north_kmh, rms_km = _fit_motion(history)
+            confidence = min(1.0, span_min / 15.0) / (1.0 + rms_km / 3.0)
 
         speed = math.hypot(east_kmh, north_kmh)
         if speed > MAX_TRACK_SPEED_KMH:
-            scale = MAX_TRACK_SPEED_KMH / speed
-            east_kmh *= scale
-            north_kmh *= scale
-            speed = MAX_TRACK_SPEED_KMH
+            # Faster than any storm: an association error, not motion.
+            east_kmh = north_kmh = speed = 0.0
+            confidence = 0.0
         bearing = (math.degrees(math.atan2(east_kmh, north_kmh)) + 360.0) % 360.0 if speed else 0.0
         props["tracking_vector"] = {
             "east_kmh": round(east_kmh, 3),
@@ -223,6 +258,12 @@ def detect_storms(
     lon_left = float(lons_norm[0])
     lon_right = float(lons_norm[-1])
 
+    dlat_km = abs(float(lats[1] - lats[0])) * 110.574 if len(lats) > 1 else 1.0
+    dlon_deg = abs(float(lons_norm[1] - lons_norm[0])) if len(lons_norm) > 1 else 0.01
+
+    def cell_km2(lat: float) -> float:
+        return dlat_km * dlon_deg * 111.320 * math.cos(math.radians(lat))
+
     features: list[dict] = []
     for i in range(n):
         component_slice = slices[i]
@@ -231,7 +272,7 @@ def detect_storms(
         row, col = centroids[i]
         lat = lat_top + (lat_bottom - lat_top) * (row / max(1, height - 1))
         lon = lon_left + (lon_right - lon_left) * (col / max(1, width - 1))
-        area_km2 = float(sizes[i]) * 2.5 * 2.5
+        area_km2 = float(sizes[i]) * cell_km2(lat)
         features.append({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [lon, lat]},
