@@ -7,6 +7,8 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { initAnalytics, track } from "./analytics";
 import { buildFrames, nowIndex, offsetLabel, playbackSequence, type Frame, type Manifest, type Zoom } from "./frames";
+import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
+import { css, LEGEND_TICKS, PALETTES, type PaletteId } from "./palettes";
 import {
   aqiLabel,
   CONDITION_LABEL,
@@ -23,6 +25,7 @@ import {
   type Forecast,
   type Place,
 } from "./weather";
+import { WindLayer } from "./wind";
 
 maplibregl.setWorkerUrl(workerUrl);
 void initAnalytics();
@@ -46,18 +49,25 @@ const MAP_STYLES = {
 } as const;
 type MapStyleId = keyof typeof MAP_STYLES;
 
+const PRODUCTS = {
+  radar: { name: "Base", hint: "Lowest scan — what's reaching the ground" },
+  "radar-composite": { name: "Composite", hint: "Strongest echo in the column — storm tops and hail cores" },
+} as const;
+type ProductId = keyof typeof PRODUCTS;
+
 const LEGENDS: Record<string, { title: string; stops: [string, string][] }> = {
-  radar: { title: "Precipitation", stops: [["Light", "#3bc77a"], ["Moderate", "#ff9f2e"], ["Heavy", "#ff4040"], ["Severe", "#d02058"], ["Hail", "#b24bff"]] },
   "air-quality": { title: "Air quality (PM2.5)", stops: [["Good", "#00c800"], ["Moderate", "#f5d500"], ["Sensitive", "#ff7e00"], ["Unhealthy", "#ff3c00"], ["V. unh.", "#8f3f97"], ["Hazard", "#7e0023"]] },
   ozone: { title: "Ozone", stops: [["Good", "#00c800"], ["Moderate", "#f5d500"], ["Sensitive", "#ff7e00"], ["Unhealthy", "#ff3c00"], ["V. unh.", "#8f3f97"], ["Hazard", "#7e0023"]] },
 };
 
+const SPEEDS = [0.5, 1, 2, 4];
 const DEFAULT_PLACE: Place = { name: "Grand Rapids", admin1: "Michigan", latitude: 42.9634, longitude: -85.6681 };
-const TICK_MS = 500;
-const PREFETCH_AHEAD = 5;
-const MAX_CACHED_FRAMES = 24;
+const BASE_TICK_MS = 450;
+const LOOP_DWELL_MS = 1400;
+const FADE_MS = 220;
+const PREFETCH_AHEAD = 6;
+const MAX_CACHED_FRAMES = 28;
 const MANIFEST_POLL_MS = 60_000;
-const OVERLAY_OPACITY = 0.78;
 
 // ---------- state ----------
 
@@ -81,6 +91,12 @@ const state = {
   place: stored<Place>("rng.place", DEFAULT_PLACE),
   mapStyle: stored<MapStyleId>("rng.mapStyle", "light"),
   layer: stored<string>("rng.layer", "radar"),
+  palette: stored<PaletteId>("rng.palette", "classic"),
+  product: stored<ProductId>("rng.product", "radar"),
+  opacity: stored<number>("rng.opacity", 0.8),
+  speed: stored<number>("rng.speed", 1),
+  overlays: new Set<OverlayId>(stored<OverlayId[]>("rng.overlays", ["warnings", "storms", "tropical"])),
+  wind: stored<boolean>("rng.wind", false),
   zoom: "1h" as Zoom,
   manifest: null as Manifest | null,
   frames: [] as Frame[],
@@ -90,6 +106,7 @@ const state = {
   timer: 0 as number | undefined,
   forecast: null as Forecast | null,
 };
+if (!PALETTES[state.palette]) state.palette = "classic";
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -105,7 +122,8 @@ async function loadStyle(id: MapStyleId): Promise<StyleSpecification> {
     if (src.tiles) src.tiles = src.tiles.map(abs);
     if (src.url) src.url = abs(src.url);
   }
-  if (typeof style.glyphs === "string") style.glyphs = abs(style.glyphs);
+  // Overlay labels need glyphs; the satellite style ships without any.
+  style.glyphs = abs(typeof style.glyphs === "string" ? style.glyphs : "/basemap/fonts/{fontstack}/{range}.pbf");
   if (typeof style.sprite === "string") style.sprite = abs(style.sprite);
   return style;
 }
@@ -118,9 +136,12 @@ const map: MLMap = new maplibregl.Map({
   minZoom: 4,
   maxZoom: 11,
   attributionControl: { compact: true },
-  hash: false,
+  hash: "map",
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+
+const overlays = new Overlays(map, state.overlays);
+const wind = new WindLayer(map);
 
 /** True between a style's "style.load" and the next setStyle; overlays can be added only then. */
 let styleReady = false;
@@ -130,11 +151,12 @@ const cached = new Map<string, string>();
 let shownKey: string | null = null;
 
 function frameKey(f: Frame) {
-  return `${f.source}|${f.path}`;
+  return `${f.source}|${state.palette}|${f.path}`;
 }
 
-function firstLabelLayer(): string | undefined {
-  return map.getStyle().layers?.find((l) => l.type === "symbol")?.id;
+/** Radar sits under the basemap labels and every vector overlay. */
+function radarBeforeId(): string | undefined {
+  return map.getStyle().layers?.find((l) => l.type === "symbol" || l.id.startsWith("ov-"))?.id;
 }
 
 function ensureFrame(f: Frame): string {
@@ -145,11 +167,11 @@ function ensureFrame(f: Frame): string {
     cached.set(key, existing);
     return existing;
   }
-  const id = `wx-${cached.size}-${Math.random().toString(36).slice(2, 8)}`;
+  const id = `wx-${Math.random().toString(36).slice(2, 10)}`;
   const path = f.path.split("/").map(encodeURIComponent).join("/");
   map.addSource(id, {
     type: "raster",
-    tiles: [`${location.origin}/tiles/${f.source}/classic/${path}/{z}/{x}/{y}.png`],
+    tiles: [`${location.origin}/tiles/${f.source}/${state.palette}/${path}/{z}/{x}/{y}.png`],
     tileSize: 256,
     minzoom: 4,
     maxzoom: f.maxZoom,
@@ -160,9 +182,14 @@ function ensureFrame(f: Frame): string {
       type: "raster",
       source: id,
       // Opacity 0 still loads tiles: frames ahead of playback prefetch this way.
-      paint: { "raster-opacity": 0, "raster-fade-duration": 0, "raster-resampling": "linear" },
+      paint: {
+        "raster-opacity": 0,
+        "raster-opacity-transition": { duration: FADE_MS, delay: 0 },
+        "raster-fade-duration": 0,
+        "raster-resampling": "linear",
+      },
     },
-    firstLabelLayer(),
+    radarBeforeId(),
   );
   cached.set(key, id);
   return id;
@@ -187,10 +214,14 @@ function clearFrames() {
   shownKey = null;
 }
 
+function currentFrame(): Frame | undefined {
+  return state.frames[state.seq[state.pos]];
+}
+
 function showCurrentFrame() {
   renderTimeline();
   if (!styleReady || state.seq.length === 0) return;
-  const frame = state.frames[state.seq[state.pos]];
+  const frame = currentFrame();
   if (!frame) return;
   const keep = new Set<string>();
   for (let k = 0; k <= PREFETCH_AHEAD; k++) {
@@ -202,13 +233,20 @@ function showCurrentFrame() {
   }
   const key = frameKey(frame);
   const id = cached.get(key)!;
-  map.setPaintProperty(id, "raster-opacity", OVERLAY_OPACITY);
+  map.setPaintProperty(id, "raster-opacity", state.opacity);
   if (shownKey && shownKey !== key) {
     const prev = cached.get(shownKey);
     if (prev && map.getLayer(prev)) map.setPaintProperty(prev, "raster-opacity", 0);
   }
   shownKey = key;
   evict(keep);
+  if (wind.enabled) void syncWind();
+}
+
+function nextFrameReady(): boolean {
+  const f = state.frames[state.seq[(state.pos + 1) % state.seq.length]];
+  const id = f && cached.get(frameKey(f));
+  return !id || map.isSourceLoaded(id);
 }
 
 async function applyMapStyle(id: MapStyleId) {
@@ -227,7 +265,7 @@ let placeMarker: maplibregl.Marker | null = null;
 function addPlaceMarker() {
   placeMarker?.remove();
   const el = document.createElement("div");
-  el.style.cssText = "width:14px;height:14px;border-radius:7px;background:#3478f6;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)";
+  el.className = "place-dot";
   placeMarker = new maplibregl.Marker({ element: el }).setLngLat([state.place.longitude, state.place.latitude]).addTo(map);
 }
 
@@ -236,7 +274,7 @@ function addPlaceMarker() {
 function rebuildFrames(keepTime?: number) {
   if (!state.manifest) return;
   const now = nowSec();
-  state.frames = buildFrames(state.manifest, state.layer, now);
+  state.frames = buildFrames(state.manifest, state.layer, now, state.product);
   state.seq = playbackSequence(state.frames, state.zoom, now);
   const target = keepTime ?? state.frames[nowIndex(state.frames, now)]?.time;
   let best = 0;
@@ -251,15 +289,23 @@ function rebuildFrames(keepTime?: number) {
   showCurrentFrame();
 }
 
+function scheduleTick(delay: number, waited = 0) {
+  window.clearTimeout(state.timer);
+  state.timer = window.setTimeout(() => {
+    if (!state.playing) return;
+    // Hold on a frame whose tiles are still loading (up to ~1.5 s) instead of flashing an empty map.
+    if (!nextFrameReady() && waited < 1500) return scheduleTick(100, waited + 100);
+    state.pos = (state.pos + 1) % state.seq.length;
+    showCurrentFrame();
+    const atEnd = state.pos === state.seq.length - 1;
+    scheduleTick(atEnd ? LOOP_DWELL_MS : BASE_TICK_MS / state.speed);
+  }, delay);
+}
+
 function setPlaying(on: boolean) {
   state.playing = on && state.seq.length > 1;
-  clearInterval(state.timer);
-  if (state.playing) {
-    state.timer = window.setInterval(() => {
-      state.pos = (state.pos + 1) % state.seq.length;
-      showCurrentFrame();
-    }, TICK_MS);
-  }
+  window.clearTimeout(state.timer);
+  if (state.playing) scheduleTick(BASE_TICK_MS / state.speed);
   $("play").setAttribute("aria-label", state.playing ? "Pause radar animation" : "Play radar animation");
   $("play-icon").innerHTML = state.playing
     ? '<path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/>'
@@ -268,7 +314,7 @@ function setPlaying(on: boolean) {
 
 async function refreshManifest() {
   try {
-    const keepTime = state.frames[state.seq[state.pos]]?.time;
+    const keepTime = currentFrame()?.time;
     state.manifest = await fetchManifest();
     renderChips();
     if (!LAYERS.some((l) => l.id === state.layer && layerAvailable(l.needs))) state.layer = "radar";
@@ -284,12 +330,45 @@ function layerAvailable(key: string) {
   return Boolean(layer && ((layer.frames?.length ?? 0) > 0 || (layer.timestamps?.length ?? 0) > 0));
 }
 
-// ---------- rendering: timeline, legend, chips ----------
+// ---------- wind ----------
+
+/** The HRRR wind hour for the shown frame; the API falls back to its newest grid. */
+function windTimestamp(): string | null {
+  const frames = state.manifest?.layers.wind?.frames ?? [];
+  const at = (currentFrame()?.time ?? nowSec()) * 1000;
+  let best: string | null = null;
+  let gap = Infinity;
+  for (const f of frames) {
+    const g = Math.abs(Date.parse(f.timestamp) - at);
+    if (g < gap) [best, gap] = [f.timestamp, g];
+  }
+  return best;
+}
+
+async function syncWind() {
+  const ok = await wind.load(windTimestamp());
+  if (!ok && wind.enabled) {
+    wind.setEnabled(false);
+    state.wind = false;
+    renderSheet();
+    toast("Wind particles need HRRR wind — it isn't being ingested yet");
+  }
+}
+
+// ---------- rendering: timeline, legend, chips, sheet ----------
 
 const TIME_FMT = new Intl.DateTimeFormat(undefined, { weekday: "long", hour: "numeric", minute: "2-digit" });
 
+function latestObserved(): Frame | undefined {
+  for (let i = state.frames.length - 1; i >= 0; i--) {
+    const f = state.frames[i];
+    if (f.source !== "nowcast" && f.source !== "radar-hrrr" && f.time <= nowSec()) return f;
+  }
+  return undefined;
+}
+
 function renderTimeline() {
-  const frame = state.frames[state.seq[state.pos]];
+  const frame = currentFrame();
   const slider = $<HTMLInputElement>("slider");
   slider.value = String(state.pos);
   if (!frame) {
@@ -298,11 +377,19 @@ function renderTimeline() {
   }
   const label = offsetLabel(frame.time, nowSec());
   const mode = label === "Now" ? "Now" : `${frame.time > nowSec() ? "Forecast" : "Past"} ${label}`;
-  const source = frame.source === "nowcast" ? " · nowcast" : frame.source === "radar-hrrr" ? " · HRRR model" : "";
+  const source = frame.source === "nowcast" ? " · nowcast" : frame.source === "radar-hrrr" ? " · HRRR model" : frame.source === "radar-composite" ? " · composite" : "";
   const layerName = LAYERS.find((l) => l.id === state.layer)?.name ?? "Radar";
   $("frame-title").textContent = `${layerName} · ${mode}`;
   $("frame-time").textContent = `${TIME_FMT.format(new Date(frame.time * 1000))}${source}`;
   slider.setAttribute("aria-valuetext", `${mode}, ${TIME_FMT.format(new Date(frame.time * 1000))}`);
+  const live = latestObserved();
+  const pill = $("live");
+  if (state.layer === "radar" && live) {
+    const ageMin = Math.max(0, Math.round((nowSec() - live.time) / 60));
+    pill.hidden = false;
+    pill.classList.toggle("stale", ageMin > 10);
+    pill.textContent = frame === live ? `Live · ${ageMin} min ago` : `Live ${ageMin}m`;
+  } else pill.hidden = true;
 }
 
 function renderAxis() {
@@ -334,8 +421,20 @@ function renderAxis() {
 }
 
 function renderLegend() {
-  const spec = LEGENDS[state.layer];
   const el = $("legend");
+  if (state.layer === "radar") {
+    const bands = PALETTES[state.palette].bands;
+    const lo = bands[0].min;
+    const hi = 75;
+    const pos = (dbz: number) => `${((dbz - lo) / (hi - lo)) * 100}%`;
+    el.hidden = false;
+    el.innerHTML =
+      `<div class="legend-title"><span>Precipitation</span><span class="legend-tag">${PALETTES[state.palette].name}</span></div>` +
+      `<div class="legend-bar" style="background:linear-gradient(90deg,${bands.map((b, i) => `${css(b.rgba)} ${pos(b.min)} ${pos(bands[i + 1]?.min ?? hi)}`).join(",")})"></div>` +
+      `<div class="legend-ticks">${LEGEND_TICKS.map(([dbz, name]) => `<span style="left:${pos(dbz)}">${name}</span>`).join("")}</div>`;
+    return;
+  }
+  const spec = LEGENDS[state.layer];
   if (!spec) {
     el.hidden = true;
     return;
@@ -355,6 +454,30 @@ function renderChips() {
     .map((id) => `<button role="radio" data-style="${id}" aria-checked="${id === state.mapStyle}">${MAP_STYLES[id].name}</button>`)
     .join("");
   document.querySelectorAll<HTMLButtonElement>("#zoom button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.zoom === state.zoom)));
+  $("speed").textContent = `${state.speed}×`;
+  renderSheet();
+}
+
+function renderSheet() {
+  const seg = (group: string, items: [string, string, string?][], current: string) =>
+    `<div class="segmented wide" role="radiogroup" data-group="${group}">${items
+      .map(([id, name, hint]) => `<button role="radio" data-value="${id}" aria-checked="${id === current}"${hint ? ` title="${hint}"` : ""}>${name}</button>`)
+      .join("")}</div>`;
+  const composite = layerAvailable("radar-composite");
+  const toggles = [...OVERLAYS.map((o) => ({ id: o.id, name: o.name, hint: o.hint, on: state.overlays.has(o.id) })), { id: "wind", name: "Wind flow", hint: "Animated HRRR surface wind", on: state.wind }];
+  $("sheet-body").innerHTML = `
+    <div class="sheet-section"><div class="section-label">RADAR</div>
+      ${composite ? seg("product", (Object.keys(PRODUCTS) as ProductId[]).map((id) => [id, PRODUCTS[id].name, PRODUCTS[id].hint]), state.product) : ""}
+      <p class="hint">${PRODUCTS[state.product].hint}</p>
+      ${seg("palette", (Object.keys(PALETTES) as PaletteId[]).map((id) => [id, PALETTES[id].name]), state.palette)}
+      <label class="range-row"><span>Opacity</span><input id="opacity" type="range" min="0.3" max="1" step="0.05" value="${state.opacity}" aria-label="Radar opacity" /></label>
+    </div>
+    <div class="sheet-section"><div class="section-label">OVERLAYS</div>
+      ${toggles.map((t) => `<label class="toggle"><span><b>${t.name}</b><small>${t.hint}</small></span><input type="checkbox" data-overlay="${t.id}" ${t.on ? "checked" : ""} /><i></i></label>`).join("")}
+    </div>
+    <div class="sheet-section"><div class="section-label">KEYBOARD</div>
+      <p class="hint"><kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> step · <kbd>W</kbd> warnings · <kbd>S</kbd> storms · <kbd>L</kbd> lightning · <kbd>H</kbd> hurricanes</p>
+    </div>`;
 }
 
 // ---------- forecast panel ----------
@@ -407,6 +530,7 @@ async function renderForecast() {
       ${iconSvg(cond, 84)}
     </div>
     <div class="now-meta">Feels ${deg(c.apparent_temperature)} · H ${deg(fc.daily.temperature_2m_max[0])} L ${deg(fc.daily.temperature_2m_min[0])}</div>
+    <div id="threat" class="threat" hidden></div>
     ${alerts.length ? `<div class="section">${alerts.slice(0, 3).map((a) => `<div class="alert"><strong>${escapeHtml(a.event)}</strong><span>${a.ends ? `Until ${new Date(a.ends).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : escapeHtml(a.severity)}</span></div>`).join("")}</div>` : ""}
     <div class="section">
       <div class="section-label">HOURLY</div>
@@ -436,6 +560,23 @@ async function renderForecast() {
         ${aqi == null ? "" : `<div class="tile" style="grid-column:1/-1"><b>AIR QUALITY</b><div class="v">${aqi}<small>AQI</small></div><div class="c">${aqiLabel(aqi)} · PM2.5 ${Math.round(aq.pm25!)} µg/m³${aq.ozone == null ? "" : ` · Ozone ${Math.round(aq.ozone)} ppb`}</div></div>`}
       </div>
     </div>`;
+  renderThreat();
+}
+
+/** "Storm arriving in ~20 min" when a tracked cell's path crosses the chosen place. */
+function renderThreat() {
+  const el = document.getElementById("threat");
+  if (!el) return;
+  const t = incomingStorm(overlays.cells, [state.place.longitude, state.place.latitude]);
+  if (!t) {
+    el.hidden = true;
+    return;
+  }
+  const what = t.peakDbz >= 60 ? "Hail-producing storm" : t.peakDbz >= 50 ? "Heavy storm" : "Rain";
+  const when = t.minutes === 0 ? "over you now" : `arriving in ~${t.minutes} min`;
+  el.hidden = false;
+  el.className = `threat ${t.peakDbz >= 55 ? "severe" : ""}`;
+  el.innerHTML = `<strong>${what} ${when}</strong><span>${Math.round(t.peakDbz)} dBZ · moving ${compass(t.bearing)} at ${Math.round(t.speedMph)} mph</span>`;
 }
 
 async function airQualityNow(lat: number, lon: number): Promise<{ pm25: number | null; ozone: number | null }> {
@@ -591,7 +732,14 @@ $("zoom").addEventListener("click", (e) => {
   state.zoom = b.dataset.zoom as Zoom;
   track("timeline_range_changed", { range: state.zoom });
   renderChips();
-  rebuildFrames(state.frames[state.seq[state.pos]]?.time);
+  rebuildFrames(currentFrame()?.time);
+});
+
+$("speed").addEventListener("click", () => {
+  state.speed = SPEEDS[(SPEEDS.indexOf(state.speed) + 1) % SPEEDS.length] ?? 1;
+  store("rng.speed", state.speed);
+  $("speed").textContent = `${state.speed}×`;
+  if (state.playing) scheduleTick(BASE_TICK_MS / state.speed);
 });
 
 $("play").addEventListener("click", () => {
@@ -603,6 +751,63 @@ $("slider").addEventListener("input", (e) => {
   setPlaying(false);
   state.pos = Number((e.target as HTMLInputElement).value);
   showCurrentFrame();
+});
+
+function toggleSheet(open?: boolean) {
+  const sheet = $("sheet");
+  const show = open ?? sheet.hidden;
+  sheet.hidden = !show;
+  $("sheet-toggle").setAttribute("aria-expanded", String(show));
+}
+$("sheet-toggle").addEventListener("click", () => toggleSheet());
+$("sheet-close").addEventListener("click", () => toggleSheet(false));
+
+$("sheet-body").addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-group] button[data-value]");
+  if (!b) return;
+  const group = b.closest<HTMLElement>("[data-group]")!.dataset.group;
+  const value = b.dataset.value!;
+  if (group === "product" && value !== state.product) {
+    state.product = value as ProductId;
+    store("rng.product", value);
+    track("radar_product_changed", { product: value });
+    rebuildFrames(currentFrame()?.time);
+  } else if (group === "palette" && value !== state.palette) {
+    state.palette = value as PaletteId;
+    store("rng.palette", value);
+    track("palette_changed", { palette: value });
+    clearFrames();
+    rebuildFrames(currentFrame()?.time);
+  }
+  renderSheet();
+});
+
+$("sheet-body").addEventListener("input", (e) => {
+  const el = e.target as HTMLInputElement;
+  if (el.id !== "opacity") return;
+  state.opacity = Number(el.value);
+  store("rng.opacity", state.opacity);
+  const id = shownKey && cached.get(shownKey);
+  if (id) map.setPaintProperty(id, "raster-opacity", state.opacity);
+});
+
+function setOverlay(id: OverlayId | "wind", on: boolean) {
+  track("overlay_toggled", { overlay: id, on });
+  if (id === "wind") {
+    state.wind = on;
+    store("rng.wind", on);
+    wind.setEnabled(on);
+    if (on) void syncWind();
+  } else {
+    overlays.setEnabled(id, on);
+    store("rng.overlays", [...state.overlays]);
+  }
+  renderSheet();
+}
+
+$("sheet-body").addEventListener("change", (e) => {
+  const el = e.target as HTMLInputElement;
+  if (el.dataset.overlay) setOverlay(el.dataset.overlay as OverlayId | "wind", el.checked);
 });
 
 $("locate").addEventListener("click", () => {
@@ -618,30 +823,48 @@ $("locate").addEventListener("click", () => {
   );
 });
 
+const OVERLAY_KEYS: Record<string, OverlayId> = { w: "warnings", s: "storms", l: "lightning", h: "tropical" };
+
 document.addEventListener("keydown", (e) => {
-  if ((e.target as HTMLElement).closest("input")) return;
+  if ((e.target as HTMLElement).closest("input") || e.metaKey || e.ctrlKey || e.altKey) return;
+  const n = state.seq.length;
   if (e.key === " ") {
     e.preventDefault();
     setPlaying(!state.playing);
-  } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+  } else if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && n) {
     setPlaying(false);
-    const n = state.seq.length;
-    if (!n) return;
     state.pos = (state.pos + (e.key === "ArrowRight" ? 1 : -1) + n) % n;
     showCurrentFrame();
+  } else if (e.key === "Escape") {
+    toggleSheet(false);
+    popup.remove();
+  } else if (OVERLAY_KEYS[e.key.toLowerCase()]) {
+    const id = OVERLAY_KEYS[e.key.toLowerCase()];
+    setOverlay(id, !state.overlays.has(id));
+    toast(`${OVERLAYS.find((o) => o.id === id)!.name} ${state.overlays.has(id) ? "on" : "off"}`);
   }
 });
 
-// Click the map: the value of the shown frame at that point.
-const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "240px" });
+// Click the map: an overlay feature if one is under the cursor, else the shown frame's value there.
+const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "260px" });
 map.on("click", async (e) => {
-  const frame = state.frames[state.seq[state.pos]];
+  const layers = overlays.clickable();
+  const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers })[0] : undefined;
+  if (hit) {
+    const html = describeFeature(hit, overlays.cells);
+    if (html) {
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      track("overlay_inspected", { layer: hit.layer.id });
+      return;
+    }
+  }
+  const frame = currentFrame();
   if (!frame) return;
   const { lat, lng } = e.lngLat;
   popup.setLngLat(e.lngLat).setHTML('<div class="readout"><small>Reading…</small></div>').addTo(map);
   const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng).catch(() => null);
   track("point_inspected", { layer: state.layer, source: frame.source, has_value: value != null });
-  const title = frame.source === "nowcast" ? "NOWCAST" : frame.source === "radar-hrrr" ? "HRRR FORECAST" : (LAYERS.find((l) => l.id === state.layer)?.name ?? "").toUpperCase();
+  const title = frame.source === "nowcast" ? "NOWCAST" : frame.source === "radar-hrrr" ? "HRRR FORECAST" : frame.source === "radar-composite" ? "COMPOSITE" : (LAYERS.find((l) => l.id === state.layer)?.name ?? "").toUpperCase();
   let text = "No data here";
   if (value != null) {
     if (state.layer === "radar") text = `${describeDbz(value)} <small>${Math.round(value)} dBZ</small>`;
@@ -652,20 +875,32 @@ map.on("click", async (e) => {
   popup.setHTML(`<div class="readout"><b>${title}</b><div class="v">${text}</div><small>${lat.toFixed(3)}, ${lng.toFixed(3)}</small></div>`);
 });
 
+for (const id of ["ov-storm-cells", "ov-warnings-fill", "ov-tropical-position", "ov-tropical-points"]) {
+  map.on("mouseenter", id, () => (map.getCanvas().style.cursor = "pointer"));
+  map.on("mouseleave", id, () => (map.getCanvas().style.cursor = ""));
+}
+
 // ---------- boot ----------
 
 // Every style (first load and each switch) needs the overlays put back.
 map.on("style.load", () => {
   styleReady = true;
+  overlays.install();
   addPlaceMarker();
   showCurrentFrame();
 });
+
+overlays.onStorms = renderThreat;
 
 (async () => {
   document.documentElement.dataset.map = state.mapStyle;
   renderChips();
   map.setStyle(await loadStyle(state.mapStyle));
   await refreshManifest();
+  overlays.start();
+  if (state.wind) setOverlay("wind", true);
   void renderForecast();
   window.setInterval(refreshManifest, MANIFEST_POLL_MS);
+  // Keep "Live · N min ago" honest between manifest polls.
+  window.setInterval(renderTimeline, 30_000);
 })();

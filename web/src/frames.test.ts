@@ -44,3 +44,13 @@ describe("offsetLabel", () => {
     expect(offsetLabel(NOW - 4 * 3600, NOW)).toBe("−4h");
   });
 });
+
+describe("buildFrames observed product", () => {
+  it("uses the composite for past frames when asked, falling back to base", () => {
+    const withComposite: Manifest = {
+      layers: { ...manifest.layers, "radar-composite": { frames: [{ timestamp: iso(NOW - 60), path: "c0" }] } },
+    };
+    expect(buildFrames(withComposite, "radar", NOW, "radar-composite").filter((f) => f.time <= NOW).map((f) => f.source)).toEqual(["radar-composite"]);
+    expect(buildFrames(manifest, "radar", NOW, "radar-composite").some((f) => f.source === "radar")).toBe(true);
+  });
+});
