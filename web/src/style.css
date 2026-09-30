@@ -227,6 +227,8 @@ kbd { font: 11px var(--ui); padding: 1px 5px; border-radius: 5px; border: 1px so
 .explain p { margin: 3px 0; }
 @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
+.range-row select { background: var(--surface-solid); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font: inherit; }
+
 /* Incoming storm card */
 .threat { margin-top: 14px; padding: 10px 12px; border-radius: 14px; background: rgba(52,120,246,0.1); border: 1px solid rgba(52,120,246,0.3); }
 .threat strong { display: block; color: #2f6fe0; }

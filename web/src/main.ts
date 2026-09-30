@@ -28,7 +28,13 @@ import {
   type Place,
 } from "./weather";
 import { WindLayer } from "./wind";
-import { interpolateNowcast, nowcastVerdict, type NowcastPoint } from "./nowcast";
+import { interpolateNowcast, nowcastVerdict } from "./nowcast";
+import { describeNowcastSkill } from "./shared/nowcastSkill";
+import { RAIN_ALERT_LEAD_OPTIONS } from "./shared/rainAlerts";
+import type { RadarNowcastResponse } from "./shared/nowcastTypes";
+import { BrowserRainAlerts } from "./rainAlerts";
+
+const rainAlerts = new BrowserRainAlerts();
 
 maplibregl.setWorkerUrl(workerUrl);
 void initAnalytics();
@@ -483,6 +489,11 @@ function renderSheet() {
     <div class="sheet-section"><div class="section-label">OVERLAYS</div>
       ${toggles.map((t) => `<label class="toggle"><span><b>${t.name}</b><small>${t.hint}</small></span><input type="checkbox" data-overlay="${t.id}" ${t.on ? "checked" : ""} /><i></i></label>`).join("")}
     </div>
+    <div class="sheet-section"><div class="section-label">RAIN ALERTS</div>
+      <label class="toggle"><span><b>Rain starting soon</b><small>Local notifications from your radar forecast</small></span><input id="rain-alerts" type="checkbox" ${rainAlerts.enabled ? "checked" : ""} ${rainAlerts.supported ? "" : "disabled"} /><i></i></label>
+      <label class="range-row"><span>Notify me before rain</span><select id="rain-alert-lead" aria-label="Rain alert lead time">${RAIN_ALERT_LEAD_OPTIONS.map((lead) => `<option value="${lead}" ${lead === rainAlerts.leadMinutes ? "selected" : ""}>${lead} min</option>`).join("")}</select></label>
+      <p class="hint" role="status">${escapeHtml(rainAlerts.supported ? rainAlerts.message : "Notifications are unavailable in this browser. Use the app for rain alerts.")}</p>
+    </div>
     <div class="sheet-section"><div class="section-label">KEYBOARD</div>
       <p class="hint"><kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> step · <kbd>W</kbd> warnings · <kbd>S</kbd> storms · <kbd>L</kbd> lightning · <kbd>H</kbd> hurricanes</p>
     </div>`;
@@ -578,21 +589,29 @@ async function renderForecast() {
 /** Minute-by-minute rain for the next hour from the radar nowcast (hidden when unavailable). */
 async function renderNextHour() {
   const el = document.getElementById("nexthour");
-  if (!el) return;
+  if (!el && !rainAlerts.enabled) return;
   const { latitude, longitude } = state.place;
-  let points: NowcastPoint[] = [];
+  let nowcast: RadarNowcastResponse | null = null;
   try {
-    const res = await fetch(`/api/nowcast/${latitude.toFixed(3)}/${longitude.toFixed(3)}`);
-    if (res.ok) points = ((await res.json()) as { points?: NowcastPoint[] }).points ?? [];
+    const res = await fetch(`/api/nowcast/${latitude.toFixed(2)}/${longitude.toFixed(2)}`, { signal: AbortSignal.timeout(10_000) });
+    if (res.ok) nowcast = await res.json() as RadarNowcastResponse;
   } catch {
     /* no radar nowcast: leave the section hidden */
   }
+  // A previous location or panel render must not replace a newer plan.
+  if (latitude !== state.place.latitude || longitude !== state.place.longitude || (el && !document.body.contains(el))) return;
+  rainAlerts.sync(nowcast, state.place.name);
+  const points = nowcast?.points ?? [];
+  if (!el) return;
+  el.hidden = true;
   if (!points.length || !document.body.contains(el)) return;
+  const skill = describeNowcastSkill(nowcast?.skill);
   const minutes = interpolateNowcast(points);
   const peak = Math.max(0.1, ...minutes);
   el.hidden = false;
   el.innerHTML =
     `<div class="section-label">NEXT HOUR</div><p class="nexthour-verdict">${escapeHtml(nowcastVerdict(minutes))}</p>` +
+    (skill ? `<p class="hint">${escapeHtml(skill.sentence)}${skill.beatsPersistence === false ? " · no better than a still radar" : ""}</p>` : "") +
     `<div class="minutebars">${minutes.map((v) => `<i class="${v > 0.01 ? "" : "dry"}" style="height:${v > 0.01 ? Math.max(8, (v / peak) * 100) : 6}%"></i>`).join("")}</div>` +
     `<div class="minute-axis"><span>Now</span><span>15m</span><span>30m</span><span>45m</span><span>60m</span></div>`;
 }
@@ -863,6 +882,16 @@ function setOverlay(id: OverlayId | "wind" | "ai", on: boolean) {
 
 $("sheet-body").addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement;
+  if (el.id === "rain-alerts") {
+    el.disabled = true;
+    void rainAlerts.setEnabled(el.checked).then(() => {
+      renderSheet();
+      void renderNextHour();
+    });
+  } else if (el.id === "rain-alert-lead") {
+    rainAlerts.setLead(el.value);
+    void renderNextHour();
+  }
   if (el.dataset.overlay) setOverlay(el.dataset.overlay as OverlayId | "wind" | "ai", el.checked);
 });
 
@@ -972,4 +1001,5 @@ overlays.onStorms = renderThreat;
   // Keep "Live · N min ago" honest between manifest polls.
   window.setInterval(renderTimeline, 30_000);
   window.setInterval(() => void renderBriefing(), 10 * 60_000);
+  window.setInterval(() => void renderNextHour(), 60_000);
 })();

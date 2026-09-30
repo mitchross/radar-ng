@@ -79,6 +79,7 @@ Clients (app, web, widget, Watch) talk only to `radar-ng-api.vanillax.me` and
 | Retained forecasts verified against later nowcast anchor observations at 20/35 dBZ, alongside a stationary baseline | `backend/nowcast/skill.py`, `backend/shared/nowcast_skill.py` | rolling 24-hour POD, FAR and CSI by lead; `/api/nowcast/skill`, health, point responses and Prometheus expose actual performance |
 | Accuracy headline on Nowcast and the Home rain banner | `frontend/src/lib/nowcastSkill.ts`, `frontend/src/screens/NowcastScreen.tsx`, `frontend/src/lib/forecastView.ts` | shows the hit rate and false-alarm ratio once six runs at the selected lead are scored; headline defaults to 30 minutes |
 | Local rain-start alerts with 5/10/15/20-minute warning and optional OS background refresh | `frontend/src/lib/rainAlerts.ts`, `frontend/src/lib/rainAlertScheduler.ts`, `frontend/src/tasks/rainAlertsTask.ts`, Settings | phone schedules, replaces and cancels alerts from the point nowcast; no push service, credentials or account |
+| Web accuracy headline and opt-in browser rain alerts using the same planner and formatter | `web/src/main.ts`, `web/src/rainAlerts.ts`, `web/src/shared/` | same warmup and lead options; browser alerts require the page to remain open |
 | Dead `MRMS_RENDER_WORKERS` knob removed from compose, env example and docs | `deploy/`, `docs/` | no phantom tunable |
 
 Rollout: the worker image change reseeds the MRMS schedules automatically when
@@ -97,9 +98,12 @@ Background refresh follows the OS schedule (15 minutes at best, often longer),
 so it does not guarantee an alert for every storm while the app is closed.
 
 Verified on 2026-09-30: the full CI worker suite against mounted branch source
-in the release worker image passed 250 tests, 496 subtests, with one skipped;
+in the release worker image passed 251 tests, 496 subtests, with one skipped;
 the replay/discovery gate also passed separately. API: 51 passed. Frontend:
-301 unit tests and 13 render tests passed; Expo lint and Ruff clean.
+305 unit tests and 13 render tests passed; Expo lint and Ruff clean. Web:
+production build/type-check and 22 tests passed. Both iOS and Android production
+JS bundles export successfully, including the shared planner. The latest master
+was merged, retaining both the early-exit and motion-stride regression tests.
 
 Type-checking reports three existing `MapChromeSurface.tsx` errors: Expo's web
 augmentation permits `position: "fixed"`/`"sticky"`, but React Native's generated
