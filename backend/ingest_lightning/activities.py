@@ -5,8 +5,10 @@ loop in a single long-running activity that:
 
   - Runs for `duration_s` (default ~50 min) before exiting cleanly
   - Heartbeats every 30s while connected
-  - Maintains a rolling RETENTION_MIN buffer and flushes GeoJSON every 2s
-  - Reconnects on disconnect with exponential backoff, ws-host rotation
+  - Seeds its buffer from the last published file, then keeps a rolling
+    RETENTION_MIN buffer and flushes GeoJSON every 2s
+  - Reconnects at once after a server-side close; rotates away from failing
+    endpoints with per-failure backoff (see EndpointPicker)
 
 The IngestLightningWorkflow re-launches this activity on a hourly Schedule.
 SKIP overlap policy means a still-running activity simply means the next
@@ -22,7 +24,7 @@ import random
 import tempfile
 import time
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +40,26 @@ OUT_PATH = STATE_DIR / "lightning.json"
 RETENTION_MIN = int(os.environ.get("LIGHTNING_RETENTION_MIN", "15"))
 FLUSH_EVERY_S = float(os.environ.get("LIGHTNING_FLUSH_S", "2.0"))
 MAX_STRIKES = int(os.environ.get("LIGHTNING_MAX_STRIKES", "5000"))
+# Blitzortung endpoints, verified 2026-09-29: ws1/ws2/ws7/ws8 accept wss on
+# 443; ws3-ws6 present a certificate for another hostname; every legacy plain
+# ws port (8087-8090) refuses the connection. The old picker chose uniformly
+# among 33 variants, so after each server-side close (about every 6 min) it
+# burned a median 32 s (p90 2 min) on dead endpoints: ~10% of every hour.
+PRIMARY_ENDPOINTS: tuple[str, ...] = tuple(
+    f"wss://{host}.blitzortung.org:443/" for host in ("ws1", "ws2", "ws7", "ws8")
+)
+LEGACY_ENDPOINTS: tuple[str, ...] = tuple(
+    f"ws://ws{i}.blitzortung.org:{port}/"
+    for i in range(1, 9)
+    for port in (8087, 8088, 8089, 8090)
+)
+# Comma-separated override, e.g. a self-hosted relay. Legacy ports stay a last resort.
+_ENDPOINT_OVERRIDE = os.environ.get("LIGHTNING_WS_ENDPOINTS", "")
+# A session that delivered a frame counts as healthy however it ends.
+RECONNECT_AFTER_CLOSE_S = 1.0
+FAILURE_BACKOFF_MAX_S = 30.0
+DEMOTE_PRIMARY_S = 60.0
+DEMOTE_LEGACY_S = 15 * 60.0
 BBOX = (
     float(os.environ.get("LIGHTNING_LAT_MIN", "15")),
     float(os.environ.get("LIGHTNING_LAT_MAX", "55")),
@@ -55,6 +77,114 @@ class LightningRunResult:
     parsed: int
     in_bbox: int
     final_buffer: int
+    seeded: int = 0
+    connect_failures: int = 0
+
+
+def configured_endpoints() -> tuple[list[str], list[str]]:
+    """(primary, legacy) endpoint lists, honouring LIGHTNING_WS_ENDPOINTS."""
+    override = [u.strip() for u in _ENDPOINT_OVERRIDE.split(",") if u.strip()]
+    if override:
+        return override, list(LEGACY_ENDPOINTS)
+    return list(PRIMARY_ENDPOINTS), list(LEGACY_ENDPOINTS)
+
+
+class EndpointPicker:
+    """Round-robin over healthy primaries; legacy ports only when none is left.
+
+    A failed endpoint is demoted for a while instead of being retried at random,
+    and the reconnect delay backs off per consecutive failure. A delivered frame
+    resets both. Pure bookkeeping so it can be unit-tested without sockets.
+    """
+
+    def __init__(
+        self,
+        primary: list[str],
+        legacy: list[str] | None = None,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        rand: Callable[[], float] = random.random,
+    ) -> None:
+        if not primary:
+            raise ValueError("at least one primary endpoint is required")
+        self.primary = list(primary)
+        self.legacy = list(legacy or [])
+        self._clock = clock
+        self._rand = rand
+        self._demoted_until: dict[str, float] = {}
+        self._cursor = 0
+        self.consecutive_failures = 0
+
+    def _healthy(self, urls: list[str]) -> list[str]:
+        now = self._clock()
+        return [u for u in urls if self._demoted_until.get(u, 0.0) <= now]
+
+    def next(self) -> str:
+        candidates = self._healthy(self.primary)
+        if not candidates:
+            candidates = self._healthy(self.legacy)
+        if not candidates:
+            # Everything is demoted: forget the demotions rather than stall.
+            self._demoted_until.clear()
+            candidates = self.primary
+        url = candidates[self._cursor % len(candidates)]
+        self._cursor += 1
+        return url
+
+    def succeeded(self, url: str) -> float:
+        """Record a session that delivered data; return the delay before reconnecting."""
+        self.consecutive_failures = 0
+        self._demoted_until.pop(url, None)
+        return RECONNECT_AFTER_CLOSE_S
+
+    def failed(self, url: str) -> float:
+        """Record a session that delivered nothing; return the backoff before the next try."""
+        self.consecutive_failures += 1
+        demote = DEMOTE_PRIMARY_S if url in self.primary else DEMOTE_LEGACY_S
+        self._demoted_until[url] = self._clock() + demote
+        base = min(FAILURE_BACKOFF_MAX_S, 2.0 ** min(self.consecutive_failures, 8))
+        return base * (0.5 + self._rand() * 0.5)
+
+
+def _load_existing_strikes(
+    path: Path | None = None,
+    *,
+    retention_min: int | None = None,
+    now: float | None = None,
+) -> list[dict]:
+    """Strikes still inside the retention window from the last published file.
+
+    A new hourly run (or a restarted worker) used to publish an empty
+    collection and rebuild it over 15 minutes, blanking the layer every hour.
+    """
+    path = OUT_PATH if path is None else path
+    retention = RETENTION_MIN if retention_min is None else retention_min
+    try:
+        body = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(body, dict):
+        return []
+    cutoff = (time.time() if now is None else now) - retention * 60
+    strikes: list[dict] = []
+    for feature in body.get("features") or []:
+        try:
+            props = feature["properties"]
+            lon, lat = feature["geometry"]["coordinates"][:2]
+            t = float(props["time"])
+            if t < cutoff:
+                continue
+            strikes.append({
+                "t": t,
+                "lat": float(lat),
+                "lon": float(lon),
+                "pol": int(props.get("polarity", 0)),
+                "mds": int(props.get("mds", 0)),
+            })
+        except (KeyError, TypeError, ValueError, IndexError):
+            continue
+    strikes.sort(key=lambda s: s["t"])
+    return strikes[-MAX_STRIKES:]
 
 
 def _decode_payload(raw: str) -> str:
@@ -162,28 +292,35 @@ async def lightning_consume_stream(duration_s: int) -> LightningRunResult:
                 log.warning("geojson_flush_failed", extra={"err": str(exc)})
             activity.heartbeat(dict(stats))
 
-    primary_host = "ws2.blitzortung.org"
-    fallback_hosts = [f"ws{i}.blitzortung.org" for i in range(1, 9) if i != 2]
-    variants = [(primary_host, "wss", 443)] * 5 + [
-        (h, "ws", p) for h in fallback_hosts for p in (8087, 8088, 8089, 8090)
-    ]
+    primary, legacy = configured_endpoints()
+    picker = EndpointPicker(primary, legacy)
 
-    # Always emit an empty file at start so the API never 404s.
+    # Carry the previous run's strikes forward so the layer never blanks at the
+    # hourly rollover, then publish at once so the API never 404s.
+    seeded = await asyncio.to_thread(_load_existing_strikes)
+    strikes.extend(seeded)
+    _prune()
+    stats["seeded"] = len(strikes)
     await _flush()
 
     beat = asyncio.create_task(_beat())
+    connect_failures = 0
     try:
         while time.monotonic() < deadline:
-            host, scheme, port = random.choice(variants)
-            url = f"{scheme}://{host}:{port}/"
+            url = picker.next()
+            session_started = time.monotonic()
+            session_msgs = 0
             try:
                 log.info("ws_connect", extra={"url": url})
-                async with websockets.connect(url, ping_interval=30, ping_timeout=30) as ws:
+                async with websockets.connect(
+                    url, ping_interval=30, ping_timeout=30, open_timeout=10
+                ) as ws:
                     await ws.send(json.dumps({"a": 111}))
                     async for msg in ws:
                         if time.monotonic() >= deadline:
                             break
                         stats["msgs"] += 1
+                        session_msgs += 1
                         if isinstance(msg, bytes):
                             try:
                                 msg = msg.decode("latin-1")
@@ -220,9 +357,48 @@ async def lightning_consume_stream(duration_s: int) -> LightningRunResult:
                             await _flush()
                             last_flush = now
             except Exception as exc:  # noqa: BLE001
-                log.warning("ws_disconnect", extra={"url": url, "err": str(exc)})
+                if session_msgs:
+                    delay = picker.succeeded(url)
+                    log.info(
+                        "ws_closed",
+                        extra={
+                            "url": url,
+                            "err": str(exc),
+                            "session_s": round(time.monotonic() - session_started, 1),
+                            "session_msgs": session_msgs,
+                        },
+                    )
+                else:
+                    delay = picker.failed(url)
+                    connect_failures += 1
+                    log.warning(
+                        "ws_disconnect",
+                        extra={
+                            "url": url,
+                            "err": str(exc),
+                            "consecutive_failures": picker.consecutive_failures,
+                            "retry_in_s": round(delay, 1),
+                        },
+                    )
                 await _flush()
-                await asyncio.sleep(5 + random.random() * 5)
+            else:
+                # The server closed a working stream (Blitzortung does this
+                # every few minutes); reconnect right away.
+                delay = picker.succeeded(url) if session_msgs else picker.failed(url)
+                if not session_msgs:
+                    connect_failures += 1
+                log.info(
+                    "ws_closed",
+                    extra={
+                        "url": url,
+                        "session_s": round(time.monotonic() - session_started, 1),
+                        "session_msgs": session_msgs,
+                    },
+                )
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            await asyncio.sleep(min(delay, remaining))
     finally:
         beat.cancel()
         with suppress(asyncio.CancelledError):
@@ -233,4 +409,6 @@ async def lightning_consume_stream(duration_s: int) -> LightningRunResult:
         duration_s=round(time.time() - started, 1),
         msgs=stats["msgs"], parsed=stats["parsed"], in_bbox=stats["in_bbox"],
         final_buffer=len(strikes),
+        seeded=stats.get("seeded", 0),
+        connect_failures=connect_failures,
     )

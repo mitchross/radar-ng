@@ -109,10 +109,9 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | Var | Default | Notes |
 |---|---|---|
 | `PALETTES` | `classic,muted,vivid` | Each needs `backend/shared/palettes/<name>.json`. |
-| `BACKLOG_PER_CYCLE` | `2` | Max MRMS frames back-filled per 2-min cycle (prod: 3). |
+| `BACKLOG_PER_CYCLE` | `2` | Max MRMS frames back-filled per schedule fire (fires every minute; prod: 1). |
 | `TEMPORAL_MAX_CONCURRENT_ACTIVITIES` | `2` | Concurrent activities in the worker (prod: 4). |
 | `TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS` | `1` | Concurrent activity task polls (prod: 2). |
-| `MRMS_RENDER_WORKERS` | `2` | Parallel palette-render processes per MRMS frame. |
 | `STORM_THRESHOLD_DBZ` | `40` | Reflectivity threshold used to form tracked storm cells. |
 | `STORM_MIN_PIXELS` | `5` | Minimum connected MRMS pixels in a storm cell. |
 | `STORM_MAX_CELLS` | `500` | Strongest storm cells retained per frame. |
@@ -133,6 +132,15 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `NOWCAST_GRID_INPUT_LAYER` | `radar-nowcast-input` | Higher-fidelity grid dedicated to motion estimation. |
 | `NOWCAST_MAX_INPUT_GAP_MIN` | `6` | Fail closed when consecutive input frames exceed this cadence. |
 | `NOWCAST_ALLOW_PERSISTENCE_FALLBACK` | `0` | Opt-in stationary fallback; disabled so degraded output is not presented as a motion forecast. |
+| `NOWCAST_INPUT_STEP_MIN` | `5` | Target spacing (minutes) between the input grids picked from the ~2-min MRMS stream. |
+| `NOWCAST_RENDER_WORKERS` | `4` | Threads encoding lead-time pyramids in parallel. |
+| `NOWCAST_KICK_ENABLED` | `1` | Each new base-reflectivity science grid triggers the nowcast Schedule (`BUFFER_ONE`) instead of waiting for its 2-min tick. `0` = timer only. |
+| `NOWCAST_SCHEDULE_ID` | `nowcast` | Schedule the kick triggers. |
+| `NOWCAST_KICK_TIMEOUT_S` | `5` | RPC budget for the kick; a slow Temporal never delays the frame. |
+| `NOWCAST_POINT_GRID_RETENTION_RUNS` | `36` | Complete nowcast runs kept on the grids volume (13 grids of ~1.5 MB each); 36 covers scoring the 60-minute lead at a 2-min cadence. |
+| `NOWCAST_SKILL_WINDOW_HOURS` | `24` | Rolling window the verified-accuracy summary (`/api/nowcast/skill`) aggregates. |
+| `NOWCAST_SKILL_HEADLINE_LEAD_MIN` | `30` | Lead time the app's accuracy headline is taken from. |
+| `NOWCAST_SKILL_MIN_RUNS` | `6` | Scored runs needed before the headline is shown at all. |
 
 ### Storm watch
 | Var | Default | Notes |
@@ -148,6 +156,7 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 |---|---|---|
 | `LIGHTNING_RETENTION_MIN` | `15` | Minutes of strikes kept in the rolling buffer. |
 | `LIGHTNING_FLUSH_S` | `2.0` | Seconds between buffer flushes to the state dir. |
+| `LIGHTNING_WS_ENDPOINTS` | unset | Comma-separated websocket endpoints to prefer over the built-in `wss://ws{1,2,7,8}.blitzortung.org:443/` list (legacy ports stay the last resort). |
 
 ### Tile-server API
 | Var | Default | Notes |

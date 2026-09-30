@@ -5,6 +5,8 @@ import "../lib/animatedFix";
 // any component code runs fetch() or starts a span.
 import { logEvent } from "../lib/telemetry";
 import { telemetryErrorType, telemetryQueryFamily } from "../lib/telemetryPrivacy";
+// Defines the rain-alert background task at module scope, before any component mounts.
+import "../tasks/rainAlertsTask";
 
 import { Stack } from "expo-router";
 import {
@@ -28,6 +30,7 @@ import {
 } from "../theme/WeatherClearThemeProvider";
 import { useStormTilePrefetch } from "../hooks/useStormTilePrefetch";
 import { useLocationController } from "../hooks/useLocation";
+import { useRainAlerts } from "../hooks/useRainAlerts";
 import { useSharedStatePublisher } from "../hooks/useSharedStatePublisher";
 import { bindAppFocus, bindNetworkOnline } from "../lib/queryLifecycle";
 import { PERSISTED_QUERY_FAMILIES, PERSIST_MAX_AGE_MS, shouldPersistQuery } from "../lib/queryPersistence";
@@ -115,6 +118,8 @@ function ThemedApp() {
   // The single owner of device location; screens only read it from the store.
   useLocationController();
   useSharedStatePublisher();
+  // Local "rain starting soon" notifications, planned from the radar nowcast.
+  useRainAlerts();
   // Start warming the three predicted storm regions while the user is still
   // on the home screen, before MapLibre mounts on the radar tab.
   useStormTilePrefetch();

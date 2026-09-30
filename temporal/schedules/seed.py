@@ -133,14 +133,18 @@ class ScheduleDef:
     jitter: timedelta | None = None
 
 
-# Shared knobs for the 2-min schedules: a missed hour of 2-min fires is
-# worthless (fresher data supersedes it), and jitter spreads their CPU peaks.
+# Shared knobs for the fast (1-2 min) schedules: a missed hour of their fires
+# is worthless (fresher data supersedes it), and jitter spreads their CPU peaks.
 _FAST_CATCHUP = timedelta(minutes=5)
 _FAST_JITTER = timedelta(seconds=20)
+# MRMS lands a frame every ~2 min at an unpredictable offset. Polling every
+# minute halves the average wait for a new key (60 s -> 30 s); the list is one
+# S3 request and a render (~20-35 s) still fits inside the cadence under SKIP.
+_MRMS_POLL = timedelta(minutes=1)
 
 
 SCHEDULES: list[ScheduleDef] = [
-    # MRMS base reflectivity (QC) — every 2 min
+    # MRMS base reflectivity (QC) — poll every minute for the 2-min product
     ScheduleDef(
         "ingest-mrms-base",
         "IngestMrmsWorkflow",
@@ -151,12 +155,12 @@ SCHEDULES: list[ScheduleDef] = [
                 "layer_name": "radar",
             }
         ],
-        interval=timedelta(minutes=2),
+        interval=_MRMS_POLL,
         task_queue=MRMS_TASK_QUEUE,
         catchup_window=_FAST_CATCHUP,
         jitter=_FAST_JITTER,
     ),
-    # MRMS composite reflectivity (full atmosphere) — every 2 min
+    # MRMS composite reflectivity (full atmosphere) — poll every minute
     ScheduleDef(
         "ingest-mrms-composite",
         "IngestMrmsWorkflow",
@@ -167,7 +171,7 @@ SCHEDULES: list[ScheduleDef] = [
                 "layer_name": "radar-composite",
             }
         ],
-        interval=timedelta(minutes=2),
+        interval=_MRMS_POLL,
         task_queue=MRMS_TASK_QUEUE,
         catchup_window=_FAST_CATCHUP,
         jitter=_FAST_JITTER,
@@ -202,7 +206,9 @@ SCHEDULES: list[ScheduleDef] = [
         max_runtime=timedelta(minutes=5),
         interval=timedelta(hours=1),
     ),
-    # pysteps nowcast — every 2 min
+    # pysteps nowcast — every 2 min as a backstop; a fresh MRMS science grid
+    # also triggers this Schedule directly (backend/ingest_mrms kick_nowcast),
+    # so the timer mostly covers a kick that failed.
     ScheduleDef(
         "nowcast",
         "NowcastWorkflow",

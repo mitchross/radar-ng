@@ -1,6 +1,6 @@
 # Tuning radar-ng
 
-Every knob that matters, and which direction to turn it. The single constraint driving all of this: **a new MRMS frame lands every 2 minutes, and the render of one frame must finish in under 2 minutes** or radar goes stale and `/api/health` flips to `degraded`.
+Every knob that matters, and which direction to turn it. The single constraint driving all of this: **a new MRMS frame lands every 2 minutes, the ingest schedule polls for it every minute, and the render of one frame must finish well inside 2 minutes** or radar goes stale and `/api/health` flips to `degraded`.
 
 ## Where the CPU goes
 
@@ -20,8 +20,9 @@ The client must agree: `SOURCE_MAX_ZOOM` in `frontend/src/components/map/RadarOv
 
 ### 3. Worker parallelism
 
-- `MRMS_RENDER_WORKERS` (default 2) — parallel palette renders per MRMS frame.
-- `TEMPORAL_MAX_CONCURRENT_ACTIVITIES` — how many activities one worker runs at once (compose lab default 2, prod 4). Lower it if MRMS, HRRR, and nowcast renders pile up and thrash each other; raise it only with cores to spare.
+- `TEMPORAL_MAX_CONCURRENT_ACTIVITIES` — how many activities one worker runs at once (compose lab default 2; production sets it per role pool: mrms 6, nowcast 1, hrrr 4, aux 4, alerts 8). Lower it if MRMS, HRRR, and nowcast renders pile up and thrash each other; raise it only with cores to spare.
+- `NOWCAST_RENDER_WORKERS` (default 4) — threads that encode the nowcast lead-time pyramids in parallel; PNG encoding releases the GIL, so this scales up to the pod's CPU limit.
+- The MRMS frame render samples each tile once and derives every palette from it; there is no per-palette process pool any more (`MRMS_RENDER_WORKERS` is not read).
 
 ## Resource shapes
 
@@ -29,7 +30,8 @@ The worker (or standalone `ingest-mrms` in older setups) is sized **1 cpu / 1 Gi
 
 ## Ingest cadence + catch-up
 
-- `BACKLOG_PER_CYCLE` (compose lab default 2, current cluster default 1) — after downtime, each cycle processes up to N unprocessed S3 keys, newest-first. Keep it at 1 while one frame is slower than the source cadence; raising it can make freshness worse by extending each workflow run.
+- The two MRMS schedules fire every minute (`_MRMS_POLL` in `temporal/schedules/seed.py`) although NOAA publishes a frame every ~2 minutes at an unpredictable offset: polling twice per frame halves the average wait for a new key. The list is a single S3 request, and `OverlapPolicy.SKIP` drops a tick that lands while a frame is still rendering.
+- `BACKLOG_PER_CYCLE` (compose lab default 2, current cluster default 1) — after downtime, each fire processes up to N unprocessed S3 keys, newest-first. Keep it at 1 while one frame is slower than the source cadence; raising it can make freshness worse by extending each workflow run.
 - `MRMS_MAX_AGE_S=600` (tile-server env) — staleness budget before `/api/health` reports `degraded` (HTTP 503) and the app shows its "data delayed" banner. 600 s tolerates ~3 missed frames. Loosen it on deliberately slow setups rather than living with a permanently red health check; don't tighten below ~300 s or normal NOAA jitter will page you.
 
 ## Tile retention + cleanup
@@ -78,6 +80,14 @@ One more server-side cache: `FORECAST_TTL_S` (default 300) is the tile-server's 
 ## Nowcast
 
 `NOWCAST_HORIZON_MIN=60`, `NOWCAST_STEP_MIN=5`, `NOWCAST_INPUT_FRAMES=4`. Cost scales with horizon/step (number of extrapolated frames to render) — and each nowcast frame pays the same palette-render bill as a radar frame, just on a smaller pyramid (client caps it at z6). Nowcast needs `NOWCAST_INPUT_FRAMES` recent grids on disk before it produces anything.
+
+The nowcast Schedule ticks every 2 minutes as a backstop, but the normal start is the kick: every base-reflectivity frame that writes a new science grid triggers the Schedule with `BUFFER_ONE` (`kick_nowcast` in `backend/ingest_mrms/activities.py`), so an idle nowcast starts within seconds of the grid landing and a busy one queues exactly one follow-up run. `NOWCAST_KICK_ENABLED=0` returns to timer-only starts. A kicked run whose newest grid is already forecast exits before reading its inputs.
+
+Every run is also verified. Each run keeps its twelve lead-time point grids plus the observation it started from; each new nowcast anchor observation scores every retained run that predicted that time, cell by cell at 20 dBZ (rain) and 35 dBZ (heavy): hits, misses and false alarms, next to the same counts for a "nothing moves" persistence forecast. The rolling 24-hour log is summarised by `/api/nowcast/skill`, folded into `/api/health` as `nowcast_skill` and `/api/nowcast/{lat}/{lon}` as `skill`, and exported as `radar_ng_nowcast_{pod,far,csi}` gauges. The app shows the headline (for example, "Caught 87% of rain 30 min out today, 9% false alarms") once six runs at the selected lead are scored; the headline defaults to 30 minutes. Scoring happens after publication, and scoring failures do not fail publication.
+
+## Lightning
+
+The Blitzortung consumer rotates over the verified `wss://ws{1,2,7,8}.blitzortung.org:443/` endpoints and only falls back to the legacy plain-ws ports after every primary has failed (`EndpointPicker`). Blitzortung closes a healthy stream every few minutes; the consumer reconnects after 1 s and backs off only on endpoints that delivered nothing. Each hourly run seeds its buffer from the last published `lightning.json`, so the layer no longer blanks at the rollover. `LIGHTNING_WS_ENDPOINTS` (comma-separated) replaces the primary list, e.g. for a relay you host.
 
 ## Watching it: observability
 

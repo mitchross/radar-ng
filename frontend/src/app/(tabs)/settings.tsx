@@ -34,6 +34,8 @@ import { formatPlaceLabel } from "../../lib/locationLabel";
 import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { SELF_HOSTED } from "../../lib/constants";
 import { PLAYBACK_FPS_RANGE } from "../../lib/persistedPrefs";
+import { RAIN_ALERT_LEAD_OPTIONS, parseRainAlertLead } from "../../lib/rainAlerts";
+import { ensureNotificationPermission } from "../../lib/rainAlertScheduler";
 import { isCleartextToPublicHost } from "../../lib/networkSafety";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
@@ -71,6 +73,24 @@ export default function SettingsScreen() {
   const setMapStyle = useWeatherStore((s) => s.setMapStyle);
   const aiNarration = useWeatherStore((s) => s.aiNarration);
   const setAiNarration = useWeatherStore((s) => s.setAiNarration);
+  const rainAlertsEnabled = useWeatherStore((s) => s.rainAlertsEnabled);
+  const setRainAlertsEnabled = useWeatherStore((s) => s.setRainAlertsEnabled);
+  const rainAlertLeadMinutes = useWeatherStore((s) => s.rainAlertLeadMinutes);
+  const setRainAlertLeadMinutes = useWeatherStore((s) => s.setRainAlertLeadMinutes);
+  const [rainAlertsBlocked, setRainAlertsBlocked] = useState(false);
+  const onRainAlertsChange = useCallback(
+    async (on: boolean) => {
+      if (!on) {
+        setRainAlertsEnabled(false);
+        setRainAlertsBlocked(false);
+        return;
+      }
+      const granted = await ensureNotificationPermission(true);
+      setRainAlertsBlocked(!granted);
+      setRainAlertsEnabled(granted);
+    },
+    [setRainAlertsEnabled],
+  );
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
   const setTemperatureUnit = useWeatherStore((s) => s.setTemperatureUnit);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
@@ -382,6 +402,40 @@ export default function SettingsScreen() {
               </View>
             </>
           )}
+
+          <SectionHeader>Rain alerts</SectionHeader>
+          <View style={styles.card}>
+            <ToggleRow
+              label="Rain starting soon"
+              sub="A notification before radar rain reaches you, planned on this phone from your own server. No push service, no account."
+              value={rainAlertsEnabled}
+              onChange={(v) => void onRainAlertsChange(v)}
+            />
+            {rainAlertsBlocked ? (
+              <>
+                <Sep />
+                <Row>
+                  <RowLeft
+                    title="Notifications are off in system settings"
+                    sub="Allow them for Radar NG to get rain alerts."
+                  />
+                </Row>
+              </>
+            ) : null}
+            {rainAlertsEnabled ? (
+              <>
+                <Sep />
+                <Row>
+                  <RowLeft title="Warn me" sub="Before the first wet minute" />
+                  <Segmented
+                    options={RAIN_ALERT_LEAD_OPTIONS.map((m) => `${m}m`)}
+                    selected={`${rainAlertLeadMinutes}m`}
+                    onSelect={(v) => setRainAlertLeadMinutes(parseRainAlertLead(v.replace("m", "")))}
+                  />
+                </Row>
+              </>
+            ) : null}
+          </View>
 
           <SectionHeader>Preferences</SectionHeader>
           <View style={styles.card}>

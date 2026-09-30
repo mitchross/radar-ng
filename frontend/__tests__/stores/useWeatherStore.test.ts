@@ -21,6 +21,17 @@ describe("useWeatherStore", () => {
     expect(useWeatherStore.getState().temperatureUnit).toBe("celsius");
     expect(useWeatherStore.getState().radarOpacity).toBe(0.45);
   });
+  it("keeps rain alerts off until asked and remembers the lead time", () => {
+    expect(useWeatherStore.getState().rainAlertsEnabled).toBe(false);
+    expect(useWeatherStore.getState().rainAlertLeadMinutes).toBe(10);
+    useWeatherStore.getState().setRainAlertsEnabled(true);
+    useWeatherStore.getState().setRainAlertLeadMinutes(15);
+    expect(setString).toHaveBeenCalledWith("rainAlertsEnabled", "1");
+    expect(setString).toHaveBeenCalledWith("rainAlertLeadMinutes", "15");
+    expect(useWeatherStore.getState().rainAlertsEnabled).toBe(true);
+    expect(useWeatherStore.getState().rainAlertLeadMinutes).toBe(15);
+  });
+
   it("starts with default values", () => {
     const state = useWeatherStore.getState();
     expect(state.frames).toEqual([]);

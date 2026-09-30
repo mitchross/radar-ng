@@ -62,8 +62,8 @@ Everything periodic is a Temporal Schedule — there are no CronJobs and no cron
 
 | schedule | workflow | cadence |
 |---|---|---|
-| `ingest-mrms-base` / `ingest-mrms-composite` | `IngestMrmsWorkflow` | 2 min |
-| `nowcast` | `NowcastWorkflow` | 2 min |
+| `ingest-mrms-base` / `ingest-mrms-composite` | `IngestMrmsWorkflow` | 1 min (NOAA publishes every ~2 min) |
+| `nowcast` | `NowcastWorkflow` | 2 min backstop; kicked by every new MRMS science grid |
 | `poll-alerts` | `PollAlertsWorkflow` | 5 min |
 | `ingest-hrrr` | `IngestHrrrWorkflow` | 15 min |
 | `ingest-airquality` | `IngestAirQualityWorkflow` | 30 min (new cycles land 2×/day) |
@@ -74,7 +74,7 @@ Everything periodic is a Temporal Schedule — there are no CronJobs and no cron
 
 Why Temporal instead of CronJobs — the concrete list:
 
-- **`OverlapPolicy.SKIP` + 1 h catchup window.** A render that overruns its 2-min slot drops the next trigger instead of piling up; a worker that was down for an hour doesn't thundering-herd on recovery. Fresh data beats backfill for radar.
+- **`OverlapPolicy.SKIP` + short catch-up windows.** A render that overruns its slot drops the next trigger instead of piling up; the 1–2 min schedules keep a 5-min catch-up window (hourly ones 1 h), so a worker that was down for an hour doesn't thundering-herd on recovery. Fresh data beats backfill for radar.
 - **Retries with `schedule_to_close` budgets.** `start_to_close` bounds one attempt; `schedule_to_close` bounds the whole lifetime including retries and queue wait. `IngestHrrrWorkflow` gives each forecast hour 20 min per attempt but 30 min total (`temporal/workflows/ingest_hrrr.py`) — without the ceiling, 3 × 20-min attempts on one sick input pin the run while SKIP silently drops every fresh trigger.
 - **Coherent model publication.** HRRR hours render into immutable `runs/<run-id>/<valid-time>` paths. The workflow publishes and marks a run processed only when every consecutive required hour contains reflectivity, so clients cannot mix forecast cycles or see a partial run.
 - **Heartbeats.** `backend/shared/activity_heartbeat.py` pumps `activity.heartbeat()` from the event loop while CPU-bound work runs in a thread. A hung worker is detected in the heartbeat timeout (nowcast: 300 s) instead of waiting out the full `start_to_close` (15 min).

@@ -167,3 +167,29 @@ describe("next-hour banner source", () => {
     ).toBe("Rain starts in 15 min");
   });
 });
+
+
+describe("nextHourBanner accuracy line", () => {
+  const points = [5, 10, 15, 20].map((lead) => ({
+    timestamp: `T+${lead}`,
+    lead_minutes: lead,
+    dbz: 30,
+    precipitation_mm_h: 6,
+  }));
+  it("adds the verified hit rate once the server has enough scored runs", () => {
+    const banner = nextHourBanner(
+      {
+        status: "ok",
+        points,
+        skill: { lead_minutes: 30, window_hours: 24, runs: 40, pod: 0.87, far: 0.1, csi: 0.8, persistence_csi: 0.6 },
+      },
+      undefined,
+      Date.now(),
+    );
+    expect(banner?.sub).toMatch(/radar, 87% hit rate today$/);
+  });
+  it("says only 'from radar' before the track record exists", () => {
+    const banner = nextHourBanner({ status: "ok", points, skill: null }, undefined, Date.now());
+    expect(banner?.sub).toMatch(/from radar$/);
+  });
+});

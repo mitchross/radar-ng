@@ -8,7 +8,7 @@ A complete weather backend on hardware you own. Every data source is **free and 
 
 | layer | source | cadence | resolution |
 |---|---|---|---|
-| radar (base + composite) | NOAA MRMS S3 | 2 min | ~1 km |
+| radar (base + composite) | NOAA MRMS S3 | 2 min (polled every minute) | ~1 km |
 | radar-hrrr simulated reflectivity | NOAA HRRR S3 | hourly, 18–48 h out | 3 km |
 | nowcast (+60 min) | pysteps S-PROG of MRMS | 2 min input cadence | ~2 km science grid |
 | lightning | Blitzortung websocket | ~1 min | strikes |
@@ -89,7 +89,7 @@ What starts:
 | `tile-server` | Caddy + FastAPI, the only public port (`:8080`) |
 | `basemap` | Protomaps `go-pmtiles` vector tile server |
 
-Named volumes: `tiles`, `grids`, `state`, `openmeteo-data`, `basemap-data`, `temporal-pg-data`. There is no cron anywhere — the worker registers Temporal Schedules (MRMS every 2 min, HRRR every 15 min, nowcast every 2 min, tile-cleanup hourly, Open-Meteo syncs every 1–6 h) idempotently on startup.
+Named volumes: `tiles`, `grids`, `state`, `openmeteo-data`, `basemap-data`, `temporal-pg-data`. There is no cron anywhere — the worker registers Temporal Schedules (MRMS polled every minute, HRRR every 15 min, nowcast every 2 min plus a kick from every new MRMS frame, tile-cleanup hourly, Open-Meteo syncs every 1–6 h) idempotently on startup.
 
 The `.env.example` ingest defaults are deliberately lab-sized (`BACKLOG_PER_CYCLE=2`, `TEMPORAL_MAX_CONCURRENT_ACTIVITIES=2`); production values are noted inline in the file and in [tuning.md](tuning.md).
 

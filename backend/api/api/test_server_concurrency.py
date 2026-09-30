@@ -17,6 +17,7 @@ FS_BOUND = [
     "get_manifest",
     "inspect_point",
     "nowcast_point",
+    "nowcast_skill_summary",
     "wind_field",
     "lightning",
     "storms",
