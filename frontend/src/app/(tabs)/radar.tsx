@@ -26,6 +26,9 @@ import {
 } from "../../components/map/TropicalOverlay";
 import { TropicalDetailSheet } from "../../components/map/TropicalDetailSheet";
 import { StormCellsOverlay } from "../../components/map/StormCellsOverlay";
+import { WarningsOverlay, type WarningDetails } from "../../components/map/WarningsOverlay";
+import { StormCellSheet, WarningSheet } from "../../components/map/FeatureSheets";
+import type { StormCellInfo } from "../../lib/stormTracks";
 import { WindParticlesOverlay, useSharedCamera } from "../../components/map/WindParticlesOverlay";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { LayerLegendCard } from "../../components/map/LayerLegendCard";
@@ -54,6 +57,8 @@ export default function RadarScreen() {
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
   const inspect = useInspectReading(pinned);
   const [selectedTropical, setSelectedTropical] = useState<TropicalStormDetails | null>(null);
+  const [selectedCell, setSelectedCell] = useState<StormCellInfo | null>(null);
+  const [selectedWarning, setSelectedWarning] = useState<WarningDetails | null>(null);
   const [mapOptionsOpen, setMapOptionsOpen] = useState(false);
 
   const camera = useSharedCamera(DEFAULTS.LONGITUDE, DEFAULTS.LATITUDE, DEFAULTS.ZOOM);
@@ -90,9 +95,10 @@ export default function RadarScreen() {
         {activeLayer === "ozone" && <WeatherLayerOverlay layerId="ozone" opacity={0.75} />}
         {/* Always mounted: each overlay renders an empty collection / hidden pin when
             it has nothing to show, so the map's native child count never churns. */}
+        <WarningsOverlay onSelect={setSelectedWarning} />
         <AlertPolygon />
         <TropicalOverlay onSelect={setSelectedTropical} />
-        <StormCellsOverlay />
+        <StormCellsOverlay onSelect={setSelectedCell} />
         <LightningOverlay />
         <LayerLocationMarker inspecting={pinned != null} />
         <EyedropperPin pinned={pinned} readout={inspect.readout} />
@@ -147,6 +153,8 @@ export default function RadarScreen() {
         storm={selectedTropical}
         onClose={() => setSelectedTropical(null)}
       />
+      <StormCellSheet cell={selectedCell} onClose={() => setSelectedCell(null)} />
+      <WarningSheet warning={selectedWarning} onClose={() => setSelectedWarning(null)} />
     </View>
   );
 }

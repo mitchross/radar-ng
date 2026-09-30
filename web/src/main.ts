@@ -28,6 +28,7 @@ import {
   type Place,
 } from "./weather";
 import { WindLayer } from "./wind";
+import { interpolateNowcast, nowcastVerdict, type NowcastPoint } from "./nowcast";
 
 maplibregl.setWorkerUrl(workerUrl);
 void initAnalytics();
@@ -540,6 +541,7 @@ async function renderForecast() {
     <div id="briefing" class="briefing" hidden></div>
     <div id="threat" class="threat" hidden></div>
     ${alerts.length ? `<div class="section">${alerts.slice(0, 3).map((a) => `<div class="alert"><strong>${escapeHtml(a.event)}</strong><span>${a.ends ? `Until ${new Date(a.ends).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : escapeHtml(a.severity)}</span></div>`).join("")}</div>` : ""}
+    <div id="nexthour" class="section" hidden></div>
     <div class="section">
       <div class="section-label">HOURLY</div>
       <div class="hourly">${hours.map((i, k) => `<div class="hour ${k === 0 ? "now-hour" : ""}"><b>${fmtHour(fc.hourly.time[i], k)}</b>${iconSvg(conditionOf(fc.hourly.weather_code[i]), 22)}<div class="t">${deg(fc.hourly.temperature_2m[i])}</div></div>`).join("")}</div>
@@ -570,6 +572,29 @@ async function renderForecast() {
     </div>`;
   renderThreat();
   void renderBriefing();
+  void renderNextHour();
+}
+
+/** Minute-by-minute rain for the next hour from the radar nowcast (hidden when unavailable). */
+async function renderNextHour() {
+  const el = document.getElementById("nexthour");
+  if (!el) return;
+  const { latitude, longitude } = state.place;
+  let points: NowcastPoint[] = [];
+  try {
+    const res = await fetch(`/api/nowcast/${latitude.toFixed(3)}/${longitude.toFixed(3)}`);
+    if (res.ok) points = ((await res.json()) as { points?: NowcastPoint[] }).points ?? [];
+  } catch {
+    /* no radar nowcast: leave the section hidden */
+  }
+  if (!points.length || !document.body.contains(el)) return;
+  const minutes = interpolateNowcast(points);
+  const peak = Math.max(0.1, ...minutes);
+  el.hidden = false;
+  el.innerHTML =
+    `<div class="section-label">NEXT HOUR</div><p class="nexthour-verdict">${escapeHtml(nowcastVerdict(minutes))}</p>` +
+    `<div class="minutebars">${minutes.map((v) => `<i class="${v > 0.01 ? "" : "dry"}" style="height:${v > 0.01 ? Math.max(8, (v / peak) * 100) : 6}%"></i>`).join("")}</div>` +
+    `<div class="minute-axis"><span>Now</span><span>15m</span><span>30m</span><span>45m</span><span>60m</span></div>`;
 }
 
 let briefingAbort: AbortController | null = null;

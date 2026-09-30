@@ -212,3 +212,26 @@ export async function fetchBriefing(
     return null;
   }
 }
+
+/** Nationwide storm-based warning polygons (slim NWS properties). */
+export async function fetchMapAlerts(serverUrl: string, signal?: AbortSignal): Promise<GeoJSON.FeatureCollection> {
+  const res = await fetchWithTimeout(`${serverUrl}/api/alerts/map`, {}, signal);
+  if (!res.ok) throw new Error(`map alerts ${res.status}`);
+  return res.json();
+}
+
+/** Optional LLM "what / what to do" for an NWS alert; null on any failure, never throws. */
+export async function explainAlert(
+  serverUrl: string,
+  id: string,
+  signal?: AbortSignal,
+): Promise<{ what: string; do: string } | null> {
+  try {
+    const res = await fetchWithTimeout(`${serverUrl}/api/alerts/explain?id=${encodeURIComponent(id)}`, {}, signal, 25_000);
+    if (!res.ok) return null;
+    const body = (await res.json()) as { available?: boolean; what?: string; do?: string };
+    return body.available && body.what ? { what: body.what, do: body.do ?? "" } : null;
+  } catch {
+    return null;
+  }
+}

@@ -2,6 +2,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { cumulus, cumulusFonts } from "../../lib/cumulusTheme";
 import type { TropicalStormDetails } from "./TropicalOverlay";
+import { compass } from "../../lib/stormTracks";
 
 export function TropicalDetailSheet({
   storm,
@@ -11,7 +12,12 @@ export function TropicalDetailSheet({
   onClose: () => void;
 }) {
   if (!storm) return null;
-  const classification = classificationName(storm.classification);
+  const classification = storm.category
+    ? `Category ${storm.category} hurricane`
+    : classificationName(storm.classification);
+  const movement = storm.movementMph != null && storm.movementDirDeg != null
+    ? `Moving ${compass(storm.movementDirDeg)} at ${Math.round(storm.movementMph)} mph`
+    : null;
 
   return (
     <Modal transparent visible animationType="fade" onRequestClose={onClose}>
@@ -32,7 +38,7 @@ export function TropicalDetailSheet({
               <View style={styles.titleBlock}>
                 <Text style={styles.eyebrow}>ACTIVE TROPICAL SYSTEM</Text>
                 <Text style={styles.title}>{storm.name}</Text>
-                <Text style={styles.subtitle}>{classification}</Text>
+                <Text style={styles.subtitle}>{classification}{movement ? ` · ${movement}` : ""}</Text>
               </View>
               <Pressable
                 onPress={onClose}

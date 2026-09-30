@@ -297,3 +297,19 @@ def test_already_forecast_anchor_exits_before_loading_grids(monkeypatch, tmp_pat
     result = asyncio.run(activities.nowcast_run())
 
     assert result.ran is False and result.anchor_ts == anchor
+
+
+def test_motion_is_estimated_coarse_and_returned_in_full_resolution_units(monkeypatch):
+    from backend.nowcast import activities
+
+    monkeypatch.setattr(activities, "MOTION_STRIDE", 2)
+    seen = {}
+
+    def oflow(stack):
+        seen["shape"] = stack.shape
+        return np.stack([np.full(stack.shape[1:], 1.5, np.float32), np.full(stack.shape[1:], -0.5, np.float32)])
+
+    uv = activities._estimate_motion(oflow, np.zeros((3, 101, 203), np.float32))
+    assert seen["shape"] == (3, 51, 102)
+    assert uv.shape == (2, 101, 203)
+    assert np.allclose(uv[0], 3.0) and np.allclose(uv[1], -1.0)

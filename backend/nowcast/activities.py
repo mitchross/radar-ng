@@ -52,6 +52,7 @@ MAX_INPUT_GAP_MIN = float(os.environ.get("NOWCAST_MAX_INPUT_GAP_MIN", "6"))
 # Inputs are picked ~5 min apart from the 2-min MRMS stream: S-PROG then needs 12
 # internal steps for the hour instead of ~30, each a full-CONUS advection.
 INPUT_STEP_MIN = float(os.environ.get("NOWCAST_INPUT_STEP_MIN", "5"))
+MOTION_STRIDE = max(1, int(os.environ.get("NOWCAST_MOTION_STRIDE", "2")))
 # The science grid is ~2 km after its bounded downsample. z6 is its honest
 # display ceiling; z7 added 4x work while only magnifying interpolated pixels.
 ZOOM_LEVELS = [4, 5, 6]
@@ -220,6 +221,26 @@ def _match_empirical_cdf(initial_array, target_array, ignore_indices=None):
     return out
 
 
+def _estimate_motion(oflow, stack: np.ndarray) -> np.ndarray:
+    """Optical flow on a MOTION_STRIDE-coarsened stack, upsampled back to full resolution.
+
+    Motion fields are smooth; at stride 2 Lucas-Kanade runs ~4x faster and the vectors
+    (pixels per step) are scaled by the stride to stay in full-resolution units.
+    """
+    k = MOTION_STRIDE
+    if k <= 1:
+        return oflow(stack)
+    import scipy.ndimage
+
+    coarse = oflow(np.ascontiguousarray(stack[:, ::k, ::k]))
+    h, w = stack.shape[1:]
+    out = np.empty((2, h, w), dtype=np.float32)
+    for c in range(2):
+        up = scipy.ndimage.zoom(np.nan_to_num(coarse[c]), k, order=1)[:h, :w]
+        out[c] = np.pad(up, ((0, h - up.shape[0]), (0, w - up.shape[1])), mode="edge") * k
+    return out
+
+
 def _install_fast_cdf_match() -> None:
     try:
         from pysteps.postprocessing import probmatching
@@ -245,8 +266,7 @@ def _run_nowcast(
     stack = np.stack(frames, axis=0).astype(np.float32)
     stack = np.where(stack < -100, np.nan, stack)
     try:
-        oflow = motion.get_method("LK")
-        uv = oflow(stack)
+        uv = _estimate_motion(motion.get_method("LK"), stack)
         nowcaster = nowcasts.get_method("sprog")
         _install_fast_cdf_match()
         try:
