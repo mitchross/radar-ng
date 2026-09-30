@@ -43,6 +43,7 @@ import WeatherIcon from "../../components/weather/WeatherIcon";
 import { RadarMiniMap } from "../../components/home/RadarMiniMap";
 import { ConditionTiles } from "../../components/home/ConditionTiles";
 import { AiBriefingCard } from "../../components/home/AiBriefingCard";
+import { IncomingStormCard } from "../../components/home/IncomingStormCard";
 import { useBriefing } from "../../hooks/useBriefing";
 import { hourlyPrecipitation } from "../../lib/conditions";
 import { useAirQualityNow } from "../../hooks/useAirQualityNow";
@@ -297,6 +298,7 @@ export default function HomeScreen() {
           </View>
 
           <AiBriefingCard briefing={briefing} />
+          <IncomingStormCard />
 
           {/* Nowcast banner */}
           {nowcastBanner ? (

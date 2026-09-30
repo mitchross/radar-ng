@@ -83,7 +83,8 @@ describe("map overlays keep a constant native child count", () => {
 
   it("the radar screen mounts the data overlays unconditionally", () => {
     const source = read("app/(tabs)/radar.tsx");
-    expect(source).toContain("<StormCellsOverlay />");
+    expect(source).toMatch(/<StormCellsOverlay[ />]/);
+    expect(source).toMatch(/<WarningsOverlay[ />]/);
     expect(source).toContain("<LightningOverlay />");
     expect(source).not.toContain("extrasVisible &&");
     expect(source).not.toContain("pinned &&");

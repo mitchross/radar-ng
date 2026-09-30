@@ -16,6 +16,14 @@ import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { NWSAlert } from "../../types/weather";
 import { readingColumnStyle } from "../../lib/tabletLayout";
+import { PlainEnglish } from "../../components/map/MapInfoSheet";
+import { useAlertExplanation } from "../../hooks/useAlertExplanation";
+
+/** Optional AI summary above the official text; renders nothing when AI is off or down. */
+function AlertExplanation({ alertId }: { alertId: string }) {
+  const { explanation } = useAlertExplanation(alertId);
+  return explanation ? <PlainEnglish what={explanation.what} doText={explanation.do} /> : null;
+}
 
 type Severity = NWSAlert["properties"]["severity"];
 const ALERT_DETAIL_WIDTH = 640;
@@ -143,6 +151,8 @@ export default function AlertDetailScreen() {
               </Text>
             </View>
           </View>
+
+          <AlertExplanation alertId={alert.properties.id} />
 
           {/* Description */}
           <Section label="DESCRIPTION">
