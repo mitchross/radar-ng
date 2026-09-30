@@ -18,7 +18,9 @@
       "appleTeamId": "FVU6RGL532",
       "icon": "./assets/expo.icon",
       "entitlements": {
-        "com.apple.security.application-groups": ["group.com.vanillax.radar-ng"]
+        "com.apple.security.application-groups": [
+          "group.com.vanillax.radar-ng"
+        ]
       },
       "infoPlist": {
         "CFBundleDisplayName": "Radar NG",
@@ -62,6 +64,14 @@
           "motionUsagePermission": false
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#081A24"
+        }
+      ],
+      "expo-background-task",
       [
         "expo-build-properties",
         {

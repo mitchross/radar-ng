@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 from temporalio import activity
 
+from backend.nowcast import skill as nowcast_skill
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
 from backend.shared.grid_dump import (
     finalize_grid_generation,
@@ -60,9 +61,11 @@ ZOOM_LEVELS = [4, 5, 6]
 # than the seven-million-cell science inputs used by pySTEPS itself.
 POINT_GRID_MAX_CELLS = int(os.environ.get("NOWCAST_POINT_GRID_MAX_CELLS", "900000"))
 RENDER_WORKERS = max(1, int(os.environ.get("NOWCAST_RENDER_WORKERS", "4")))
-# Retain the published run plus one complete rollback/debug generation. The
-# shared prune helper also preserves recent writer orphans and its lock inode.
-POINT_GRID_RETENTION_RUNS = 2
+# Retain enough complete runs to verify every lead time: a 60-min lead is
+# scored when the observation arrives ~30 runs later at a 2-min cadence, and
+# each run is 13 grids of ~1.5 MB. The shared prune helper also preserves
+# recent writer orphans and its lock inode.
+POINT_GRID_RETENTION_RUNS = max(2, int(os.environ.get("NOWCAST_POINT_GRID_RETENTION_RUNS", "36")))
 
 log = get_logger("nowcast-activities")
 
@@ -74,6 +77,8 @@ class NowcastResult:
     leadtimes: int = 0
     palettes: list[str] = field(default_factory=list)
     duration_s: float = 0.0
+    # Retained earlier runs that predicted this anchor's observation and were scored against it.
+    skill_scored: int = 0
 
 
 def _load_grid(
@@ -367,6 +372,10 @@ async def nowcast_run() -> NowcastResult:
             )
             return (False, None, [], {}, 0.0)
         latest_iso = metas[-1].name.replace(".meta.json", "")
+        # Kicked and buffered runs often arrive before a new grid exists;
+        # answer them before reading ~100 MB of inputs.
+        if latest_iso in ProcessedSet(STATE_DIR / "nowcast.json", max_entries=100):
+            return (False, latest_iso, [], {}, 0.0)
         records: list[tuple[np.ndarray, datetime, dict, str]] = []
         for p in metas:
             loaded = _load_grid(p)
@@ -534,11 +543,24 @@ async def nowcast_run() -> NowcastResult:
         rendered_timestamps.append(frame_meta["timestamp"])
         manifest_frames.append(frame_meta)
 
+    def _store_observed_anchor() -> None:
+        # The observation this run started from, at point-grid resolution, so
+        # the verifier can score a "nothing moves" baseline next to the forecast.
+        # Written before the generation marker so retention sees a complete run.
+        write_grid(
+            "nowcast", latest_iso, grids[-1], lats_arr, lons_arr, "dBZ", -9999.0,
+            POINT_GRID_MAX_CELLS, grid_key=_nowcast_grid_key(latest_iso, nowcast_skill.OBSERVED_KEY),
+        )
+
     def _commit() -> None:
         if len(rendered_timestamps) != n_lead:
             raise RuntimeError(
                 f"nowcast incomplete: rendered {len(rendered_timestamps)}/{n_lead} leadtimes"
             )
+        try:
+            _store_observed_anchor()
+        except Exception as exc:  # noqa: BLE001 - verification is optional; publication is not
+            log.warning("nowcast_observed_anchor_failed", extra={"anchor": latest_iso, "err": str(exc)})
         # Mark complete before the manifest swap so a crash here leaves the old manifest fully readable.
         finalize_grid_generation("nowcast", latest_iso)
         # One atomic swap replaces ALL previous nowcast frames; old tile dirs linger until the cleanup sweep.
@@ -564,10 +586,39 @@ async def nowcast_run() -> NowcastResult:
 
     await asyncio.to_thread(_commit)
     log.info("nowcast_complete", extra={"anchor": latest_iso, "leadtimes": n_lead})
+
+    # Verification: this anchor is the observation earlier runs forecast. Score
+    # them now, after publication, so a scoring fault can never delay a frame.
+    skill_scored = 0
+    try:
+        scored = await asyncio.to_thread(
+            nowcast_skill.score_observation,
+            grids[-1],
+            latest_iso,
+            lats_arr,
+            lons_arr,
+            grid_dir=GRID_DIR,
+            state_dir=STATE_DIR,
+            point_grid_max_cells=POINT_GRID_MAX_CELLS,
+        )
+        skill_scored = len(scored)
+        if scored:
+            log.info(
+                "nowcast_scored",
+                extra={
+                    "valid": latest_iso,
+                    "runs": skill_scored,
+                    "leads": sorted(int(e["lead_minutes"]) for e in scored),
+                },
+            )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("nowcast_skill_failed", extra={"valid": latest_iso, "err": str(exc)})
+
     return NowcastResult(
         ran=True,
         anchor_ts=latest_iso,
         leadtimes=n_lead,
         palettes=sorted(rendered_palettes),
         duration_s=round(time.time() - started, 2),
+        skill_scored=skill_scored,
     )

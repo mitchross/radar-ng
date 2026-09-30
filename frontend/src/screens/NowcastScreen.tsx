@@ -32,6 +32,7 @@ import { useWeatherClearTheme } from "../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../theme/weatherClearTheme";
 import WeatherIcon from "../components/weather/WeatherIcon";
 import { interpolateRadarNowcast } from "../lib/radarNowcast";
+import { describeNowcastSkill } from "../lib/nowcastSkill";
 import type { RadarNowcastPoint } from "../types/weather";
 import { readingColumnStyle } from "../lib/tabletLayout";
 
@@ -167,6 +168,8 @@ export default function NowcastScreen() {
   const isAdv = viewMode === "advanced";
   const radarFrameCount = pointNowcast?.points.length ?? 0;
   const radarResolution = pointNowcast?.spatial_resolution_km;
+  // Verified against the radar that actually arrived; null until enough runs are scored.
+  const skill = describeNowcastSkill(pointNowcast?.skill);
 
   return (
     <ScreenBackground colors={gradient} style={styles.container}>
@@ -242,6 +245,15 @@ export default function NowcastScreen() {
                 Expected to last ~{rainEndMin - rainStart} min
                 <Text style={styles.heroDim}>  {"\u00B7"}  peaks at </Text>
                 <Text style={styles.heroStrong}>+{peakMin}m</Text>
+              </Text>
+            ) : null}
+            {skill ? (
+              <Text
+                accessibilityLabel={`Verified accuracy: ${skill.sentence}`}
+                style={styles.heroSkill}
+              >
+                {skill.sentence}
+                {skill.beatsPersistence === false ? "  \u00B7  no better than a still radar" : ""}
               </Text>
             ) : null}
           </View>
@@ -368,6 +380,16 @@ export default function NowcastScreen() {
                 {usingRadarNowcast && radarResolution != null ? (
                   <Row label="Spatial resolution" value={`~${radarResolution} km`} />
                 ) : null}
+                {usingRadarNowcast ? (
+                  <Row
+                    label={`Verified, last ${skill?.windowHours ?? 24} h`}
+                    value={
+                      skill
+                        ? `${skill.hitRatePct}% caught \u00B7 ${skill.falseAlarmPct ?? "\u2014"}% false`
+                        : "Warming up"
+                    }
+                  />
+                ) : null}
                 <Row
                   label="Last update"
                   value={`${Math.max(0, Math.round((nowMs - new Date(
@@ -385,7 +407,7 @@ export default function NowcastScreen() {
               <View style={styles.card}>
                 <Text style={styles.noteBody}>
                   {usingRadarNowcast
-                    ? "This is reflectivity advected from recent MRMS observations. Rain rate uses a standard Z-R estimate and should not be read as a rain-gauge measurement."
+                    ? "This is reflectivity advected from recent MRMS observations. Rain rate uses a standard Z-R estimate and should not be read as a rain-gauge measurement. Every run is scored against the radar that arrives later; \u201ccaught\u201d is the share of observed rain the forecast predicted 30 minutes ahead, \u201cfalse\u201d the share of forecast rain that never came."
                     : "This is model guidance for the selected point, interpolated between 15-minute values. It does not claim block-level variation or a measured probability of confidence."}
                 </Text>
               </View>
@@ -645,6 +667,13 @@ function createStyles(theme: WeatherClearTheme) {
   },
   heroStrong: { color: cumulus.ink, fontWeight: "600" },
   heroDim: { color: cumulus.inkFaint },
+  heroSkill: {
+    color: cumulus.inkMuted,
+    fontSize: 12,
+    marginTop: 8,
+    fontFamily: cumulusFonts.ui,
+    fontWeight: "500",
+  },
 
   motionCard: {
     marginHorizontal: 16,

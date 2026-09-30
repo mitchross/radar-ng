@@ -13,6 +13,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -23,12 +24,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
+from typing import Annotated
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from backend.shared.manifest import read_manifest_file
+from backend.shared import nowcast_skill
 from backend.shared.storm_prefetch import build_storm_prefetch_plan
 
 TILE_DIR = os.environ.get("TILE_DIR", "/data/tiles")
@@ -104,7 +107,7 @@ _nowcast_point_cache_lock = Lock()
 _MANIFEST_TTL_S = 15.0
 # The parsed body plus its serialized bytes: the manifest is ~130 KB, and
 # re-encoding it per request was a large share of the API's single core.
-_manifest_cache: dict[str, object] = {"expires_at": 0.0, "body": None, "encoded": None}
+_manifest_cache: dict[str, object] = {"expires_at": 0.0, "body": None, "encoded": None, "etag": None}
 _metrics = {
     "forecast_requests_total": 0,
     "forecast_cache_hits_total": 0,
@@ -172,6 +175,21 @@ def _cached(body: dict | list, max_age: int, status_code: int = 200) -> JSONResp
         status_code=status_code,
         headers={"Cache-Control": f"public, max-age={max_age}"},
     )
+
+
+# The verification summary is derived from a small JSON log the nowcast worker
+# appends to; re-read at most every _MANIFEST_TTL_S like the manifest.
+_skill_cache: dict[str, object] = {"expires_at": 0.0, "summary": None}
+
+
+def _nowcast_skill_summary() -> dict:
+    now = time.time()
+    cached = _skill_cache.get("summary")
+    if isinstance(cached, dict) and float(_skill_cache.get("expires_at", 0)) > now:
+        return cached
+    summary = nowcast_skill.summarize(nowcast_skill.read_log(STATE_DIR))
+    _skill_cache.update(summary=summary, expires_at=now + _MANIFEST_TTL_S)
+    return summary
 
 
 def _read_nowcast_status() -> dict | None:
@@ -249,6 +267,11 @@ def _layer_age_seconds(manifest: dict, layer_name: str, now: float | None = None
 # freezing the event loop. Only /api/forecast (pure httpx) and /api/livez
 # stay `async def`; livez in particular MUST remain on the event loop so the
 # k8s probe keeps answering while disk-bound requests are stuck.
+def _manifest_etag(encoded: bytes) -> str:
+    """Strong validator over the exact bytes served; a new frame changes it."""
+    return '"' + hashlib.blake2b(encoded, digest_size=12).hexdigest() + '"'
+
+
 def _cached_manifest() -> tuple[dict, bytes]:
     """The manifest and its JSON bytes, re-read from disk at most every _MANIFEST_TTL_S."""
     now = time.time()
@@ -259,22 +282,47 @@ def _cached_manifest() -> tuple[dict, bytes]:
         and isinstance(encoded, bytes)
         and float(_manifest_cache.get("expires_at", 0)) > now
     ):
+        if not isinstance(_manifest_cache.get("etag"), str):
+            _manifest_cache["etag"] = _manifest_etag(encoded)
         return body, encoded
     body = _build_manifest()
     encoded = JSONResponse(body).body
-    _manifest_cache.update(body=body, encoded=encoded, expires_at=now + _MANIFEST_TTL_S)
+    _manifest_cache.update(
+        body=body,
+        encoded=encoded,
+        etag=_manifest_etag(encoded),
+        expires_at=now + _MANIFEST_TTL_S,
+    )
     return body, encoded
 
 
+def _etag_matches(if_none_match: str | None, etag: str) -> bool:
+    if not if_none_match:
+        return False
+    for candidate in if_none_match.split(","):
+        candidate = candidate.strip()
+        if candidate == "*" or candidate.removeprefix("W/") == etag:
+            return True
+    return False
+
+
 @app.get("/api/manifest.json")
-def get_manifest() -> Response:
+def get_manifest(
+    if_none_match: Annotated[str | None, Header()] = None,
+) -> Response:
+    """The layer manifest; a matching If-None-Match answers 304 with no body.
+
+    Clients poll this every 30 s and most polls see no new frame, so the
+    validator turns ~139 KB (5 KB compressed) of JSON and its parse on the
+    phone into an empty 304 until a frame actually changes.
+    """
     _metrics["manifest_requests_total"] += 1
     _, encoded = _cached_manifest()
-    return Response(
-        encoded,
-        media_type="application/json",
-        headers={"Cache-Control": "public, max-age=15"},
-    )
+    etag = str(_manifest_cache.get("etag") or _manifest_etag(encoded))
+    headers = {"Cache-Control": "public, max-age=15", "ETag": etag}
+    if _etag_matches(if_none_match, etag):
+        return Response(status_code=304, headers=headers)
+    return Response(encoded, media_type="application/json", headers=headers)
 
 
 @app.get("/api/forecast/{lat}/{lon}")
@@ -463,7 +511,8 @@ def nowcast_point(lat: float, lon: float) -> JSONResponse:
         if cached is not None:
             _metrics["nowcast_point_cache_hits_total"] += 1
             _nowcast_point_cache.move_to_end(cache_key)
-            return _cached(cached, max_age=30)
+    if cached is not None:
+        return _cached({**cached, "skill": _nowcast_skill_summary().get("headline")}, max_age=30)
 
     points: list[dict] = []
     missing = 0
@@ -528,7 +577,20 @@ def nowcast_point(lat: float, lon: float) -> JSONResponse:
         _nowcast_point_cache.move_to_end(cache_key)
         while len(_nowcast_point_cache) > NOWCAST_POINT_CACHE_MAX_ENTRIES:
             _nowcast_point_cache.popitem(last=False)
-    return _cached(body, max_age=30)
+    # How this product has actually done lately, so the app can say so next to the numbers.
+    return _cached({**body, "skill": _nowcast_skill_summary().get("headline")}, max_age=30)
+
+
+@app.get("/api/nowcast/skill")
+def nowcast_skill_summary() -> JSONResponse:
+    """Verified nowcast accuracy over the rolling window, per lead time.
+
+    Each retained run is scored against the radar that arrived at its valid
+    times: POD ("how much of the rain did we catch"), FAR ("how much forecast
+    rain never came") and CSI at the rain and heavy thresholds, next to a
+    "nothing moves" persistence baseline. `headline` is what the app shows.
+    """
+    return _cached(_nowcast_skill_summary(), max_age=30)
 
 
 @app.get("/api/wind-field/{timestamp}")
@@ -849,11 +911,18 @@ def health() -> JSONResponse:
     except OSError:
         pass
 
+    skill = _nowcast_skill_summary()
     body = {
         "status": status,
         "mrms_age_s": mrms_age,
         "mrms_max_age_s": MRMS_MAX_AGE_S,
         "nowcast": nowcast_status or {"status": "unknown", "reason": "no_status"},
+        "nowcast_skill": {
+            "available": skill.get("available", False),
+            "runs_scored": skill.get("runs_scored", 0),
+            "headline": skill.get("headline"),
+            "reason": skill.get("reason"),
+        },
         "reasons": reasons,
         "tiles_disk": tiles_disk,
         "upstream_forecast": OPEN_METEO_BASE,
@@ -929,6 +998,8 @@ def metrics() -> PlainTextResponse:
     if age is not None:
         lines.append("# TYPE radar_ng_mrms_age_seconds gauge")
         lines.append(f"radar_ng_mrms_age_seconds {age}")
+
+    lines.extend(nowcast_skill.prometheus_lines(_nowcast_skill_summary()))
 
     lines.append("# TYPE radar_ng_http_requests_total counter")
     for (method, path, status), count in sorted(_request_counts.items()):

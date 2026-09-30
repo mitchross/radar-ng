@@ -81,6 +81,23 @@ runtime. Three calls moved behind the tile server:
 Satellite imagery no longer comes from Esri: the server fetches public-domain USGS orthoimagery and
 serves it (plan task S.1). The app contacts no third party at runtime.
 
+### Rain alerts are local notifications
+
+"Rain starting soon" alerts (Settings → Rain alerts) are planned on the phone from the same
+`/api/nowcast` answer the Nowcast screen shows and delivered with `expo-notifications` as *local*
+notifications scheduled for a future time. No push token is created, no APNs/FCM/Expo push service
+is involved, and nothing about the alert leaves the device. The optional background refresh
+(`expo-background-task`) re-fetches `/api/nowcast` for the saved location on the OS's own schedule,
+using the same 2-decimal coordinate as the foreground app. Turning the setting off cancels the
+pending notification and unregisters the background task.
+
+The web radar offers the same opt-in rain alerts through browser notifications,
+using the same planner and lead-time options. Forecasts refresh once a minute
+while the page is open. Preferences and the last announced storm stay in browser
+storage; disabling alerts clears the pending timer. Closing the page stops web
+alerts. Browser permission and delivery support vary; the native app provides
+optional OS background refresh. Neither client creates a push token.
+
 ## 4. Retention
 
 ### 4.1 Tile-server access logs — retained for ~24 hours

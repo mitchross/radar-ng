@@ -18,6 +18,7 @@ import type { AppearanceMode } from "../theme/weatherClearTheme";
 import type { PlaybackWindow } from "../lib/radarCarousel";
 import { resnapFrameIndex } from "../lib/frameIndex";
 import { roundCoord } from "../lib/coordinates";
+import { DEFAULT_RAIN_ALERT_LEAD, parseRainAlertLead, type RainAlertLeadMinutes } from "../lib/rainAlerts";
 import { parseDeviceFix, statusForFix, type LocationStatus } from "../lib/locationStatus";
 
 interface WeatherState {
@@ -53,6 +54,10 @@ interface WeatherState {
   extrasVisible: boolean;
   /** Optional local-LLM briefing card; the card hides itself whenever the model is unavailable. */
   aiNarration: boolean;
+  /** "Rain starts in N min" local notifications planned on this phone from the radar nowcast. */
+  rainAlertsEnabled: boolean;
+  /** How many minutes ahead of the first wet minute the notification shows. */
+  rainAlertLeadMinutes: RainAlertLeadMinutes;
   serverUrl: string;
   viewMode: ViewMode;
   appearanceMode: AppearanceMode;
@@ -79,6 +84,8 @@ interface WeatherState {
   setTimelineMode: (mode: TimelineMode) => void;
   toggleExtras: () => void;
   setAiNarration: (on: boolean) => void;
+  setRainAlertsEnabled: (on: boolean) => void;
+  setRainAlertLeadMinutes: (minutes: RainAlertLeadMinutes) => void;
   setActiveLayer: (layer: LayerType) => void;
   setServerUrl: (url: string) => void;
   setViewMode: (mode: ViewMode) => void;
@@ -162,6 +169,8 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   timelineMode: parseTimelineMode(getString("timelineMode", "forecast")),
   extrasVisible: getString("extrasVisible", "0") === "1",
   aiNarration: getString("aiNarration", "1") === "1",
+  rainAlertsEnabled: getString("rainAlertsEnabled", "0") === "1",
+  rainAlertLeadMinutes: parseRainAlertLead(getString("rainAlertLeadMinutes", ""), DEFAULT_RAIN_ALERT_LEAD),
   serverUrl: parseServerUrl(getString("serverUrl", SELF_HOSTED.DEFAULT_URL), SELF_HOSTED.DEFAULT_URL),
   viewMode: parseViewMode(getString("viewMode", "simple")),
   appearanceMode: parseAppearanceMode(getString("appearanceMode", "system")),
@@ -287,6 +296,14 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setAiNarration: (on) => {
     setString("aiNarration", on ? "1" : "0");
     set({ aiNarration: on });
+  },
+  setRainAlertsEnabled: (on) => {
+    setString("rainAlertsEnabled", on ? "1" : "0");
+    set({ rainAlertsEnabled: on });
+  },
+  setRainAlertLeadMinutes: (minutes) => {
+    setString("rainAlertLeadMinutes", String(minutes));
+    set({ rainAlertLeadMinutes: minutes });
   },
   setActiveLayer: (layer) => set({ activeLayer: layer }),
   setServerUrl: (url) => {

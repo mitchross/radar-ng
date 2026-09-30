@@ -68,27 +68,7 @@ export interface OpenMeteoResponse {
   };
 }
 
-export interface RadarNowcastPoint {
-  timestamp: string;
-  lead_minutes: number | null;
-  dbz: number | null;
-  precipitation_mm_h: number;
-}
-
-export interface RadarNowcastResponse {
-  status: "ok" | "degraded" | "unavailable";
-  source?: "mrms-nowcast";
-  method?: string;
-  issued_at?: string;
-  horizon_minutes?: number;
-  step_minutes?: number;
-  spatial_resolution_km?: number;
-  latitude?: number;
-  longitude?: number;
-  reason?: string;
-  detail?: string | null;
-  points: RadarNowcastPoint[];
-}
+export type { RadarNowcastPoint, NowcastSkillHeadline, RadarNowcastResponse } from "../../../web/src/shared/nowcastTypes";
 
 // --- NWS Alerts API ---
 

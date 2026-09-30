@@ -5,6 +5,7 @@
  * "normal" pressure.
  */
 import { getIconKind, type IconKind } from "./cumulusTheme";
+import { describeNowcastSkill } from "./nowcastSkill";
 import { interpolateRadarNowcast } from "./radarNowcast";
 import { getNowcastVerdict } from "./weatherPresentation";
 import { displayTemperature } from "./temperature";
@@ -184,8 +185,12 @@ export function nextHourBanner(
   const start = verdict.kind === "starting" ? verdict.startMinute : 0;
   const heavy = perMinute.some((inchesPerHour) => inchesPerHour > 0.3);
   const kind = heavy ? "Heavy rain" : "Rain";
+  // The server scores every nowcast against the radar that arrives later;
+  // say how it has been doing next to the claim, when there is enough to say.
+  const skill = describeNowcastSkill(usable.skill);
+  const source = skill ? `radar, ${skill.short}` : "from radar";
   return {
     headline: start === 0 ? `${kind} now` : `${kind} starts in ${start} min`,
-    sub: `Lasts ~${Math.max(1, verdict.endMinute - start)} min \u00B7 from radar`,
+    sub: `Lasts ~${Math.max(1, verdict.endMinute - start)} min \u00B7 ${source}`,
   };
 }

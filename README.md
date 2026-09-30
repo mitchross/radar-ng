@@ -17,6 +17,10 @@ radar-ng pulls radar (NOAA MRMS), forecast (HRRR + Open-Meteo), air quality
 straight from the public sources,
 renders map tiles on hardware you own, and serves them to a universal Expo app.
 The phone is the windshield; a Kubernetes + Temporal pipeline is the engine.
+The next hour is a real radar nowcast (pySTEPS motion extrapolation of MRMS) that
+scores itself against the radar that arrives later and shows you its hit rate;
+"rain starting soon" alerts are local notifications planned on the phone, with no
+push service and no account.
 
 ## Quick start (Docker Compose)
 

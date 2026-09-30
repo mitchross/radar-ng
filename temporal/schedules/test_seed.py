@@ -110,8 +110,8 @@ class ScheduleDefinitionTests(unittest.TestCase):
                 )
                 self.assertEqual(schedule.spec.jitter, definition.jitter)
 
-    def test_two_minute_schedules_use_short_catchup_and_jitter(self):
-        fast = [s for s in seed.SCHEDULES if s.interval == timedelta(minutes=2)]
+    def test_fast_schedules_use_short_catchup_and_jitter(self):
+        fast = [s for s in seed.SCHEDULES if s.interval <= timedelta(minutes=2)]
         self.assertEqual(
             sorted(s.schedule_id for s in fast),
             ["ingest-mrms-base", "ingest-mrms-composite", "nowcast"],
@@ -123,6 +123,14 @@ class ScheduleDefinitionTests(unittest.TestCase):
                     timedelta(minutes=5),
                 )
                 self.assertEqual(definition.jitter, timedelta(seconds=20))
+                # Jitter must never push a fire past the next one.
+                self.assertLess(definition.jitter, definition.interval)
+
+    def test_mrms_polls_every_minute_for_the_two_minute_product(self):
+        by_id = {s.schedule_id: s for s in seed.SCHEDULES}
+        for schedule_id in ("ingest-mrms-base", "ingest-mrms-composite"):
+            self.assertEqual(by_id[schedule_id].interval, timedelta(minutes=1))
+        self.assertEqual(by_id["nowcast"].interval, timedelta(minutes=2))
 
     def test_slow_schedules_keep_default_catchup(self):
         by_id = {s.schedule_id: s for s in seed.SCHEDULES}

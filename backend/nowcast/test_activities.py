@@ -102,12 +102,15 @@ def test_nowcast_publishes_run_scoped_grid_keys_before_pruning(monkeypatch, tmp_
     result = asyncio.run(activities.nowcast_run())
 
     assert result.ran is True and result.leadtimes == 12
-    assert len(grid_keys) == 12
+    # Twelve lead times plus the anchor observation the verifier scores persistence against.
+    assert len(grid_keys) == 13
     assert all(key.startswith(f"runs/{anchor}/") for key in grid_keys)
+    assert grid_keys[-1] == f"runs/{anchor}/observed"
     assert [name for name, _ in events] == ["finalize", "publish", "prune"]
     published_frames = events[1][1][2]["frames"]
     # Leads render concurrently; the manifest must still list them in lead order.
-    assert sorted(frame["grid_key"] for frame in published_frames) == sorted(grid_keys)
+    lead_keys = [key for key in grid_keys if not key.endswith("/observed")]
+    assert sorted(frame["grid_key"] for frame in published_frames) == sorted(lead_keys)
     assert [frame["lead_minutes"] for frame in published_frames] == list(range(5, 61, 5))
     assert events[2][1] == ("nowcast", activities.POINT_GRID_RETENTION_RUNS, anchor)
 
@@ -187,6 +190,7 @@ def test_point_grid_retention_prunes_whole_runs_and_preserves_active(
     monkeypatch.setattr(
         activities, "prune_grid_generations", grid_dump.prune_grid_generations
     )
+    monkeypatch.setattr(activities, "POINT_GRID_RETENTION_RUNS", 2)
     lats = np.linspace(50.0, 20.0, 4)
     lons = np.linspace(-100.0, -90.0, 4)
     anchors = [
@@ -265,6 +269,34 @@ def test_a_missing_mark_falls_back_instead_of_stretching_the_step():
 
     metas = _metas([0, 2, 11, 13, 15, 17, 19, 21])  # nothing near t-10 and t-15 from 21
     assert select_input_grids(metas, 5.0, 4) == metas[-4:]
+
+
+def test_already_forecast_anchor_exits_before_loading_grids(monkeypatch, tmp_path):
+    anchor = "2026-09-30T00:00:00+00:00"
+    metas = [
+        tmp_path / f"{ts}.meta.json"
+        for ts in ("2026-09-29T23:50:00+00:00", "2026-09-29T23:55:00+00:00", anchor)
+    ]
+    monkeypatch.setattr(activities, "TILE_DIR", tmp_path / "tiles")
+    monkeypatch.setattr(activities, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(activities, "_list_recent_grids", lambda: metas)
+    monkeypatch.setattr(activities.activity, "heartbeat", lambda *_a, **_k: None)
+
+    def never_load(_path):
+        raise AssertionError("grids must not be read for an anchor that is already forecast")
+
+    monkeypatch.setattr(activities, "_load_grid", never_load)
+
+    async def to_thread(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(activities.asyncio, "to_thread", to_thread)
+    (tmp_path / "state").mkdir()
+    activities.ProcessedSet(tmp_path / "state" / "nowcast.json", max_entries=100).add(anchor)
+
+    result = asyncio.run(activities.nowcast_run())
+
+    assert result.ran is False and result.anchor_ts == anchor
 
 
 def test_motion_is_estimated_coarse_and_returned_in_full_resolution_units(monkeypatch):

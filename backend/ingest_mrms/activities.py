@@ -23,6 +23,7 @@ import httpx
 import numpy as np
 import pygrib
 from temporalio import activity
+from temporalio.client import ScheduleOverlapPolicy
 
 from backend.shared.activity_heartbeat import run_sync_with_heartbeat
 from backend.shared.grid_dump import cleanup_old_grids, prune_grid_layer, write_grid
@@ -46,6 +47,12 @@ BACKLOG_PER_CYCLE = int(os.environ.get("BACKLOG_PER_CYCLE", "3"))
 NOWCAST_SCIENCE_GRID_MAX_CELLS = int(
     os.environ.get("NOWCAST_SCIENCE_GRID_MAX_CELLS", "7000000")
 )
+# A fresh science grid kicks the nowcast Schedule instead of waiting for its
+# next timer tick; see kick_nowcast(). NOWCAST_KICK_ENABLED=0 restores the
+# timer-only behaviour.
+NOWCAST_KICK_ENABLED = os.environ.get("NOWCAST_KICK_ENABLED", "1") == "1"
+NOWCAST_SCHEDULE_ID = os.environ.get("NOWCAST_SCHEDULE_ID", "nowcast")
+NOWCAST_KICK_TIMEOUT_S = float(os.environ.get("NOWCAST_KICK_TIMEOUT_S", "5"))
 
 
 # Defaults — used when the workflow doesn't pass overrides.
@@ -255,6 +262,36 @@ def _current_activity_tmp_dir(prefix: str, *parts: object) -> Path:
     return tmp_dir
 
 
+async def kick_nowcast(timestamp: str, *, client_factory=None) -> bool:
+    """Start the nowcast now that a new science grid is on disk. Best effort.
+
+    Triggers the nowcast Schedule with BUFFER_ONE: an idle nowcast starts at
+    once instead of waiting up to a full tick, and a busy one queues exactly
+    one follow-up run that will pick up this grid the moment it is free. The
+    timer-driven fires keep their SKIP policy and stay the backstop, so a
+    failed kick only costs the latency this call would have saved.
+    """
+    if not NOWCAST_KICK_ENABLED:
+        return False
+    try:
+        if client_factory is None:
+            from backend.api.api.temporal_client import get_client as client_factory
+        client = await client_factory()
+        handle = client.get_schedule_handle(NOWCAST_SCHEDULE_ID)
+        await handle.trigger(
+            overlap=ScheduleOverlapPolicy.BUFFER_ONE,
+            rpc_timeout=timedelta(seconds=NOWCAST_KICK_TIMEOUT_S),
+        )
+    except Exception as exc:  # noqa: BLE001 - the frame is published; never fail it for a kick
+        log.warning(
+            "nowcast_kick_failed",
+            extra={"timestamp": timestamp, "schedule_id": NOWCAST_SCHEDULE_ID, "err": str(exc)},
+        )
+        return False
+    log.info("nowcast_kicked", extra={"timestamp": timestamp, "schedule_id": NOWCAST_SCHEDULE_ID})
+    return True
+
+
 # ---------- activities ----------
 
 
@@ -411,6 +448,7 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
         )
         # 24.5 MB every 2 min; nowcast only ever reads the newest N, so prune at write time.
         await asyncio.to_thread(prune_grid_layer, "radar-nowcast-input")
+        await kick_nowcast(timestamp)
 
     duration = time.time() - started
     await asyncio.to_thread(
