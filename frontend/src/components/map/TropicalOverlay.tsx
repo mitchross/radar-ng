@@ -3,6 +3,7 @@
  *   cone     → soft red translucent polygon (forecast uncertainty)
  *   track    → dashed red linestring (forecast positions)
  *   position → red pulsing symbol + storm name label
+ *   forecast_point → NHC forecast positions coloured by Saffir-Simpson category
  */
 import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useTropical } from "../../hooks/useTropical";
@@ -17,7 +18,12 @@ export interface TropicalStormDetails {
   windMph?: number;
   pressureMb?: number;
   updatedAt?: string;
+  category?: number;
+  movementMph?: number;
+  movementDirDeg?: number;
 }
+
+const CATEGORY_COLOR = ["step", ["coalesce", ["get", "category"], 0], "#4aa3ff", 1, "#ffd23f", 2, "#ff9f1c", 3, "#ff4d4d", 4, "#d61f69", 5, "#9b30ff"] as never;
 
 export function TropicalOverlay({
   onSelect,
@@ -71,6 +77,25 @@ export function TropicalOverlay({
           "line-opacity": 0.9,
         }}
       />
+      {/* NHC forecast points, coloured by category, labelled with it */}
+      <Layer
+        type="circle"
+        id="tropical-forecast-points"
+        filter={["==", ["get", "kind"], "forecast_point"] as never}
+        paint={{ "circle-radius": 7, "circle-color": CATEGORY_COLOR, "circle-stroke-color": "#111827", "circle-stroke-width": 1.5 }}
+      />
+      <Layer
+        type="symbol"
+        id="tropical-forecast-labels"
+        filter={["==", ["get", "kind"], "forecast_point"] as never}
+        layout={{
+          "text-field": ["coalesce", ["to-string", ["get", "category"]], ["get", "storm_type"], ""] as never,
+          "text-font": labelFont,
+          "text-size": 10,
+          "text-allow-overlap": true,
+        }}
+        paint={{ "text-color": "#111827" }}
+      />
       {/* Current storm position — circle + stroke */}
       <Layer
         type="circle"
@@ -78,7 +103,7 @@ export function TropicalOverlay({
         filter={["==", ["get", "kind"], "position"] as never}
         paint={{
           "circle-radius": 9,
-          "circle-color": "#FF3B4A",
+          "circle-color": ["case", ["to-boolean", ["get", "category"]], CATEGORY_COLOR, "#FF3B4A"] as never,
           "circle-stroke-color": "#FFFFFF",
           "circle-stroke-width": 2.5,
           "circle-opacity": 0.95,
@@ -95,7 +120,7 @@ export function TropicalOverlay({
             "concat",
             ["get", "name"],
             " · ",
-            ["coalesce", ["get", "classification"], "Storm"],
+            ["case", ["to-boolean", ["get", "category"]], ["concat", "Cat ", ["to-string", ["get", "category"]]], ["coalesce", ["get", "classification"], "Storm"]],
           ] as never,
           "text-size": 12,
           "text-font": labelFont,
@@ -125,6 +150,9 @@ function stormDetails(properties: GeoJSON.GeoJsonProperties): TropicalStormDetai
     windMph: numberValue(properties.wind_mph),
     pressureMb: numberValue(properties.pressure_mb),
     updatedAt: stringValue(properties.updated_at),
+    category: numberValue(properties.category),
+    movementMph: numberValue(properties.movement_mph),
+    movementDirDeg: numberValue(properties.movement_dir_deg),
   };
 }
 
