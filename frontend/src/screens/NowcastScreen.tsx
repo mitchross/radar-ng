@@ -16,7 +16,7 @@ import { useActiveLocation } from "../hooks/useActiveLocation";
 import { useNow } from "../hooks/useNow";
 import { runOnlineRefresh } from "../lib/queryLifecycle";
 import { useWeatherStore } from "../stores/useWeatherStore";
-import { CONDITION_GRADIENTS, getCumulusCondition } from "../lib/cumulusTheme";
+import { conditionGradient, getCumulusCondition } from "../lib/cumulusTheme";
 import { isNightAt, parseLocationTime, usableRadarNowcast } from "../lib/forecastView";
 import {
   describeNowcast,
@@ -135,9 +135,7 @@ export default function NowcastScreen() {
   const now = new Date(nowMs);
   const isNight = isNightAt(now, forecast.daily, forecast.utc_offset_seconds);
   const condition = getCumulusCondition(forecast.current.weather_code, isNight);
-  const gradient = theme.dark
-    ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
-    : CONDITION_GRADIENTS[condition];
+  const gradient = conditionGradient(condition, theme.dark);
 
   const pointNowcast = usableRadarNowcast(radarNowcast.data);
   const usingRadarNowcast = pointNowcast !== null;

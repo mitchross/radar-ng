@@ -9,7 +9,7 @@ import { ScreenBackground } from "../../components/ui/ScreenBackground";
 import { useRouter } from "expo-router";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
+import { conditionGradient } from "../../lib/cumulusTheme";
 import { getAlertEndTime } from "../../lib/alertLifecycle";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { getAlertsScreenState } from "../../lib/weatherPresentation";
@@ -44,9 +44,7 @@ export default function AlertsScreen() {
     isPending,
     freshness: alertStatus.kind,
   });
-  const gradient = theme.dark
-    ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
-    : CONDITION_GRADIENTS.storm;
+  const gradient = conditionGradient("storm", theme.dark);
   const refresh = useCallback(async () => {
     await runOnlineRefresh(async () => {
       setRefreshing(true);

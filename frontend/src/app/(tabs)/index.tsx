@@ -16,11 +16,7 @@ import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { getAlertEndTime } from "../../lib/alertLifecycle";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { DEFAULT_PLACE, useWeatherStore } from "../../stores/useWeatherStore";
-import {
-  CONDITION_GRADIENTS,
-  getCumulusCondition,
-  getIconKind,
-} from "../../lib/cumulusTheme";
+import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition, getIconKind } from "../../lib/cumulusTheme";
 import { displayTemperature, formatDegrees } from "../../lib/temperature";
 import {
   dailyView,
@@ -147,9 +143,7 @@ export default function HomeScreen() {
   const weatherCode = forecast.current.weather_code;
   const condition = getCumulusCondition(weatherCode, isNight);
   const iconKind = getIconKind(weatherCode, isNight);
-  const gradient = theme.dark
-    ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
-    : CONDITION_GRADIENTS[condition];
+  const gradient = conditionGradient(condition, theme.dark);
 
   // Every value may be missing; each renders as "—" rather than a stand-in.
   const temperature = (value: number | null | undefined) => displayTemperature(value, temperatureUnit);
@@ -158,7 +152,7 @@ export default function HomeScreen() {
   const hi = temperature(forecast.daily.temperature_2m_max[0]);
   const lo = temperature(forecast.daily.temperature_2m_min[0]);
 
-  const conditionLabel = CONDITION_LABELS[condition];
+  const conditionLabel = CONDITION_HEADLINES[condition];
   const locationLabel = location.label;
   const locationName = location.name;
 
@@ -534,17 +528,6 @@ function formatAge(minutes: number): string {
   const hours = Math.round(minutes / 60);
   return `${hours} hr`;
 }
-
-const CONDITION_LABELS: Record<ReturnType<typeof getCumulusCondition>, string> = {
-  clearDay: "Sunny",
-  clearNight: "Clear",
-  cloudy: "Cloudy",
-  rain: "Rain",
-  storm: "Thunderstorms",
-  snow: "Snow",
-  fog: "Foggy",
-  unknown: "Conditions unavailable",
-};
 
 function createStyles(theme: WeatherClearTheme) {
   const cumulus = {

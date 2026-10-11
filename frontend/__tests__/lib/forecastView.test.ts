@@ -129,7 +129,7 @@ describe("nowcast headline", () => {
 
   it("announces rain starting from the first known wet quarter", () => {
     expect(nowcastHeadline(minutely([0, 0.2, 0.2, 0]), today.getTime())?.headline).toBe(
-      "Rain starts in 15 min",
+      "Rain in 15 min. Heads up",
     );
   });
 
@@ -157,15 +157,15 @@ describe("next-hour banner source", () => {
     // The model says rain soon; radar says dry. Radar wins, as on the Nowcast tab.
     expect(nextHourBanner(radar(Array(12).fill(0)), minutelyWet, today.getTime())).toBeNull();
     expect(nextHourBanner(radar([0, 0, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]), undefined, today.getTime())?.headline).toMatch(
-      /^Rain starts in \d+ min$/,
+      /^Rain in \d+ min\. Heads up$/,
     );
   });
 
   it("falls back to the model series only without a usable radar nowcast", () => {
-    expect(nextHourBanner(undefined, minutelyWet, today.getTime())?.headline).toBe("Rain starts in 15 min");
+    expect(nextHourBanner(undefined, minutelyWet, today.getTime())?.headline).toBe("Rain in 15 min. Heads up");
     expect(
       nextHourBanner({ status: "unavailable", points: [] }, minutelyWet, today.getTime())?.headline,
-    ).toBe("Rain starts in 15 min");
+    ).toBe("Rain in 15 min. Heads up");
   });
 });
 

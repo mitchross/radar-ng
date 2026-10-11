@@ -13,6 +13,7 @@ import { cumulus } from "../../lib/cumulusTheme";
 import { findClosestIdx } from "../../lib/frameIndex";
 import { offsetLabel, playbackSequence, positionOf, type TimelineZoom } from "../../lib/playbackSequence";
 import { createThrottle } from "../../lib/throttle";
+import { selectionHaptic, tapHaptic } from "../../lib/haptics";
 import { useAppActive } from "../../hooks/useAppActive";
 import { useNow } from "../../hooks/useNow";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
@@ -154,7 +155,7 @@ export function TimelineBar() {
         <View style={styles.headerRow}>
           <Pressable
             style={({ pressed }) => [styles.playBtn, pressed ? styles.controlPressed : null]}
-            onPress={togglePlaying}
+            onPress={() => { tapHaptic(); togglePlaying(); }}
             accessibilityRole="button"
             accessibilityLabel={isPlaying ? "Pause radar animation" : "Play radar animation"}
             accessibilityState={{ selected: isPlaying }}
@@ -177,7 +178,7 @@ export function TimelineBar() {
             {(["1h", "48h"] as const).map((z) => (
               <Pressable
                 key={z}
-                onPress={() => setZoom(z)}
+                onPress={() => { selectionHaptic(); setZoom(z); }}
                 style={({ pressed }) => [
                   styles.seg,
                   zoom === z ? styles.segActive : null,

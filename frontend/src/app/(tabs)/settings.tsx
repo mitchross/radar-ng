@@ -38,7 +38,7 @@ import { RAIN_ALERT_LEAD_OPTIONS, parseRainAlertLead } from "../../lib/rainAlert
 import { useRainAlertOptIn } from "../../hooks/useRainAlertOptIn";
 import { isCleartextToPublicHost } from "../../lib/networkSafety";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
-import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
+import { conditionGradient } from "../../lib/cumulusTheme";
 import { PaletteSelector } from "../../components/palette/PaletteSelector";
 import {
   SectionLabel,
@@ -148,9 +148,7 @@ export default function SettingsScreen() {
   const stackHost = useMemo(() => hostOf(serverUrl), [serverUrl]);
   const locationLabel = activeLocation.notice ? `${activeLocation.label} · ${activeLocation.notice}` : activeLocation.label;
   const isAdv = viewMode === "advanced";
-  const gradient = theme.dark
-    ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
-    : CONDITION_GRADIENTS.clearNight;
+  const gradient = conditionGradient("clearNight", theme.dark);
 
   return (
     <ScreenBackground

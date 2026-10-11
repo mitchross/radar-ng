@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { tapHaptic } from "../../lib/haptics";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 
@@ -41,7 +42,7 @@ export function LocationPermissionCard({ kind, fallbackName, onAllow, onChooseCi
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={copy.primary}
-          onPress={onPrimary}
+          onPress={() => { tapHaptic(); onPrimary(); }}
           style={({ pressed }) => [styles.button, styles.primary, pressed ? styles.pressed : null]}
         >
           <Text style={styles.primaryText}>{copy.primary}</Text>

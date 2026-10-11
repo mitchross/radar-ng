@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Linking, Pressable, StyleSheet, Text } from "react-native";
 import { useRainAlertOptIn } from "../../hooks/useRainAlertOptIn";
+import { tapHaptic } from "../../lib/haptics";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 
@@ -19,7 +20,7 @@ export function RainAlertButton() {
     ? undefined
     : blocked
       ? () => void Linking.openSettings()
-      : () => void setRainAlerts(true);
+      : () => { tapHaptic(); void setRainAlerts(true); };
   return (
     <Pressable
       accessibilityRole="button"
