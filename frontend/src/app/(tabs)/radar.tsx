@@ -4,6 +4,8 @@
  *   • LayerLegendCard  (top-left, layer-aware vertical scale)
  *   • LayerLocationMarker  (user location pill w/ live layer value + tail)
  *   • Close button     (the tab bar is hidden on this route)
+ *   • RadarStatusChip  (LIVE / UPDATED 12M AGO / OFFLINE, same as Home)
+ *   • RadarStatusNotice (loading, offline or unavailable card)
  *   • RadarFABs        (map options + locate capsule)
  *   • MapOptionsSheet  (layer, map style, storm overlays)
  *   • EyedropperPin    (long-press map → readout)
@@ -35,16 +37,21 @@ import { LayerLegendCard } from "../../components/map/LayerLegendCard";
 import { LayerLocationMarker } from "../../components/map/LayerLocationMarker";
 import { TimelineBar } from "../../components/timeline/TimelineBar";
 import { RadarFABs } from "../../components/map/RadarFABs";
+import { RadarStatusChip } from "../../components/map/RadarStatusChip";
+import { RadarStatusNotice } from "../../components/map/RadarStatusNotice";
 import { MapOptionsSheet } from "../../components/map/MapOptionsSheet";
 import { EyedropperPin, InspectorPanel, useInspectReading, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { useAlerts } from "../../hooks/useAlerts";
+import { useRadarStatus } from "../../hooks/useRadarStatus";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 
 export default function RadarScreen() {
   useManifest();
   const { alertStatus } = useAlerts();
+  const radar = useRadarStatus();
+  const hasFrames = useWeatherStore((s) => s.frames.length > 0);
   const router = useRouter();
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);
@@ -121,6 +128,9 @@ export default function RadarScreen() {
         </Pressable>
       </MapChromeSurface>
 
+      <RadarStatusChip status={radar.status} style={[styles.statusChip, { top: chrome.top + 14, left: chrome.left + 58 }]} />
+      <RadarStatusNotice status={radar.status} hasFrames={hasFrames} onRetry={radar.refetch} top={chrome.belowClose} />
+
       {/* Only when alerts are stale or failing; left of the map controls. */}
       {alertStatus.kind !== "current" ? (
         <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE}
@@ -173,6 +183,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   closeButton: { width: 48, height: 48, alignItems: "center", justifyContent: "center" },
+  statusChip: { position: "absolute", zIndex: 15 },
   alertStatus: {
     position: "absolute",
     zIndex: 15,
