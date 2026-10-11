@@ -969,7 +969,6 @@ $("sheet-body").addEventListener("input", (e) => {
   const el = e.target as HTMLInputElement;
   if (el.id !== "opacity") return;
   state.opacity = Number(el.value);
-  store("rng.opacity", state.opacity);
   const id = shownKey && cached.get(shownKey);
   if (id) map.setPaintProperty(id, "raster-opacity", state.opacity);
 });
@@ -1006,6 +1005,9 @@ $("sheet-body").addEventListener("change", (e) => {
     void renderNextHour();
   } else if (el.id === "analytics") {
     void setAnalyticsEnabled(el.checked);
+  } else if (el.id === "opacity") {
+    // "input" fires on every drag tick; persist once on release.
+    store("rng.opacity", state.opacity);
   }
   if (el.dataset.overlay) setOverlay(el.dataset.overlay as OverlayId | "wind" | "ai", el.checked);
 });
