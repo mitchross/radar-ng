@@ -56,6 +56,19 @@ export function buildFrames(manifest: Manifest, layer: string, nowSec: number, o
     .filter((f) => (seen.has(f.time) ? false : (seen.add(f.time), true)));
 }
 
+/**
+ * True when two frame lists render the same timeline. The manifest poll is
+ * usually unchanged, so it can skip the rebuild. Mirrors the app's sameFrames.
+ */
+export function sameFrames(a: readonly Frame[], b: readonly Frame[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].time !== b[i].time || a[i].path !== b[i].path || a[i].source !== b[i].source || a[i].maxZoom !== b[i].maxZoom) return false;
+  }
+  return true;
+}
+
 export type Zoom = "1h" | "48h";
 const HOUR = 3600;
 const PAST_STEP_48H = 15 * 60;

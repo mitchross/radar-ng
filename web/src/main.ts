@@ -6,7 +6,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabled, track } from "./analytics";
-import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, type Frame, type Manifest, type Zoom } from "./frames";
+import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
 import { css, LEGEND_TICKS, PALETTES, type PaletteId } from "./palettes";
 import {
@@ -347,11 +347,18 @@ function setPlaying(on: boolean) {
 async function refreshManifest() {
   try {
     const keepTime = refreshKeepTime(currentFrame(), latestObserved(), state.playing);
+    const hadManifest = state.manifest !== null;
+    const chipsBefore = availabilityKey();
     state.manifest = await fetchManifest();
     state.manifestFailed = false;
-    renderChips();
+    // renderChips also rebuilds the open settings sheet, so skip it unless availability changed.
+    if (!hadManifest || availabilityKey() !== chipsBefore) renderChips();
     if (!LAYERS.some((l) => l.id === state.layer && layerAvailable(l.needs))) state.layer = "radar";
-    rebuildFrames(keepTime);
+    const now = nowSec();
+    const frames = buildFrames(state.manifest, state.layer, now, state.product);
+    const seq = playbackSequence(frames, state.zoom, now);
+    if (hadManifest && sameFrames(state.frames, frames) && seq.length === state.seq.length && seq.every((v, i) => v === state.seq[i])) renderAxis();
+    else rebuildFrames(keepTime);
   } catch (err) {
     state.manifestFailed = true;
     console.error(err);
@@ -387,6 +394,11 @@ function renderRadarStatus() {
     `<span class="${copy.retry ? "mark" : "spinner"}" aria-hidden="true"></span>` +
     `<div><b>${escapeHtml(copy.title)}</b><p>${escapeHtml(copy.message)}</p></div>` +
     (copy.retry ? `<button id="radar-retry" class="retry" aria-label="Retry loading radar">Retry</button>` : "");
+}
+
+/** The layers and products the chips and sheet offer. */
+function availabilityKey(): string {
+  return [...LAYERS.map((l) => l.needs), "radar-composite"].filter(layerAvailable).join();
 }
 
 function layerAvailable(key: string) {
