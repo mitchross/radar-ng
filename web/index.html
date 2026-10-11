@@ -72,6 +72,11 @@
       <div id="axis" class="axis"></div>
     </section>
 
+    <div id="boot-error" class="boot-error glass" role="alert" hidden>
+      <b>Can't reach the radar server</b>
+      <p class="muted">The map and forecast need the API. Check your connection, then try again.</p>
+      <button id="boot-retry" class="retry">Retry</button>
+    </div>
     <div id="toast" class="toast" role="status" hidden></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -127,6 +127,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 
 async function loadStyle(id: MapStyleId): Promise<StyleSpecification> {
   const res = await fetch(MAP_STYLES[id].url);
+  if (!res.ok) throw new Error(`${MAP_STYLES[id].url}: ${res.status}`);
   const style = (await res.json()) as StyleSpecification & { glyphs?: string; sprite?: string };
   // The bundled styles use server-relative paths; MapLibre needs absolute URLs.
   const abs = (u: string) => (u.startsWith("http") ? u : `${location.origin}${u}`);
@@ -265,7 +266,14 @@ async function applyMapStyle(id: MapStyleId) {
   state.mapStyle = id;
   store("rng.mapStyle", id);
   document.documentElement.dataset.map = id;
-  const style = await loadStyle(id);
+  let style: StyleSpecification;
+  try {
+    style = await loadStyle(id);
+  } catch (err) {
+    console.error(err);
+    toast("Couldn't load the map style");
+    return;
+  }
   clearFrames();
   styleReady = false;
   // The persistent "style.load" handler re-adds the frames on the new style.
@@ -518,7 +526,7 @@ async function renderForecast() {
   try {
     fc = await fetchForecast(lat, lon);
   } catch {
-    body.innerHTML = '<p class="muted">Forecast unavailable right now.</p>';
+    body.innerHTML = `<p class="muted">Can't reach the forecast API.</p><button id="forecast-retry" class="retry">Retry</button>`;
     return;
   }
   state.forecast = fc;
@@ -773,6 +781,10 @@ function choose(p: Place) {
   setPlace(p);
 }
 
+$("panel-body").addEventListener("click", (e) => {
+  if ((e.target as HTMLElement).closest("#forecast-retry")) void renderForecast();
+});
+
 $("panel-toggle").addEventListener("click", () => {
   const panel = $("panel");
   const collapsed = panel.classList.toggle("collapsed");
@@ -991,10 +1003,17 @@ map.on("style.load", () => {
 
 overlays.onStorms = renderThreat;
 
-(async () => {
-  document.documentElement.dataset.map = state.mapStyle;
-  renderChips();
-  map.setStyle(await loadStyle(state.mapStyle));
+/** The basemap style is the one boot request that cannot be retried later; without it the page is blank. */
+async function boot() {
+  $("boot-error").hidden = true;
+  try {
+    map.setStyle(await loadStyle(state.mapStyle));
+  } catch (err) {
+    console.error(err);
+    $("boot-error").hidden = false;
+    $("panel-body").innerHTML = '<p class="muted">The radar API is unreachable.</p>';
+    return;
+  }
   await refreshManifest();
   overlays.start();
   if (state.wind) setOverlay("wind", true);
@@ -1004,4 +1023,9 @@ overlays.onStorms = renderThreat;
   window.setInterval(renderTimeline, 30_000);
   window.setInterval(() => void renderBriefing(), 10 * 60_000);
   window.setInterval(() => void renderNextHour(), 60_000);
-})();
+}
+
+$("boot-retry").addEventListener("click", () => void boot());
+document.documentElement.dataset.map = state.mapStyle;
+renderChips();
+void boot();
