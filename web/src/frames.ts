@@ -97,6 +97,17 @@ export function nowIndex(frames: readonly Frame[], nowSec: number): number {
   return nearestIndex(frames, nowSec);
 }
 
+/**
+ * The time the playhead keeps after a manifest refresh, or undefined to follow
+ * "now". Hold while playing or scrubbed; only a playhead parked on the live
+ * frame follows the newest observation.
+ */
+export function refreshKeepTime(current: Frame | undefined, live: Frame | undefined, playing: boolean): number | undefined {
+  if (!current) return undefined;
+  if (!playing && live && current.time === live.time) return undefined;
+  return current.time;
+}
+
 /** "Now", "+45m", "−4h". */
 export function offsetLabel(frameSec: number, nowSec: number): string {
   const min = Math.round((frameSec - nowSec) / 60);

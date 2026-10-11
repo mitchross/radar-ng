@@ -6,7 +6,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { initAnalytics, track } from "./analytics";
-import { buildFrames, nowIndex, offsetLabel, playbackSequence, type Frame, type Manifest, type Zoom } from "./frames";
+import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, type Frame, type Manifest, type Zoom } from "./frames";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
 import { css, LEGEND_TICKS, PALETTES, type PaletteId } from "./palettes";
 import {
@@ -35,6 +35,7 @@ import { describeNowcastSkill } from "./shared/nowcastSkill";
 import { RAIN_ALERT_LEAD_OPTIONS } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
+import { startPeriodic } from "./refresh";
 
 const rainAlerts = new BrowserRainAlerts();
 /** iOS Safari exposes Notification only to pages installed on the Home Screen. */
@@ -81,6 +82,9 @@ const FADE_MS = 220;
 const PREFETCH_AHEAD = 6;
 const MAX_CACHED_FRAMES = 28;
 const MANIFEST_POLL_MS = 60_000;
+// Forecast matches the API's max-age; NWS alerts change faster.
+const FORECAST_REFRESH_MS = 15 * 60_000;
+const ALERTS_REFRESH_MS = 5 * 60_000;
 
 // ---------- state ----------
 
@@ -336,11 +340,11 @@ function setPlaying(on: boolean) {
 
 async function refreshManifest() {
   try {
-    const keepTime = currentFrame()?.time;
+    const keepTime = refreshKeepTime(currentFrame(), latestObserved(), state.playing);
     state.manifest = await fetchManifest();
     renderChips();
     if (!LAYERS.some((l) => l.id === state.layer && layerAvailable(l.needs))) state.layer = "radar";
-    rebuildFrames(state.playing ? undefined : keepTime);
+    rebuildFrames(keepTime);
   } catch (err) {
     toast("Couldn't reach the radar server");
     console.error(err);
@@ -521,18 +525,22 @@ function hourIndex(times: string[], utcOffsetSeconds?: number): number {
   return Math.max(0, i);
 }
 
-async function renderForecast() {
+/** `refresh` re-renders in place: it keeps the scroll position, the briefing, and the old data if the fetch fails. */
+async function renderForecast(refresh = false) {
   const body = $("panel-body");
   const { latitude: lat, longitude: lon } = state.place;
   let fc: Forecast;
   try {
     fc = await fetchForecast(lat, lon);
   } catch {
+    if (refresh) return;
     body.innerHTML = `<p class="muted">Can't reach the forecast API.</p><button id="forecast-retry" class="retry">Retry</button>`;
     return;
   }
+  const aq = await airQualityNow(lat, lon);
+  // A place chosen while this was in flight owns the panel now.
+  if (lat !== state.place.latitude || lon !== state.place.longitude) return;
   state.forecast = fc;
-  const [alerts, aq] = await Promise.all([fetchAlerts(lat, lon).catch(() => []), airQualityNow(lat, lon)]);
   const c = fc.current;
   const cond = conditionOf(c.weather_code);
   const start = hourIndex(fc.hourly.time, fc.utc_offset_seconds);
@@ -551,6 +559,9 @@ async function renderForecast() {
   const inHg = c.surface_pressure == null ? null : (c.surface_pressure / 33.8639).toFixed(2);
   const aqi = aq.pm25 == null ? null : usAqiFromPm25(aq.pm25);
 
+  const scrollTop = body.scrollTop;
+  const hourlyLeft = body.querySelector(".hourly")?.scrollLeft ?? 0;
+  const briefing = document.getElementById("briefing");
   body.innerHTML = `
     <h1 class="place">${escapeHtml(state.place.name)}${state.place.admin1 ? `<span class="muted" style="font-size:15px;font-family:var(--ui)"> · ${escapeHtml(state.place.admin1)}</span>` : ""}</h1>
     <div class="now">
@@ -563,7 +574,7 @@ async function renderForecast() {
     <div class="now-meta">Feels ${deg(c.apparent_temperature)} · H ${deg(fc.daily.temperature_2m_max[0])} L ${deg(fc.daily.temperature_2m_min[0])}</div>
     <div id="briefing" class="briefing" hidden></div>
     <div id="threat" class="threat" hidden></div>
-    ${alerts.length ? `<div class="section">${alerts.slice(0, 3).map((a) => `<div class="alert"><strong>${escapeHtml(a.event)}</strong><span>${a.ends ? `Until ${new Date(a.ends).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : escapeHtml(a.severity)}</span></div>`).join("")}</div>` : ""}
+    <div id="alerts" class="section" hidden></div>
     <div id="nexthour" class="section" hidden></div>
     <div class="section">
       <div class="section-label">HOURLY</div>
@@ -593,9 +604,26 @@ async function renderForecast() {
         ${aqi == null ? "" : `<div class="tile" style="grid-column:1/-1"><b>AIR QUALITY</b><div class="v">${aqi}<small>AQI</small></div><div class="c">${aqiLabel(aqi)} · PM2.5 ${Math.round(aq.pm25!)} µg/m³${aq.ozone == null ? "" : ` · Ozone ${Math.round(aq.ozone)} ppb`}</div></div>`}
       </div>
     </div>`;
+  body.scrollTop = scrollTop;
+  body.querySelector(".hourly")!.scrollLeft = hourlyLeft;
   renderThreat();
-  void renderBriefing();
+  void renderAlerts();
+  if (refresh && briefing && !briefing.hidden) {
+    $("briefing").hidden = false;
+    $("briefing").innerHTML = briefing.innerHTML;
+  } else void renderBriefing();
   void renderNextHour();
+}
+
+/** NWS alerts for the place, polled on their own cadence; a failed poll keeps the last result. */
+async function renderAlerts() {
+  const el = document.getElementById("alerts");
+  if (!el) return;
+  const { latitude, longitude } = state.place;
+  const alerts = await fetchAlerts(latitude, longitude).catch(() => null);
+  if (!alerts || latitude !== state.place.latitude || longitude !== state.place.longitude || !document.body.contains(el)) return;
+  el.hidden = alerts.length === 0;
+  el.innerHTML = alerts.slice(0, 3).map((a) => `<div class="alert"><strong>${escapeHtml(a.event)}</strong><span>${a.ends ? `Until ${new Date(a.ends).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : escapeHtml(a.severity)}</span></div>`).join("");
 }
 
 /** Minute-by-minute rain for the next hour from the radar nowcast (hidden when unavailable). */
@@ -1026,6 +1054,8 @@ async function boot() {
   window.setInterval(renderTimeline, 30_000);
   window.setInterval(() => void renderBriefing(), 10 * 60_000);
   window.setInterval(() => void renderNextHour(), 60_000);
+  startPeriodic(() => void renderForecast(true), FORECAST_REFRESH_MS);
+  startPeriodic(() => void renderAlerts(), ALERTS_REFRESH_MS);
 }
 
 $("boot-retry").addEventListener("click", () => void boot());

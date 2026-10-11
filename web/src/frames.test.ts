@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFrames, nowIndex, offsetLabel, playbackSequence, type Manifest } from "./frames";
+import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, type Manifest } from "./frames";
 
 const NOW = 1_800_000_000;
 const iso = (s: number) => new Date(s * 1000).toISOString();
@@ -42,6 +42,21 @@ describe("offsetLabel", () => {
     expect(offsetLabel(NOW + 120, NOW)).toBe("Now");
     expect(offsetLabel(NOW + 45 * 60, NOW)).toBe("+45m");
     expect(offsetLabel(NOW - 4 * 3600, NOW)).toBe("−4h");
+  });
+});
+
+describe("refreshKeepTime", () => {
+  const frames = buildFrames(manifest, "radar", NOW);
+  const live = frames[nowIndex(frames, NOW)];
+  const scrubbed = frames[nowIndex(frames, NOW) - 5];
+  it("holds the playhead while playing, even on the live frame", () => {
+    expect(refreshKeepTime(live, live, true)).toBe(live.time);
+    expect(refreshKeepTime(scrubbed, live, true)).toBe(scrubbed.time);
+  });
+  it("holds a scrubbed playhead and follows now only when parked on live", () => {
+    expect(refreshKeepTime(scrubbed, live, false)).toBe(scrubbed.time);
+    expect(refreshKeepTime(live, live, false)).toBeUndefined();
+    expect(refreshKeepTime(undefined, live, false)).toBeUndefined();
   });
 });
 
