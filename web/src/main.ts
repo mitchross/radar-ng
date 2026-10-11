@@ -19,6 +19,8 @@ import {
   explainAlert,
   fetchBriefing,
   fetchManifest,
+  forecastHourLabel,
+  forecastTimeMs,
   iconSvg,
   readPoint,
   reversePlace,
@@ -503,9 +505,9 @@ function renderSheet() {
 
 const deg = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v)}°`);
 
-function hourIndex(times: string[]): number {
+function hourIndex(times: string[], utcOffsetSeconds?: number): number {
   const cutoff = Date.now() - 30 * 60_000;
-  const i = times.findIndex((t) => Date.parse(t) >= cutoff);
+  const i = times.findIndex((t) => forecastTimeMs(t, utcOffsetSeconds) >= cutoff);
   return Math.max(0, i);
 }
 
@@ -523,7 +525,7 @@ async function renderForecast() {
   const [alerts, aq] = await Promise.all([fetchAlerts(lat, lon).catch(() => []), airQualityNow(lat, lon)]);
   const c = fc.current;
   const cond = conditionOf(c.weather_code);
-  const start = hourIndex(fc.hourly.time);
+  const start = hourIndex(fc.hourly.time, fc.utc_offset_seconds);
   const hours = Array.from({ length: 24 }, (_, k) => start + k).filter((i) => i < fc.hourly.time.length);
   const rain = hours.map((i) => fc.hourly.precipitation[i] ?? 0);
   const rainTotal = rain.reduce((a, b) => a + b, 0);
@@ -534,7 +536,7 @@ async function renderForecast() {
   const wLo = Math.min(...lows);
   const wHi = Math.max(...highs);
   const span = Math.max(1, wHi - wLo);
-  const fmtHour = (t: string, i: number) => (i === 0 ? "Now" : new Date(t).toLocaleTimeString([], { hour: "numeric" }).replace(" ", "").toLowerCase());
+  const fmtHour = (t: string, i: number) => (i === 0 ? "Now" : forecastHourLabel(t, fc.utc_offset_seconds));
   const dayName = (d: string, i: number) => (i === 0 ? "Today" : new Date(`${d}T00:00:00`).toLocaleDateString([], { weekday: "short" }));
   const inHg = c.surface_pressure == null ? null : (c.surface_pressure / 33.8639).toFixed(2);
   const aqi = aq.pm25 == null ? null : usAqiFromPm25(aq.pm25);

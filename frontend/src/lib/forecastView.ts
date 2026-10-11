@@ -14,18 +14,46 @@ import type { OpenMeteoResponse, RadarNowcastResponse, TemperatureUnit } from ".
 type Daily = OpenMeteoResponse["daily"];
 type Minutely = NonNullable<OpenMeteoResponse["minutely_15"]>;
 
-function parseTime(value: string | null | undefined): Date | null {
+const WALL_TIME = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/;
+
+/**
+ * Open-Meteo returns wall time at the forecast location with no offset
+ * ("2026-10-11T14:00"). `new Date()` would read it in the device zone, which
+ * shifts a chosen city in another zone by the zone difference. Without an
+ * offset (old cached responses), fall back to the device zone as before.
+ */
+export function parseLocationTime(value: string | null | undefined, utcOffsetSeconds?: number): Date | null {
   if (!value) return null;
-  const d = new Date(value);
+  const m = utcOffsetSeconds == null ? null : WALL_TIME.exec(value);
+  const d = m
+    ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0)) - (utcOffsetSeconds as number) * 1000)
+    : new Date(value);
   return Number.isFinite(d.getTime()) ? d : null;
 }
 
-/** Sunrise/sunset for the local calendar day that contains `at`, or nulls. */
-export function sunTimesFor(daily: Daily, at: Date): { sunrise: Date | null; sunset: Date | null } {
-  const key = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
-  const index = daily.time.indexOf(key);
+/** The instant shifted so its UTC fields read as wall time at the location. */
+function wallClock(at: Date, utcOffsetSeconds?: number): { hour: number; dateKey: string } {
+  if (utcOffsetSeconds == null) {
+    return {
+      hour: at.getHours(),
+      dateKey: `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`,
+    };
+  }
+  const w = new Date(at.getTime() + utcOffsetSeconds * 1000);
+  return {
+    hour: w.getUTCHours(),
+    dateKey: `${w.getUTCFullYear()}-${String(w.getUTCMonth() + 1).padStart(2, "0")}-${String(w.getUTCDate()).padStart(2, "0")}`,
+  };
+}
+
+/** Sunrise/sunset for the location's calendar day that contains `at`, or nulls. */
+export function sunTimesFor(daily: Daily, at: Date, utcOffsetSeconds?: number): { sunrise: Date | null; sunset: Date | null } {
+  const index = daily.time.indexOf(wallClock(at, utcOffsetSeconds).dateKey);
   if (index < 0) return { sunrise: null, sunset: null };
-  return { sunrise: parseTime(daily.sunrise[index]), sunset: parseTime(daily.sunset[index]) };
+  return {
+    sunrise: parseLocationTime(daily.sunrise[index], utcOffsetSeconds),
+    sunset: parseLocationTime(daily.sunset[index], utcOffsetSeconds),
+  };
 }
 
 /**
@@ -33,25 +61,25 @@ export function sunTimesFor(daily: Daily, at: Date): { sunrise: Date | null; sun
  * today's sunset used to read as night. Without sun times, fall back to a
  * fixed 06:00–20:00 day rather than guessing from today.
  */
-export function isNightAt(at: Date, daily: Daily): boolean {
-  const { sunrise, sunset } = sunTimesFor(daily, at);
+export function isNightAt(at: Date, daily: Daily, utcOffsetSeconds?: number): boolean {
+  const { sunrise, sunset } = sunTimesFor(daily, at, utcOffsetSeconds);
   if (sunrise && sunset) return at < sunrise || at > sunset;
-  const hour = at.getHours();
+  const { hour } = wallClock(at, utcOffsetSeconds);
   return hour < 6 || hour >= 20;
 }
 
 /** Index of the first hourly entry at or after "now" (with a 30-minute grace). */
-export function startHourIndex(hours: string[], now = Date.now()): number {
+export function startHourIndex(hours: string[], now = Date.now(), utcOffsetSeconds?: number): number {
   for (let i = 0; i < hours.length; i++) {
-    const t = parseTime(hours[i]);
+    const t = parseLocationTime(hours[i], utcOffsetSeconds);
     if (t && t.getTime() >= now - 30 * 60_000) return i;
   }
   return 0;
 }
 
-function formatHour(d: Date, i: number): string {
+function formatHour(d: Date, i: number, utcOffsetSeconds?: number): string {
   if (i === 0) return "NOW";
-  const h = d.getHours();
+  const h = wallClock(d, utcOffsetSeconds).hour;
   if (h === 0) return "12a";
   if (h === 12) return "12p";
   return h < 12 ? `${h}a` : `${h - 12}p`;
@@ -73,14 +101,14 @@ export function hourlyView(
   now = Date.now(),
   count = 24,
 ): HourView[] {
-  const { hourly, daily } = forecast;
-  const start = startHourIndex(hourly.time, now);
+  const { hourly, daily, utc_offset_seconds: offset } = forecast;
+  const start = startHourIndex(hourly.time, now, offset);
   return hourly.time.slice(start, start + count).map((t, i) => {
     const idx = start + i;
-    const at = parseTime(t) ?? new Date(now);
-    const night = isNightAt(at, daily);
+    const at = parseLocationTime(t, offset) ?? new Date(now);
+    const night = isNightAt(at, daily, offset);
     return {
-      label: formatHour(at, i),
+      label: formatHour(at, i, offset),
       temp: displayTemperature(hourly.temperature_2m[idx], unit),
       icon: getIconKind(hourly.weather_code[idx], night),
       night,
@@ -96,7 +124,7 @@ export function hourlyView(
  * Null when no hour in the window has a value.
  */
 export function precipitationNext24h(forecast: OpenMeteoResponse, now = Date.now()): number | null {
-  const start = startHourIndex(forecast.hourly.time, now);
+  const start = startHourIndex(forecast.hourly.time, now, forecast.utc_offset_seconds);
   const window = forecast.hourly.precipitation.slice(start, start + 24);
   const known = window.filter((v): v is number => v != null && Number.isFinite(v));
   if (known.length === 0) return null;
@@ -113,7 +141,7 @@ export interface DayView {
 }
 
 export function dailyView(forecast: OpenMeteoResponse, unit: TemperatureUnit, now = new Date()): DayView[] {
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const today = wallClock(now, forecast.utc_offset_seconds).dateKey;
   const { daily } = forecast;
   return daily.time.map((t, i) => {
     const chance = daily.precipitation_probability_max?.[i];
@@ -142,9 +170,12 @@ export function weekRange(days: DayView[]): { lo: number; hi: number } | null {
 export function nowcastHeadline(
   minutely: Minutely | undefined,
   now = Date.now(),
+  utcOffsetSeconds?: number,
 ): { headline: string; sub: string } | null {
   if (!minutely?.precipitation?.length) return null;
-  const startIdx = minutely.time.findIndex((t) => (parseTime(t)?.getTime() ?? -Infinity) >= now - 7.5 * 60_000);
+  const startIdx = minutely.time.findIndex(
+    (t) => (parseLocationTime(t, utcOffsetSeconds)?.getTime() ?? -Infinity) >= now - 7.5 * 60_000,
+  );
   if (startIdx < 0) return null;
   const slice = minutely.precipitation.slice(startIdx, startIdx + 8);
   const firstWet = slice.findIndex((p) => p != null && p > 0.01);
@@ -176,9 +207,10 @@ export function nextHourBanner(
   radar: RadarNowcastResponse | undefined,
   minutely: Minutely | undefined,
   now = Date.now(),
+  utcOffsetSeconds?: number,
 ): { headline: string; sub: string } | null {
   const usable = usableRadarNowcast(radar);
-  if (!usable) return nowcastHeadline(minutely, now);
+  if (!usable) return nowcastHeadline(minutely, now, utcOffsetSeconds);
   const perMinute = interpolateRadarNowcast(usable.points);
   const verdict = getNowcastVerdict(perMinute);
   if (verdict.kind !== "raining" && verdict.kind !== "starting") return null;

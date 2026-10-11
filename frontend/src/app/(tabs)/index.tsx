@@ -138,8 +138,8 @@ export default function HomeScreen() {
 
   const now = new Date();
   const forecastAgeMin = dataUpdatedAt > 0 ? Math.floor((now.getTime() - dataUpdatedAt) / 60_000) : 0;
-  const { sunrise, sunset } = sunTimesFor(forecast.daily, now);
-  const isNight = isNightAt(now, forecast.daily);
+  const { sunrise, sunset } = sunTimesFor(forecast.daily, now, forecast.utc_offset_seconds);
+  const isNight = isNightAt(now, forecast.daily, forecast.utc_offset_seconds);
 
   const weatherCode = forecast.current.weather_code;
   const condition = getCumulusCondition(weatherCode, isNight);
@@ -159,7 +159,7 @@ export default function HomeScreen() {
   const locationLabel = location.label;
   const locationName = location.name;
 
-  const nowcastBanner = nextHourBanner(radarNowcast, forecast.minutely_15, now.getTime());
+  const nowcastBanner = nextHourBanner(radarNowcast, forecast.minutely_15, now.getTime(), forecast.utc_offset_seconds);
 
   const hourly = hourlyView(forecast, temperatureUnit, now.getTime());
   const precipTotal = precipitationNext24h(forecast, now.getTime());

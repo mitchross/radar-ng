@@ -5,6 +5,7 @@ import {
   nextHourBanner,
   nowcastHeadline,
   precipitationNext24h,
+  startHourIndex,
   weekRange,
 } from "../../src/lib/forecastView";
 import { getCumulusCondition, getIconKind } from "../../src/lib/cumulusTheme";
@@ -191,5 +192,31 @@ describe("nextHourBanner accuracy line", () => {
   it("says only 'from radar' before the track record exists", () => {
     const banner = nextHourBanner({ status: "ok", points, skill: null }, undefined, Date.now());
     expect(banner?.sub).toMatch(/from radar$/);
+  });
+});
+
+describe("forecast for a location in another time zone", () => {
+  // The location is 3 h east of the device; Open-Meteo sends wall times there.
+  const now = new Date(2026, 8, 24, 21, 0).getTime();
+  const offset = -new Date(now).getTimezoneOffset() * 60 + 3 * 3600;
+  const wall = (ms: number) => {
+    const w = new Date(ms + offset * 1000);
+    return `${w.getUTCFullYear()}-${pad(w.getUTCMonth() + 1)}-${pad(w.getUTCDate())}T${pad(w.getUTCHours())}:00`;
+  };
+  const hours = Array.from({ length: 30 }, (_, i) => wall(now + (i - 2) * 3600_000));
+  const base = forecastWith({});
+  const forecast: OpenMeteoResponse = { ...base, utc_offset_seconds: offset, hourly: { ...base.hourly, time: hours } };
+
+  it("starts the strip at the location's current hour, not the device's", () => {
+    expect(startHourIndex(hours, now, offset)).toBe(2);
+    const view = hourlyView(forecast, "fahrenheit", now);
+    expect(view[0].label).toBe("NOW");
+    expect(view[1].label).toBe("1a"); // 00:00 at the location, 21:00 on the device
+  });
+
+  it("reads night from the location's wall clock", () => {
+    // 08:00 at the location is day even though the device reads 05:00.
+    expect(isNightAt(new Date(now + 8 * 3600_000), { ...daily, time: [] }, offset)).toBe(false);
+    expect(isNightAt(new Date(now + 8 * 3600_000), { ...daily, time: [] })).toBe(true);
   });
 });

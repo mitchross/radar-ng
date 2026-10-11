@@ -17,7 +17,7 @@ import { useNow } from "../hooks/useNow";
 import { runOnlineRefresh } from "../lib/queryLifecycle";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { CONDITION_GRADIENTS, getCumulusCondition } from "../lib/cumulusTheme";
-import { isNightAt, usableRadarNowcast } from "../lib/forecastView";
+import { isNightAt, parseLocationTime, usableRadarNowcast } from "../lib/forecastView";
 import {
   describeNowcast,
   getForecastScreenState,
@@ -132,7 +132,7 @@ export default function NowcastScreen() {
   }
 
   const now = new Date(nowMs);
-  const isNight = isNightAt(now, forecast.daily);
+  const isNight = isNightAt(now, forecast.daily, forecast.utc_offset_seconds);
   const condition = getCumulusCondition(forecast.current.weather_code, isNight);
   const gradient = theme.dark
     ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
@@ -392,11 +392,9 @@ export default function NowcastScreen() {
                 ) : null}
                 <Row
                   label="Last update"
-                  value={`${Math.max(0, Math.round((nowMs - new Date(
-                    pointNowcast?.issued_at
-                      ? pointNowcast.issued_at
-                      : forecast.current.time,
-                  ).getTime()) / 60000))} min ago`}
+                  value={`${Math.max(0, Math.round((nowMs - (pointNowcast?.issued_at
+                    ? new Date(pointNowcast.issued_at).getTime()
+                    : (parseLocationTime(forecast.current.time, forecast.utc_offset_seconds)?.getTime() ?? nowMs))) / 60000))} min ago`}
                   last
                 />
               </View>
