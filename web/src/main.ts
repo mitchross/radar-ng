@@ -5,7 +5,7 @@ import type { Map as MLMap, StyleSpecification } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
-import { initAnalytics, track } from "./analytics";
+import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabled, track } from "./analytics";
 import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, type Frame, type Manifest, type Zoom } from "./frames";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
 import { css, LEGEND_TICKS, PALETTES, type PaletteId } from "./palettes";
@@ -510,6 +510,9 @@ function renderSheet() {
       <label class="range-row"><span>Notify me before rain</span><select id="rain-alert-lead" aria-label="Rain alert lead time">${RAIN_ALERT_LEAD_OPTIONS.map((lead) => `<option value="${lead}" ${lead === rainAlerts.leadMinutes ? "selected" : ""}>${lead} min</option>`).join("")}</select></label>
       <p class="hint" role="status">${escapeHtml(rainAlerts.supported ? rainAlerts.message : IOS_BROWSER ? "On iPhone, add this page to your Home Screen (Share → Add to Home Screen) to get rain alerts." : "Notifications are unavailable in this browser. Use the app for rain alerts.")}</p>
     </div>
+    ${ANALYTICS_AVAILABLE ? `<div class="sheet-section"><div class="section-label">PRIVACY</div>
+      <label class="toggle"><span><b>Usage analytics</b><small>Self-hosted PostHog: anonymous events and session replay. Off sends nothing.</small></span><input type="checkbox" id="analytics" ${analyticsEnabled() ? "checked" : ""} /><i></i></label>
+    </div>` : ""}
     <div class="sheet-section"><div class="section-label">KEYBOARD</div>
       <p class="hint"><kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> step · <kbd>W</kbd> warnings · <kbd>S</kbd> storms · <kbd>L</kbd> lightning · <kbd>H</kbd> hurricanes</p>
     </div>`;
@@ -803,7 +806,8 @@ $("search-results").addEventListener("click", (e) => {
 });
 
 function choose(p: Place) {
-  track("place_chosen", { place: p.name, region: p.admin1 });
+  // The region is enough to see where people look; the place name stays out of analytics.
+  track("place_chosen", { region: p.admin1 });
   results = [];
   searchStatus = null;
   renderResults();
@@ -935,6 +939,8 @@ $("sheet-body").addEventListener("change", (e) => {
   } else if (el.id === "rain-alert-lead") {
     rainAlerts.setLead(el.value);
     void renderNextHour();
+  } else if (el.id === "analytics") {
+    void setAnalyticsEnabled(el.checked);
   }
   if (el.dataset.overlay) setOverlay(el.dataset.overlay as OverlayId | "wind" | "ai", el.checked);
 });
