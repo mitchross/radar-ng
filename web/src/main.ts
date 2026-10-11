@@ -37,6 +37,8 @@ import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
 
 const rainAlerts = new BrowserRainAlerts();
+/** iOS Safari exposes Notification only to pages installed on the Home Screen. */
+const IOS_BROWSER = /iPhone|iPad|iPod/.test(navigator.userAgent) && !matchMedia("(display-mode: standalone)").matches;
 
 maplibregl.setWorkerUrl(workerUrl);
 void initAnalytics();
@@ -502,7 +504,7 @@ function renderSheet() {
     <div class="sheet-section"><div class="section-label">RAIN ALERTS</div>
       <label class="toggle"><span><b>Rain starting soon</b><small>Local notifications from your radar forecast</small></span><input id="rain-alerts" type="checkbox" ${rainAlerts.enabled ? "checked" : ""} ${rainAlerts.supported ? "" : "disabled"} /><i></i></label>
       <label class="range-row"><span>Notify me before rain</span><select id="rain-alert-lead" aria-label="Rain alert lead time">${RAIN_ALERT_LEAD_OPTIONS.map((lead) => `<option value="${lead}" ${lead === rainAlerts.leadMinutes ? "selected" : ""}>${lead} min</option>`).join("")}</select></label>
-      <p class="hint" role="status">${escapeHtml(rainAlerts.supported ? rainAlerts.message : "Notifications are unavailable in this browser. Use the app for rain alerts.")}</p>
+      <p class="hint" role="status">${escapeHtml(rainAlerts.supported ? rainAlerts.message : IOS_BROWSER ? "On iPhone, add this page to your Home Screen (Share → Add to Home Screen) to get rain alerts." : "Notifications are unavailable in this browser. Use the app for rain alerts.")}</p>
     </div>
     <div class="sheet-section"><div class="section-label">KEYBOARD</div>
       <p class="hint"><kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> step · <kbd>W</kbd> warnings · <kbd>S</kbd> storms · <kbd>L</kbd> lightning · <kbd>H</kbd> hurricanes</p>
@@ -1016,6 +1018,7 @@ async function boot() {
   }
   await refreshManifest();
   overlays.start();
+  if (rainAlerts.enabled) void rainAlerts.connect();
   if (state.wind) setOverlay("wind", true);
   void renderForecast();
   window.setInterval(refreshManifest, MANIFEST_POLL_MS);

@@ -13,9 +13,18 @@ export class BrowserRainAlerts {
   leadMinutes = parseRainAlertLead(this.read("lead"));
   message = "Keep this page open for alerts. Use the app for background refresh.";
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private registration: ServiceWorkerRegistration | null = null;
 
   get supported(): boolean {
     return typeof Notification !== "undefined";
+  }
+
+  /** Chrome for Android and installed iOS Safari reject `new Notification`; they need a service worker registration. */
+  async connect(): Promise<void> {
+    if (this.registration || typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    try {
+      this.registration = await navigator.serviceWorker.register("/sw.js");
+    } catch { /* insecure context or private mode: fall back to new Notification */ }
   }
 
   private read(key: string): string {
@@ -30,6 +39,7 @@ export class BrowserRainAlerts {
     this.cancel();
     let granted = false;
     if (on && this.supported) {
+      await this.connect();
       try {
         granted = (Notification.permission === "granted" ? "granted" : await Notification.requestPermission()) === "granted";
       } catch { /* permission unavailable */ }
@@ -57,19 +67,20 @@ export class BrowserRainAlerts {
     if (!this.enabled || !this.supported || Notification.permission !== "granted") return;
     const plan = planRainAlert(nowcast, place, { leadMinutes: this.leadMinutes }, now);
     if (!plan || !shouldNotify(plan, parseLastRainAlert(this.read("last")), now)) return;
-    this.timer = setTimeout(() => this.deliver(plan), Math.max(0, plan.fireAt - now));
+    this.timer = setTimeout(() => void this.deliver(plan), Math.max(0, plan.fireAt - now));
   }
 
-  private deliver(plan: RainAlertPlan): void {
+  private async deliver(plan: RainAlertPlan): Promise<void> {
     this.timer = undefined;
     if (!this.enabled || !this.supported || Notification.permission !== "granted") return;
+    const startInMin = Math.max(1, Math.round((plan.startAt - Date.now()) / 60_000));
+    const body = plan.body.replace(/in about \d+ min/, `in about ${startInMin} min`);
+    const options = { body, tag: "radar-ng-rain" };
     try {
-      const startInMin = Math.max(1, Math.round((plan.startAt - Date.now()) / 60_000));
-      const body = plan.body.replace(/in about \d+ min/, `in about ${startInMin} min`);
-      new Notification(plan.title, { body, tag: "radar-ng-rain" });
+      if (this.registration) await this.registration.showNotification(plan.title, options);
+      else new Notification(plan.title, options);
       this.write("last", JSON.stringify({ key: plan.key, startAt: plan.startAt, firedAt: Date.now() }));
     } catch {
-      // Some mobile browsers require a service worker even with permission.
       this.message = "This browser cannot deliver alerts here. Use the app for rain alerts.";
     }
   }
