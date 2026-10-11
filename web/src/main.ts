@@ -11,7 +11,6 @@ import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type Overl
 import { css, LEGEND_TICKS, PALETTES, type PaletteId } from "./palettes";
 import {
   aqiLabel,
-  CONDITION_LABEL,
   conditionOf,
   describeDbz,
   fetchAlerts,
@@ -22,6 +21,7 @@ import {
   forecastHourLabel,
   forecastTimeMs,
   iconSvg,
+  isNightAt,
   readPoint,
   reversePlace,
   searchPlaces,
@@ -30,7 +30,8 @@ import {
   type Place,
 } from "./weather";
 import { WindLayer } from "./wind";
-import { interpolateNowcast, nowcastVerdict } from "./nowcast";
+import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast";
+import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition } from "./shared/conditions";
 import { describeNowcastSkill } from "./shared/nowcastSkill";
 import { RAIN_ALERT_LEAD_OPTIONS } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
@@ -575,6 +576,7 @@ async function renderForecast(refresh = false) {
   state.forecast = fc;
   const c = fc.current;
   const cond = conditionOf(c.weather_code);
+  const sky = getCumulusCondition(c.weather_code, isNightAt(Date.now(), fc.daily, fc.utc_offset_seconds));
   const start = hourIndex(fc.hourly.time, fc.utc_offset_seconds);
   const hours = Array.from({ length: 24 }, (_, k) => start + k).filter((i) => i < fc.hourly.time.length);
   const rain = hours.map((i) => fc.hourly.precipitation[i] ?? 0);
@@ -598,7 +600,7 @@ async function renderForecast(refresh = false) {
     <h1 class="place">${escapeHtml(state.place.name)}${state.place.admin1 ? `<span class="muted" style="font-size:15px;font-family:var(--ui)"> · ${escapeHtml(state.place.admin1)}</span>` : ""}</h1>
     <div class="now">
       <div>
-        <div class="now-cond">${CONDITION_LABEL[cond]}</div>
+        <div class="now-cond">${CONDITION_HEADLINES[sky]}</div>
         <div class="now-temp">${deg(c.temperature_2m)}</div>
       </div>
       ${iconSvg(cond, 84)}
@@ -637,6 +639,10 @@ async function renderForecast(refresh = false) {
       </div>
     </div>`;
   body.scrollTop = scrollTop;
+  // CSS picks the light or dark stops from the basemap, like the other tokens.
+  const gradient = (dark: boolean) => `linear-gradient(180deg, ${conditionGradient(sky, dark).join(", ")})`;
+  $("panel").style.setProperty("--cond-light", gradient(false));
+  $("panel").style.setProperty("--cond-dark", gradient(true));
   body.querySelector(".hourly")!.scrollLeft = hourlyLeft;
   renderThreat();
   void renderAlerts();
@@ -679,12 +685,15 @@ async function renderNextHour() {
   if (!points.length || !document.body.contains(el)) return;
   const skill = describeNowcastSkill(nowcast?.skill);
   const minutes = interpolateNowcast(points);
+  const headline = nextHourHeadline(minutes);
   const peak = Math.max(0.1, ...minutes);
   // Same call to action as the app's rain banner: rain within the hour and alerts not on yet.
   const offerAlerts = !rainAlerts.enabled && rainAlerts.supported && minutes.some((v) => v > 0.08);
   el.hidden = false;
   el.innerHTML =
-    `<div class="section-label">NEXT HOUR</div><p class="nexthour-verdict">${escapeHtml(nowcastVerdict(minutes))}</p>` +
+    `<div class="section-label">NEXT HOUR</div>` +
+    (headline ? `<p class="nexthour-headline">${escapeHtml(headline)}</p>` : "") +
+    `<p class="nexthour-verdict">${escapeHtml(nowcastVerdict(minutes))}</p>` +
     (offerAlerts ? `<button id="notify-me" class="notify">Notify me before rain</button>` : "") +
     (skill ? `<p class="hint">${escapeHtml(skill.sentence)}${skill.beatsPersistence === false ? " · no better than a still radar" : ""}</p>` : "") +
     `<div class="minutebars">${minutes.map((v) => `<i class="${v > 0.01 ? "" : "dry"}" style="height:${v > 0.01 ? Math.max(8, (v / peak) * 100) : 6}%"></i>`).join("")}</div>` +
