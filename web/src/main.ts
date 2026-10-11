@@ -37,6 +37,7 @@ import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
 import { startPeriodic } from "./refresh";
 import { observedFrameTime, radarNoticeCopy, radarStatus } from "./radarStatus";
+import { bootLocationStep, cardAfterGeoError, LOCATION_CARD_COPY, locateClickStep, queryLocationPermission, type LocationCardKind } from "./location";
 
 const rainAlerts = new BrowserRainAlerts();
 /** iOS Safari exposes Notification only to pages installed on the Home Screen. */
@@ -758,6 +759,7 @@ function toast(message: string) {
 function setPlace(place: Place, fly = true) {
   state.place = place;
   store("rng.place", place);
+  renderLocationCard(null);
   addPlaceMarker();
   if (fly) map.flyTo({ center: [place.longitude, place.latitude], zoom: Math.max(map.getZoom(), 6.5), duration: 900 });
   void renderForecast();
@@ -987,7 +989,7 @@ $("sheet-body").addEventListener("change", (e) => {
   if (el.dataset.overlay) setOverlay(el.dataset.overlay as OverlayId | "wind" | "ai", el.checked);
 });
 
-$("locate").addEventListener("click", () => {
+function locate() {
   if (!navigator.geolocation) return toast("Location isn't available in this browser");
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
@@ -995,9 +997,41 @@ $("locate").addEventListener("click", () => {
       const place = await reversePlace(latitude, longitude).catch(() => null);
       setPlace({ name: place?.name ?? "My location", admin1: place?.admin1, latitude, longitude });
     },
-    () => toast("Location permission was denied"),
+    (err) => {
+      const card = cardAfterGeoError(err.code);
+      if (card) renderLocationCard(card, true);
+      else toast("Couldn't find your location");
+    },
     { enableHighAccuracy: false, timeout: 10_000 },
   );
+}
+
+/** The pre-prompt before the browser's location dialog, or the recovery card after a denial. */
+function renderLocationCard(kind: LocationCardKind | null, focus = false) {
+  const el = $("location-card");
+  el.hidden = !kind;
+  if (!kind) return;
+  const copy = LOCATION_CARD_COPY[kind];
+  el.innerHTML =
+    `<b>${copy.title}</b><p>${escapeHtml(copy.body(state.place.name))}</p><div class="actions">` +
+    (copy.allow ? `<button data-action="allow" class="primary">Allow location</button>` : "") +
+    `<button data-action="city" class="secondary">Choose a city</button></div>`;
+  if (focus) el.querySelector<HTMLButtonElement>("button")?.focus();
+}
+
+$("location-card").addEventListener("click", (e) => {
+  const action = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]")?.dataset.action;
+  if (action === "allow") locate();
+  else if (action === "city") {
+    renderLocationCard(null);
+    $("search-input").focus();
+  }
+});
+
+$("locate").addEventListener("click", async () => {
+  const step = locateClickStep(await queryLocationPermission());
+  if (step === "locate") locate();
+  else renderLocationCard(step, true);
 });
 
 const OVERLAY_KEYS: Record<string, OverlayId> = { w: "warnings", s: "storms", l: "lightning", h: "tropical" };
@@ -1122,4 +1156,16 @@ $("radar-notice").addEventListener("click", (e) => {
 document.documentElement.dataset.map = state.mapStyle;
 renderChips();
 renderRadarStatus();
+const hasStoredPlace = (() => {
+  try {
+    return localStorage.getItem("rng.place") !== null;
+  } catch {
+    return false;
+  }
+})();
+void queryLocationPermission().then((permission) => {
+  const step = bootLocationStep(permission, hasStoredPlace);
+  if (step === "locate") locate();
+  else if (step === "card") renderLocationCard("undetermined");
+});
 void boot();

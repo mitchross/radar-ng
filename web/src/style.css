@@ -68,6 +68,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .search-results small { color: var(--ink-3); margin-left: 6px; }
 .search-results li.status { color: var(--ink-3); cursor: default; background: none; }
 
+.location-card { margin: 0 12px 8px; padding: 14px 16px; border-radius: 18px; background: var(--surface-solid); border: 1px solid var(--border); flex: none; }
+.location-card b { display: block; font-size: 16px; }
+.location-card p { margin: 4px 0 0; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.location-card .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.location-card button { min-height: 44px; padding: 0 16px; border-radius: 22px; border: none; font-size: 14px; font-weight: 600; }
+.location-card .primary { background: var(--accent); color: #fff; }
+.location-card .secondary { background: rgba(120, 110, 95, 0.14); color: var(--ink); }
+
 .icon-btn {
   width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--border);
   display: grid; place-items: center; background: var(--surface-solid); flex: none;
