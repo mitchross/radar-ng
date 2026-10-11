@@ -2,7 +2,7 @@
  * Cumulus Alerts tab — Redesigned for Editorial Light.
  * NWS active alerts list with Simple/Advanced gating.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { ScrollView, View, Text, StyleSheet, Pressable, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ScreenBackground } from "../../components/ui/ScreenBackground";
@@ -14,18 +14,19 @@ import { getAlertEndTime } from "../../lib/alertLifecycle";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { getAlertsScreenState } from "../../lib/weatherPresentation";
 import { ScreenState } from "../../components/ui/WeatherClearUI";
-import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
+import { createThemedStyles } from "../../theme/themedStyles";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { NWSAlert } from "../../types/weather";
 import { readingColumnStyle } from "../../lib/tabletLayout";
+
+const useStyles = createThemedStyles(createStyles);
 
 // Hoisted: Intl formatter construction is expensive relative to a render.
 const TIME_FMT = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" });
 
 export default function AlertsScreen() {
   const router = useRouter();
-  const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { theme, styles } = useStyles();
   const viewMode = useWeatherStore((s) => s.viewMode);
   const {
     data,
@@ -149,8 +150,7 @@ export default function AlertsScreen() {
 }
 
 function AlertCard({ alert, onPress }: { alert: NWSAlert; onPress: () => void }) {
-  const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { theme, styles } = useStyles();
   const color = severityColor(alert.properties.severity, theme);
   const endTime = getAlertEndTime(alert);
   if (endTime === null) return null;
@@ -195,8 +195,7 @@ function AlertCard({ alert, onPress }: { alert: NWSAlert; onPress: () => void })
 }
 
 function EmptyState({ isAdv, polledAt }: { isAdv: boolean; polledAt: number }) {
-  const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { styles } = useStyles();
   return (
     <View style={styles.emptyContainer}>
       <View style={styles.empty}>
@@ -339,12 +338,12 @@ function createStyles(theme: WeatherClearTheme) {
   },
   severityDot: { width: 6, height: 6, borderRadius: 3 },
   severityText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8, fontFamily: cumulusFonts.mono },
-  urgency: { fontSize: 10, color: cumulus.inkMuted, fontFamily: cumulusFonts.mono, letterSpacing: 0.8 },
+  urgency: { fontSize: 10, color: cumulus.inkDim, fontFamily: cumulusFonts.mono, letterSpacing: 0.8 },
   event: { color: cumulus.ink, fontSize: 17, fontWeight: "700", letterSpacing: -0.2, fontFamily: cumulusFonts.ui },
   headline: { color: cumulus.inkDim, fontSize: 13, marginTop: 5, lineHeight: 18, fontFamily: cumulusFonts.ui },
   metaRow: { flexDirection: "row", alignItems: "center", marginTop: 8, gap: 6 },
-  area: { flex: 1, color: cumulus.inkMuted, fontSize: 11, fontFamily: cumulusFonts.mono },
-  expires: { color: cumulus.inkMuted, fontSize: 11, fontFamily: cumulusFonts.mono },
+  area: { flex: 1, color: cumulus.inkDim, fontSize: 11, fontFamily: cumulusFonts.mono },
+  expires: { color: cumulus.inkDim, fontSize: 11, fontFamily: cumulusFonts.mono },
 
   emptyContainer: {
     width: "100%",

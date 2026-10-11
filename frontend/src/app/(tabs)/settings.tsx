@@ -101,6 +101,9 @@ export default function SettingsScreen() {
   const [debouncedCityQuery, setDebouncedCityQuery] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  // Slider drafts: the label follows the thumb, the store (and MMKV) is written on release.
+  const [opacityDraft, setOpacityDraft] = useState<number | null>(null);
+  const [fpsDraft, setFpsDraft] = useState<number | null>(null);
 
   // Live stack data for the Advanced cards. The old build shipped a
   // hard-coded container list ("versions are wrong") — everything shown
@@ -467,13 +470,14 @@ export default function SettingsScreen() {
             </View>
             <Sep />
             <View style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
-              <Text style={styles.rowLabel}>Radar opacity {Math.round(radarOpacity * 100)}%</Text>
+              <Text style={styles.rowLabel}>Radar opacity {Math.round((opacityDraft ?? radarOpacity) * 100)}%</Text>
               <Slider
                 minimumValue={0.1}
                 maximumValue={1}
                 step={0.05}
                 value={radarOpacity}
-                onValueChange={setRadarOpacity}
+                onValueChange={setOpacityDraft}
+                onSlidingComplete={(v) => { setOpacityDraft(null); setRadarOpacity(v); }}
                 minimumTrackTintColor={theme.colors.accent}
                 maximumTrackTintColor={theme.colors.divider}
                 thumbTintColor="#ffffff"
@@ -482,13 +486,14 @@ export default function SettingsScreen() {
             </View>
             <Sep />
             <View style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
-              <Text style={styles.rowLabel}>Playback {playbackSpeed} FPS</Text>
+              <Text style={styles.rowLabel}>Playback {fpsDraft ?? playbackSpeed} FPS</Text>
               <Slider
                 minimumValue={PLAYBACK_FPS_RANGE.min}
                 maximumValue={PLAYBACK_FPS_RANGE.max}
                 step={1}
                 value={playbackSpeed}
-                onValueChange={setPlaybackSpeed}
+                onValueChange={setFpsDraft}
+                onSlidingComplete={(v) => { setFpsDraft(null); setPlaybackSpeed(v); }}
                 minimumTrackTintColor={theme.colors.accent}
                 maximumTrackTintColor={theme.colors.divider}
                 thumbTintColor="#ffffff"

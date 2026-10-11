@@ -2,7 +2,7 @@
  * Cumulus Nowcast screen — 60-minute precipitation outlook.
  * Redesigned for Editorial Light. Gated cards in Simple/Advanced mode.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { ScrollView, View, Text, StyleSheet, RefreshControl, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -28,7 +28,7 @@ import {
   SectionLabel,
   SegmentedControl,
 } from "../components/ui/WeatherClearUI";
-import { useWeatherClearTheme } from "../theme/WeatherClearThemeProvider";
+import { createThemedStyles } from "../theme/themedStyles";
 import type { WeatherClearTheme } from "../theme/weatherClearTheme";
 import WeatherIcon from "../components/weather/WeatherIcon";
 import { RainAlertButton } from "../components/home/RainAlertButton";
@@ -37,12 +37,13 @@ import { describeNowcastSkill } from "../lib/nowcastSkill";
 import type { RadarNowcastPoint } from "../types/weather";
 import { readingColumnStyle } from "../lib/tabletLayout";
 
+const useStyles = createThemedStyles(createStyles);
+
 type Minute = { i: number; intensity: number };
 
 export default function NowcastScreen() {
   const router = useRouter();
-  const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { theme, styles } = useStyles();
   const activeLocation = useActiveLocation();
   const hasCoordinates = useWeatherStore((s) => s.latitude !== null);
   const viewMode = useWeatherStore((s) => s.viewMode);
@@ -434,8 +435,7 @@ export default function NowcastScreen() {
 }
 
 function NowcastChart({ minutes, dry }: { minutes: Minute[]; dry: boolean }) {
-  const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { theme, styles } = useStyles();
   const H = 140;
   const maxI = Math.max(0.5, ...minutes.map((m) => m.intensity));
   return (
@@ -496,8 +496,7 @@ function KeyCard({
   icon: Parameters<typeof WeatherIcon>[0]["kind"];
   color: string;
 }) {
-  const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { styles } = useStyles();
   return (
     <View
       accessible
@@ -527,8 +526,7 @@ function Row({
   children?: React.ReactNode;
   last?: boolean;
 }) {
-  const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { styles } = useStyles();
   return (
     <View style={[styles.row, last ? null : styles.rowBorder]}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -762,7 +760,7 @@ function createStyles(theme: WeatherClearTheme) {
     marginBottom: 10,
   },
   chartLabel: {
-    color: cumulus.inkMuted,
+    color: cumulus.inkDim,
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 1.2,
@@ -794,7 +792,7 @@ function createStyles(theme: WeatherClearTheme) {
     alignItems: "center",
   },
   dryChartText: {
-    color: cumulus.inkFaint,
+    color: cumulus.inkDim,
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 1.3,
@@ -814,7 +812,7 @@ function createStyles(theme: WeatherClearTheme) {
     marginTop: 8,
   },
   axisTick: {
-    color: cumulus.inkMuted,
+    color: cumulus.inkDim,
     fontSize: 10,
     fontWeight: "700",
     fontFamily: cumulusFonts.ui,
@@ -834,7 +832,7 @@ function createStyles(theme: WeatherClearTheme) {
   sectionWrap: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 10 },
   sectionHeader: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 10 },
   sectionTitle: {
-    color: cumulus.inkMuted,
+    color: cumulus.inkDim,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1.6,
@@ -867,7 +865,7 @@ function createStyles(theme: WeatherClearTheme) {
     justifyContent: "center",
   },
   keyLabel: {
-    color: cumulus.inkMuted,
+    color: cumulus.inkDim,
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 1.2,

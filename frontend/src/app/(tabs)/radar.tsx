@@ -119,7 +119,7 @@ export default function RadarScreen() {
         interactive
       >
         <Pressable
-          onPress={() => router.navigate("/")}
+          onPress={() => (router.canGoBack() ? router.back() : router.navigate("/"))}
           style={({ pressed }) => [styles.closeButton, pressed ? { opacity: 0.55 } : null]}
           accessibilityRole="button"
           accessibilityLabel="Close radar"

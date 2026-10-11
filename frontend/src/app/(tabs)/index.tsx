@@ -622,7 +622,7 @@ function createStyles(theme: WeatherClearTheme) {
     fontFamily: cumulusFonts.ui,
     fontSize: 11,
     fontWeight: "700",
-    color: cumulus.inkMuted,
+    color: cumulus.inkDim,
     letterSpacing: 1.6,
   },
   locationNameRow: {
@@ -774,7 +774,7 @@ function createStyles(theme: WeatherClearTheme) {
     paddingBottom: 10,
   },
   sectionTitle: {
-    color: cumulus.inkMuted,
+    color: cumulus.inkDim,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1.6,
@@ -803,7 +803,7 @@ function createStyles(theme: WeatherClearTheme) {
     borderColor: theme.colors.divider,
   },
   hourlyTime: {
-    color: cumulus.inkMuted,
+    color: cumulus.inkDim,
     fontSize: 11,
     fontWeight: "700",
     fontFamily: cumulusFonts.ui,
@@ -848,7 +848,7 @@ function createStyles(theme: WeatherClearTheme) {
     marginTop: 8,
   },
   axisLabel: {
-    color: cumulus.inkFaint,
+    color: cumulus.inkDim,
     fontSize: 9,
     fontWeight: "700",
     fontFamily: cumulusFonts.ui,

@@ -2,7 +2,6 @@
  * Alert Detail — Redesigned for Editorial Light.
  * Warm paper layout, high-contrast text, clear map coordinates projection.
  */
-import { useMemo } from "react";
 import { ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -13,11 +12,14 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { getAlertEndTime } from "../../lib/alertLifecycle";
 import { ScreenState } from "../../components/ui/WeatherClearUI";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
+import { createThemedStyles } from "../../theme/themedStyles";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { NWSAlert } from "../../types/weather";
 import { readingColumnStyle } from "../../lib/tabletLayout";
 import { PlainEnglish } from "../../components/map/MapInfoSheet";
 import { useAlertExplanation } from "../../hooks/useAlertExplanation";
+
+const useStyles = createThemedStyles(createStyles);
 
 /** Optional AI summary above the official text; renders nothing when AI is off or down. */
 function AlertExplanation({ alertId }: { alertId: string }) {
@@ -31,8 +33,7 @@ const ALERT_DETAIL_WIDTH = 640;
 export default function AlertDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { theme, styles } = useStyles();
   const alertData = useAlerts();
   const userLat = useWeatherStore((s) => s.latitude);
   const userLon = useWeatherStore((s) => s.longitude);
@@ -184,8 +185,7 @@ export default function AlertDetailScreen() {
 }
 
 function TimeCell({ label, value, accent }: { label: string; value: string; accent?: string }) {
-  const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { styles } = useStyles();
   return (
     <View style={styles.timeCell}>
       <Text style={styles.timeLabel}>{label}</Text>
@@ -205,8 +205,7 @@ function Section({
   tint?: string;
   children: React.ReactNode;
 }) {
-  const { theme } = useWeatherClearTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { styles } = useStyles();
   return (
     <View style={styles.section}>
       <Text style={styles.sectionLabel}>{label}</Text>
