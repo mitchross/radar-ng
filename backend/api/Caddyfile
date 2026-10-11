@@ -1,3 +1,13 @@
+# Cloudflare -> cloudflared -> Gateway all sit on private addresses and append
+# to X-Forwarded-For. Trusting them keeps X-Forwarded-Proto=https (absolute URLs
+# the API builds) and lets {client_ip} resolve right-to-left to the real client.
+{
+    servers {
+        trusted_proxies static private_ranges
+        trusted_proxies_strict
+    }
+}
+
 :8080 {
     # Radar/forecast tiles.
     # Observed MRMS frames (radar, radar-composite) are written exactly once
@@ -64,7 +74,9 @@
 
     # API endpoints (FastAPI)
     handle /api/* {
-        reverse_proxy 127.0.0.1:8000
+        reverse_proxy 127.0.0.1:8000 {
+            header_up X-Client-IP {client_ip}
+        }
     }
 
     # Workflow endpoints (FastAPI) — push tokens + storm watches live under
@@ -72,7 +84,9 @@
     # handle, Caddy answers /v1/* itself with an empty 200 and FastAPI never
     # sees the request.
     handle /v1/* {
-        reverse_proxy 127.0.0.1:8000
+        reverse_proxy 127.0.0.1:8000 {
+            header_up X-Client-IP {client_ip}
+        }
     }
 
     # Errors must never carry a cacheable Cache-Control. The header

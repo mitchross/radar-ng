@@ -343,7 +343,10 @@ async def mrms_process_frame(inp: ProcessFrameInput) -> ProcessFrameResult:
             return _download_and_decode_sync(client, inp.key, tmp_dir)
 
     try:
-        decoded = await asyncio.to_thread(_download)
+        # Download plus gunzip plus pygrib decode can pass the 60 s heartbeat timeout.
+        decoded = await run_sync_with_heartbeat(
+            _download, heartbeat_every=20, heartbeat_details={"phase": "download", "key": inp.key}
+        )
     except BaseException:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise
