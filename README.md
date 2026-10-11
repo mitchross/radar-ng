@@ -34,8 +34,8 @@ docker compose run --rm basemap-bootstrap   # one-time basemap fetch
 docker compose up -d
 ```
 
-First radar frame lands ~2 min later. Point the app at `http://<host>:8080` (or
-set it in Settings). Deploying to your own Kubernetes cluster and running the
+First radar frame lands ~2 min later. Point the app at `http://<host>:8080`
+(Settings → Advanced Mode → Stack URL). Deploying to your own Kubernetes cluster and running the
 app are covered in **[GETTING_STARTED.md](GETTING_STARTED.md)**.
 
 Prebuilt images: `ghcr.io/mitchross/radar-ng-{tile-server,temporal-worker,open-meteo-worker}`.

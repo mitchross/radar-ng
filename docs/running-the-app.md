@@ -54,10 +54,8 @@ EXPO_PUBLIC_CAROUSEL_WINDOW=1 bun run ios      # or: bun run android
 
 ## Connecting to a backend
 
-In the app: **Settings → Data Source**.
-
-- **Free tier** (default, zero setup): IEM NEXRAD radar tiles + public Open-Meteo + NWS alerts. Works out of the box, fewer layers, 5-min radar.
-- **Self-Hosted**: point at your own stack ([self-hosting.md](self-hosting.md)) and enter the URL:
+In the app: **Settings → Advanced Mode → Stack URL**. The app has no data-source
+toggle; it always talks to one stack ([self-hosting.md](self-hosting.md)). Enter the URL:
 
 | where the app runs | server URL |
 |---|---|

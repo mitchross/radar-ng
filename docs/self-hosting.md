@@ -121,7 +121,7 @@ docker compose logs -f worker   # look for "schedule seed complete" then "worker
 
 Build and run the app per [running-the-app.md](running-the-app.md), then in the app:
 
-**Settings → Data Source → Self-Hosted** and enter your server URL:
+**Settings → Advanced Mode → Stack URL** and enter your server URL:
 
 | where the app runs | server URL |
 |---|---|
