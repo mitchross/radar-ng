@@ -123,8 +123,12 @@ _rate_buckets: OrderedDict[str, tuple[float, float]] = OrderedDict()
 
 
 def _client_key(request: Request) -> str:
-    # Caddy APPENDS to X-Forwarded-For, so only the last hop is trustworthy;
-    # the first hop is client-controlled and would let one client dodge its bucket.
+    # Caddy resolves the real client (trusted_proxies, right-to-left) into
+    # X-Client-IP and overwrites any incoming copy. Without it, the last
+    # X-Forwarded-For hop is the only hop that is not client-controlled.
+    client_ip = request.headers.get("x-client-ip", "").strip()
+    if client_ip:
+        return client_ip
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
         return forwarded.rsplit(",", 1)[-1].strip() or "unknown"

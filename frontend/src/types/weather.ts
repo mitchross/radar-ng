@@ -29,6 +29,8 @@ type Maybe = number | null;
 export interface OpenMeteoResponse {
   latitude: number;
   longitude: number;
+  /** Seconds east of UTC at the location; every time string below is wall time in that zone with no offset. */
+  utc_offset_seconds?: number;
   current: {
     time: string;
     temperature_2m: Maybe;

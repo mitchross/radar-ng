@@ -42,7 +42,7 @@ export function hourlyPrecipitation(
   now = Date.now(),
   hours = 24,
 ): (number | null)[] {
-  const start = startHourIndex(forecast.hourly.time, now);
+  const start = startHourIndex(forecast.hourly.time, now, forecast.utc_offset_seconds);
   return Array.from({ length: hours }, (_, i) => {
     const v = forecast.hourly.precipitation[start + i];
     return v == null || !Number.isFinite(v) ? null : Math.max(0, v);

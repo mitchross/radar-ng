@@ -1,3 +1,4 @@
+import json
 import os
 
 import httpx
@@ -22,6 +23,7 @@ def upstream(monkeypatch):
     for cache in (routes_places._alerts_cache, routes_places._geocode_cache, routes_places._reverse_cache):
         cache.clear()
     monkeypatch.setattr(routes_places, "PHOTON_URL", "http://photon.test:2322")
+    monkeypatch.setattr(routes_places, "GEOCODER_URL", "")
     with TestClient(server.app) as client:
         server.app.state.forecast_http = httpx.AsyncClient(transport=httpx.MockTransport(dispatch))
         yield client, calls, state
@@ -145,6 +147,43 @@ def test_reverse_geocode_with_no_match_returns_null_place(upstream):
     assert resp.json() == {"place": None}
 
 
+GEOCODER_ROW = {"id": 4994358, "name": "Grand Rapids", "admin1": "Michigan", "admin1_code": "MI",
+                "country": "United States", "country_code": "US", "feature_code": "PPLA2",
+                "population": 195097, "timezone": "America/Detroit", "lat": 42.96336, "lon": -85.66809}
+
+
+def test_geocode_prefers_our_geocoder_and_keeps_app_shape(upstream, monkeypatch):
+    client, calls, state = upstream
+    monkeypatch.setattr(routes_places, "GEOCODER_URL", "http://geocoder-api.geocoder:8000")
+    state["handler"] = lambda req: httpx.Response(200, json={"query": "grand rap", "results": [GEOCODER_ROW, {"bad": 1}]})
+
+    resp = client.get("/api/geocode", params={"q": "grand  rap", "limit": 5})
+
+    assert resp.json()["results"] == [
+        {"id": 4994358, "name": "Grand Rapids", "latitude": 42.96336, "longitude": -85.66809,
+         "admin1": "Michigan", "country": "United States", "countryCode": "US"},
+    ]
+    assert calls[0].url.host == "geocoder-api.geocoder" and calls[0].url.path == "/v1/places"
+    assert calls[0].url.params["q"] == "grand rap" and calls[0].url.params["limit"] == "5"
+
+
+def test_reverse_geocode_via_our_geocoder_labels_the_requested_point(upstream, monkeypatch):
+    client, calls, state = upstream
+    monkeypatch.setattr(routes_places, "GEOCODER_URL", "http://geocoder-api.geocoder:8000")
+    state["handler"] = lambda req: httpx.Response(200, json={**GEOCODER_ROW, "km": 2.7})
+
+    resp = client.get("/api/reverse-geocode", params={"lat": 42.9634567, "lon": -85.6681234})
+
+    assert resp.json()["place"]["name"] == "Grand Rapids"
+    assert resp.json()["place"]["latitude"] == 42.963 and resp.json()["place"]["admin1"] == "Michigan"
+    assert calls[0].url.path == "/v1/reverse-place" and calls[0].url.params["lat"] == "42.963"
+
+    state["handler"] = lambda req: httpx.Response(404, json={"detail": "no place within 50 km"})
+    assert client.get("/api/reverse-geocode", params={"lat": 0.0, "lon": 0.0}).json() == {"place": None}
+    state["handler"] = lambda req: httpx.Response(500)
+    assert client.get("/api/reverse-geocode", params={"lat": 10.0, "lon": 10.0}).status_code == 502
+
+
 def test_geocoding_without_photon_is_503_and_makes_no_request(upstream, monkeypatch):
     client, calls, _ = upstream
     monkeypatch.setattr(routes_places, "PHOTON_URL", "")
@@ -171,6 +210,22 @@ def test_basemap_style_serves_absolute_self_hosted_glyphs(monkeypatch, tmp_path)
 
     assert style["glyphs"] == "http://radar.example/basemap/fonts/{fontstack}/{range}.pbf"
     assert style["sources"]["b"]["tiles"] == ["http://radar.example/basemap/tiles/{z}/{x}/{y}.mvt"]
+
+
+def test_basemap_style_keeps_https_from_forwarded_proto(monkeypatch, tmp_path):
+    # Caddy forwards X-Forwarded-Proto from trusted proxies; the app hands these
+    # URLs to MapLibre offline packs, so they must not fall back to http://.
+    (tmp_path / "positron.json").write_text(
+        json.dumps({"glyphs": "/basemap/fonts/{fontstack}/{range}.pbf", "sources": {"b": {"tiles": ["/basemap/tiles/{z}/{x}/{y}.mvt"]}}})
+    )
+    monkeypatch.setattr(server, "STYLE_DIR", str(tmp_path))
+    with TestClient(server.app) as client:
+        style = client.get(
+            "/api/basemap/style/positron",
+            headers={"host": "radar.example", "x-forwarded-proto": "https", "x-forwarded-host": "radar-ng-api.vanillax.me"},
+        ).json()
+    assert style["glyphs"].startswith("https://radar-ng-api.vanillax.me/")
+    assert style["sources"]["b"]["tiles"] == ["https://radar-ng-api.vanillax.me/basemap/tiles/{z}/{x}/{y}.mvt"]
 
 
 def test_bundled_styles_reference_no_external_hosts():

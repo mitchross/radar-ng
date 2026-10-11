@@ -20,7 +20,13 @@ def _request(headers: dict | None = None, route_path: str | None = None, client_
     )
 
 
-def test_client_key_uses_last_forwarded_hop():
+def test_client_key_prefers_caddy_client_ip():
+    # Caddy sets X-Client-IP from trusted_proxies; the gateway hop must not be the key.
+    request = _request({"x-client-ip": "198.51.100.4", "x-forwarded-for": "198.51.100.4, 10.244.4.244, 10.244.4.148"})
+    assert server._client_key(request) == "198.51.100.4"
+
+
+def test_client_key_uses_last_forwarded_hop_without_client_ip():
     # Caddy appends; the first hop is attacker-chosen.
     request = _request({"x-forwarded-for": "1.2.3.4, 203.0.113.7"})
     assert server._client_key(request) == "203.0.113.7"

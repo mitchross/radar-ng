@@ -72,7 +72,7 @@ Verify (first radar frame lands ~2 min after boot):
 ```bash
 curl localhost:8080/api/livez     # 200 once Caddy + FastAPI answer
 curl localhost:8080/api/health    # "degraded" until the first frame, then "ok"
-curl localhost:8080/api/manifest  # layers appearing
+curl localhost:8080/api/manifest.json  # layers appearing
 ```
 
 Then [point the app](#running-the-app) at `http://<your-host>:8080`.
@@ -133,7 +133,7 @@ bunx expo start        # scan the QR with Expo Go, or press i / a for a simulato
 
 Point it at your server one of two ways:
 
-- **In-app (no rebuild):** open **Settings → Server URL** and enter your API base (`http://<host>:8080` for compose, or your ingress URL like `https://radar-ng-api.example.com`).
+- **In-app (no rebuild):** open **Settings → Advanced Mode → Stack URL** and enter your API base (`http://<host>:8080` for compose, or your ingress URL like `https://radar-ng-api.example.com`).
 - **Change the default:** edit `SELF_HOSTED.DEFAULT_URL` in [`frontend/src/lib/constants.ts`](frontend/src/lib/constants.ts) and rebuild.
 
 For device builds, CarPlay, and Apple Watch, see

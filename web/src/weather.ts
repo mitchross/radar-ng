@@ -4,6 +4,8 @@
  */
 
 export interface Forecast {
+  /** Seconds east of UTC at the location; `hourly.time` etc. are wall times there with no offset. */
+  utc_offset_seconds?: number;
   current: {
     temperature_2m: number | null;
     apparent_temperature: number | null;
@@ -51,6 +53,24 @@ async function json<T>(url: string, signal?: AbortSignal): Promise<T> {
 const round = (v: number, dp: number) => Number(v.toFixed(dp));
 
 export const fetchManifest = (signal?: AbortSignal) => json<import("./frames").Manifest>("/api/manifest.json", signal);
+
+const WALL_TIME = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/;
+
+/** Open-Meteo wall time at the location → epoch ms. Falls back to the browser zone without an offset. */
+export function forecastTimeMs(value: string, utcOffsetSeconds?: number): number {
+  const m = utcOffsetSeconds == null ? null : WALL_TIME.exec(value);
+  if (!m || utcOffsetSeconds == null) return Date.parse(value);
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0)) - utcOffsetSeconds * 1000;
+}
+
+/** "3pm" in the location's zone, not the browser's. */
+export function forecastHourLabel(value: string, utcOffsetSeconds?: number): string {
+  if (utcOffsetSeconds == null) return new Date(value).toLocaleTimeString([], { hour: "numeric" }).replace(" ", "").toLowerCase();
+  const h = new Date(forecastTimeMs(value, utcOffsetSeconds) + utcOffsetSeconds * 1000).getUTCHours();
+  if (h === 0) return "12am";
+  if (h === 12) return "12pm";
+  return h < 12 ? `${h}am` : `${h - 12}pm`;
+}
 
 export const fetchForecast = (lat: number, lon: number, signal?: AbortSignal) =>
   json<Forecast>(`/api/forecast/${round(lat, 2)}/${round(lon, 2)}`, signal);

@@ -402,7 +402,12 @@ async def aqm_render_chunk(run_id: str, layer: str, start_msg: int) -> AqmChunkR
         raise RuntimeError(f"no AQM source for {run_id}")
 
     try:
-        grib_path = await asyncio.to_thread(_download)
+        # 50-90 MB GRIBs can outlast the 120 s heartbeat timeout on a slow link.
+        grib_path = await run_sync_with_heartbeat(
+            _download,
+            heartbeat_every=30,
+            heartbeat_details={"phase": "download", "layer": layer, "start_msg": start_msg},
+        )
         activity.heartbeat({"phase": "render", "layer": layer, "start_msg": start_msg})
         result = await run_sync_with_heartbeat(
             _render_chunk_sync,

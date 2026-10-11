@@ -8,8 +8,9 @@ runtime. These routes source public data server-side and hand it back:
   re-implement it; the response is the NWS GeoJSON unchanged.
 - GET /api/alerts/map                 — every active alert that has its own polygon
   (storm-based warnings), slimmed for drawing on the map.
-- GET /api/geocode?q=                 — place search via a self-hosted Photon.
-- GET /api/reverse-geocode?lat=&lon=  — nearest place name via the same Photon.
+- GET /api/geocode?q=                 — place search via the self-hosted geocoder
+                                        (GEOCODER_URL), or Photon (PHOTON_URL).
+- GET /api/reverse-geocode?lat=&lon=  — the place a point belongs to, same source.
 
 Upstream failures are 502 with `no-store`, never a cached or empty body: an
 empty alert list must only ever mean "NWS said there are none".
@@ -30,8 +31,10 @@ NWS_USER_AGENT = os.environ.get("NWS_USER_AGENT", "(radar-ng, admin@example.com)
 ALERTS_TTL_S = int(os.environ.get("ALERTS_TTL_S", "60"))
 ALERTS_CACHE_MAX_ENTRIES = int(os.environ.get("ALERTS_CACHE_MAX_ENTRIES", "1024"))
 
-# Photon base URL, e.g. http://photon.photon.svc.cluster.local:2322. Unset means
-# this deployment has no geocoder; the routes answer 503 instead of reaching out.
+# Our geocoder (gitea geocoder repo: /v1/places, /v1/reverse-place) wins over
+# Photon when both are set. Neither set means this deployment has no geocoder;
+# the routes answer 503 instead of reaching out.
+GEOCODER_URL = os.environ.get("GEOCODER_URL", "").rstrip("/")
 PHOTON_URL = os.environ.get("PHOTON_URL", "").rstrip("/")
 GEOCODE_TTL_S = int(os.environ.get("GEOCODE_TTL_S", "86400"))
 GEOCODE_CACHE_MAX_ENTRIES = int(os.environ.get("GEOCODE_CACHE_MAX_ENTRIES", "1024"))
@@ -203,19 +206,50 @@ def _place_from_feature(feature: dict, *, reverse: bool) -> dict | None:
     }
 
 
+def _place_from_geocoder(row: dict) -> dict | None:
+    """geocoder /v1/places row → the app's SelectedPlace shape."""
+    try:
+        return {
+            "id": int(row["id"]),
+            "name": str(row["name"]),
+            "latitude": float(row["lat"]),
+            "longitude": float(row["lon"]),
+            "admin1": row.get("admin1"),
+            "country": row.get("country"),
+            "countryCode": row.get("country_code"),
+        }
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 @router.get("/api/geocode")
 async def geocode(
     request: Request,
     q: str = Query(..., min_length=2, max_length=100),
     limit: int = Query(8, ge=1, le=20),
 ) -> JSONResponse:
-    if not PHOTON_URL:
+    if not (GEOCODER_URL or PHOTON_URL):
         return _not_configured()
     query = " ".join(q.split())
     key = f"{query.lower()}|{limit}"
     cached = _geocode_cache.get(key)
     if cached is not None:
         return JSONResponse(cached, headers={"Cache-Control": "public, max-age=3600"})
+
+    if GEOCODER_URL:
+        try:
+            resp = await _client(request).get(
+                f"{GEOCODER_URL}/v1/places",
+                params={"q": query, "limit": str(limit)},
+                timeout=UPSTREAM_TIMEOUT_S,
+            )
+            resp.raise_for_status()
+            rows = resp.json().get("results", [])
+        except (httpx.HTTPError, ValueError, AttributeError):
+            return _upstream_error()
+        body = {"results": [p for p in (_place_from_geocoder(r) for r in rows) if p]}
+        _geocode_cache.put(key, body)
+        return JSONResponse(body, headers={"Cache-Control": "public, max-age=3600"})
 
     try:
         resp = await _client(request).get(
@@ -245,13 +279,32 @@ async def geocode(
 
 @router.get("/api/reverse-geocode")
 async def reverse_geocode(request: Request, lat: float, lon: float) -> JSONResponse:
-    if not PHOTON_URL:
+    if not (GEOCODER_URL or PHOTON_URL):
         return _not_configured()
     _validate_point(lat, lon)
     key = f"{round(lat, 3)},{round(lon, 3)}"
     cached = _reverse_cache.get(key)
     if cached is not None:
         return JSONResponse(cached, headers={"Cache-Control": "public, max-age=3600"})
+
+    if GEOCODER_URL:
+        try:
+            resp = await _client(request).get(
+                f"{GEOCODER_URL}/v1/reverse-place",
+                params={"lat": str(round(lat, 3)), "lon": str(round(lon, 3))},
+                timeout=UPSTREAM_TIMEOUT_S,
+            )
+            # 404 is a real answer: nothing populated within range (open ocean).
+            place = None if resp.status_code == 404 else _place_from_geocoder(resp.json()) if resp.is_success else None
+            if not resp.is_success and resp.status_code != 404:
+                return _upstream_error()
+        except (httpx.HTTPError, ValueError, AttributeError):
+            return _upstream_error()
+        if place:
+            place["latitude"], place["longitude"] = round(lat, 3), round(lon, 3)
+        body = {"place": place}
+        _reverse_cache.put(key, body)
+        return JSONResponse(body, headers={"Cache-Control": "public, max-age=3600"})
 
     try:
         resp = await _client(request).get(
