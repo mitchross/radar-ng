@@ -15,7 +15,7 @@ import { useRadarNowcast } from "../../hooks/useRadarNowcast";
 import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { getAlertEndTime } from "../../lib/alertLifecycle";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
-import { useWeatherStore } from "../../stores/useWeatherStore";
+import { DEFAULT_PLACE, useWeatherStore } from "../../stores/useWeatherStore";
 import {
   CONDITION_GRADIENTS,
   getCumulusCondition,
@@ -41,6 +41,8 @@ import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import WeatherIcon from "../../components/weather/WeatherIcon";
 import { RadarMiniMap } from "../../components/home/RadarMiniMap";
+import { LocationPermissionCard } from "../../components/home/LocationPermissionCard";
+import { requestDeviceLocation } from "../../hooks/useLocation";
 import { ConditionTiles } from "../../components/home/ConditionTiles";
 import { AiBriefingCard } from "../../components/home/AiBriefingCard";
 import { IncomingStormCard } from "../../components/home/IncomingStormCard";
@@ -257,7 +259,14 @@ export default function HomeScreen() {
               onChange={setViewMode}
             />
           </View>
-          {location.notice ? (
+          {location.permission ? (
+            <LocationPermissionCard
+              kind={location.permission}
+              fallbackName={DEFAULT_PLACE.name}
+              onAllow={() => void requestDeviceLocation()}
+              onChooseCity={() => router.push("/settings")}
+            />
+          ) : location.notice ? (
             <Text
               accessibilityRole={location.isFallback ? "alert" : undefined}
               style={styles.staleNotice}

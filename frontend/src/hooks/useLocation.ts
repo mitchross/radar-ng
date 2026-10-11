@@ -23,6 +23,8 @@ let inFlight: Promise<void> | null = null;
 
 /**
  * One device-location pass: permission, cached fix, then a bounded fresh fix.
+ * `prompt` raises the OS permission dialog; only the Home pre-prompt card's
+ * "Allow" action does, so launch never surprises the user with it.
  * `userInitiated` (the Locate button) is the only case allowed to raise
  * Android's "turn on Location Accuracy" dialog; automatic launch and
  * foreground fixes must not nag with it every time.
@@ -33,11 +35,11 @@ function locateDevice(prompt: boolean, userInitiated = false): Promise<void> {
 
   inFlight = (async () => {
     try {
-      const { status } = prompt
+      const { status, canAskAgain } = prompt
         ? await Location.requestForegroundPermissionsAsync()
         : await Location.getForegroundPermissionsAsync();
       if (status !== "granted") {
-        store().applyLocationFailure("denied");
+        store().applyLocationFailure(!prompt && canAskAgain ? "undetermined" : "denied");
         return;
       }
 
@@ -88,7 +90,7 @@ export function useLocationController() {
       if (selectedPlace) useWeatherStore.getState().setLocation(selectedPlace.latitude, selectedPlace.longitude);
       return;
     }
-    void locateDevice(true);
+    void locateDevice(false);
     const subscription = AppState.addEventListener("change", (state) => {
       if (state !== "active") return;
       if (shouldRefreshFix(useWeatherStore.getState().lastFixAt)) void locateDevice(false);
@@ -114,4 +116,9 @@ export function useLocationController() {
 /** Take a fresh device fix now (the Locate button), without prompting for permission again. */
 export function refreshDeviceLocation(): void {
   if (useWeatherStore.getState().locationMode === "device") void locateDevice(false, true);
+}
+
+/** The pre-prompt card's "Allow": raise the OS permission dialog, then take a fix. */
+export function requestDeviceLocation(): Promise<void> {
+  return locateDevice(true, true);
 }

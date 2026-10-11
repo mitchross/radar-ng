@@ -73,7 +73,7 @@ interface WeatherState {
   setDevicePlace: (place: SelectedPlace | null) => void;
   useDeviceLocation: () => void;
   applyDeviceFix: (lat: number, lon: number, at: number) => void;
-  applyLocationFailure: (reason: "denied" | "unavailable") => void;
+  applyLocationFailure: (reason: "denied" | "undetermined" | "unavailable") => void;
   requestRecenter: () => void;
   setFocusBounds: (bounds: [number, number, number, number] | null) => void;
   setRadarOpacity: (opacity: number) => void;
@@ -252,7 +252,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
       set({ locationStatus: "last-known" });
       return;
     }
-    if (reason === "denied") setString(LAST_DEVICE_FIX_KEY, "");
+    if (reason !== "unavailable") setString(LAST_DEVICE_FIX_KEY, "");
     set({
       latitude: DEFAULT_PLACE.latitude,
       longitude: DEFAULT_PLACE.longitude,

@@ -56,4 +56,9 @@ describe("honest location labels", () => {
     expect(locationNotice("device", "live", "Grand Rapids")).toBeNull();
     expect(locationNotice("city", "denied", "Grand Rapids")).toBeNull();
   });
+
+  it("treats an unasked permission as the fallback city, explained by the Home card rather than a notice", () => {
+    expect(isFallbackLocation("device", "undetermined")).toBe(true);
+    expect(locationNotice("device", "undetermined", "Grand Rapids")).toBeNull();
+  });
 });
