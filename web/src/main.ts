@@ -36,6 +36,7 @@ import { RAIN_ALERT_LEAD_OPTIONS } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
 import { startPeriodic } from "./refresh";
+import { observedFrameTime, radarNoticeCopy, radarStatus } from "./radarStatus";
 
 const rainAlerts = new BrowserRainAlerts();
 /** iOS Safari exposes Notification only to pages installed on the Home Screen. */
@@ -117,6 +118,9 @@ const state = {
   ai: stored<boolean>("rng.ai", true),
   zoom: "1h" as Zoom,
   manifest: null as Manifest | null,
+  /** True until the first manifest poll settles. */
+  manifestLoading: true,
+  manifestFailed: false,
   frames: [] as Frame[],
   seq: [] as number[],
   pos: 0,
@@ -342,13 +346,45 @@ async function refreshManifest() {
   try {
     const keepTime = refreshKeepTime(currentFrame(), latestObserved(), state.playing);
     state.manifest = await fetchManifest();
+    state.manifestFailed = false;
     renderChips();
     if (!LAYERS.some((l) => l.id === state.layer && layerAvailable(l.needs))) state.layer = "radar";
     rebuildFrames(keepTime);
   } catch (err) {
-    toast("Couldn't reach the radar server");
+    state.manifestFailed = true;
     console.error(err);
+  } finally {
+    state.manifestLoading = false;
+    renderRadarStatus();
   }
+}
+
+let noticeKey = "";
+
+/** The freshness chip and, when the chip alone can't explain it, the notice with Retry. */
+function renderRadarStatus() {
+  const status = radarStatus({
+    frameTimeSeconds: observedFrameTime(state.manifest, nowSec()),
+    refreshFailed: state.manifestFailed,
+    loading: state.manifestLoading,
+  });
+  const chip = $("live");
+  chip.hidden = false;
+  chip.dataset.tone = status.tone;
+  chip.textContent = status.label;
+  chip.setAttribute("aria-label", status.accessibilityLabel);
+  const notice = $("radar-notice");
+  // The boot error card already explains a dead API.
+  const copy = $("boot-error").hidden ? radarNoticeCopy(status, state.frames.length > 0) : null;
+  notice.hidden = !copy;
+  const key = copy ? `${copy.title}|${copy.retry}` : "";
+  if (!copy || key === noticeKey) return;
+  noticeKey = key;
+  notice.setAttribute("role", copy.retry ? "alert" : "status");
+  notice.innerHTML =
+    `<span class="${copy.retry ? "mark" : "spinner"}" aria-hidden="true"></span>` +
+    `<div><b>${escapeHtml(copy.title)}</b><p>${escapeHtml(copy.message)}</p></div>` +
+    (copy.retry ? `<button id="radar-retry" class="retry" aria-label="Retry loading radar">Retry</button>` : "");
 }
 
 function layerAvailable(key: string) {
@@ -408,14 +444,6 @@ function renderTimeline() {
   $("frame-title").textContent = `${layerName} · ${mode}`;
   $("frame-time").textContent = `${TIME_FMT.format(new Date(frame.time * 1000))}${source}`;
   slider.setAttribute("aria-valuetext", `${mode}, ${TIME_FMT.format(new Date(frame.time * 1000))}`);
-  const live = latestObserved();
-  const pill = $("live");
-  if (state.layer === "radar" && live) {
-    const ageMin = Math.max(0, Math.round((nowSec() - live.time) / 60));
-    pill.hidden = false;
-    pill.classList.toggle("stale", ageMin > 10);
-    pill.textContent = frame === live ? `Live · ${ageMin} min ago` : `Live ${ageMin}m`;
-  } else pill.hidden = true;
 }
 
 function renderAxis() {
@@ -1056,12 +1084,14 @@ overlays.onStorms = renderThreat;
 /** The basemap style is the one boot request that cannot be retried later; without it the page is blank. */
 async function boot() {
   $("boot-error").hidden = true;
+  renderRadarStatus();
   try {
     map.setStyle(await loadStyle(state.mapStyle));
   } catch (err) {
     console.error(err);
     $("boot-error").hidden = false;
     $("panel-body").innerHTML = '<p class="muted">The radar API is unreachable.</p>';
+    renderRadarStatus();
     return;
   }
   await refreshManifest();
@@ -1070,8 +1100,11 @@ async function boot() {
   if (state.wind) setOverlay("wind", true);
   void renderForecast();
   window.setInterval(refreshManifest, MANIFEST_POLL_MS);
-  // Keep "Live · N min ago" honest between manifest polls.
-  window.setInterval(renderTimeline, 30_000);
+  // Keep "Now" and the radar age honest between manifest polls.
+  window.setInterval(() => {
+    renderTimeline();
+    renderRadarStatus();
+  }, 30_000);
   window.setInterval(() => void renderBriefing(), 10 * 60_000);
   window.setInterval(() => void renderNextHour(), 60_000);
   startPeriodic(() => void renderForecast(true), FORECAST_REFRESH_MS);
@@ -1079,6 +1112,14 @@ async function boot() {
 }
 
 $("boot-retry").addEventListener("click", () => void boot());
+$("radar-notice").addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>("#radar-retry");
+  if (!b) return;
+  b.disabled = true;
+  noticeKey = "";
+  void refreshManifest();
+});
 document.documentElement.dataset.map = state.mapStyle;
 renderChips();
+renderRadarStatus();
 void boot();
