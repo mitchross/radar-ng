@@ -31,6 +31,7 @@ import {
 import { useWeatherClearTheme } from "../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../theme/weatherClearTheme";
 import WeatherIcon from "../components/weather/WeatherIcon";
+import { RainAlertButton } from "../components/home/RainAlertButton";
 import { interpolateRadarNowcast } from "../lib/radarNowcast";
 import { describeNowcastSkill } from "../lib/nowcastSkill";
 import type { RadarNowcastPoint } from "../types/weather";
@@ -255,6 +256,11 @@ export default function NowcastScreen() {
                 {skill.sentence}
                 {skill.beatsPersistence === false ? "  \u00B7  no better than a still radar" : ""}
               </Text>
+            ) : null}
+            {rainStart >= 0 ? (
+              <View style={styles.heroActions}>
+                <RainAlertButton />
+              </View>
             ) : null}
           </View>
 
@@ -664,6 +670,7 @@ function createStyles(theme: WeatherClearTheme) {
     fontWeight: "500",
   },
   heroStrong: { color: cumulus.ink, fontWeight: "600" },
+  heroActions: { flexDirection: "row", marginTop: 14 },
   heroDim: { color: cumulus.inkFaint },
   heroSkill: {
     color: cumulus.inkMuted,

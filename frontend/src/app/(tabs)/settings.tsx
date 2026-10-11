@@ -35,7 +35,7 @@ import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { SELF_HOSTED } from "../../lib/constants";
 import { PLAYBACK_FPS_RANGE } from "../../lib/persistedPrefs";
 import { RAIN_ALERT_LEAD_OPTIONS, parseRainAlertLead } from "../../lib/rainAlerts";
-import { ensureNotificationPermission } from "../../lib/rainAlertScheduler";
+import { useRainAlertOptIn } from "../../hooks/useRainAlertOptIn";
 import { isCleartextToPublicHost } from "../../lib/networkSafety";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
@@ -73,24 +73,9 @@ export default function SettingsScreen() {
   const setMapStyle = useWeatherStore((s) => s.setMapStyle);
   const aiNarration = useWeatherStore((s) => s.aiNarration);
   const setAiNarration = useWeatherStore((s) => s.setAiNarration);
-  const rainAlertsEnabled = useWeatherStore((s) => s.rainAlertsEnabled);
-  const setRainAlertsEnabled = useWeatherStore((s) => s.setRainAlertsEnabled);
+  const { enabled: rainAlertsEnabled, blocked: rainAlertsBlocked, setRainAlerts } = useRainAlertOptIn();
   const rainAlertLeadMinutes = useWeatherStore((s) => s.rainAlertLeadMinutes);
   const setRainAlertLeadMinutes = useWeatherStore((s) => s.setRainAlertLeadMinutes);
-  const [rainAlertsBlocked, setRainAlertsBlocked] = useState(false);
-  const onRainAlertsChange = useCallback(
-    async (on: boolean) => {
-      if (!on) {
-        setRainAlertsEnabled(false);
-        setRainAlertsBlocked(false);
-        return;
-      }
-      const granted = await ensureNotificationPermission(true);
-      setRainAlertsBlocked(!granted);
-      setRainAlertsEnabled(granted);
-    },
-    [setRainAlertsEnabled],
-  );
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
   const setTemperatureUnit = useWeatherStore((s) => s.setTemperatureUnit);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
@@ -409,7 +394,7 @@ export default function SettingsScreen() {
               label="Rain starting soon"
               sub="A notification before radar rain reaches you, planned on this phone from your own server. No push service, no account."
               value={rainAlertsEnabled}
-              onChange={(v) => void onRainAlertsChange(v)}
+              onChange={(v) => void setRainAlerts(v)}
             />
             {rainAlertsBlocked ? (
               <>

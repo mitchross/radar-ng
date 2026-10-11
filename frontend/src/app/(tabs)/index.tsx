@@ -42,6 +42,7 @@ import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import WeatherIcon from "../../components/weather/WeatherIcon";
 import { RadarMiniMap } from "../../components/home/RadarMiniMap";
 import { LocationPermissionCard } from "../../components/home/LocationPermissionCard";
+import { RainAlertButton } from "../../components/home/RainAlertButton";
 import { requestDeviceLocation } from "../../hooks/useLocation";
 import { ConditionTiles } from "../../components/home/ConditionTiles";
 import { AiBriefingCard } from "../../components/home/AiBriefingCard";
@@ -324,7 +325,7 @@ export default function HomeScreen() {
                 <Text style={styles.nowcastHeadline}>{nowcastBanner.headline}</Text>
                 <Text style={styles.nowcastSub}>{nowcastBanner.sub}</Text>
               </View>
-              <Text style={styles.chevron}>{"\u203A"}</Text>
+              <RainAlertButton />
             </Pressable>
           ) : null}
 
