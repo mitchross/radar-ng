@@ -651,9 +651,12 @@ async function renderNextHour() {
   const skill = describeNowcastSkill(nowcast?.skill);
   const minutes = interpolateNowcast(points);
   const peak = Math.max(0.1, ...minutes);
+  // Same call to action as the app's rain banner: rain within the hour and alerts not on yet.
+  const offerAlerts = !rainAlerts.enabled && rainAlerts.supported && minutes.some((v) => v > 0.08);
   el.hidden = false;
   el.innerHTML =
     `<div class="section-label">NEXT HOUR</div><p class="nexthour-verdict">${escapeHtml(nowcastVerdict(minutes))}</p>` +
+    (offerAlerts ? `<button id="notify-me" class="notify">Notify me before rain</button>` : "") +
     (skill ? `<p class="hint">${escapeHtml(skill.sentence)}${skill.beatsPersistence === false ? " · no better than a still radar" : ""}</p>` : "") +
     `<div class="minutebars">${minutes.map((v) => `<i class="${v > 0.01 ? "" : "dry"}" style="height:${v > 0.01 ? Math.max(8, (v / peak) * 100) : 6}%"></i>`).join("")}</div>` +
     `<div class="minute-axis"><span>Now</span><span>15m</span><span>30m</span><span>45m</span><span>60m</span></div>`;
@@ -816,8 +819,18 @@ function choose(p: Place) {
 }
 
 $("panel-body").addEventListener("click", (e) => {
-  if ((e.target as HTMLElement).closest("#forecast-retry")) void renderForecast();
+  const t = e.target as HTMLElement;
+  if (t.closest("#forecast-retry")) void renderForecast();
+  else if (t.closest("#notify-me")) void enableRainAlerts();
 });
+
+/** The sheet toggle and the next-hour button share one path, so the hint and card stay in step. */
+async function enableRainAlerts() {
+  await rainAlerts.setEnabled(true);
+  if (!rainAlerts.enabled) toast(rainAlerts.message);
+  renderSheet();
+  void renderNextHour();
+}
 
 $("panel-toggle").addEventListener("click", () => {
   const panel = $("panel");
@@ -932,7 +945,8 @@ $("sheet-body").addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement;
   if (el.id === "rain-alerts") {
     el.disabled = true;
-    void rainAlerts.setEnabled(el.checked).then(() => {
+    if (el.checked) void enableRainAlerts();
+    else void rainAlerts.setEnabled(false).then(() => {
       renderSheet();
       void renderNextHour();
     });

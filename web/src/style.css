@@ -156,8 +156,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 4px; font-variant-numeric: tabular-nums; }
 .axis .now-label { color: #2e9a5b; font-weight: 700; }
 
-.retry { margin-top: 10px; padding: 8px 14px; border-radius: 10px; border: none; background: var(--accent); color: #fff; font-weight: 600; }
+.retry, .notify { margin-top: 10px; padding: 8px 14px; border-radius: 10px; border: none; background: var(--accent); color: #fff; font-weight: 600; }
 .boot-error { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 21; width: min(360px, calc(100vw - 32px)); padding: 18px 20px; border-radius: 18px; text-align: center; }
+.notify { margin: 0 0 10px; }
 .boot-error p { margin: 6px 0 0; font-size: 14px; }
 
 .toast { position: fixed; left: 50%; transform: translateX(-50%); top: 16px; z-index: 20; padding: 10px 14px; border-radius: 12px; background: var(--surface-solid); border: 1px solid var(--border); box-shadow: var(--shadow); font-size: 14px; }
