@@ -16,7 +16,7 @@ import {
 } from "../lib/persistedPrefs";
 import type { AppearanceMode } from "../theme/weatherClearTheme";
 import type { PlaybackWindow } from "../lib/radarCarousel";
-import { resnapFrameIndex } from "../lib/frameIndex";
+import { resnapFrameIndex, sameFrames } from "../lib/frameIndex";
 import { roundCoord } from "../lib/coordinates";
 import { DEFAULT_RAIN_ALERT_LEAD, parseRainAlertLead, type RainAlertLeadMinutes } from "../lib/rainAlerts";
 import { parseDeviceFix, statusForFix, type LocationStatus } from "../lib/locationStatus";
@@ -177,6 +177,8 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
 
   setFrameTimeline: (frames, fallbackIndex) =>
     set((state) => {
+      // An unchanged poll keeps the same array so subscribers see no new timeline.
+      if (sameFrames(state.frames, frames)) return state;
       if (frames.length === 0) return { frames, currentFrameIndex: -1 };
 
       const previousTime = state.frames[state.currentFrameIndex]?.time ?? null;
