@@ -2,6 +2,8 @@
  * Next-hour rain from the per-point MRMS nowcast — same interpolation and verdict
  * rules as the app (frontend/src/lib/radarNowcast.ts, weatherPresentation.ts).
  */
+import { rainHeadline } from "./shared/conditions";
+
 export interface NowcastPoint {
   lead_minutes: number | null;
   precipitation_mm_h: number;
@@ -35,4 +37,11 @@ export function nowcastVerdict(values: number[]): string {
   return start === 0
     ? `Raining now, peaks at ${peak} minutes, and ends near ${end} minutes.`
     : `Rain starts in ${start} minutes, peaks at ${peak} minutes, and ends near ${end} minutes.`;
+}
+
+/** The card's headline when rain is here or starting within the hour, as the app's rain banner says it. */
+export function nextHourHeadline(values: number[]): string | null {
+  const start = values.findIndex((v) => v > 0.08);
+  if (start < 0) return null;
+  return rainHeadline(values.some((v) => v > 0.3), start);
 }

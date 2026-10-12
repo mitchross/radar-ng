@@ -108,3 +108,35 @@ it("reschedules when the warning lead changes", async () => {
   vi.advanceTimersByTime(1);
   expect(delivered).toHaveBeenCalledOnce();
 });
+
+it("delivers through the service worker registration when one exists", async () => {
+  const showNotification = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { serviceWorker: { register: vi.fn().mockResolvedValue({ showNotification }) } });
+  const alerts = new BrowserRainAlerts();
+  await alerts.setEnabled(true);
+  alerts.sync(nowcast, "Boston");
+  await vi.runAllTimersAsync();
+  expect(showNotification).toHaveBeenCalledOnce();
+  expect(showNotification.mock.calls[0][1].tag).toBe("radar-ng-rain");
+  expect(delivered).not.toHaveBeenCalled();
+});
+
+it("falls back to new Notification when the service worker cannot register", async () => {
+  vi.stubGlobal("navigator", { serviceWorker: { register: vi.fn().mockRejectedValue(new Error("insecure")) } });
+  const alerts = new BrowserRainAlerts();
+  await alerts.setEnabled(true);
+  alerts.sync(nowcast, "Boston");
+  await vi.runAllTimersAsync();
+  expect(delivered).toHaveBeenCalledOnce();
+});
+
+it("reports when the registration refuses to show the notification", async () => {
+  const showNotification = vi.fn().mockRejectedValue(new TypeError("blocked"));
+  vi.stubGlobal("navigator", { serviceWorker: { register: vi.fn().mockResolvedValue({ showNotification }) } });
+  const alerts = new BrowserRainAlerts();
+  await alerts.setEnabled(true);
+  alerts.sync(nowcast, "Boston");
+  await vi.runAllTimersAsync();
+  expect(alerts.message).toContain("cannot deliver alerts");
+  expect(localStorage.getItem("rng.rainAlerts.last")).toBeNull();
+});

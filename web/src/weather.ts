@@ -72,6 +72,18 @@ export function forecastHourLabel(value: string, utcOffsetSeconds?: number): str
   return h < 12 ? `${h}am` : `${h - 12}pm`;
 }
 
+/** Night at the location: outside that day's sunrise–sunset, else 20:00–06:00. Mirrors the app's isNightAt. */
+export function isNightAt(atMs: number, daily: Pick<Forecast["daily"], "time" | "sunrise" | "sunset">, utcOffsetSeconds?: number): boolean {
+  const offset = utcOffsetSeconds ?? -new Date(atMs).getTimezoneOffset() * 60;
+  const wall = new Date(atMs + offset * 1000);
+  const i = daily.time.indexOf(wall.toISOString().slice(0, 10));
+  const rise = i >= 0 && daily.sunrise[i] ? forecastTimeMs(daily.sunrise[i], utcOffsetSeconds) : NaN;
+  const set = i >= 0 && daily.sunset[i] ? forecastTimeMs(daily.sunset[i], utcOffsetSeconds) : NaN;
+  if (Number.isFinite(rise) && Number.isFinite(set)) return atMs < rise || atMs > set;
+  const hour = wall.getUTCHours();
+  return hour < 6 || hour >= 20;
+}
+
 export const fetchForecast = (lat: number, lon: number, signal?: AbortSignal) =>
   json<Forecast>(`/api/forecast/${round(lat, 2)}/${round(lon, 2)}`, signal);
 
