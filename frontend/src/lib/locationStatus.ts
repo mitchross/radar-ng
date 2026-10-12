@@ -9,6 +9,7 @@ export type LocationStatus =
   | "locating" // no fix yet this session and nothing persisted
   | "live" // a fresh fix from this session
   | "last-known" // a persisted or OS-cached fix; possibly stale
+  | "undetermined" // permission never asked (or still askable); showing the fallback city
   | "denied" // permission refused; showing the fallback city
   | "unavailable"; // no fix could be obtained; showing the fallback city
 
@@ -52,7 +53,7 @@ export function shouldRefreshFix(lastFixAt: number | null, now = Date.now()): bo
 
 /** True when the shown coordinates are the fallback city, not the user's position. */
 export function isFallbackLocation(mode: "device" | "city", status: LocationStatus): boolean {
-  return mode === "device" && (status === "denied" || status === "unavailable");
+  return mode === "device" && (status === "denied" || status === "unavailable" || status === "undetermined");
 }
 
 /**
@@ -74,6 +75,8 @@ export function locationNotice(
       return "Last known location";
     case "locating":
       return "Finding your location…";
+    // The permission card on Home explains this one; a one-liner would repeat it.
+    case "undetermined":
     case "live":
       return null;
   }

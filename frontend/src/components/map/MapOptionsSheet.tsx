@@ -8,6 +8,7 @@ import { useMemo } from "react";
 import { View, Text, StyleSheet, Pressable, Switch, useWindowDimensions } from "react-native";
 import { SymbolView } from "expo-symbols";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { selectionHaptic } from "../../lib/haptics";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { MapStyle } from "../../types/weather";
@@ -54,7 +55,7 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
                   accessibilityRole="radio"
                   accessibilityLabel={`${opt.name} radar layer`}
                   accessibilityState={{ checked: active }}
-                  onPress={() => { setActiveLayer(opt.id); onClose(); }}
+                  onPress={() => { selectionHaptic(); setActiveLayer(opt.id); onClose(); }}
                   style={({ pressed }) => [
                     styles.layerTile,
                     { width: tileWidth },
@@ -86,7 +87,7 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
                   accessibilityRole="radio"
                   accessibilityLabel={`${opt.label} map style`}
                   accessibilityState={{ checked: active }}
-                  onPress={() => setMapStyle(opt.id)}
+                  onPress={() => { selectionHaptic(); setMapStyle(opt.id); }}
                   style={({ pressed }) => [styles.styleTile, { width: tileWidth }, pressed ? styles.pressed : null]}
                 >
                   <View style={[styles.swatch, { backgroundColor: opt.color }, active ? styles.swatchActive : null]} />

@@ -26,6 +26,23 @@ export function findClosestIdx(frames: { time: number }[], target: number): numb
 }
 
 /**
+ * True when two frame lists would render the same timeline. The manifest is
+ * polled every 30 s and usually unchanged; rebuilding the array each poll must
+ * not look like a new timeline to consumers (it re-armed the playback timer).
+ */
+export function sameFrames(
+  a: readonly { time: number; path: string; source?: string }[],
+  b: readonly { time: number; path: string; source?: string }[],
+): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].time !== b[i].time || a[i].path !== b[i].path || a[i].source !== b[i].source) return false;
+  }
+  return true;
+}
+
+/**
  * Where the frame the user was looking at (by wall-clock `prevTime`) lives in a
  * refreshed frame list. Indices shift every manifest poll (head pruned, run
  * rolled), so a bare index would silently move the paused frame forward in time.

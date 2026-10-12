@@ -16,7 +16,7 @@ import {
 } from "../lib/persistedPrefs";
 import type { AppearanceMode } from "../theme/weatherClearTheme";
 import type { PlaybackWindow } from "../lib/radarCarousel";
-import { resnapFrameIndex } from "../lib/frameIndex";
+import { resnapFrameIndex, sameFrames } from "../lib/frameIndex";
 import { roundCoord } from "../lib/coordinates";
 import { DEFAULT_RAIN_ALERT_LEAD, parseRainAlertLead, type RainAlertLeadMinutes } from "../lib/rainAlerts";
 import { parseDeviceFix, statusForFix, type LocationStatus } from "../lib/locationStatus";
@@ -73,7 +73,7 @@ interface WeatherState {
   setDevicePlace: (place: SelectedPlace | null) => void;
   useDeviceLocation: () => void;
   applyDeviceFix: (lat: number, lon: number, at: number) => void;
-  applyLocationFailure: (reason: "denied" | "unavailable") => void;
+  applyLocationFailure: (reason: "denied" | "undetermined" | "unavailable") => void;
   requestRecenter: () => void;
   setFocusBounds: (bounds: [number, number, number, number] | null) => void;
   setRadarOpacity: (opacity: number) => void;
@@ -177,6 +177,8 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
 
   setFrameTimeline: (frames, fallbackIndex) =>
     set((state) => {
+      // An unchanged poll keeps the same array so subscribers see no new timeline.
+      if (sameFrames(state.frames, frames)) return state;
       if (frames.length === 0) return { frames, currentFrameIndex: -1 };
 
       const previousTime = state.frames[state.currentFrameIndex]?.time ?? null;
@@ -252,7 +254,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
       set({ locationStatus: "last-known" });
       return;
     }
-    if (reason === "denied") setString(LAST_DEVICE_FIX_KEY, "");
+    if (reason !== "unavailable") setString(LAST_DEVICE_FIX_KEY, "");
     set({
       latitude: DEFAULT_PLACE.latitude,
       longitude: DEFAULT_PLACE.longitude,

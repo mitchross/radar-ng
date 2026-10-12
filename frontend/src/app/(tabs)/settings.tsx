@@ -35,10 +35,10 @@ import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { SELF_HOSTED } from "../../lib/constants";
 import { PLAYBACK_FPS_RANGE } from "../../lib/persistedPrefs";
 import { RAIN_ALERT_LEAD_OPTIONS, parseRainAlertLead } from "../../lib/rainAlerts";
-import { ensureNotificationPermission } from "../../lib/rainAlertScheduler";
+import { useRainAlertOptIn } from "../../hooks/useRainAlertOptIn";
 import { isCleartextToPublicHost } from "../../lib/networkSafety";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
-import { CONDITION_GRADIENTS } from "../../lib/cumulusTheme";
+import { conditionGradient } from "../../lib/cumulusTheme";
 import { PaletteSelector } from "../../components/palette/PaletteSelector";
 import {
   SectionLabel,
@@ -73,24 +73,9 @@ export default function SettingsScreen() {
   const setMapStyle = useWeatherStore((s) => s.setMapStyle);
   const aiNarration = useWeatherStore((s) => s.aiNarration);
   const setAiNarration = useWeatherStore((s) => s.setAiNarration);
-  const rainAlertsEnabled = useWeatherStore((s) => s.rainAlertsEnabled);
-  const setRainAlertsEnabled = useWeatherStore((s) => s.setRainAlertsEnabled);
+  const { enabled: rainAlertsEnabled, blocked: rainAlertsBlocked, setRainAlerts } = useRainAlertOptIn();
   const rainAlertLeadMinutes = useWeatherStore((s) => s.rainAlertLeadMinutes);
   const setRainAlertLeadMinutes = useWeatherStore((s) => s.setRainAlertLeadMinutes);
-  const [rainAlertsBlocked, setRainAlertsBlocked] = useState(false);
-  const onRainAlertsChange = useCallback(
-    async (on: boolean) => {
-      if (!on) {
-        setRainAlertsEnabled(false);
-        setRainAlertsBlocked(false);
-        return;
-      }
-      const granted = await ensureNotificationPermission(true);
-      setRainAlertsBlocked(!granted);
-      setRainAlertsEnabled(granted);
-    },
-    [setRainAlertsEnabled],
-  );
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
   const setTemperatureUnit = useWeatherStore((s) => s.setTemperatureUnit);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
@@ -116,6 +101,9 @@ export default function SettingsScreen() {
   const [debouncedCityQuery, setDebouncedCityQuery] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  // Slider drafts: the label follows the thumb, the store (and MMKV) is written on release.
+  const [opacityDraft, setOpacityDraft] = useState<number | null>(null);
+  const [fpsDraft, setFpsDraft] = useState<number | null>(null);
 
   // Live stack data for the Advanced cards. The old build shipped a
   // hard-coded container list ("versions are wrong") — everything shown
@@ -163,9 +151,7 @@ export default function SettingsScreen() {
   const stackHost = useMemo(() => hostOf(serverUrl), [serverUrl]);
   const locationLabel = activeLocation.notice ? `${activeLocation.label} · ${activeLocation.notice}` : activeLocation.label;
   const isAdv = viewMode === "advanced";
-  const gradient = theme.dark
-    ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
-    : CONDITION_GRADIENTS.clearNight;
+  const gradient = conditionGradient("clearNight", theme.dark);
 
   return (
     <ScreenBackground
@@ -409,7 +395,7 @@ export default function SettingsScreen() {
               label="Rain starting soon"
               sub="A notification before radar rain reaches you, planned on this phone from your own server. No push service, no account."
               value={rainAlertsEnabled}
-              onChange={(v) => void onRainAlertsChange(v)}
+              onChange={(v) => void setRainAlerts(v)}
             />
             {rainAlertsBlocked ? (
               <>
@@ -484,13 +470,14 @@ export default function SettingsScreen() {
             </View>
             <Sep />
             <View style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
-              <Text style={styles.rowLabel}>Radar opacity {Math.round(radarOpacity * 100)}%</Text>
+              <Text style={styles.rowLabel}>Radar opacity {Math.round((opacityDraft ?? radarOpacity) * 100)}%</Text>
               <Slider
                 minimumValue={0.1}
                 maximumValue={1}
                 step={0.05}
                 value={radarOpacity}
-                onValueChange={setRadarOpacity}
+                onValueChange={setOpacityDraft}
+                onSlidingComplete={(v) => { setOpacityDraft(null); setRadarOpacity(v); }}
                 minimumTrackTintColor={theme.colors.accent}
                 maximumTrackTintColor={theme.colors.divider}
                 thumbTintColor="#ffffff"
@@ -499,13 +486,14 @@ export default function SettingsScreen() {
             </View>
             <Sep />
             <View style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
-              <Text style={styles.rowLabel}>Playback {playbackSpeed} FPS</Text>
+              <Text style={styles.rowLabel}>Playback {fpsDraft ?? playbackSpeed} FPS</Text>
               <Slider
                 minimumValue={PLAYBACK_FPS_RANGE.min}
                 maximumValue={PLAYBACK_FPS_RANGE.max}
                 step={1}
                 value={playbackSpeed}
-                onValueChange={setPlaybackSpeed}
+                onValueChange={setFpsDraft}
+                onSlidingComplete={(v) => { setFpsDraft(null); setPlaybackSpeed(v); }}
                 minimumTrackTintColor={theme.colors.accent}
                 maximumTrackTintColor={theme.colors.divider}
                 thumbTintColor="#ffffff"

@@ -15,12 +15,8 @@ import { useRadarNowcast } from "../../hooks/useRadarNowcast";
 import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { getAlertEndTime } from "../../lib/alertLifecycle";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
-import { useWeatherStore } from "../../stores/useWeatherStore";
-import {
-  CONDITION_GRADIENTS,
-  getCumulusCondition,
-  getIconKind,
-} from "../../lib/cumulusTheme";
+import { DEFAULT_PLACE, useWeatherStore } from "../../stores/useWeatherStore";
+import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition, getIconKind } from "../../lib/cumulusTheme";
 import { displayTemperature, formatDegrees } from "../../lib/temperature";
 import {
   dailyView,
@@ -41,6 +37,9 @@ import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import WeatherIcon from "../../components/weather/WeatherIcon";
 import { RadarMiniMap } from "../../components/home/RadarMiniMap";
+import { LocationPermissionCard } from "../../components/home/LocationPermissionCard";
+import { RainAlertButton } from "../../components/home/RainAlertButton";
+import { requestDeviceLocation } from "../../hooks/useLocation";
 import { ConditionTiles } from "../../components/home/ConditionTiles";
 import { AiBriefingCard } from "../../components/home/AiBriefingCard";
 import { IncomingStormCard } from "../../components/home/IncomingStormCard";
@@ -144,9 +143,7 @@ export default function HomeScreen() {
   const weatherCode = forecast.current.weather_code;
   const condition = getCumulusCondition(weatherCode, isNight);
   const iconKind = getIconKind(weatherCode, isNight);
-  const gradient = theme.dark
-    ? ([theme.colors.canvas, theme.colors.surfaceStrong] as const)
-    : CONDITION_GRADIENTS[condition];
+  const gradient = conditionGradient(condition, theme.dark);
 
   // Every value may be missing; each renders as "—" rather than a stand-in.
   const temperature = (value: number | null | undefined) => displayTemperature(value, temperatureUnit);
@@ -155,7 +152,7 @@ export default function HomeScreen() {
   const hi = temperature(forecast.daily.temperature_2m_max[0]);
   const lo = temperature(forecast.daily.temperature_2m_min[0]);
 
-  const conditionLabel = CONDITION_LABELS[condition];
+  const conditionLabel = CONDITION_HEADLINES[condition];
   const locationLabel = location.label;
   const locationName = location.name;
 
@@ -257,7 +254,14 @@ export default function HomeScreen() {
               onChange={setViewMode}
             />
           </View>
-          {location.notice ? (
+          {location.permission ? (
+            <LocationPermissionCard
+              kind={location.permission}
+              fallbackName={DEFAULT_PLACE.name}
+              onAllow={() => void requestDeviceLocation()}
+              onChooseCity={() => router.push("/settings")}
+            />
+          ) : location.notice ? (
             <Text
               accessibilityRole={location.isFallback ? "alert" : undefined}
               style={styles.staleNotice}
@@ -315,7 +319,7 @@ export default function HomeScreen() {
                 <Text style={styles.nowcastHeadline}>{nowcastBanner.headline}</Text>
                 <Text style={styles.nowcastSub}>{nowcastBanner.sub}</Text>
               </View>
-              <Text style={styles.chevron}>{"\u203A"}</Text>
+              <RainAlertButton />
             </Pressable>
           ) : null}
 
@@ -525,17 +529,6 @@ function formatAge(minutes: number): string {
   return `${hours} hr`;
 }
 
-const CONDITION_LABELS: Record<ReturnType<typeof getCumulusCondition>, string> = {
-  clearDay: "Sunny",
-  clearNight: "Clear",
-  cloudy: "Cloudy",
-  rain: "Rain",
-  storm: "Thunderstorms",
-  snow: "Snow",
-  fog: "Foggy",
-  unknown: "Conditions unavailable",
-};
-
 function createStyles(theme: WeatherClearTheme) {
   const cumulus = {
     background: theme.colors.canvas,
@@ -629,7 +622,7 @@ function createStyles(theme: WeatherClearTheme) {
     fontFamily: cumulusFonts.ui,
     fontSize: 11,
     fontWeight: "700",
-    color: cumulus.inkMuted,
+    color: cumulus.inkDim,
     letterSpacing: 1.6,
   },
   locationNameRow: {
@@ -781,7 +774,7 @@ function createStyles(theme: WeatherClearTheme) {
     paddingBottom: 10,
   },
   sectionTitle: {
-    color: cumulus.inkMuted,
+    color: cumulus.inkDim,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1.6,
@@ -810,7 +803,7 @@ function createStyles(theme: WeatherClearTheme) {
     borderColor: theme.colors.divider,
   },
   hourlyTime: {
-    color: cumulus.inkMuted,
+    color: cumulus.inkDim,
     fontSize: 11,
     fontWeight: "700",
     fontFamily: cumulusFonts.ui,
@@ -855,7 +848,7 @@ function createStyles(theme: WeatherClearTheme) {
     marginTop: 8,
   },
   axisLabel: {
-    color: cumulus.inkFaint,
+    color: cumulus.inkDim,
     fontSize: 9,
     fontWeight: "700",
     fontFamily: cumulusFonts.ui,

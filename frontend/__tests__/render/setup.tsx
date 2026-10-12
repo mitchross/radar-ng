@@ -26,5 +26,12 @@ jest.mock("expo-glass-effect", () => ({
   GlassView: jest.requireActual("react-native").View,
 }));
 
+// Haptics are native; resolve silently in tests.
+jest.mock("expo-haptics", () => ({
+  impactAsync: () => Promise.resolve(),
+  selectionAsync: () => Promise.resolve(),
+  ImpactFeedbackStyle: { Light: "light" },
+}));
+
 // Symbols are native views; render nothing in tests (labels live on the buttons).
 jest.mock("expo-symbols", () => ({ SymbolView: () => null }));

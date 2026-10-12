@@ -13,6 +13,7 @@ import { cumulus } from "../../lib/cumulusTheme";
 import { findClosestIdx } from "../../lib/frameIndex";
 import { offsetLabel, playbackSequence, positionOf, type TimelineZoom } from "../../lib/playbackSequence";
 import { createThrottle } from "../../lib/throttle";
+import { selectionHaptic, tapHaptic } from "../../lib/haptics";
 import { useAppActive } from "../../hooks/useAppActive";
 import { useNow } from "../../hooks/useNow";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
@@ -99,16 +100,23 @@ export function TimelineBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, sequence]);
 
+  // The tick reads the sequence through a ref: the minute clock and manifest
+  // polls rebuild it, and depending on it re-armed the timer without user input.
+  const sequenceRef = useRef(sequence);
+  useEffect(() => { sequenceRef.current = sequence; }, [sequence]);
+  const canLoop = sequence.length >= 2;
+
   // Playback tick along the sequence; paused while backgrounded (each tick remounts a RasterSource).
   useEffect(() => {
-    if (!appActive || !focused || !isPlaying || sequence.length < 2) return;
+    if (!appActive || !focused || !isPlaying || !canLoop) return;
     const id = setInterval(() => {
-      const next = posRef.current >= sequence.length - 1 ? 0 : posRef.current + 1;
+      const seq = sequenceRef.current;
+      const next = posRef.current >= seq.length - 1 ? 0 : posRef.current + 1;
       posRef.current = next;
-      setCurrentFrameIndex(sequence[next]);
+      setCurrentFrameIndex(seq[next]);
     }, 1000 / playbackSpeed);
     return () => clearInterval(id);
-  }, [appActive, focused, isPlaying, playbackSpeed, sequence, setCurrentFrameIndex]);
+  }, [appActive, focused, isPlaying, playbackSpeed, canLoop, setCurrentFrameIndex]);
 
   // Segment boundaries and axis labels don't depend on the playback index —
   // memoize so the playback tick doesn't rescan frames. Must stay above the
@@ -154,7 +162,7 @@ export function TimelineBar() {
         <View style={styles.headerRow}>
           <Pressable
             style={({ pressed }) => [styles.playBtn, pressed ? styles.controlPressed : null]}
-            onPress={togglePlaying}
+            onPress={() => { tapHaptic(); togglePlaying(); }}
             accessibilityRole="button"
             accessibilityLabel={isPlaying ? "Pause radar animation" : "Play radar animation"}
             accessibilityState={{ selected: isPlaying }}
@@ -177,7 +185,7 @@ export function TimelineBar() {
             {(["1h", "48h"] as const).map((z) => (
               <Pressable
                 key={z}
-                onPress={() => setZoom(z)}
+                onPress={() => { selectionHaptic(); setZoom(z); }}
                 style={({ pressed }) => [
                   styles.seg,
                   zoom === z ? styles.segActive : null,

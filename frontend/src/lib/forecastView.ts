@@ -185,12 +185,17 @@ export function nowcastHeadline(
   const lastsMin = (dryAt < 0 ? afterStart.length : dryAt) * 15;
   const total = afterStart.reduce<number>((sum, p) => sum + (p != null ? Math.max(0, p) : 0), 0);
   const heavy = afterStart.some((p) => p != null && p > 0.3);
-  const kind = heavy ? "Heavy rain" : "Rain";
   const minutes = firstWet * 15;
   return {
-    headline: minutes === 0 ? `${kind} now` : `${kind} starts in ${minutes} min`,
+    headline: rainHeadline(heavy, minutes),
     sub: `Lasts ~${lastsMin} min · ${total.toFixed(2)}" total`,
   };
+}
+
+/** The banner's headline: the fact first, then a nudge. */
+export function rainHeadline(heavy: boolean, startMinutes: number): string {
+  if (startMinutes <= 0) return heavy ? "Heavy rain, right now" : "Rain's here";
+  return heavy ? `Heavy rain in ${startMinutes} min. Heads up` : `Rain in ${startMinutes} min. Heads up`;
 }
 
 /** The radar nowcast when it has usable points; the Nowcast tab uses the same rule. */
@@ -216,13 +221,12 @@ export function nextHourBanner(
   if (verdict.kind !== "raining" && verdict.kind !== "starting") return null;
   const start = verdict.kind === "starting" ? verdict.startMinute : 0;
   const heavy = perMinute.some((inchesPerHour) => inchesPerHour > 0.3);
-  const kind = heavy ? "Heavy rain" : "Rain";
   // The server scores every nowcast against the radar that arrives later;
   // say how it has been doing next to the claim, when there is enough to say.
   const skill = describeNowcastSkill(usable.skill);
   const source = skill ? `radar, ${skill.short}` : "from radar";
   return {
-    headline: start === 0 ? `${kind} now` : `${kind} starts in ${start} min`,
+    headline: rainHeadline(heavy, start),
     sub: `Lasts ~${Math.max(1, verdict.endMinute - start)} min \u00B7 ${source}`,
   };
 }

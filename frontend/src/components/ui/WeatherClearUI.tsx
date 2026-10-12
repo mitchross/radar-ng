@@ -6,6 +6,7 @@ import {
   View,
   type ViewProps,
 } from "react-native";
+import { selectionHaptic } from "../../lib/haptics";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 
 export function WeatherClearCard({
@@ -144,7 +145,7 @@ export function SegmentedControl<T extends string>({
             accessibilityState={{ selected }}
             accessibilityLabel={option.label}
             hitSlop={4}
-            onPress={() => onChange(option.value)}
+            onPress={() => { selectionHaptic(); onChange(option.value); }}
             style={[
               styles.segment,
               selected

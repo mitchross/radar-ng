@@ -15,5 +15,7 @@ export function useActiveLocation() {
     notice: locationNotice(mode, status, DEFAULT_PLACE.name),
     isFallback: fallback !== null,
     isDevice: mode === "device",
+    /** Device-mode permission state the Home card acts on; null in city mode. */
+    permission: mode === "device" && (status === "undetermined" || status === "denied") ? status : null,
   };
 }

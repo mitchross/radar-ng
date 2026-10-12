@@ -52,6 +52,23 @@ describe("useWeatherStore", () => {
     expect(setString).toHaveBeenCalledWith("appearanceMode", "dark");
   });
 
+  it("keeps the same frames array when a poll rebuilds an identical timeline", () => {
+    const build = () => [
+      { time: 1000, timestamp: "1970-01-01T00:16:40Z", path: "/a", source: "radar" as const },
+      { time: 2000, timestamp: "1970-01-01T00:33:20Z", path: "/b", source: "radar" as const },
+    ];
+    const first = build();
+    useWeatherStore.getState().setFrameTimeline(first, 1);
+    useWeatherStore.getState().setCurrentFrameIndex(0);
+    useWeatherStore.getState().setFrameTimeline(build(), 1);
+    expect(useWeatherStore.getState().frames).toBe(first);
+    expect(useWeatherStore.getState().currentFrameIndex).toBe(0);
+
+    const changed = [...build(), { time: 3000, timestamp: "1970-01-01T00:50:00Z", path: "/c", source: "radar" as const }];
+    useWeatherStore.getState().setFrameTimeline(changed, 2);
+    expect(useWeatherStore.getState().frames).toBe(changed);
+  });
+
   it("publishes frames and selected index in one coherent store update", () => {
     const frames = [
       { time: 1000, timestamp: "1970-01-01T00:16:40Z", path: "/a" },

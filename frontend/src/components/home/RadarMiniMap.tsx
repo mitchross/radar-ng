@@ -10,19 +10,14 @@ import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Camera, Layer, Map, RasterSource } from "@maplibre/maplibre-react-native";
 import { useIsFocused, useRouter } from "expo-router";
 import { useAppActive } from "../../hooks/useAppActive";
-import { useNow } from "../../hooks/useNow";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS } from "../../lib/constants";
-import {
-  radarButtonAccessibilityLabel,
-  radarQueryIsOffline,
-  radarStatus,
-} from "../../lib/radarStatus";
+import { radarButtonAccessibilityLabel } from "../../lib/radarStatus";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
-import { pickNowFrameIndex, useManifestQuery } from "../../hooks/useManifest";
+import { useRadarStatus } from "../../hooks/useRadarStatus";
 import { useBasemapStyle } from "../../hooks/useBasemapStyle";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
-import type { LayerType, RadarFrame } from "../../types/weather";
+import { RadarStatusChip } from "../map/RadarStatusChip";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 
 // City/metro level — matches the dedicated map's default zoom.
@@ -42,43 +37,8 @@ export function RadarMiniMap() {
   const lon = useWeatherStore((s) => s.longitude) ?? DEFAULTS.LONGITUDE;
   const { style: patchedStyle } = useBasemapStyle(serverUrl, theme.dark ? "dark" : "light");
 
-  const { data: manifest, dataUpdatedAt, isError, isPaused, isPending } = useManifestQuery();
-
-  // Match the dedicated Radar tab's observed MRMS source first. Composite is
-  // only a compatibility fallback for clusters that still publish it.
-  const layerKey = manifest?.layers?.radar
-    ? "radar"
-    : manifest?.layers?.["radar-composite"]
-      ? "radar-composite"
-      : "radar";
-  const layer = manifest?.layers?.[layerKey];
-  const frames = useMemo<RadarFrame[]>(() => (
-    (layer?.frames ?? layer?.timestamps.map((timestamp) => ({ timestamp, path: timestamp })) ?? []).map((frame) => ({
-      time: Math.floor(new Date(frame.timestamp).getTime() / 1000),
-      timestamp: frame.timestamp,
-      path: frame.path,
-      source: "radar",
-    })) ?? []
-  ), [layer?.frames, layer?.timestamps]);
-  const nowFrameIndex = pickNowFrameIndex(frames);
-  const nowFrame = nowFrameIndex >= 0 ? frames[nowFrameIndex] : null;
-  const radarUrl = nowFrame ? buildSelfHostedTileUrl(serverUrl, layerKey as LayerType, nowFrame.path, activePalette) : null;
-  // The clock ticks with the manifest poll, and dataUpdatedAt moves it forward
-  // on every successful poll, so LIVE can't stay frozen during an ingest stall.
-  const clock = useNow(DEFAULTS.MANIFEST_REFETCH_MS);
-  const statusNow = Math.max(clock, dataUpdatedAt);
-  const status = radarStatus({
-    frameTimeSeconds: nowFrame?.time ?? null,
-    refreshFailed: radarQueryIsOffline(isError, isPaused),
-    loading: isPending,
-    nowMilliseconds: statusNow,
-  });
-  const statusColor = {
-    live: theme.colors.success,
-    stale: theme.colors.warning,
-    offline: theme.colors.destructive,
-    unavailable: theme.colors.textFaint,
-  }[status.tone];
+  const { status, nowFrame, layerKey } = useRadarStatus();
+  const radarUrl = nowFrame ? buildSelfHostedTileUrl(serverUrl, layerKey, nowFrame.path, activePalette) : null;
   const fallbackHeadline = nowFrame
     ? "Explore nearby precipitation"
     : status.tone === "unavailable" && status.label !== "LOADING"
@@ -143,10 +103,7 @@ export function RadarMiniMap() {
       </View>
 
       {/* Data freshness badge */}
-      <View style={styles.statusBadge}>
-        <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-        <Text style={styles.statusText}>{status.label}</Text>
-      </View>
+      <RadarStatusChip status={status} style={styles.statusBadge} />
 
       </View>
 
@@ -221,26 +178,7 @@ function createStyles(theme: WeatherClearTheme) {
     borderRadius: 3,
     backgroundColor: theme.colors.accent,
   },
-  statusBadge: {
-    position: "absolute",
-    top: 10,
-    left: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    // A near-opaque scrim keeps the white status readable over any map tile.
-    backgroundColor: "rgba(0,0,0,0.88)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: {
-    color: "#ffffff",
-    fontSize: 10,
-    fontFamily: theme.typography.uiBold,
-    letterSpacing: 1.4,
-  },
+  statusBadge: { position: "absolute", top: 10, left: 12 },
   footer: {
     flexDirection: "row",
     alignItems: "center",
