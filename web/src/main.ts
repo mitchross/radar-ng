@@ -6,12 +6,11 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabled, track } from "./analytics";
-import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, type Frame, type Manifest, type Zoom } from "./frames";
+import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
 import { css, LEGEND_TICKS, PALETTES, type PaletteId } from "./palettes";
 import {
   aqiLabel,
-  CONDITION_LABEL,
   conditionOf,
   describeDbz,
   fetchAlerts,
@@ -22,6 +21,7 @@ import {
   forecastHourLabel,
   forecastTimeMs,
   iconSvg,
+  isNightAt,
   readPoint,
   reversePlace,
   searchPlaces,
@@ -30,12 +30,15 @@ import {
   type Place,
 } from "./weather";
 import { WindLayer } from "./wind";
-import { interpolateNowcast, nowcastVerdict } from "./nowcast";
+import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast";
+import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition } from "./shared/conditions";
 import { describeNowcastSkill } from "./shared/nowcastSkill";
 import { RAIN_ALERT_LEAD_OPTIONS } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
 import { startPeriodic } from "./refresh";
+import { observedFrameTime, radarNoticeCopy, radarStatus } from "./radarStatus";
+import { bootLocationStep, cardAfterGeoError, LOCATION_CARD_COPY, locateClickStep, queryLocationPermission, type LocationCardKind } from "./location";
 
 const rainAlerts = new BrowserRainAlerts();
 /** iOS Safari exposes Notification only to pages installed on the Home Screen. */
@@ -117,6 +120,9 @@ const state = {
   ai: stored<boolean>("rng.ai", true),
   zoom: "1h" as Zoom,
   manifest: null as Manifest | null,
+  /** True until the first manifest poll settles. */
+  manifestLoading: true,
+  manifestFailed: false,
   frames: [] as Frame[],
   seq: [] as number[],
   pos: 0,
@@ -341,14 +347,58 @@ function setPlaying(on: boolean) {
 async function refreshManifest() {
   try {
     const keepTime = refreshKeepTime(currentFrame(), latestObserved(), state.playing);
+    const hadManifest = state.manifest !== null;
+    const chipsBefore = availabilityKey();
     state.manifest = await fetchManifest();
-    renderChips();
+    state.manifestFailed = false;
+    // renderChips also rebuilds the open settings sheet, so skip it unless availability changed.
+    if (!hadManifest || availabilityKey() !== chipsBefore) renderChips();
     if (!LAYERS.some((l) => l.id === state.layer && layerAvailable(l.needs))) state.layer = "radar";
-    rebuildFrames(keepTime);
+    const now = nowSec();
+    const frames = buildFrames(state.manifest, state.layer, now, state.product);
+    const seq = playbackSequence(frames, state.zoom, now);
+    if (hadManifest && sameFrames(state.frames, frames) && seq.length === state.seq.length && seq.every((v, i) => v === state.seq[i])) renderAxis();
+    else rebuildFrames(keepTime);
   } catch (err) {
-    toast("Couldn't reach the radar server");
+    state.manifestFailed = true;
     console.error(err);
+  } finally {
+    state.manifestLoading = false;
+    renderRadarStatus();
   }
+}
+
+let noticeKey = "";
+
+/** The freshness chip and, when the chip alone can't explain it, the notice with Retry. */
+function renderRadarStatus() {
+  const status = radarStatus({
+    frameTimeSeconds: observedFrameTime(state.manifest, nowSec()),
+    refreshFailed: state.manifestFailed,
+    loading: state.manifestLoading,
+  });
+  const chip = $("live");
+  chip.hidden = false;
+  chip.dataset.tone = status.tone;
+  chip.textContent = status.label;
+  chip.setAttribute("aria-label", status.accessibilityLabel);
+  const notice = $("radar-notice");
+  // The boot error card already explains a dead API.
+  const copy = $("boot-error").hidden ? radarNoticeCopy(status, state.frames.length > 0) : null;
+  notice.hidden = !copy;
+  const key = copy ? `${copy.title}|${copy.retry}` : "";
+  if (!copy || key === noticeKey) return;
+  noticeKey = key;
+  notice.setAttribute("role", copy.retry ? "alert" : "status");
+  notice.innerHTML =
+    `<span class="${copy.retry ? "mark" : "spinner"}" aria-hidden="true"></span>` +
+    `<div><b>${escapeHtml(copy.title)}</b><p>${escapeHtml(copy.message)}</p></div>` +
+    (copy.retry ? `<button id="radar-retry" class="retry" aria-label="Retry loading radar">Retry</button>` : "");
+}
+
+/** The layers and products the chips and sheet offer. */
+function availabilityKey(): string {
+  return [...LAYERS.map((l) => l.needs), "radar-composite"].filter(layerAvailable).join();
 }
 
 function layerAvailable(key: string) {
@@ -408,14 +458,6 @@ function renderTimeline() {
   $("frame-title").textContent = `${layerName} · ${mode}`;
   $("frame-time").textContent = `${TIME_FMT.format(new Date(frame.time * 1000))}${source}`;
   slider.setAttribute("aria-valuetext", `${mode}, ${TIME_FMT.format(new Date(frame.time * 1000))}`);
-  const live = latestObserved();
-  const pill = $("live");
-  if (state.layer === "radar" && live) {
-    const ageMin = Math.max(0, Math.round((nowSec() - live.time) / 60));
-    pill.hidden = false;
-    pill.classList.toggle("stale", ageMin > 10);
-    pill.textContent = frame === live ? `Live · ${ageMin} min ago` : `Live ${ageMin}m`;
-  } else pill.hidden = true;
 }
 
 function renderAxis() {
@@ -546,6 +588,7 @@ async function renderForecast(refresh = false) {
   state.forecast = fc;
   const c = fc.current;
   const cond = conditionOf(c.weather_code);
+  const sky = getCumulusCondition(c.weather_code, isNightAt(Date.now(), fc.daily, fc.utc_offset_seconds));
   const start = hourIndex(fc.hourly.time, fc.utc_offset_seconds);
   const hours = Array.from({ length: 24 }, (_, k) => start + k).filter((i) => i < fc.hourly.time.length);
   const rain = hours.map((i) => fc.hourly.precipitation[i] ?? 0);
@@ -569,7 +612,7 @@ async function renderForecast(refresh = false) {
     <h1 class="place">${escapeHtml(state.place.name)}${state.place.admin1 ? `<span class="muted" style="font-size:15px;font-family:var(--ui)"> · ${escapeHtml(state.place.admin1)}</span>` : ""}</h1>
     <div class="now">
       <div>
-        <div class="now-cond">${CONDITION_LABEL[cond]}</div>
+        <div class="now-cond">${CONDITION_HEADLINES[sky]}</div>
         <div class="now-temp">${deg(c.temperature_2m)}</div>
       </div>
       ${iconSvg(cond, 84)}
@@ -608,6 +651,10 @@ async function renderForecast(refresh = false) {
       </div>
     </div>`;
   body.scrollTop = scrollTop;
+  // CSS picks the light or dark stops from the basemap, like the other tokens.
+  const gradient = (dark: boolean) => `linear-gradient(180deg, ${conditionGradient(sky, dark).join(", ")})`;
+  $("panel").style.setProperty("--cond-light", gradient(false));
+  $("panel").style.setProperty("--cond-dark", gradient(true));
   body.querySelector(".hourly")!.scrollLeft = hourlyLeft;
   renderThreat();
   void renderAlerts();
@@ -650,12 +697,15 @@ async function renderNextHour() {
   if (!points.length || !document.body.contains(el)) return;
   const skill = describeNowcastSkill(nowcast?.skill);
   const minutes = interpolateNowcast(points);
+  const headline = nextHourHeadline(minutes);
   const peak = Math.max(0.1, ...minutes);
   // Same call to action as the app's rain banner: rain within the hour and alerts not on yet.
   const offerAlerts = !rainAlerts.enabled && rainAlerts.supported && minutes.some((v) => v > 0.08);
   el.hidden = false;
   el.innerHTML =
-    `<div class="section-label">NEXT HOUR</div><p class="nexthour-verdict">${escapeHtml(nowcastVerdict(minutes))}</p>` +
+    `<div class="section-label">NEXT HOUR</div>` +
+    (headline ? `<p class="nexthour-headline">${escapeHtml(headline)}</p>` : "") +
+    `<p class="nexthour-verdict">${escapeHtml(nowcastVerdict(minutes))}</p>` +
     (offerAlerts ? `<button id="notify-me" class="notify">Notify me before rain</button>` : "") +
     (skill ? `<p class="hint">${escapeHtml(skill.sentence)}${skill.beatsPersistence === false ? " · no better than a still radar" : ""}</p>` : "") +
     `<div class="minutebars">${minutes.map((v) => `<i class="${v > 0.01 ? "" : "dry"}" style="height:${v > 0.01 ? Math.max(8, (v / peak) * 100) : 6}%"></i>`).join("")}</div>` +
@@ -730,6 +780,7 @@ function toast(message: string) {
 function setPlace(place: Place, fly = true) {
   state.place = place;
   store("rng.place", place);
+  renderLocationCard(null);
   addPlaceMarker();
   if (fly) map.flyTo({ center: [place.longitude, place.latitude], zoom: Math.max(map.getZoom(), 6.5), duration: 900 });
   void renderForecast();
@@ -918,7 +969,6 @@ $("sheet-body").addEventListener("input", (e) => {
   const el = e.target as HTMLInputElement;
   if (el.id !== "opacity") return;
   state.opacity = Number(el.value);
-  store("rng.opacity", state.opacity);
   const id = shownKey && cached.get(shownKey);
   if (id) map.setPaintProperty(id, "raster-opacity", state.opacity);
 });
@@ -955,11 +1005,14 @@ $("sheet-body").addEventListener("change", (e) => {
     void renderNextHour();
   } else if (el.id === "analytics") {
     void setAnalyticsEnabled(el.checked);
+  } else if (el.id === "opacity") {
+    // "input" fires on every drag tick; persist once on release.
+    store("rng.opacity", state.opacity);
   }
   if (el.dataset.overlay) setOverlay(el.dataset.overlay as OverlayId | "wind" | "ai", el.checked);
 });
 
-$("locate").addEventListener("click", () => {
+function locate() {
   if (!navigator.geolocation) return toast("Location isn't available in this browser");
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
@@ -967,9 +1020,41 @@ $("locate").addEventListener("click", () => {
       const place = await reversePlace(latitude, longitude).catch(() => null);
       setPlace({ name: place?.name ?? "My location", admin1: place?.admin1, latitude, longitude });
     },
-    () => toast("Location permission was denied"),
+    (err) => {
+      const card = cardAfterGeoError(err.code);
+      if (card) renderLocationCard(card, true);
+      else toast("Couldn't find your location");
+    },
     { enableHighAccuracy: false, timeout: 10_000 },
   );
+}
+
+/** The pre-prompt before the browser's location dialog, or the recovery card after a denial. */
+function renderLocationCard(kind: LocationCardKind | null, focus = false) {
+  const el = $("location-card");
+  el.hidden = !kind;
+  if (!kind) return;
+  const copy = LOCATION_CARD_COPY[kind];
+  el.innerHTML =
+    `<b>${copy.title}</b><p>${escapeHtml(copy.body(state.place.name))}</p><div class="actions">` +
+    (copy.allow ? `<button data-action="allow" class="primary">Allow location</button>` : "") +
+    `<button data-action="city" class="secondary">Choose a city</button></div>`;
+  if (focus) el.querySelector<HTMLButtonElement>("button")?.focus();
+}
+
+$("location-card").addEventListener("click", (e) => {
+  const action = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]")?.dataset.action;
+  if (action === "allow") locate();
+  else if (action === "city") {
+    renderLocationCard(null);
+    $("search-input").focus();
+  }
+});
+
+$("locate").addEventListener("click", async () => {
+  const step = locateClickStep(await queryLocationPermission());
+  if (step === "locate") locate();
+  else renderLocationCard(step, true);
 });
 
 const OVERLAY_KEYS: Record<string, OverlayId> = { w: "warnings", s: "storms", l: "lightning", h: "tropical" };
@@ -1056,12 +1141,14 @@ overlays.onStorms = renderThreat;
 /** The basemap style is the one boot request that cannot be retried later; without it the page is blank. */
 async function boot() {
   $("boot-error").hidden = true;
+  renderRadarStatus();
   try {
     map.setStyle(await loadStyle(state.mapStyle));
   } catch (err) {
     console.error(err);
     $("boot-error").hidden = false;
     $("panel-body").innerHTML = '<p class="muted">The radar API is unreachable.</p>';
+    renderRadarStatus();
     return;
   }
   await refreshManifest();
@@ -1070,8 +1157,11 @@ async function boot() {
   if (state.wind) setOverlay("wind", true);
   void renderForecast();
   window.setInterval(refreshManifest, MANIFEST_POLL_MS);
-  // Keep "Live · N min ago" honest between manifest polls.
-  window.setInterval(renderTimeline, 30_000);
+  // Keep "Now" and the radar age honest between manifest polls.
+  window.setInterval(() => {
+    renderTimeline();
+    renderRadarStatus();
+  }, 30_000);
   window.setInterval(() => void renderBriefing(), 10 * 60_000);
   window.setInterval(() => void renderNextHour(), 60_000);
   startPeriodic(() => void renderForecast(true), FORECAST_REFRESH_MS);
@@ -1079,6 +1169,26 @@ async function boot() {
 }
 
 $("boot-retry").addEventListener("click", () => void boot());
+$("radar-notice").addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>("#radar-retry");
+  if (!b) return;
+  b.disabled = true;
+  noticeKey = "";
+  void refreshManifest();
+});
 document.documentElement.dataset.map = state.mapStyle;
 renderChips();
+renderRadarStatus();
+const hasStoredPlace = (() => {
+  try {
+    return localStorage.getItem("rng.place") !== null;
+  } catch {
+    return false;
+  }
+})();
+void queryLocationPermission().then((permission) => {
+  const step = bootLocationStep(permission, hasStoredPlace);
+  if (step === "locate") locate();
+  else if (step === "card") renderLocationCard("undetermined");
+});
 void boot();

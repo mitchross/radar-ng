@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, type Manifest } from "./frames";
+import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Manifest } from "./frames";
 
 const NOW = 1_800_000_000;
 const iso = (s: number) => new Date(s * 1000).toISOString();
@@ -67,5 +67,21 @@ describe("buildFrames observed product", () => {
     };
     expect(buildFrames(withComposite, "radar", NOW, "radar-composite").filter((f) => f.time <= NOW).map((f) => f.source)).toEqual(["radar-composite"]);
     expect(buildFrames(manifest, "radar", NOW, "radar-composite").some((f) => f.source === "radar")).toBe(true);
+  });
+});
+
+describe("sameFrames", () => {
+  it("treats a rebuild from an unchanged manifest as the same timeline", () => {
+    const a = buildFrames(manifest, "radar", NOW);
+    const b = buildFrames(manifest, "radar", NOW);
+    expect(a).not.toBe(b);
+    expect(sameFrames(a, b)).toBe(true);
+  });
+
+  it("sees a new frame, a moved path or a new source", () => {
+    const a = buildFrames(manifest, "radar", NOW);
+    expect(sameFrames(a, a.slice(1))).toBe(false);
+    expect(sameFrames(a, a.map((f, i) => (i === 3 ? { ...f, path: "other" } : f)))).toBe(false);
+    expect(sameFrames(a, a.map((f, i) => (i === 3 ? { ...f, source: "radar-composite" } : f)))).toBe(false);
   });
 });
