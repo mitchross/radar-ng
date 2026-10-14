@@ -1,5 +1,0 @@
-work/
-.venv*/
-__pycache__/
-results/load/*/*.log.gz
-results/load/*/*.log

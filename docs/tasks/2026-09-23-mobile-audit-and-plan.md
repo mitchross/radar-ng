@@ -1,5 +1,9 @@
 # Radar NG mobile audit and execution plan — 2026-09-23
 
+> **Historical record.** Written against the Python backend, which was replaced by the Rust backend
+> (`rust/`, v2.0.0, 2026-10-14). Paths under `backend/`, `temporal/` and `tools/`, and the Caddy and
+> FastAPI tile-server, no longer exist; see [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current layout.
+
 Scope: the iOS and Android app in `frontend/`. That covers the Expo/React Native app plus the native Apple targets (Watch app, WidgetKit widget, CarPlay scene) under `frontend/targets/`. The backend is out of scope except where the app depends on its contract.
 
 Audience: **the model that executes this plan.** It is written so that you can work through it without the audit conversation. Each task names the evidence (file:line at the audited tree), the change, how to verify it, and whether a human with a physical device must sign it off.

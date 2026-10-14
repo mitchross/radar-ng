@@ -1,5 +1,9 @@
 # radar-ng Temporal orchestration review — 2026-09-02
 
+> **Historical record.** Written against the Python backend, which was replaced by the Rust backend
+> (`rust/`, v2.0.0, 2026-10-14). Paths under `backend/`, `temporal/` and `tools/`, and the Caddy and
+> FastAPI tile-server, no longer exist; see [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current layout.
+
 Scope: `radar-ng/temporal/**`, `backend/shared/activity_heartbeat.py`, k8s `my-apps/development/radar-ng/temporal-workers/`, `my-apps/development/temporal/`, live cluster (read-only `kubectl` + `temporal` CLI via admintools, Prometheus via port-forward). No files were modified. Paths below are relative to `/home/vanillax/programming/radar-ng` (app) or `/home/vanillax/programming/talos-argocd-proxmox` (gitops) unless absolute.
 
 ## 0. Executive summary — the evidence re-attributes all three incidents

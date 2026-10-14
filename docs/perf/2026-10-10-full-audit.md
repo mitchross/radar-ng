@@ -1,5 +1,9 @@
 # Full audit: UX, performance, setup, backend, Temporal, cluster, 2026-10-10
 
+> **Historical record.** Written against the Python backend, which was replaced by the Rust backend
+> (`rust/`, v2.0.0, 2026-10-14). Paths under `backend/`, `temporal/` and `tools/`, and the Caddy and
+> FastAPI tile-server, no longer exist; see [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current layout.
+
 Scope: live cluster and API (kubectl, Prometheus, Loki, Temporal CLI, curl),
 the gitops manifests in `talos-argocd-proxmox/my-apps/personal-projects/radar-ng`,
 and read-only code reviews of `backend/`, `temporal/`, `frontend/`, `web/`,

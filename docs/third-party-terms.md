@@ -11,8 +11,9 @@ it at `/basemap/imagery` for the bundled style, and the home cluster caches it a
 
 ## 1. Esri World Imagery (the satellite basemap)
 
-The bundled `satellite` style is served by the tile server at
-`backend/basemap/styles/satellite.json` and points directly at Esri:
+The bundled `satellite` style was served by the tile server (then `backend/basemap/styles/satellite.json`,
+since removed; today's style is `rust/assets/basemap/styles/satellite.json`, which uses USGS imagery) and
+pointed directly at Esri:
 
 ```
 https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}
@@ -90,15 +91,15 @@ all. That is a scoping decision, not a legal fix, and does not by itself make A 
 
 **D7 → option C.** Operator-hosted NAIP imagery avoids a shared credential and per-operator Esri
 billing, and fits a project whose deployment model is already self-hosted. Concretely, the
-self-hosting path is shorter than the keyed path, because the delivery machinery exists:
-`deploy/docker-compose.yml` already runs a go-pmtiles container for the vector basemap.
+self-hosting path is shorter than the keyed path, because the delivery machinery exists: the stack
+already serves a PMTiles archive for the vector basemap.
 
 What C still needs before it can replace the Esri tiles:
 
 1. A **raster** archive plus its own route and style document. Today's `/basemap/tiles/*` route
-   fronts the *vector* PMTiles archive (`backend/api/Caddyfile`), but the delivery mechanism is
-   already there: `deploy/docker-compose.yml` runs `protomaps/go-pmtiles`, which serves any PMTiles
-   archive from a volume over HTTP range requests. A second archive and a raster style is an
+   fronts the *vector* PMTiles archive (then through Caddy; today `radar api` reads the archive
+   itself), but the delivery mechanism is already there: a PMTiles archive on a volume, served over
+   HTTP range requests. A second archive and a raster style is an
    extension of that, not a new subsystem.
 2. A decision about coverage and depth, because that is where the cost lives:
 

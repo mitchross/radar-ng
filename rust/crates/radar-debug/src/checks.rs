@@ -27,12 +27,8 @@ pub const DEFAULT_LON: f64 = -98.35;
 /// Client playback tick in milliseconds (`PLAYBACK_MS` in `TimelineBar.tsx`).
 pub const TICK_BUDGET_MS: f64 = 420.0;
 
-/// Layers whose frames are immutable once published (observed radar).
-pub const OBSERVED_LAYERS: [&str; 2] = ["radar", "radar-composite"];
-/// `Cache-Control` the Caddyfile promised for observed layers. Kept as the contract `radar api` must meet.
-pub const OBSERVED_CACHE: &str = "max-age=86400";
-/// `Cache-Control` for forecast and mutable layers.
-pub const MUTABLE_CACHE: &str = "max-age=120";
+/// `Cache-Control` `radar api` serves on every `/tiles/*` path: frame paths are unique per frame.
+pub const TILE_CACHE: &str = "max-age=86400";
 
 /// Tile template used when the manifest does not carry one.
 pub const DEFAULT_TILE_TEMPLATE: &str = "/tiles/{layer}/{palette}/{timestamp}/{z}/{x}/{y}.png";
@@ -395,11 +391,7 @@ pub async fn check_tiles(
         let hit_times: Vec<f64> = hits.iter().map(|f| f.elapsed_ms).collect();
         let stats = percentiles(&hit_times);
 
-        let want = if OBSERVED_LAYERS.contains(&layer_name) {
-            OBSERVED_CACHE
-        } else {
-            MUTABLE_CACHE
-        };
+        let want = TILE_CACHE;
         let bad_cache: Vec<&&Fetch> = hits
             .iter()
             .filter(|f| !f.header("cache-control").contains(want))
@@ -993,7 +985,6 @@ mod tests {
 
     #[test]
     fn cache_contract_constants() {
-        assert_eq!(OBSERVED_CACHE, "max-age=86400");
-        assert_eq!(MUTABLE_CACHE, "max-age=120");
+        assert_eq!(TILE_CACHE, "max-age=86400");
     }
 }

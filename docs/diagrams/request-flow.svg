@@ -21,7 +21,7 @@
   <text x="48" y="356" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#8c857a">EDGE · CLOUDFLARE / GATEWAY</text>
   <line x1="48" y1="368" x2="1512" y2="368" stroke="#8c857a" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
 
-  <text x="48" y="480" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#2e8b6f">TILE-SERVER · CADDY + FASTAPI</text>
+  <text x="48" y="480" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#2e8b6f">TILE-SERVER · RADAR API (RUST)</text>
   <line x1="48" y1="492" x2="1512" y2="492" stroke="#2e8b6f" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
 
   <text x="48" y="622" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#b97a4a">TILES PVC</text>
@@ -76,25 +76,25 @@
   <!-- ============ TILE-SERVER LANE ============ -->
   <rect x="360" y="508" width="270" height="94" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="360" y="510" width="3" height="90" rx="1.5" fill="#2e8b6f"/>
-  <text x="376" y="532" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">FastAPI — manifest</text>
+  <text x="376" y="532" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">radar api — manifest</text>
   <text x="376" y="552" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">builds layer/timestamp index</text>
   <rect x="376" y="566" width="180" height="20" rx="10" fill="#2e8b6f" fill-opacity="0.1"/>
   <text x="386" y="580" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#2e8b6f">cache: 15 s in-process</text>
 
   <rect x="692" y="508" width="290" height="94" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="692" y="510" width="3" height="90" rx="1.5" fill="#2e8b6f"/>
-  <text x="708" y="532" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Caddy — static tiles</text>
+  <text x="708" y="532" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">radar api — static tiles</text>
   <text x="708" y="552" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">/tiles/{layer}/{palette}/{ts}/{z}/{x}/{y}.png</text>
   <rect x="708" y="566" width="252" height="20" rx="10" fill="#2e8b6f" fill-opacity="0.1"/>
-  <text x="718" y="580" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#2e8b6f">radar: 24 h immutable · forecast layers: 120 s</text>
+  <text x="718" y="580" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#2e8b6f">every layer: 24 h immutable</text>
 
   <!-- why the split card -->
   <rect x="1044" y="508" width="448" height="94" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="1044" y="510" width="3" height="90" rx="1.5" fill="#2e8b6f"/>
-  <text x="1060" y="532" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Why two cache tiers?</text>
+  <text x="1060" y="532" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Why every tile caches hard</text>
   <text x="1060" y="552" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Observed radar frames are written once per timestamp — safe to cache hard.</text>
-  <text x="1060" y="570" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Nowcast/HRRR REWRITE the same valid-time path on every model run —</text>
-  <text x="1060" y="588" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">a long TTL would pin stale predictions on screens.</text>
+  <text x="1060" y="570" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Nowcast/HRRR runs publish under run-scoped paths: a new run is a new URL —</text>
+  <text x="1060" y="588" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">the 15 s manifest, not the tile TTL, carries freshness.</text>
 
   <!-- ============ PVC LANE ============ -->
   <rect x="692" y="650" width="290" height="62" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>

@@ -1,5 +1,9 @@
 # radar-ng frontend review — 2026-09-02
 
+> **Historical record.** Written against the Python backend, which was replaced by the Rust backend
+> (`rust/`, v2.0.0, 2026-10-14). Paths under `backend/`, `temporal/` and `tools/`, and the Caddy and
+> FastAPI tile-server, no longer exist; see [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current layout.
+
 Repo: `/home/vanillax/programming/radar-ng/frontend` @ `6d2ce28` (master). Expo SDK 57, RN 0.86, React 19.2, MapLibre RN 11.3.6, Reanimated 4.5, Skia 2.6.2, react-query 5.101, zustand 5.0.14, MMKV 4.3.2. All paths below are relative to `frontend/` unless absolute.
 
 ## Tooling results (run tonight)

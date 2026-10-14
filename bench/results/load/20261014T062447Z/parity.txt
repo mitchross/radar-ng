@@ -1,4 +1,0 @@
-unique URLs: 300
-  api   200 json equal               16
-  tile  identical                    284
-exit 0

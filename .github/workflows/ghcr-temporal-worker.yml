@@ -1,6 +1,6 @@
 name: ghcr · temporal-worker
 
-# Public GHCR image of the Temporal worker: the Rust `radar` binary (deploy/rust/Dockerfile, target
+# Public GHCR image of the Temporal worker: the Rust `radar` binary (deploy/Dockerfile, target
 # `worker`). Drop-in for the former Python image: WORKER_ROLE picks the pool, same env and probes.
 
 on:
@@ -8,10 +8,10 @@ on:
     branches: [master]
     paths:
       - 'rust/**'
-      - 'deploy/rust/Dockerfile'
-      - 'deploy/rust/Dockerfile.dockerignore'
-      - 'backend/basemap/styles/**'
-      - 'backend/basemap/fetch-glyphs.sh'
+      - 'deploy/Dockerfile'
+      - 'deploy/Dockerfile.dockerignore'
+      - 'rust/assets/basemap/styles/**'
+      - 'rust/assets/basemap/fetch-glyphs.sh'
       - '.github/workflows/ghcr-temporal-worker.yml'
   workflow_dispatch:
     inputs:
@@ -26,7 +26,7 @@ concurrency:
   group: ghcr-temporal-worker-release
   cancel-in-progress: false
 
-# The replay gate is a RUN step in deploy/rust/Dockerfile (REPLAY_GATE=1): every recorded Python
+# The replay gate is a RUN step in deploy/Dockerfile (REPLAY_GATE=1): every recorded Python
 # history must replay on the Rust workflows, or the build fails before any tag is pushed.
 jobs:
   build:
@@ -96,7 +96,7 @@ jobs:
         with:
           provenance: false
           context: .
-          file: deploy/rust/Dockerfile
+          file: deploy/Dockerfile
           target: worker
           push: true
           tags: ${{ steps.meta.outputs.tags }}

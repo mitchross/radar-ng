@@ -1,13 +1,13 @@
 # radar-core
 
-Rust port of the radar-ng `backend/shared/` data-plane library. It covers file locking, durable writes,
+The radar-ng data-plane library (ported from the former Python `backend/shared/`). It covers file locking, durable writes,
 environment parsing, JSON logging, the frame manifest, the processed-frame set, the grid store and reader,
 push-token storage, the nowcast skill log, and the blocking-work heartbeat.
 
 Out of scope for this crate: the tiler, palettes and PNG output (`radar-tiler`), and the storm tracker and
 storm prefetch (`radar-storms`). Spec sections 6 to 8 are not implemented here.
 
-The source of truth is `specs/spec-shared.md` in the port workspace. Invariant IDs (MAN-, GRD-, NSK-, HBT-,
+The source of truth is `docs/rust-migration/specs/spec-shared.md`. Invariant IDs (MAN-, GRD-, NSK-, HBT-,
 DRV-) refer to its section 13 and are cited in the test names.
 
 ## Modules
@@ -117,17 +117,17 @@ allows one.
 
 ## Golden fixtures
 
-`testdata/gen_golden.py` writes every fixture under `testdata/`. It loads the Python modules by file path. The
-default source is `./backend/shared`. Override it with `RADAR_NG_SHARED`. The
+`testdata/gen_golden.py` writes every fixture under `testdata/`. It loads the Python modules by file path from
+`backend/shared` of a radar-ng checkout from before the Python removal (for example commit `5b3cb39`), passed as `RADAR_NG_SHARED`. The
 script needs numpy, sets `TZ=UTC`, and uses fixed datetimes and uuids so the output is deterministic.
 
 Regenerate from `crates/radar-core`:
 
 ```sh
-RADAR_NG_SHARED=/path/to/radar-ng/backend/shared \
-  /tmp/venv-radar-core/bin/python testdata/gen_golden.py
+RADAR_NG_SHARED=/path/to/old-checkout/backend/shared \
+  <venv>/bin/python testdata/gen_golden.py
 ```
 
-The venv is `python3 -m venv /tmp/venv-radar-core && /tmp/venv-radar-core/bin/pip install numpy`. After
+The venv needs numpy. After
 regenerating, run `cargo test -p radar-core`. Any change in a fixture is a change in the Python behaviour and
 should be reviewed before the Rust side is changed to match.

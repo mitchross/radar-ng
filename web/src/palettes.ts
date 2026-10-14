@@ -1,5 +1,5 @@
 /**
- * Reflectivity bands per tile palette, mirrored from backend/shared/palettes/*.json
+ * Reflectivity bands per tile palette, mirrored from rust/crates/radar-tiler/assets/*.json
  * (palettes.test.ts fails when they drift). The legend draws these exact bands.
  */
 export type PaletteId = "classic" | "muted" | "vivid";

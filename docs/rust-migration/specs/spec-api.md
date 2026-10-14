@@ -539,7 +539,7 @@ Note that a name such as `a b` passes the check and fails at 404. A `%2F` in the
 
 **Headers:** none. There is no Cache-Control and no ACAO on this route. [V: `None`]
 
-**Bundled styles:** `STYLE_DIR` defaults to `/srv/basemap/styles` in the image (`COPY basemap/styles/`). The snapshot does not contain `backend/basemap/styles/` (only the Dockerfile, README and fetch-glyphs.sh), so the bundled JSON was not inspected. [V]
+**Bundled styles:** `STYLE_DIR` defaults to `/srv/basemap/styles` in the image (`COPY basemap/styles/`). The snapshot does not contain `rust/assets/basemap/styles/` (only the Dockerfile, README and fetch-glyphs.sh), so the bundled JSON was not inspected. [V]
 
 ### 5.14 `GET /api/metrics` (sync)
 - `text/plain; charset=utf-8`. Format details in section 10.2.
@@ -1132,7 +1132,7 @@ Every assertion in the API tests and the shared tests that constrain API inputs.
 33. Out-of-range point (`lat=91`) on alerts: 422, no upstream call. [out_of_range_point_is_rejected]
 34. Basemap style rewrites relative glyphs, tiles to `http://radar.example/...` from Host. [basemap_style_serves_absolute_self_hosted_glyphs]
 35. Basemap style honors `x-forwarded-proto: https` and `x-forwarded-host`: all rewritten URLs start with `https://radar-ng-api.vanillax.me/`. [basemap_style_keeps_https_from_forwarded_proto]
-36. Bundled styles reference no external host. [bundled_styles_reference_no_external_hosts] **Vacuous in this snapshot** (no `backend/basemap/styles/` directory; `glob` matches nothing). See D11.
+36. Bundled styles reference no external host. [bundled_styles_reference_no_external_hosts] **Vacuous in this snapshot** (no `rust/assets/basemap/styles/` directory; `glob` matches nothing). See D11.
 37. Map alerts keep only polygon features, slim `properties` (no `description`), send `status=actual`, cache the second call (one upstream call). [map_alerts_keep_only_polygons_and_slim_properties]
 38. Map alerts upstream 503 gives 502. [map_alert_upstream_failure_is_502]
 
@@ -1192,7 +1192,7 @@ Each item says whether the Rust port should preserve the current behavior (P) or
 | D8 | Photon `osm_id` non-integer string gives 500. | [I] | F: drop feature. |
 | D9 | Storm prefetch with a corrupt `manifest.json` gives 500 (manifest endpoints serve last-good or 503). | [I] | F: reuse the manifest last-good path. |
 | D10 | `/api/basemap/style/{name}` sends no Cache-Control and no ACAO. | [V] | P (or add `max-age=3600` if clients are fine; not required by the app). |
-| D11 | Test `test_bundled_styles_reference_no_external_hosts` passes vacuously in this snapshot (`backend/basemap/styles/` absent). The Dockerfile `COPY basemap/styles/` would also fail to build from this tree. | [V] path missing | F: restore the styles directory or make the test fail when it is empty. |
+| D11 | Test `test_bundled_styles_reference_no_external_hosts` passes vacuously in this snapshot (`rust/assets/basemap/styles/` absent). The Dockerfile `COPY basemap/styles/` would also fail to build from this tree. | [V] path missing | F: restore the styles directory or make the test fail when it is empty. |
 | D12 | Caddy `precompressed gzip` on tiles is inert; no `encode` directive anywhere. | [R] | P (keep inert), or add compression for JSON only where the edge does not already compress. Avoid compressing PNG tiles and 304s. |
 | D13 | Unmatched paths return Caddy 200 empty, not 404. | [R] | F: 404. |
 | D14 | Explainer hard-codes `api.weather.gov` and ignores `NWS_POINT_ALERTS_URL`. | [R] | F: make it configurable (needed for tests). |

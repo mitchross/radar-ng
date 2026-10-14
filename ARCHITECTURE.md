@@ -1,6 +1,6 @@
 # Architecture
 
-The phone app is the windshield; the Kubernetes pipeline is the engine. radar-ng pulls raw NOAA products (MRMS radar every 2 minutes, HRRR model runs hourly, lightning, tropical) onto hardware you own, rasterizes them into pre-rendered PNG tile pyramids on a PVC, and serves them as static files behind aggressive caching. Everything that runs on a timer is a Temporal Schedule driving a workflow; every workflow calls activities that live next to the service code in `backend/`. The Expo app is deliberately thin: it polls one manifest, mounts raster sources over a MapLibre basemap, and keeps its own state in zustand + MMKV so it works offline and cold-starts instantly.
+The phone app is the windshield; the Kubernetes pipeline is the engine. radar-ng pulls raw NOAA products (MRMS radar every 2 minutes, HRRR model runs hourly, lightning, tropical) onto hardware you own, rasterizes them into pre-rendered PNG tile pyramids on a PVC, and serves them as static files behind aggressive caching. Everything that runs on a timer is a Temporal Schedule driving a workflow; every workflow calls activities. The whole backend is one Rust binary, `radar` (workspace in `rust/`), run as the API, the workers, or an operator tool. The Expo app is deliberately thin: it polls one manifest, mounts raster sources over a MapLibre basemap, and keeps its own state in zustand + MMKV so it works offline and cold-starts instantly.
 
 ---
 
@@ -12,22 +12,22 @@ The phone app is the windshield; the Kubernetes pipeline is the engine. radar-ng
 
 | component | what it is | what it does | key files |
 |---|---|---|---|
-| `frontend/` | Expo SDK 58 (preview) app (bun) | MapLibre map + Skia wind particles; react-query data hooks, zustand + MMKV state, opt-in OTel client | `src/components/map/RadarOverlay.tsx` · `src/lib/radarCarousel.ts` · `src/stores/useWeatherStore.ts` · `src/lib/telemetry.ts` |
-| `backend/api/` | the tile-server pod: Caddy in front of FastAPI | serves tile pyramids as static files, proxies `/api/*` + `/v1/*` to FastAPI, fronts the basemap; FastAPI holds the manifest/forecast/inspect/metrics endpoints and starts Temporal workflows for mobile | `Caddyfile` · `api/server.py` · `api/routes_workflows.py` · `start.sh` |
-| `backend/ingest_mrms/` | MRMS radar activities | list/download/decode 2-min MRMS GRIB2 frames, render 3-palette tile pyramids, detect storm cells; env-driven prefix — the same code runs both `radar` and `radar-composite` | `activities.py` |
-| `backend/ingest_hrrr/` | HRRR forecast activities | per-forecast-hour simulated reflectivity out to 18–48 h; secondary variables are capacity-gated | `activities.py` |
-| `backend/ingest_airquality/` | NAQFC/AQMv7 air quality | bias-corrected PM2.5 + ozone GRIB2 (72 hourly messages per cycle, 06z/12z) rendered per-chunk into AQI-colored pyramids — current hour + 3-day forecast in one run | `activities.py` |
-| `backend/ingest_lightning/` | Blitzortung consumer | long-running websocket activity, writes strikes to the state PVC | `activities.py` |
-| `backend/ingest_tropical/` | NHC ingest | fetches NHC GIS feeds, publishes active systems | `activities.py` |
-| `backend/nowcast/` | pysteps S-PROG | optical flow over recent MRMS grids → +60 min extrapolated radar tiles | `activities.py` |
-| `backend/open_meteo_sync/` | Open-Meteo model sync | pulls GFS/HRRR open-data into the self-hosted forecast API's volume; runs on its own worker pool | `activities.py` |
-| `backend/tile_cleanup/` | retention sweeper | hourly deletion of expired tile timestamps + grids (manifest first, then rmtree) | `activities.py` |
-| `backend/shared/` | the data-plane library | atomic tile rendering, palettes, manifest read/write, `ProcessedSet` state, storm detection, JSON logger, activity heartbeat helper | `tiler.py` · `manifest.py` · `state.py` · `palettes.py` · `activity_heartbeat.py` · `logger.py` |
-| `backend/basemap/` | Protomaps basemap | go-pmtiles serving a one-time CONUS PMTiles extract + style JSONs | `Dockerfile` · `styles/` |
-| `temporal/` | the control plane | worker entrypoints, all workflow definitions, idempotent schedule seeding, OTel wiring | `worker.py` · `open_meteo_worker.py` · `workflows/` · `schedules/seed.py` |
-| `deploy/` | deployment manifests | the docker-compose golden path, a local Temporal dev cluster, and reference k8s templates | `docker-compose.yml` · `temporal-dev.yml` · `k8s/` |
+| `frontend/` | Expo SDK 58 app (bun) | MapLibre map + Skia wind particles; react-query data hooks, zustand + MMKV state, opt-in OTel client | `src/components/map/RadarOverlay.tsx` · `src/lib/radarCarousel.ts` · `src/stores/useWeatherStore.ts` · `src/lib/telemetry.ts` |
+| `web/` | the web radar (Vite) | browser radar on the same API | `src/` |
+| `radar api` | the tile-server (`radar-api`) | serves tile pyramids as static files, the basemap (PMTiles, styles, fonts, imagery proxy), `/api/*` (manifest, forecast, inspect, alerts, geocode, metrics) and `/v1/*` (starts Temporal workflows for mobile) | `rust/crates/radar-api/` |
+| MRMS ingest | `radar-ingest` + `radar-grib` + `radar-tiler` + `radar-storms` | list/download/decode 2-min MRMS GRIB2 frames, render 3-palette tile pyramids, detect and track storm cells; one prefix-driven code path serves both `radar` and `radar-composite` | `rust/crates/radar-ingest/src/mrms.rs` |
+| HRRR ingest | `radar-ingest` | per-forecast-hour simulated reflectivity out to 18–48 h; secondary variables are capacity-gated (`HRRR_ENABLED_LAYERS`) | `rust/crates/radar-ingest/src/hrrr/` |
+| air quality | `radar-aux::aqm` | NAQFC/AQMv7 bias-corrected PM2.5 + ozone (72 hourly messages per cycle, 06z/12z) rendered per-chunk into AQI-colored pyramids | `rust/crates/radar-aux/src/aqm/` |
+| lightning | `radar-alerts::lightning` | long-running Blitzortung websocket activity, writes strikes to the state PVC | `rust/crates/radar-alerts/src/lightning/` |
+| tropical | `radar-aux::tropical` | fetches NHC GIS feeds, publishes active systems | `rust/crates/radar-aux/src/tropical.rs` |
+| nowcast | `radar-nowcast` | Lucas-Kanade motion + S-PROG extrapolation over recent MRMS grids → +60 min radar tiles, then skill scoring | `rust/crates/radar-nowcast/` |
+| Open-Meteo sync | `radar-aux::open_meteo` | pulls GFS/HRRR open data into the self-hosted forecast API's volume; runs on its own worker pool | `rust/crates/radar-aux/src/open_meteo.rs` |
+| tile cleanup | `radar-aux::tile_cleanup` | hourly deletion of expired tile timestamps + grids (manifest first, then the directory) | `rust/crates/radar-aux/src/tile_cleanup.rs` |
+| data-plane library | `radar-core` + `radar-tiler` | atomic tile publication, palettes, manifest v2, `ProcessedSet` state, grid store, JSON logging, activity heartbeats | `rust/crates/radar-core/` · `rust/crates/radar-tiler/` |
+| control plane | `radar-worker` + `radar-types` | worker roles, all 13 workflows, idempotent schedule seeding, watchdog, Worker Versioning | `rust/crates/radar-worker/` · `rust/crates/radar-types/src/schedules.rs` |
+| `deploy/` | build and local deployment | the Dockerfile (api, worker, open-meteo targets), the compose stack, the release runbook | `Dockerfile` · `docker-compose.yml` · `RUNBOOK.md` |
 
-Rule of thumb: **workflows orchestrate, activities do I/O.** Workflow files in `temporal/workflows/` contain no wall-clock, randomness, or I/O; every download, decode, render, and delete happens in an activity defined in `backend/`.
+Rule of thumb: **workflows orchestrate, activities do I/O.** Workflow code in `rust/crates/radar-worker/src/workflows/` contains no wall-clock, randomness, or I/O; every download, decode, render, and delete happens in an activity, and the activity bodies live in the domain crates with no Temporal types.
 
 ---
 
@@ -37,13 +37,13 @@ Rule of thumb: **workflows orchestrate, activities do I/O.** Workflow files in `
 
 **Per-frame lifecycle: 2-min MRMS cadence, 3-palette parallel render, atomic publish.**
 
-Every 120 seconds the `ingest-mrms-base` Schedule fires `IngestMrmsWorkflow` (a second schedule, `ingest-mrms-composite`, drives the same workflow with a different MRMS prefix). `OverlapPolicy.SKIP` means a slow run drops the next trigger instead of stacking.
+Every minute the `ingest-mrms-base` Schedule fires `IngestMrmsWorkflow` (a second schedule, `ingest-mrms-composite`, drives the same workflow with a different MRMS prefix). `OverlapPolicy.SKIP` means a slow run drops the next trigger instead of stacking.
 
 1. **List** — `mrms_list_unprocessed_keys` scans the NOAA S3 prefix (~200 ms), diffs against the `ProcessedSet` on the state PVC, and returns up to `BACKLOG_PER_CYCLE=3` keys, **newest first** — fresh radar beats backfill.
-2. **Download + decode** — `mrms_process_frame` GETs the `.grib2.gz` object and pygrib-decodes it to a float32 lat×lon grid.
+2. **Download + decode** — `mrms_process_frame` GETs the `.grib2.gz` object and decodes it (pure-Rust GRIB2) to a float32 lat×lon grid.
 3. **Render** — the grid is rasterized into a z4–z7 PNG pyramid once per configured palette. The honest z7 ceiling avoids spending most of the render budget magnifying the ~1 km MRMS source.
-4. **Atomic publish** — `render_tiles_atomic` renders into a unique sibling `<timestamp>.tmp-<uuid>` directory and renames it into an immutable final path. Concurrent retries cannot share or delete each other's staging directory, and existing final paths are never replaced. Forecast paths include their anchor/model run so two forecast cycles can never collide at the same valid time.
-5. **Storm cells** — centroid detection over the grid → one JSON (~300 ms).
+4. **Atomic publish** — the tiler renders into a unique sibling `<timestamp>.tmp-<uuid>` directory and renames it into an immutable final path. Concurrent retries cannot share or delete each other's staging directory, and existing final paths are never replaced. Forecast paths include their anchor/model run so two forecast cycles can never collide at the same valid time.
+5. **Storm cells** — connected-component detection and tracking over the grid → one `storms.json`.
 6. **Commit** — only after every configured palette has a non-empty pyramid, generation-pointer inspector and nowcast grids are written, manifest schema v2 publishes the frame metadata atomically, and the key is added to `ProcessedSet`.
 
 One bad frame doesn't kill the run: per-frame errors are caught and logged, siblings continue, and the key is left unprocessed for the next cycle. The app discovers the new timestamp on its next manifest poll (≤30 s later).
@@ -58,7 +58,7 @@ Hot-path budget: the whole thing must land under the 2-minute MRMS cadence or `/
 
 **Temporal Schedules → workflows → activities → PVCs, plus the mobile → `/v1` → Temporal path.**
 
-Everything periodic is a Temporal Schedule — there are no CronJobs and no crontabs. `temporal/schedules/seed.py` runs on every worker boot and create-or-updates all schedules by ID (idempotent; HA replicas racing converge on the same state; transient "shard warming up" RPC errors are retried with bounded backoff instead of crash-looping the pod). Bringing up a fresh stack requires zero manual scheduling steps.
+Everything periodic is a Temporal Schedule — there are no CronJobs and no crontabs. The seeding worker (one per deployment, `SEED_SCHEDULES=1`) create-or-updates all 12 schedules from `radar_types::schedules::all_schedules()` on boot (idempotent; compares before updating; retryable RPC errors are retried with bounded backoff). `radar seed` does the same once. Bringing up a fresh stack requires zero manual scheduling steps.
 
 | schedule | workflow | cadence |
 |---|---|---|
@@ -70,19 +70,19 @@ Everything periodic is a Temporal Schedule — there are no CronJobs and no cron
 | `ingest-lightning` | `IngestLightningWorkflow` | 60 min (activity streams ~50 min) |
 | `ingest-tropical` | `IngestTropicalWorkflow` | 1 h |
 | `tile-cleanup` | `TileCleanupWorkflow` | 1 h |
-| `open-meteo-sync-hrrr` / `-gfs` | `OpenMeteoSyncWorkflow` | 1 h / 6 h |
+| `open-meteo-sync-hrrr` / `-gfs` / `-gfs025` | `OpenMeteoSyncWorkflow` | 1 h / 6 h / 6 h |
 
 Why Temporal instead of CronJobs — the concrete list:
 
 - **`OverlapPolicy.SKIP` + short catch-up windows.** A render that overruns its slot drops the next trigger instead of piling up; the 1–2 min schedules keep a 5-min catch-up window (hourly ones 1 h), so a worker that was down for an hour doesn't thundering-herd on recovery. Fresh data beats backfill for radar.
-- **Retries with `schedule_to_close` budgets.** `start_to_close` bounds one attempt; `schedule_to_close` bounds the whole lifetime including retries and queue wait. `IngestHrrrWorkflow` gives each forecast hour 20 min per attempt but 30 min total (`temporal/workflows/ingest_hrrr.py`) — without the ceiling, 3 × 20-min attempts on one sick input pin the run while SKIP silently drops every fresh trigger.
+- **Retries with `schedule_to_close` budgets.** `start_to_close` bounds one attempt; `schedule_to_close` bounds the whole lifetime including retries and queue wait. `IngestHrrrWorkflow` gives each forecast hour 8 min per attempt but 12 min total (`rust/crates/radar-types/src/retry.rs`) — without the ceiling, repeated attempts on one sick input pin the run while SKIP silently drops every fresh trigger.
 - **Coherent model publication.** HRRR hours render into immutable `runs/<run-id>/<valid-time>` paths. The workflow publishes and marks a run processed only when every consecutive required hour contains reflectivity, so clients cannot mix forecast cycles or see a partial run.
-- **Heartbeats.** `backend/shared/activity_heartbeat.py` pumps `activity.heartbeat()` from the event loop while CPU-bound work runs in a thread. A hung worker is detected in the heartbeat timeout (nowcast: 300 s) instead of waiting out the full `start_to_close` (15 min).
-- **Worker versioning.** `WorkerDeploymentConfig` + `PINNED` (`temporal/worker.py`): in-flight workflows finish on the build they started on, new runs go to the new build — which is why the code has barely needed `workflow.patched()`.
-- **Graceful drain.** SIGTERM triggers `worker.shutdown()`: polling stops and in-flight activities get `TEMPORAL_GRACEFUL_SHUTDOWN_S` (25 s) to finish before cancellation, instead of being killed mid-write.
-- **State on disk, not in history.** Processed-key sets live in `ProcessedSet` files on the PVC; workflow history carries only small dataclasses. Temporal history is an event log replayed on recovery, not a database.
+- **Heartbeats.** `radar_core::heartbeat` beats from the async runtime while CPU-bound work runs on a blocking thread. A hung worker is detected in the heartbeat timeout (nowcast: 120 s) instead of waiting out the full `start_to_close` (10 min).
+- **Worker versioning.** Worker Deployments + `PINNED` (`rust/crates/radar-worker/src/worker.rs`): in-flight workflows finish on the build they started on, new runs go to the new build, and each build must pass `RadarDeploymentSmokeWorkflow` before the controller promotes it. The offline replay gate keeps the retained histories replaying.
+- **Graceful drain.** SIGTERM or SIGINT stops polling, and in-flight activities get `TEMPORAL_GRACEFUL_SHUTDOWN_S` (default 25 s) to finish before cancellation, instead of being killed mid-write.
+- **State on disk, not in history.** Processed-key sets live in `ProcessedSet` files on the PVC; workflow history carries only small payloads. Temporal history is an event log replayed on recovery, not a database.
 
-**Role-aware worker pools.** Local and migration-safe deployments default to the legacy `radar-ng` queue. Production can isolate `mrms`, `nowcast`, `hrrr`, `aux`, and `alerts` so a model fan-out cannot starve observed radar. Queue routing remains behind `USE_ISOLATED_TASK_QUEUES=0` until every role worker is deployed; the separate Open-Meteo worker keeps its own queue because its image carries the Swift binary.
+**Role-aware worker pools.** Production runs five pools, `mrms`, `nowcast`, `hrrr`, `aux`, and `alerts`, each on its own queue (`USE_ISOLATED_TASK_QUEUES=1`), so a model fan-out cannot starve observed radar. The compose stack runs one `legacy` worker on the `radar-ng` queue instead. The Open-Meteo worker keeps its own queue (`radar-ng-open-meteo`) because its image carries the Open-Meteo binary.
 
 **Mobile → Temporal.** The app never talks to Temporal directly. Workflow mutation routes are disabled in the cluster until a trusted identity issuer provides short-lived, per-user HMAC bearer tokens. When enabled, ownership checks bind every storm watch and push token to the authenticated subject; plaintext push credentials are stored outside immutable Temporal history.
 
@@ -125,18 +125,17 @@ Building and running the app: [docs/running-the-app.md](docs/running-the-app.md)
 
 **Tap-to-pixels with every cache tier on the path.**
 
-The tile-server pod runs **Caddy in front of FastAPI** (`backend/api/start.sh` launches both; the Caddyfile is the router). Caddy exists because a radar frame is ~12.6k small PNGs sitting on a PVC: Envoy — the Gateway API data plane at the edge — routes but cannot serve files, and serving static files through FastAPI would burn Python CPU per tile. Caddy's `file_server` (with `precompressed gzip`) does it for free, reverse-proxies `/api/*` and `/v1/*` to FastAPI on `127.0.0.1:8000`, and fronts go-pmtiles for the basemap.
+The tile-server is one process, `radar api` (axum). A radar frame is ~12.6k small PNGs on a PVC, and Envoy — the Gateway API data plane at the edge — routes but cannot serve files, so the api serves them itself from a static lane (`ServeDir` on `TILE_DIR`, no rate limit), next to the basemap lanes and the rate-limited `/api/*` and `/v1/*` routes.
 
 | what | TTL | why |
 |---|---|---|
-| `/tiles/radar/*`, `/tiles/radar-composite/*` | **24 h, `immutable`** | observed MRMS frames are written exactly once per timestamp dir and never change — the playback loop replays past frames without re-fetching a single tile |
-| `/tiles/*` forecast layers (nowcast, radar-hrrr, temperature, …) | **120 s** | every model run rewrites the **same valid-time path**; a long TTL would pin stale predictions |
+| `/tiles/*` (observed and forecast layers) | **24 h, `immutable`** | observed MRMS frames are written exactly once per timestamp dir; forecast frames live under run-scoped paths (`runs/<run>/<valid-time>`), so a new run is a new URL — the playback loop replays frames without re-fetching a single tile |
 | `/api/manifest.json` | 15 s server (`Cache-Control` + in-process TTL) / 30 s client poll | the freshness ceiling for discovering new frames |
-| `/api/forecast/{lat}/{lon}` | 300 s + in-process cache | Open-Meteo proxy; keyed per rounded coordinate |
-| `/basemap/styles/*` / `/basemap/tiles/*` | 1 h / 24 h | static Protomaps assets |
+| `/api/forecast/{lat}/{lon}` | `FORECAST_TTL_S` (default 900 s; the cluster sets 300) + in-process cache | Open-Meteo proxy; keyed per rounded coordinate |
+| `/basemap/styles/*` / `/basemap/tiles/*` / `/basemap/fonts/*` | 1 h / 24 h / 7 d | static Protomaps assets |
 | client offline | MMKV | last manifest + all prefs persist on-device; cold start renders before the network answers |
 
-The asymmetry in the first two rows is the whole caching story: **immutability is a property of the data, not the URL scheme.** Observed radar is append-only, so it caches hard; forecasts are replace-semantics, so they expire fast.
+The caching story: **immutability comes from the path, not the layer.** Observed radar is append-only, and forecast runs get their own path, so every tile URL can be cached hard; the manifest (15 s) is what points clients at the newest frames and runs.
 
 ---
 
@@ -146,12 +145,12 @@ The asymmetry in the first two rows is the whole caching story: **immutability i
 
 **The docker-compose stack — the same pipeline, one box.**
 
-`deploy/docker-compose.yml` runs the identical architecture with containers standing in for pods: Temporal (auto-setup + postgres + UI), the two workers, the tile-server, self-hosted Open-Meteo, go-pmtiles (plus a one-shot basemap bootstrap), and named volumes standing in for the PVCs (tiles, grids, state, openmeteo-data, basemap-data). The worker seeds all Schedules on boot — `docker compose up -d` is the entire orchestration setup.
+`deploy/docker-compose.yml` runs the same pipeline with containers standing in for pods: Temporal (auto-setup + postgres + optional UI), the `legacy` worker and the Open-Meteo worker, the `api`, self-hosted Open-Meteo, one-shot basemap bootstrap and publish steps, and named volumes standing in for the PVCs (tiles, grids, state, openmeteo-data, basemap-data). The api serves the basemap archive itself. The worker seeds all Schedules on boot — `docker compose up -d` is the entire orchestration setup.
 
 | guide | one line |
 |---|---|
 | [docs/self-hosting.md](docs/self-hosting.md) | the golden path: Compose on one machine, ~10 minutes to first radar frame |
-| [docs/kubernetes.md](docs/kubernetes.md) | bring-your-own-cluster: PVCs, probes, HPA, the two worker Deployments, reference manifests in `deploy/k8s/` |
+| [docs/kubernetes.md](docs/kubernetes.md) | bring-your-own-cluster: PVCs, probes, HPA, worker pools; the live manifests in talos-argocd-proxmox are the reference |
 | [docs/tuning.md](docs/tuning.md) | every knob with a direction — zoom levels, palette count, worker concurrency, cadences |
 | [docs/running-the-app.md](docs/running-the-app.md) | building the Expo dev client and pointing it at your server |
 
@@ -163,10 +162,10 @@ The asymmetry in the first two rows is the whole caching story: **immutability i
 |---|---|
 | Tiles are files on a PVC, not object storage | ~12.6k small PNGs every 2 min is small-object churn that per-object PUT/GET overhead punishes; a directory `rename` is also the atomic commit primitive |
 | z9 dropped from the radar pyramid | the top zoom level is ~75% of render wall-clock; with z9 frames arrived ~15 min stale, without it ~2 min — the client upsamples z8 instead (`SOURCE_MAX_ZOOM`) |
-| Nowcast manifest uses replace-semantics | every nowcast run supersedes the last; incremental adds mixed fresh and stale vintages in one timeline (`replace_layer_manifest` in `backend/shared/manifest.py`) |
+| Nowcast manifest uses replace-semantics | every nowcast run supersedes the last; incremental adds mixed fresh and stale vintages in one timeline (the atomic layer swap in `radar-nowcast`) |
 | Frame carousel, opacity swap (5 slots) | constant native child count avoids the iOS `insertReactSubview` crash; swapping opacity instead of remounting kills refetch jank; `EXPO_PUBLIC_CAROUSEL_WINDOW=1` is the kill switch |
-| Tiered caching split by data mutability | observed frames are write-once → 24 h immutable; forecast frames rewrite the same path → 120 s |
-| Caddy inside the tile-server pod | Envoy at the edge routes but can't file-serve; FastAPI shouldn't spend Python cycles on static PNGs |
+| Every tile path is immutable | observed frames are write-once and forecast runs are run-scoped paths → 24 h `immutable` for all `/tiles/*`; the manifest carries freshness |
+| One Rust process serves tiles, basemap and API | Envoy at the edge routes but can't file-serve; the api's static lane serves PNGs and PMTiles without a proxy or sidecar |
 | Temporal Schedules over K8s CronJobs | SKIP overlap, catchup window, retry budgets, heartbeats, and per-item isolation are the difference between "stale radar self-heals" and "pager duty" |
-| Separate open-meteo worker pool | the sync activity needs the Open-Meteo Swift binary in its image; registering it only on that worker makes Temporal do the routing |
+| Separate open-meteo worker pool | the sync activity needs the Open-Meteo binary in its image; registering it only on that worker makes Temporal do the routing |
 | Ingest state in `ProcessedSet` files, not workflow history | history is a replayed event log, not a database; frame keys live on the PVC, history carries small dataclasses |

@@ -1,9 +1,11 @@
 # Configuration reference
 
-Every knob radar-ng reads from the environment. For Docker Compose, copy
-[`deploy/.env.example`](../deploy/.env.example) to `.env` and edit; for
-Kubernetes the same values live in the `configmap-temporal-config.yaml` (see
-[docs/kubernetes.md](kubernetes.md)).
+The environment variables operators usually set. For Docker Compose, copy
+[`deploy/.env.example`](../deploy/.env.example) to `.env` and edit; on
+Kubernetes the worker values go in a ConfigMap and the api values in the
+tile-server Deployment (see [docs/kubernetes.md](kubernetes.md)). Defaults below
+are the code defaults unless marked "compose". Each crate README under
+`rust/crates/` lists every variable that crate reads.
 
 **Only two values must be set** — everything else has a working default:
 
@@ -18,8 +20,9 @@ Kubernetes the same values live in the `configmap-temporal-config.yaml` (see
 
 This is the **Protomaps basemap** — the vector map (roads, water, city labels)
 rendered *under* the radar. The one-time `basemap-bootstrap` step does HTTP
-range-reads against this URL to extract your region into a local
-`basemap.pmtiles`.
+range-reads against this URL to extract your region into
+`basemap.pmtiles.partial`; `basemap-publish` renames it to `basemap.pmtiles`,
+which the api serves.
 
 `build.protomaps.com` serves **date-stamped daily planet builds**
 (`YYYYMMDD.pmtiles`) with **~6-day retention** and **no `latest` alias**. So:
@@ -32,15 +35,14 @@ range-reads against this URL to extract your region into a local
 # newest date, then bootstrap once:
 BASEMAP_PMTILES_URL=https://build.protomaps.com/YYYYMMDD.pmtiles
 docker compose run --rm basemap-bootstrap
+docker compose run --rm basemap-publish
 ```
 
-> **Docker Compose only.** On **Kubernetes you don't set a date at all** — the
-> `basemap-bootstrap` Job runs a self-healing image that resolves the *newest
-> available* Protomaps build at run time, so there's nothing to rot. To pull a
-> fresher planet, bump the Job's `refresh:` label (ArgoCD recreates the Job →
-> newest build re-resolved) then `kubectl -n radar-ng rollout restart deploy
-> basemap`. To change the area, edit the Job's `BBOX`. Never pin a `YYYYMMDD`
-> in the k8s Job — it 404s within ~6 days.
+> **Docker Compose only.** The reference Kubernetes manifests (talos-argocd-proxmox)
+> don't set a date: the `basemap` Deployment's `fetch-basemap` init container
+> resolves the newest available Protomaps build when its archive is missing or
+> its `BBOX`/`REFRESH` env changed. Bump `REFRESH` (a GitOps change) to pull a
+> fresher planet. Never pin a `YYYYMMDD` there — it 404s within ~6 days.
 
 ---
 
@@ -56,11 +58,16 @@ docker compose run --rm basemap-bootstrap
 ### Temporal
 | Var | Default | Notes |
 |---|---|---|
-| `TEMPORAL_ADDRESS` | `temporal:7233` | Point at an external cluster to skip the bundled `temporal` + `temporal-postgres`. |
+| `TEMPORAL_ADDRESS` | `temporal:7233` (compose) | Point at an external cluster to skip the bundled `temporal` + `temporal-postgres`. |
 | `TEMPORAL_NAMESPACE` | `default` | Namespace workers + API use. |
-| `SKIP_SCHEDULE_SEED` | `0` | `1` stops the worker from (re)seeding Temporal Schedules on boot. |
-| `WORKER_ROLE` | `legacy` | Activity bundle and task queue: `legacy`, `mrms`, `nowcast`, `hrrr`, `aux`, `alerts`, `open-meteo`, or `all`. |
-| `USE_ISOLATED_TASK_QUEUES` | `0` | Route schedules to role queues only after matching role workers are deployed. |
+| `WORKER_ROLE` | `legacy` | Activity bundle and task queue: `legacy`, `mrms`, `nowcast`, `hrrr`, `aux`, `alerts`, `open-meteo`, or `all`. `radar worker --role` overrides it. |
+| `SEED_SCHEDULES` | `1` for `legacy`/`all`, else `0` | Whether this worker (re)seeds the Temporal Schedules on boot. Exactly one worker should. |
+| `SKIP_SCHEDULE_SEED` | `0` | `1` stops the worker from seeding. |
+| `USE_ISOLATED_TASK_QUEUES` | `0` | `1` puts each role on its own queue (`radar-ng-<role>`) and seeds Schedules onto them; production uses `1` with five role pools. Deploy every role worker before switching. |
+| `TEMPORAL_MAX_CONCURRENT_ACTIVITIES` | `4` (compose `2`) | Concurrent activities per worker. |
+| `TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS` | `2` (compose `1`) | Concurrent activity task polls. |
+| `TEMPORAL_GRACEFUL_SHUTDOWN_S` | `25` | Drain time for in-flight activities on SIGTERM. |
+| `TEMPORAL_METRICS_BIND` | `0.0.0.0:9464` | Worker Prometheus endpoint; `off` disables it. |
 
 ### Upstream identification
 | Var | Default | Notes |
@@ -72,14 +79,17 @@ docker compose run --rm basemap-bootstrap
 ### Basemap
 | Var | Default | Notes |
 |---|---|---|
-| `BASEMAP_PMTILES_URL` | dated example | **Set this** to a recent build (see above). |
-| `BASEMAP_BBOX` | `-125,24,-66,50` | `minLon,minLat,maxLon,maxLat`; default = CONUS. |
+| `BASEMAP_PMTILES_URL` | dated example | Compose bootstrap only. **Set this** to a recent build (see above). |
+| `BASEMAP_BBOX` | `-125,24,-66,50` | Compose bootstrap only. `minLon,minLat,maxLon,maxLat`; default = CONUS. |
+| `BASEMAP_PMTILES` | `/data/basemap.pmtiles` | api: the archive it serves at `/basemap/tiles/*`. |
+| `BASEMAP_TILES_UPSTREAM` | `http://basemap:8081` | api: go-pmtiles server to proxy `/basemap/tiles/*` to when `BASEMAP_PMTILES` does not exist. |
+| `BASEMAP_PMTILES_RECHECK_S` | `10` | api: how often the archive's file identity is checked, so a renamed-in replacement is picked up. |
 
 ### Frontend basemap provider (bundled vs external)
 
 The app ships **batteries-included**: by default the map renders the **bundled**
-Protomaps basemap served by your own tile-server (`/basemap/styles/*`, backed by
-`basemap-bootstrap` + go-pmtiles above). Forks and upstream users set nothing.
+Protomaps basemap served by your own tile-server (`/basemap/styles/*` and
+`/basemap/tiles/*`, backed by the `basemap-bootstrap` archive above). Forks and upstream users set nothing.
 
 Optionally, the frontend can point at an **external** MapLibre style URL instead
 — e.g. a self-hosted [VersaTiles](https://versatiles.org) instance shared across
@@ -108,27 +118,24 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 ### Ingest / render tunables
 | Var | Default | Notes |
 |---|---|---|
-| `PALETTES` | `classic,muted,vivid` | Each needs `backend/shared/palettes/<name>.json`. |
-| `BACKLOG_PER_CYCLE` | `2` | Max MRMS frames back-filled per schedule fire (fires every minute; prod: 1). |
-| `TEMPORAL_MAX_CONCURRENT_ACTIVITIES` | `2` | Concurrent activities in the worker (prod: 4). |
-| `TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS` | `1` | Concurrent activity task polls (prod: 2). |
+| `PALETTES` | `classic,muted,vivid` | Palettes are built into the binary (`classic`, `muted`, `vivid`). |
+| `BACKLOG_PER_CYCLE` | `3` (compose `2`) | Max MRMS frames back-filled per schedule fire (fires every minute; prod: 1). |
 | `STORM_THRESHOLD_DBZ` | `40` | Reflectivity threshold used to form tracked storm cells. |
 | `STORM_MIN_PIXELS` | `5` | Minimum connected MRMS pixels in a storm cell. |
 | `STORM_MAX_CELLS` | `500` | Strongest storm cells retained per frame. |
 | `STORM_MAX_TRACK_SPEED_KMH` | `160` | Association and extrapolation speed ceiling. |
-| `STORM_MIN_TRACK_RADIUS_KM` | `20` | Minimum consecutive-frame cell matching radius. |
 | `STORM_PREFETCH_PADDING_KM` | `12` | Padding around each predicted storm bbox. |
 | `STORM_PREFETCH_MAX_DISTANCE_KM` | `500` | Do not prefetch when the nearest storm is farther from the user. |
 | `FORECAST_HOURS` | `18` | HRRR forecast hours rendered per model run. |
 | `EXTENDED_FORECAST_HOURS` | `48` | Extended sub-hourly HRRR hours. |
-| `HRRR_ENABLED_LAYERS` | `radar-hrrr` | Comma-separated HRRR layers. Reflectivity-only is the production-safe default. |
+| `HRRR_ENABLED_LAYERS` | `radar-hrrr` (compose: all layers) | Comma-separated HRRR layers. Reflectivity-only is the production-safe default. |
 
-### Nowcast (pysteps S-PROG)
+### Nowcast (Lucas-Kanade motion + S-PROG)
 | Var | Default | Notes |
 |---|---|---|
 | `NOWCAST_HORIZON_MIN` | `60` | Minutes of extrapolated nowcast. |
 | `NOWCAST_STEP_MIN` | `5` | Minutes between nowcast frames. |
-| `NOWCAST_INPUT_FRAMES` | `4` | Recent MRMS frames fed to the motion field; values below pySTEPS' minimum of 3 are clamped. |
+| `NOWCAST_INPUT_FRAMES` | `4` | Recent MRMS frames fed to the motion field; values below 3 are clamped to 3. |
 | `NOWCAST_GRID_INPUT_LAYER` | `radar-nowcast-input` | Higher-fidelity grid dedicated to motion estimation. |
 | `NOWCAST_MAX_INPUT_GAP_MIN` | `6` | Fail closed when consecutive input frames exceed this cadence. |
 | `NOWCAST_ALLOW_PERSISTENCE_FALLBACK` | `0` | Opt-in stationary fallback; disabled so degraded output is not presented as a motion forecast. |
@@ -145,7 +152,6 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 ### Storm watch
 | Var | Default | Notes |
 |---|---|---|
-| `WATCH_RADIUS_KM` | `20` | Radius around a watched location that triggers storm alerts. |
 | `INTENSIFY_DBZ_DELTA` | `10` | dBZ increase over previous frame = "intensifying". |
 | `DISSIPATE_DBZ_DELTA` | `10` | dBZ decrease = "dissipating". |
 | `HAIL_DBZ_THRESHOLD` | `60` | dBZ at/above which hail is flagged. |
@@ -161,15 +167,19 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 ### Tile-server API
 | Var | Default | Notes |
 |---|---|---|
+| `LISTEN_ADDR` | `0.0.0.0:8080` (image) | Bind address. |
 | `OPEN_METEO_BASE` | `http://open-meteo:8080/v1/forecast` | Forecast upstream; default is the bundled self-hosted Open-Meteo. |
 | `MRMS_MAX_AGE_S` | `600` | Radar age (s) past which `/api/health` reports `degraded`. |
-| `FORECAST_TTL_S` | `300` | In-process forecast response cache TTL (s). |
+| `FORECAST_TTL_S` | `900` | In-process forecast response cache TTL (s); the cluster sets 300. |
 | `FORECAST_CACHE_MAX_ENTRIES` | `512` | Bound for the in-process point-forecast cache. |
 | `WIND_CACHE_MAX_ENTRIES` | `48` | Bound for decoded wind-grid cache entries. |
 | `API_RATE_LIMIT_RPS` | `20` | Per-client token refill rate for API routes. |
 | `API_RATE_LIMIT_BURST` | `60` | Per-client API token bucket capacity. |
 | `DISABLE_WORKFLOW_ROUTES` | `0` | Disable watch/push mutation routes until an identity issuer and signing key are configured. |
-| `WORKFLOW_AUTH_SIGNING_KEY` | unset | HMAC key for scoped workflow-route bearer tokens. |
+| `WORKFLOW_AUTH_SIGNING_KEY` | unset | HMAC key for scoped workflow-route bearer tokens (`WORKFLOW_API_SIGNING_KEY` also accepted). |
+| `TEMPORAL_ALERTS_TASK_QUEUE` | `radar-ng-alerts` | Queue the api starts `WatchStormWorkflow` on; compose sets `radar-ng` for the legacy worker. |
+| `GEOCODER_URL` / `PHOTON_URL` | unset | Geocoder behind `/api/geocode` and `/api/reverse-geocode`; neither set means 503. |
+| `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` | unset | Optional OpenAI-compatible endpoint for `/api/briefing`; unset hides the briefing. |
 
 ---
 

@@ -1,5 +1,11 @@
 # Radar NG flagship reliability and scale plan
 
+> **Status (2026-10-14): historical plan.** Written 2026-09-02 for the Python backend. Since then the
+> five isolated worker pools are live (Gate 1) and the backend is Rust (`rust/`, v2.0.0;
+> [docs/rust-migration/PLAN.md](rust-migration/PLAN.md)). The rollback steps below predate the
+> forward-only release policy and do not apply: a bad release is fixed by a new release
+> ([releasing.md](releasing.md)). Paths under `backend/` and `temporal/` no longer exist.
+
 Updated 2026-09-02 after reviewing the Radar NG backend, Temporal workflows,
 Expo/React Native app, Kubernetes manifests, Longhorn volumes, shared
 VersaTiles service, production metrics, and the 2026-09-01/02 outage.

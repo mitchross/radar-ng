@@ -1,15 +1,15 @@
 # radar-aux
 
-Plain async Rust bodies for four ingest activities from `backend/`:
+Plain async Rust bodies for four groups of ingest activities:
 
-| Activity | Python source | Module |
+| Activity | Former Python module | Module |
 |---|---|---|
 | `aqm_find_latest_run`, `aqm_render_chunk`, `aqm_publish_run`, `aqm_mark_processed`, `aqm_cleanup` | `backend/ingest_airquality/activities.py` | `aqm` |
 | `tropical_fetch_and_publish` | `backend/ingest_tropical/activities.py` | `tropical` |
 | `tile_cleanup_sweep` | `backend/tile_cleanup/activities.py`, `cleanup.sh` (retired, D-2) | `tile_cleanup` |
 | `open_meteo_sync` | `backend/open_meteo_sync/activities.py` | `open_meteo` |
 
-Spec: `specs/spec-ingest-aux.md` sections 2-5, 7-9, 11-16. Lightning (section 6) and NWS alerts (section 10) are
+Spec: `docs/rust-migration/specs/spec-ingest-aux.md` sections 2-5, 7-9, 11-16. Lightning (section 6) and NWS alerts (section 10) are
 not here. There are no Temporal types in this crate. The worker crate wraps these functions and owns retry
 policy, scheduling and the AQM concurrency limit.
 
@@ -145,6 +145,6 @@ statistical products are rejected with `Unsupported`.
   500-character tail, 50-line window, CRITICAL outside the window, heartbeats, cancellation kills the child (checked
   through `/proc`), missing binary.
 
-Fixtures: `testdata/gen_aqm.py` (regenerate with `/tmp/venv-radar-aux/bin/python -I gen_aqm.py`) writes
+Fixtures: `testdata/gen_aqm.py` (regenerate with `python -I gen_aqm.py` in a venv with eccodes) writes
 `aqm_pm25_mini.grib2`, `aqm_o3_mini.grib2`, `aqm_pm25_stat.grib2`, `aqm_pm25_flipped.grib2`,
 `aqm_pm25_blank24.grib2` and `golden/`. `testdata/tropical/` holds the NHC feed and GIS fixtures.

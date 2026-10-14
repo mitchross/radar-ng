@@ -10,13 +10,13 @@ A complete weather backend on hardware you own. Every data source is **free and 
 |---|---|---|---|
 | radar (base + composite) | NOAA MRMS S3 | 2 min (polled every minute) | ~1 km |
 | radar-hrrr simulated reflectivity | NOAA HRRR S3 | hourly, 18–48 h out | 3 km |
-| nowcast (+60 min) | pysteps S-PROG of MRMS | 2 min input cadence | ~2 km science grid |
+| nowcast (+60 min) | Lucas-Kanade motion + S-PROG extrapolation of MRMS | 2 min input cadence | ~2 km science grid |
 | lightning | Blitzortung websocket | ~1 min | strikes |
 | tropical | NHC GIS feeds | 6 h | tracks + cones |
 | forecast | self-hosted Open-Meteo (GFS + HRRR) | 1–6 h | point forecast |
 | basemap | Protomaps PMTiles | static | vector tiles |
 
-Full layer matrix with tile paths and retention lives in the [README](../README.md#self-hosted-layer-matrix).
+Tile retention per layer is in [tuning.md](tuning.md#tile-retention--cleanup).
 
 ## Requirements
 
@@ -42,7 +42,7 @@ The hot spot is the MRMS palette render: every radar frame is rasterized into a 
 
 - **Egress:** ~50–100 MB/h steady-state pull from NOAA S3 buckets. Blitzortung is a low-volume websocket. Open-Meteo model syncs add bursts (GFS every 6 h, HRRR hourly).
 - **Disk:** steady-state ≈ 5 GB of tiles/grids (the cleanup activity sweeps hourly), spiking to ~10 GB during HRRR runs. The Open-Meteo data volume grows with the models you sync (a few GB for GFS + HRRR CONUS). The basemap PMTiles extract is a one-time ~1–2 GB download.
-- **Inbound:** nothing required. The stack is pull-only; the only listener is the tile-server on `:8080`.
+- **Inbound:** nothing required. The stack is pull-only; the only public listener is the api on `:8080` (compose also publishes Temporal's ports on the host).
 
 ## Quick start
 
@@ -61,21 +61,24 @@ Edit `.env` — everything has a sane default except two values you should set:
 
 ### 2. Basemap bootstrap (one-time, ~1–2 GB)
 
-The `basemap` service serves vector tiles from a local Protomaps PMTiles archive — the one thing that isn't fetched automatically:
+The `api` serves vector tiles from a local Protomaps PMTiles archive — the one thing that isn't fetched automatically:
 
 ```bash
-docker compose run --rm basemap-bootstrap
+docker compose run --rm basemap-bootstrap   # download to basemap.pmtiles.partial
+docker compose run --rm basemap-publish     # rename it to basemap.pmtiles
 ```
 
-This runs `pmtiles extract`, which uses HTTP range reads to pull only your bounding box (`BASEMAP_BBOX`, default CONUS, ~1–2 GB — not the ~120 GB planet) into the `basemap-data` volume. To change coverage later, adjust the bbox and re-run; `go-pmtiles` picks up the replaced file without a restart.
+`basemap-bootstrap` runs `pmtiles extract`, which uses HTTP range reads to pull only your bounding box (`BASEMAP_BBOX`, default CONUS, ~1–2 GB — not the ~120 GB planet) into the `basemap-data` volume. `basemap-publish` renames the finished file over the served path, so the api never reads a half-written archive. To change coverage later, adjust the bbox and re-run both; the api picks up the replaced file without a restart.
 
 ### 3. Bring it up
 
 ```bash
+docker compose build api        # the radar image; `worker` runs it without building
 docker compose up -d --build
 ```
 
-Images build locally from the repo (no registry needed). The root `.dockerignore` keeps frontend output, test caches, docs, and local captures out of the worker build context; add any new local data directories there before they become large.
+Images build locally from the repo (no registry or Rust toolchain needed; the first build compiles the
+workspace and takes a while). `deploy/Dockerfile.dockerignore` limits the build context to `rust/`.
 
 What starts:
 
@@ -83,11 +86,11 @@ What starts:
 |---|---|
 | `temporal` (+ `temporal-postgres`) | Temporal server — schedules and dispatches all ingest work (gRPC on `:7233` for the `temporal` CLI) |
 | `temporal-ui` | optional web UI — `docker compose --profile ui up -d`, then <http://localhost:8233> |
-| `worker` | Temporal worker — the default `legacy` role runs every ingest activity on task queue `radar-ng` and self-seeds schedules; production can split roles onto isolated queues after all role workers are deployed |
+| `volume-init` | one-shot chown of the named volumes to the images' users |
+| `worker` | `radar worker --role legacy` — runs every workflow and activity on task queue `radar-ng` and seeds the schedules; production splits roles onto isolated queues |
 | `open-meteo` | self-hosted forecast API |
-| `open-meteo-worker` | isolated worker pool (task queue `radar-ng-open-meteo`) that runs the model syncs |
-| `tile-server` | Caddy + FastAPI, the only public port (`:8080`) |
-| `basemap` | Protomaps `go-pmtiles` vector tile server |
+| `open-meteo-worker` | `radar worker --role open-meteo` (task queue `radar-ng-open-meteo`), runs the model syncs |
+| `api` | `radar api` — tiles, basemap, `/api`, `/v1`; the only public port (`:8080`) |
 
 Named volumes: `tiles`, `grids`, `state`, `openmeteo-data`, `basemap-data`, `temporal-pg-data`. There is no cron anywhere — the worker registers Temporal Schedules (MRMS polled every minute, HRRR every 15 min, nowcast every 2 min plus a kick from every new MRMS frame, tile-cleanup hourly, Open-Meteo syncs every 1–6 h) idempotently on startup.
 
@@ -96,7 +99,7 @@ The `.env.example` ingest defaults are deliberately lab-sized (`BACKLOG_PER_CYCL
 ### 4. Verify
 
 ```bash
-# processes up? (pure liveness — 200 as soon as Caddy + FastAPI answer)
+# process up? (pure liveness — 200 as soon as the api answers)
 curl http://localhost:8080/api/livez
 
 # data fresh? (reports "degraded" + 503 until the first frame lands)
@@ -114,7 +117,8 @@ curl -sI http://localhost:8080/basemap/styles/positron.json
 Watch the worker if you're impatient:
 
 ```bash
-docker compose logs -f worker   # look for "schedule seed complete" then "worker starting"
+docker compose logs -f worker
+radar debug doctor               # if you have the binary; see debug-harness.md
 ```
 
 ## Connecting the mobile app
@@ -134,13 +138,13 @@ The manifest fetch determines which layers show up — if a layer hasn't been in
 
 ## Exposing it publicly
 
-The tile-server speaks plain HTTP on `:8080`. To reach it from outside your LAN, put a TLS-terminating proxy in front — any of:
+The api speaks plain HTTP on `:8080`. To reach it from outside your LAN, put a TLS-terminating proxy in front — any of:
 
 - **Reverse proxy** (Caddy, nginx, Traefik) with a Let's Encrypt cert, forwarding to `your-server:8080`
 - **Cloudflare Tunnel** (`cloudflared`) — no inbound port opening at all
 - **Tailscale / WireGuard** — keep it private but reachable from your phone anywhere
 
-**Security note:** there is currently **no authentication on the mutating `/v1/*` routes** (push tokens, storm watches, workflow triggers). If you expose the server publicly, either keep exposure read-only (block `/v1/*` at your proxy) or restrict access to a VPN/tunnel. The `GET`-only `/api/*` and `/tiles/*` surface is harmless to expose.
+**Security note:** the mutating `/v1/*` routes (push tokens, storm watches) need a per-user HMAC bearer token signed with `WORKFLOW_AUTH_SIGNING_KEY`; with no key they answer 503, and `DISABLE_WORKFLOW_ROUTES=1` turns them off. Blocking `/v1/*` at your proxy as well costs nothing if you don't use them. The `GET`-only `/api/*` and `/tiles/*` surface is harmless to expose.
 
 Example nginx location block for read-only public exposure:
 
@@ -156,22 +160,22 @@ location / { proxy_pass http://your-server:8080; }
 `mrms_age_s` exceeded `MRMS_MAX_AGE_S` (default 600 s). Causes, in order of likelihood:
 
 1. **First boot** — no frame rendered yet. Wait 2–3 minutes.
-2. **Worker down or wedged** — `docker compose logs worker`. Schedules keep firing in Temporal but nothing picks them up if the worker is dead; a restart re-seeds and catches up (`BACKLOG_PER_CYCLE=3`, newest-first).
-3. **Underpowered host** — the palette render can't keep up with the 2-min cadence. See [tuning.md](tuning.md): fewer palettes, fewer zoom levels.
+2. **Worker down or wedged** — `docker compose logs worker`. Schedules keep firing in Temporal but nothing picks them up if the worker is dead; a restart re-seeds and catches up (`BACKLOG_PER_CYCLE`, newest-first).
+3. **Underpowered host** — the palette render can't keep up with the 2-min cadence. See [tuning.md](tuning.md): fewer palettes.
 4. **NOAA having a slow day** — check whether new objects are actually landing in the MRMS S3 bucket. Nothing to do but wait; the app shows a "data delayed" banner off the same health endpoint.
 
 ### Blank / gray basemap
 
-The PMTiles archive is missing — the `basemap` container runs fine without it, it just serves empty tiles. Verify:
+The PMTiles archive is missing — without it the api proxies `/basemap/tiles/*` to `BASEMAP_TILES_UPSTREAM`, which compose does not run. Verify:
 
 ```bash
 curl -sI http://localhost:8080/basemap/tiles/4/4/6.mvt   # expect 200 with content
-docker compose logs basemap
+docker compose logs api
 ```
 
 Fixes:
 
-- You skipped the bootstrap: `docker compose run --rm basemap-bootstrap`
+- You skipped the bootstrap or the publish step: `docker compose run --rm basemap-bootstrap`, then `docker compose run --rm basemap-publish`
 - The bootstrap 404'd: your `BASEMAP_PMTILES_URL` build date expired (~6-day retention) — set a recent `YYYYMMDD` from <https://build.protomaps.com/> and re-run
 - Your map view is outside the extracted `BASEMAP_BBOX` (default CONUS) — widen the bbox and re-run the bootstrap
 
@@ -188,4 +192,4 @@ Then confirm the proxy path works: `curl http://localhost:8080/api/forecast/40.0
 
 ### Layers missing from the manifest
 
-Each layer appears only after its first successful ingest. `nowcast` additionally needs ≥4 MRMS grids on disk before pysteps can extrapolate, so expect it ~10 minutes after the radar layer.
+Each layer appears only after its first successful ingest. `nowcast` additionally needs `NOWCAST_INPUT_FRAMES` (default 4) MRMS grids on disk before it can extrapolate, so expect it ~10 minutes after the radar layer.

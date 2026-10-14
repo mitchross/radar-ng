@@ -1,9 +1,10 @@
 # radar-api
 
-The Rust replacement for the whole tile-server pod. One axum process serves what used to be
-three processes: the Caddy front proxy, the FastAPI/uvicorn app, and the go-pmtiles sidecar. The
-routes, parameters, JSON shapes, status codes and headers follow `specs/spec-api.md`, so the
-React Native and web apps do not change.
+The radar-ng HTTP server (`radar api`, the tile-server image). One axum process serves the tile
+pyramids, the basemap (PMTiles, styles, fonts, imagery proxy), `/api/*`, `/v1/*` and `/api/metrics`.
+It replaced the Python stack's Caddy, FastAPI/uvicorn and go-pmtiles processes; routes, parameters,
+JSON shapes, status codes and headers follow `docs/rust-migration/specs/spec-api.md`, so the app and
+the web radar did not change.
 
 ## Public API
 
@@ -26,9 +27,8 @@ cd rust
 cargo test -p radar-api            # 78 unit tests, 26 HTTP tests (tests/http.rs)
 ```
 
-The HMAC vectors in `testdata/hmac_vectors.json` were produced by running the real Python
-`authenticated_user` from `backend/api/api/routes_workflows.py`. The Rust side replays them in
-`workflows::auth::vector_tests`.
+The HMAC vectors in `testdata/hmac_vectors.json` were produced by the former Python
+`authenticated_user`. The Rust side replays them in `workflows::auth::vector_tests`.
 
 ## Routes
 
@@ -72,7 +72,7 @@ Static lane (not under `/api`):
 | `/basemap/styles/*` | `ServeDir` on `BASEMAP_ROOT/styles` | `public, max-age=3600` |
 | `/basemap/fonts/*` | `ServeDir` on `BASEMAP_ROOT/fonts` | `public, max-age=604800` |
 | `/basemap/imagery/{z}/{x}/{y}.jpg` | USGS proxy with moka cache | `public, max-age=604800` on hits and misses |
-| `/basemap/tiles/{z}/{x}/{y}.mvt` | `pmtiles` crate reading `BASEMAP_PMTILES` through a positioned-read backend (F6) | `public, max-age=86400` |
+| `/basemap/tiles/{z}/{x}/{y}.mvt` | `pmtiles` crate reading `BASEMAP_PMTILES` through a positioned-read backend (F6); proxied to `BASEMAP_TILES_UPSTREAM` (default `http://basemap:8081`) when no local archive exists | `public, max-age=86400` |
 
 ACAO `*` is set on the static lane. Errors on the static lane are overridden to
 `Cache-Control: no-store` with a text body `"{code} {reason}"`. Imagery non-matches are a bare
@@ -95,7 +95,7 @@ ACAO `*` is set on the static lane. Errors on the static lane are overridden to
 
 ## Deviations
 
-Items are numbered as in `specs/spec-api.md` section 16. "Fixed" means the port does not
+Items are numbered as in `docs/rust-migration/specs/spec-api.md` section 16. "Fixed" means the port does not
 reproduce the Python bug. "Kept" means the port matches Python on purpose.
 
 | ID | Decision | What the port does |
@@ -137,7 +137,7 @@ Other differences:
 - The `/basemap/imagery` catch-all cannot be a separate route (axum rejects the overlap with the
   `{yjpg}` route). Non-matching paths fall through to the top-level fallback.
 
-## Review fixes (docs/REVIEW.md, F1 to F10)
+## Review fixes (docs/rust-migration/REVIEW.md, F1 to F10)
 
 - **F1 rate limit.** The per-client token bucket applies to `/api/*` and `/v1/*` only. Static lanes (`/tiles`,
   `/basemap/styles`, `/basemap/fonts`, `/basemap/imagery`, `/basemap/tiles`) are never limited, as when Caddy
@@ -163,17 +163,15 @@ Other differences:
 
 - Temporal behavior is untested against a live server. Coverage is limited to the unreachable
   path (503) and the auth, validation and owner checks. D1 (`AllowDuplicate`) is unverified.
-- The go-pmtiles response headers (`application/x-protobuf`, `max-age=86400`) were written from
-  memory. They have not been compared with the real sidecar.
 - D21 (push token writes from the API process) is decided as F9: writes stay direct and need a writable
   `STATE_DIR`. The shipped manifests mount `state` read-only, so `/v1/push-tokens` answers 503 there until that
   mount changes. The mount has not been changed.
-- The Python-vs-Rust benchmark harness is a separate task and is not part of this crate.
 
 ## Configuration
 
 Environment variables (see `src/config.rs`): `LISTEN_ADDR`, `TILE_DIR`, `GRID_DIR`, `STATE_DIR`,
-`STYLE_DIR`, `BASEMAP_ROOT`, `BASEMAP_PMTILES`, `BASEMAP_PMTILES_RECHECK_S`, `OPEN_METEO_BASE`, `MRMS_MAX_AGE_S`,
+`STYLE_DIR`, `BASEMAP_ROOT`, `BASEMAP_PMTILES`, `BASEMAP_PMTILES_RECHECK_S`, `BASEMAP_TILES_UPSTREAM`,
+`OPEN_METEO_BASE`, `MRMS_MAX_AGE_S`,
 `FORECAST_TTL_S`, `FORECAST_CACHE_MAX_ENTRIES`, `NOWCAST_POINT_CACHE_MAX_ENTRIES`,
 `WIND_CACHE_MAX_ENTRIES`, `ALERTS_TTL_S`, `ALERTS_CACHE_MAX_ENTRIES`, `GEOCODER_URL`,
 `PHOTON_URL`, `GEOCODE_TTL_S`, `GEOCODE_CACHE_MAX_ENTRIES`, `PLACES_UPSTREAM_TIMEOUT_S`,

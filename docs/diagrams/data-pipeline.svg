@@ -30,7 +30,7 @@
   <rect x="312" y="140" width="224" height="130" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="312" y="142" width="3" height="126" rx="1.5" fill="#8a5cc2"/>
   <text x="328" y="166" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">2 · Download + decode</text>
-  <text x="328" y="186" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">~8 MB GRIB2 → pygrib →</text>
+  <text x="328" y="186" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">~8 MB GRIB2 → Rust decode →</text>
   <text x="328" y="202" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">float32 lat×lon grid, saved to</text>
   <text x="328" y="218" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">grids PVC for inspect + nowcast</text>
   <rect x="328" y="234" width="70" height="20" rx="10" fill="#8a5cc2" fill-opacity="0.1"/>
@@ -55,7 +55,7 @@
   <rect x="868" y="142" width="3" height="126" rx="1.5" fill="#b97a4a"/>
   <text x="884" y="166" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">4 · Atomic publish</text>
   <text x="884" y="186" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">tiles render into {ts}.tmp/, then</text>
-  <text x="884" y="202" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">os.rename into place — readers</text>
+  <text x="884" y="202" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">rename into place — readers</text>
   <text x="884" y="218" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">never see a partial pyramid</text>
   <rect x="884" y="234" width="140" height="20" rx="10" fill="#b97a4a" fill-opacity="0.12"/>
   <text x="894" y="248" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#b97a4a">then manifest.add(ts)</text>
@@ -66,11 +66,11 @@
   <rect x="1146" y="140" width="238" height="130" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="1146" y="142" width="3" height="126" rx="1.5" fill="#2e8b6f"/>
   <text x="1162" y="166" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">5 · Served + cached</text>
-  <text x="1162" y="186" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Caddy file-serves the pyramid;</text>
-  <text x="1162" y="202" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">observed radar is immutable so</text>
+  <text x="1162" y="186" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">radar api file-serves the pyramid;</text>
+  <text x="1162" y="202" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">every tile path is immutable so</text>
   <text x="1162" y="218" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">it caches for a full day</text>
   <rect x="1162" y="234" width="152" height="20" rx="10" fill="#2e8b6f" fill-opacity="0.1"/>
-  <text x="1172" y="248" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#2e8b6f">radar 24 h · forecast 120 s</text>
+  <text x="1172" y="248" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#2e8b6f">all tiles 24 h · manifest 15 s</text>
 
   <!-- total chip -->
   <rect x="1404" y="168" width="108" height="74" rx="12" fill="#c2603a" fill-opacity="0.09" stroke="#c2603a" stroke-opacity="0.35" stroke-width="1.5"/>

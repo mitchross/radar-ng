@@ -40,7 +40,7 @@
   <rect x="68" y="344" width="400" height="88" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="68" y="346" width="3" height="84" rx="1.5" fill="#8a5cc2"/>
   <text x="84" y="368" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">worker</text>
-  <text x="84" y="386" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">builds from temporal/Dockerfile · runs every ingest activity</text>
+  <text x="84" y="386" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">radar worker --role legacy · runs every ingest activity</text>
   <text x="84" y="404" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">self-seeds all schedules on boot — no cron to configure</text>
   <text x="84" y="420" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">writes tiles · grids · state volumes</text>
 
@@ -72,8 +72,8 @@
 
   <rect x="540" y="164" width="430" height="150" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="540" y="166" width="3" height="146" rx="1.5" fill="#2e8b6f"/>
-  <text x="556" y="188" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">tile-server — the front door</text>
-  <text x="556" y="208" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Caddy (static /tiles, /basemap proxy) + FastAPI (/api, /v1)</text>
+  <text x="556" y="188" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">api — the front door</text>
+  <text x="556" y="208" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">radar api: static /tiles, /basemap (PMTiles), /api, /v1</text>
   <text x="556" y="226" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">reads the volumes read-only · healthcheck GET /api/livez</text>
   <rect x="556" y="242" width="180" height="24" rx="12" fill="#c2603a" fill-opacity="0.1" stroke="#c2603a" stroke-opacity="0.35"/>
   <text x="568" y="259" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#c2603a">:8080 — only exposed port</text>
@@ -81,10 +81,10 @@
 
   <rect x="540" y="330" width="430" height="96" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="540" y="332" width="3" height="92" rx="1.5" fill="#2e8b6f"/>
-  <text x="556" y="354" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap</text>
-  <text x="556" y="372" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">protomaps/go-pmtiles serving basemap.pmtiles</text>
-  <text x="556" y="390" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">name is load-bearing — the Caddyfile proxies to basemap:8081</text>
-  <text x="556" y="406" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">blank map = archive missing → run the bootstrap once</text>
+  <text x="556" y="354" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap-publish — one shot</text>
+  <text x="556" y="372" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">renames basemap.pmtiles.partial → basemap.pmtiles</text>
+  <text x="556" y="390" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">the api reopens the archive after the rename</text>
+  <text x="556" y="406" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">blank map = archive missing → run both steps once</text>
 
   <rect x="540" y="442" width="430" height="110" rx="12" fill="#ffffff" stroke="#2e8b6f" stroke-opacity="0.5" stroke-width="1.5" stroke-dasharray="5 4"/>
   <text x="556" y="466" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap-bootstrap — one shot</text>
@@ -165,6 +165,6 @@
   <text x="1018" y="111" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">http://host:8080</text>
 
   <!-- footer -->
-  <text x="48" y="726" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Quick start: cp deploy/.env.example deploy/.env (set NWS_USER_AGENT + BASEMAP_PMTILES_URL) → docker compose run --rm basemap-bootstrap → docker compose up -d --build</text>
+  <text x="48" y="726" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Quick start: cp deploy/.env.example deploy/.env (set NWS_USER_AGENT + BASEMAP_PMTILES_URL) → run basemap-bootstrap, basemap-publish → docker compose up -d --build</text>
   <text x="48" y="744" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Hardware: lab 4 cores · 4 GB · 20 GB SSD — prod 16 cores · 16 GB · 100 GB. NOAA egress ~50–100 MB/h. Kubernetes path: docs/kubernetes.md</text>
 </svg>

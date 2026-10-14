@@ -74,6 +74,9 @@ pub enum DebugCheck {
         /// Shared flags.
         #[command(flatten)]
         common: Common,
+        /// Skip the Temporal section (HTTP checks only).
+        #[arg(long)]
+        skip_temporal: bool,
     },
     /// Endpoint latency percentiles against per-endpoint budgets.
     Api {
@@ -144,8 +147,11 @@ pub enum DebugCheck {
 pub async fn run(args: DebugArgs) -> anyhow::Result<i32> {
     let http = Http::new()?;
     match args.check {
-        DebugCheck::Doctor { common } => {
-            let checks = doctor(&http, &common, false).await;
+        DebugCheck::Doctor {
+            common,
+            skip_temporal,
+        } => {
+            let checks = doctor(&http, &common, skip_temporal).await;
             if !common.json {
                 println!("{}", summary_line(&checks));
             }
@@ -302,7 +308,7 @@ mod tests {
     #[test]
     fn doctor_defaults_match_python() {
         match parse(&["doctor"]) {
-            DebugCheck::Doctor { common } => {
+            DebugCheck::Doctor { common, .. } => {
                 assert_eq!(common.server, "http://localhost:8080");
                 assert_eq!(common.temporal_address, "localhost:7233");
                 assert_eq!(common.namespace, "default");

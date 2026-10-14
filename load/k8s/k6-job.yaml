@@ -1,13 +1,8 @@
 # In-cluster load test for the radar-ng tile-server. Each pod is its own client
 # IP, so each stays under the per-IP API rate limit (20 rps, burst 60);
-# total load = parallelism x VUS. Apply, read the per-pod summaries from the
-# logs, then delete the namespace:
-#
-#   kubectl create namespace radar-ng-loadtest
-#   kubectl -n radar-ng-loadtest create configmap k6-script --from-file=load/k6-radar.js
-#   kubectl -n radar-ng-loadtest apply -f load/k8s/k6-job.yaml
-#   kubectl -n radar-ng-loadtest logs -l job-name=k6-radar --tail=1   # or Loki: {k8s_namespace_name="radar-ng-loadtest"} |= "metrics"
-#   kubectl delete namespace radar-ng-loadtest
+# total load = parallelism x VUS. Deploy it through GitOps with a configMapGenerator
+# named k6-script built from load/k6-radar.js (load/README.md), read the per-pod
+# summaries from the logs or Loki, then remove it in a follow-up PR.
 #
 # Stress (find the knee): set completions/parallelism/maxFailedIndexes to 60,
 # VUS to 20 and add env PROFILE=stress (four 3-minute steps to 1,200 users).

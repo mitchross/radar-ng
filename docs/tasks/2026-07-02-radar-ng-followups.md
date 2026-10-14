@@ -1,5 +1,9 @@
 # radar-ng — session wrap-up & next steps (2026-07-02)
 
+> **Historical record.** Written against the Python backend, which was replaced by the Rust backend
+> (`rust/`, v2.0.0, 2026-10-14). Paths under `backend/`, `temporal/` and `tools/`, and the Caddy and
+> FastAPI tile-server, no longer exist; see [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current layout.
+
 Stopping point for the `feature/weather-clear-reconciliation` branch. Everything
 below marked DONE is committed on this branch and verified (tsc + jest + lint
 green). Everything under NEXT STEPS is intentionally deferred — either it needs

@@ -32,8 +32,8 @@ sides), Likely (code-proven, depends on an environment fact).
 ### F2. High, Confirmed. The open-meteo worker never creates `/tmp/worker-alive`, and its image has no busybox, but the liveness probe needs both
 
 - Where: `rust/crates/radar-worker/src/worker.rs:407` (`run_open_meteo_pool`) starts no `health_file_loop`
-  (README deviation 7 says so). `deploy/rust/k8s/open-meteo-worker-deployment.yaml:70` adds an exec liveness
-  probe `busybox test -f /tmp/worker-alive`. `deploy/rust/Dockerfile.open-meteo` copies only `radar` into the
+  (README deviation 7 says so). `deploy/k8s/open-meteo-worker-deployment.yaml:70` adds an exec liveness
+  probe `busybox test -f /tmp/worker-alive`. `deploy/Dockerfile.open-meteo` copies only `radar` into the
   Open-Meteo image, not busybox. Compose reuses the same healthcheck (`docker-compose.yml:206`). The Python
   open-meteo TWD had no liveness probe.
 - Failure: in k8s the probe fails from 60 s on, for two reasons: exec of a missing binary, and a missing file.
@@ -92,7 +92,7 @@ sides), Likely (code-proven, depends on an environment fact).
 
 - Where: `rust/crates/radar-api/src/basemap.rs:171` opens `AsyncPmTilesReader<MmapBackend>` on first use and
   keeps it for the life of the process.
-- Failure: `backend/basemap/README.md` documents replacing `basemap.pmtiles` in place ("go-pmtiles picks up
+- Failure: `rust/assets/basemap/README.md` documents replacing `basemap.pmtiles` in place ("go-pmtiles picks up
   the new bytes without a restart"). In k8s the archive is now on a writable PVC filled by a bootstrap job.
   If the file is rewritten or truncated in place while mapped, a read from a truncated page raises SIGBUS
   and kills the whole API process: tiles, manifest and everything else. A rename-over is safe but serves
@@ -118,7 +118,7 @@ sides), Likely (code-proven, depends on an environment fact).
 
 ### F9. Low, Confirmed. Push-token registration cannot work with the shipped mounts (D21 still open)
 
-- `deploy/rust/k8s/tile-server-deployment.yaml` and the compose `api` service mount `state` read-only.
+- `deploy/k8s/tile-server-deployment.yaml` and the compose `api` service mount `state` read-only.
   `POST /v1/push-tokens` writes `STATE_DIR/push_tokens.sqlite` from the API process, so it always returns
   500. Neither client calls `/v1` today, so nothing visible breaks, but the feature is dead as deployed.
   Python's compose had the same `:ro` mount. Fix: decide D21. Either mount `state` read-write for the API
@@ -174,7 +174,7 @@ sides), Likely (code-proven, depends on an environment fact).
 ## Resolution
 
 All ten findings are fixed in the Rust tree. Scope: `radar-api`, `radar-worker`, `radar-core`,
-`radar-ingest`, and `deploy/rust/`. Each crate's README lists its own deviations and review fixes.
+`radar-ingest`, and `deploy/`. Each crate's README lists its own deviations and review fixes.
 
 | Finding | Fix | Test |
 |---|---|---|
