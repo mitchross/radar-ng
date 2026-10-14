@@ -1,0 +1,432 @@
+{
+ "grid": {
+  "height": 100,
+  "width": 100,
+  "lat_min": 42.0,
+  "lat_max": 43.0,
+  "lon_min": -85.0,
+  "lon_max": -84.0,
+  "formula": "watch_grid"
+ },
+ "latest_meta_name": "2026-07-10T13:00:00+00:00.meta.json",
+ "latest_candidates": [
+  ".hidden.meta.json",
+  "2026-07-10T12:00:00+00:00.meta.json",
+  "2026-07-10T12:30:00+00:00.meta.json",
+  "2026-07-10T13:00:00+00:00.meta.json"
+ ],
+ "samples": [
+  {
+   "name": "normal_center",
+   "meta": "2026-07-10T12:00:00+00:00.meta.json",
+   "lat": 42.5,
+   "lon": -84.5,
+   "radius_km": 20.0,
+   "sample": {
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "max_dbz": 59.0,
+    "mean_dbz": 39.58314895629883,
+    "above_50_count": 454
+   }
+  },
+  {
+   "name": "out_of_bounds_south",
+   "meta": "2026-07-10T12:00:00+00:00.meta.json",
+   "lat": 41.5,
+   "lon": -84.5,
+   "radius_km": 20.0,
+   "sample": {
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "max_dbz": {
+     "$float": "-inf"
+    },
+    "mean_dbz": {
+     "$float": "nan"
+    },
+    "above_50_count": 0
+   }
+  },
+  {
+   "name": "on_lat_min_boundary",
+   "meta": "2026-07-10T12:00:00+00:00.meta.json",
+   "lat": 42.0,
+   "lon": -84.5,
+   "radius_km": 20.0,
+   "sample": {
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "max_dbz": 59.0,
+    "mean_dbz": 39.591835021972656,
+    "above_50_count": 231
+   }
+  },
+  {
+   "name": "corner_small_radius",
+   "meta": "2026-07-10T12:00:00+00:00.meta.json",
+   "lat": 43.0,
+   "lon": -85.0,
+   "radius_km": 5.0,
+   "sample": {
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "max_dbz": 59.0,
+    "mean_dbz": 39.85714340209961,
+    "above_50_count": 8
+   }
+  },
+  {
+   "name": "fill_only_window",
+   "meta": "2026-07-10T12:00:00+00:00.meta.json",
+   "lat": 42.04040404040404,
+   "lon": -84.04040404040404,
+   "radius_km": 1.0,
+   "sample": {
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "max_dbz": {
+     "$float": "-inf"
+    },
+    "mean_dbz": {
+     "$float": "nan"
+    },
+    "above_50_count": 0
+   }
+  },
+  {
+   "name": "nan_only_window",
+   "meta": "2026-07-10T12:00:00+00:00.meta.json",
+   "lat": 42.484848484848484,
+   "lon": -84.48484848484848,
+   "radius_km": 1.0,
+   "sample": {
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "max_dbz": {
+     "$float": "-inf"
+    },
+    "mean_dbz": {
+     "$float": "nan"
+    },
+    "above_50_count": 0
+   }
+  },
+  {
+   "name": "half_even_rows",
+   "meta": "2026-07-10T12:00:00+00:00.meta.json",
+   "lat": 42.5,
+   "lon": -84.5,
+   "radius_km": 2.8111111111111104,
+   "sample": {
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "max_dbz": 59.0,
+    "mean_dbz": 43.38461685180664,
+    "above_50_count": 10
+   }
+  },
+  {
+   "name": "hail_window",
+   "meta": "2026-07-10T12:00:00+00:00.meta.json",
+   "lat": 42.888888888888886,
+   "lon": -84.88888888888889,
+   "radius_km": 3.0,
+   "sample": {
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "max_dbz": 62.0,
+    "mean_dbz": 48.31745910644531,
+    "above_50_count": 33
+   }
+  },
+  {
+   "name": "no_data_file_key",
+   "meta": "2026-07-10T13:00:00+00:00.meta.json",
+   "lat": 42.888888888888886,
+   "lon": -84.88888888888889,
+   "radius_km": 3.0,
+   "sample": {
+    "timestamp": "2026-07-10T13:00:00+00:00",
+    "max_dbz": 62.0,
+    "mean_dbz": 48.31745910644531,
+    "above_50_count": 33
+   }
+  },
+  {
+   "name": "missing_bin",
+   "meta": "2026-07-10T14:00:00+00:00.meta.json",
+   "lat": 42.5,
+   "lon": -84.5,
+   "radius_km": 5.0,
+   "sample": null
+  },
+  {
+   "name": "malformed_meta",
+   "meta": "2026-07-10T15:00:00+00:00.meta.json",
+   "lat": 42.5,
+   "lon": -84.5,
+   "radius_km": 5.0,
+   "sample": null
+  }
+ ],
+ "change": [
+  {
+   "name": "no_prev",
+   "prev": null,
+   "curr": 30.0,
+   "delta": 0.0,
+   "kind": null,
+   "summary": null
+  },
+  {
+   "name": "severe_takes_precedence",
+   "prev": 45.0,
+   "curr": 62.0,
+   "delta": 17.0,
+   "kind": "severe",
+   "summary": "reflectivity 62 dBZ \u2014 possible hail/severe"
+  },
+  {
+   "name": "severe_exact_60",
+   "prev": 40.0,
+   "curr": 60.0,
+   "delta": 20.0,
+   "kind": "severe",
+   "summary": "reflectivity 60 dBZ \u2014 possible hail/severe"
+  },
+  {
+   "name": "intensify_exact_10",
+   "prev": 30.0,
+   "curr": 40.0,
+   "delta": 10.0,
+   "kind": "intensifying",
+   "summary": "+10 dBZ since last frame (30\u219240)"
+  },
+  {
+   "name": "intensify_rounding",
+   "prev": 30.4,
+   "curr": 41.2,
+   "delta": 10.8,
+   "kind": "intensifying",
+   "summary": "+11 dBZ since last frame (30\u219241)"
+  },
+  {
+   "name": "dissipate_exact_10",
+   "prev": 50.0,
+   "curr": 40.0,
+   "delta": -10.0,
+   "kind": "dissipating",
+   "summary": "-10 dBZ since last frame (50\u219240)"
+  },
+  {
+   "name": "dissipate_summary_sign",
+   "prev": 50.0,
+   "curr": 38.0,
+   "delta": -12.0,
+   "kind": "dissipating",
+   "summary": "-12 dBZ since last frame (50\u219238)"
+  },
+  {
+   "name": "small_change_none",
+   "prev": 40.0,
+   "curr": 45.0,
+   "delta": 5.0,
+   "kind": null,
+   "summary": null
+  },
+  {
+   "name": "half_even_format",
+   "prev": 40.5,
+   "curr": 40.5,
+   "delta": 0.0,
+   "kind": null,
+   "summary": null
+  },
+  {
+   "name": "format_2_5",
+   "prev": 42.5,
+   "curr": 52.5,
+   "delta": 10.0,
+   "kind": "intensifying",
+   "summary": "+10 dBZ since last frame (42\u219252)"
+  },
+  {
+   "name": "D2_minus_inf_curr",
+   "defect": "D2",
+   "prev": 30.0,
+   "curr": {
+    "$float": "-inf"
+   },
+   "delta": {
+    "$float": "-inf"
+   },
+   "kind": "dissipating",
+   "summary": "-inf dBZ since last frame (30\u2192-inf)"
+  }
+ ],
+ "compare": [
+  {
+   "name": "first_poll_sampled",
+   "input": {
+    "lat": 42.5,
+    "lng": -84.5,
+    "prev_timestamp": null,
+    "prev_max_dbz": null
+   },
+   "result": {
+    "sampled": true,
+    "curr_timestamp": "2026-07-10T12:00:00+00:00",
+    "curr_max_dbz": 59.0,
+    "prev_max_dbz": 0.0,
+    "has_prev": false,
+    "max_dbz_delta": 0.0
+   },
+   "change": {
+    "kind": "",
+    "summary": ""
+   },
+   "defect": null
+  },
+  {
+   "name": "same_frame_skipped",
+   "input": {
+    "lat": 42.5,
+    "lng": -84.5,
+    "prev_timestamp": "2026-07-10T12:00:00+00:00",
+    "prev_max_dbz": 30.0
+   },
+   "result": {
+    "sampled": false,
+    "curr_timestamp": "",
+    "curr_max_dbz": 0.0,
+    "prev_max_dbz": 0.0,
+    "has_prev": false,
+    "max_dbz_delta": 0.0
+   },
+   "change": null,
+   "defect": null
+  },
+  {
+   "name": "second_poll_delta",
+   "input": {
+    "lat": 42.5,
+    "lng": -84.5,
+    "prev_timestamp": "2026-07-10T11:55:00+00:00",
+    "prev_max_dbz": 30.0
+   },
+   "result": {
+    "sampled": true,
+    "curr_timestamp": "2026-07-10T12:00:00+00:00",
+    "curr_max_dbz": 59.0,
+    "prev_max_dbz": 30.0,
+    "has_prev": true,
+    "max_dbz_delta": 29.0
+   },
+   "change": {
+    "kind": "intensifying",
+    "summary": "+29 dBZ since last frame (30\u219259)"
+   },
+   "defect": null
+  },
+  {
+   "name": "out_of_bounds_D2",
+   "input": {
+    "lat": 41.5,
+    "lng": -84.5,
+    "prev_timestamp": "2026-07-10T11:55:00+00:00",
+    "prev_max_dbz": 30.0
+   },
+   "result": {
+    "sampled": true,
+    "curr_timestamp": "2026-07-10T12:00:00+00:00",
+    "curr_max_dbz": -99.0,
+    "prev_max_dbz": 30.0,
+    "has_prev": true,
+    "max_dbz_delta": {
+     "$float": "-inf"
+    }
+   },
+   "change": {
+    "kind": "dissipating",
+    "summary": "-inf dBZ since last frame (30\u2192-99)"
+   },
+   "defect": "D2"
+  },
+  {
+   "name": "sentinel_prev_D2",
+   "input": {
+    "lat": 42.5,
+    "lng": -84.5,
+    "prev_timestamp": "2026-07-10T11:55:00+00:00",
+    "prev_max_dbz": -99.0
+   },
+   "result": {
+    "sampled": true,
+    "curr_timestamp": "2026-07-10T12:00:00+00:00",
+    "curr_max_dbz": 59.0,
+    "prev_max_dbz": -99.0,
+    "has_prev": true,
+    "max_dbz_delta": 158.0
+   },
+   "change": {
+    "kind": "intensifying",
+    "summary": "+158 dBZ since last frame (-99\u219259)"
+   },
+   "defect": "D2"
+  },
+  {
+   "name": "dissipate_on_poll",
+   "input": {
+    "lat": 42.5,
+    "lng": -84.5,
+    "prev_timestamp": "2026-07-10T11:55:00+00:00",
+    "prev_max_dbz": 80.0
+   },
+   "result": {
+    "sampled": true,
+    "curr_timestamp": "2026-07-10T12:00:00+00:00",
+    "curr_max_dbz": 59.0,
+    "prev_max_dbz": 80.0,
+    "has_prev": true,
+    "max_dbz_delta": -21.0
+   },
+   "change": {
+    "kind": "dissipating",
+    "summary": "-21 dBZ since last frame (80\u219259)"
+   },
+   "defect": null
+  },
+  {
+   "name": "severe_on_poll",
+   "input": {
+    "lat": 42.888888888888886,
+    "lng": -84.88888888888889,
+    "prev_timestamp": "2026-07-10T11:55:00+00:00",
+    "prev_max_dbz": 30.0
+   },
+   "result": {
+    "sampled": true,
+    "curr_timestamp": "2026-07-10T12:00:00+00:00",
+    "curr_max_dbz": 62.0,
+    "prev_max_dbz": 30.0,
+    "has_prev": true,
+    "max_dbz_delta": 32.0
+   },
+   "change": {
+    "kind": "severe",
+    "summary": "reflectivity 62 dBZ \u2014 possible hail/severe"
+   },
+   "defect": null
+  },
+  {
+   "name": "no_grid_dir",
+   "input": {
+    "lat": 42.5,
+    "lng": -84.5
+   },
+   "result": {
+    "sampled": false,
+    "curr_timestamp": "",
+    "curr_max_dbz": 0.0,
+    "prev_max_dbz": 0.0,
+    "has_prev": false,
+    "max_dbz_delta": 0.0
+   },
+   "change": null,
+   "defect": null
+  }
+ ]
+}

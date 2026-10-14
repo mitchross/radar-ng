@@ -1,0 +1,32 @@
+[package]
+name = "radar-nowcast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+radar-core.workspace = true
+radar-tiler.workspace = true
+radar-types.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+rayon.workspace = true
+serde.workspace = true
+realfft.workspace = true
+rustfft.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[test]]
+name = "golden"
+path = "tests/golden.rs"
+
+[[test]]
+name = "perf"
+path = "tests/perf.rs"

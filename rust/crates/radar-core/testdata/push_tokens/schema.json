@@ -1,0 +1,10 @@
+[
+ {
+  "name": "idx_user",
+  "sql": "CREATE INDEX idx_user ON push_tokens(user_id)"
+ },
+ {
+  "name": "push_tokens",
+  "sql": "CREATE TABLE push_tokens (\n            user_id    TEXT NOT NULL,\n            token      TEXT NOT NULL PRIMARY KEY,\n            platform   TEXT NOT NULL,\n            created_at REAL NOT NULL\n        )"
+ }
+]

@@ -1,0 +1,40 @@
+# open-meteo worker image: the radar binary layered on the pinned Open-Meteo image.
+#
+# The open-meteo role runs OPENMETEO_BIN sync (the upstream Swift binary at /app/openmeteo-api)
+# as a subprocess, so the radar worker and the binary must share one filesystem. The
+# base image is pinned to the same digest as the open-meteo API service in docker-compose.yml
+# and k8s, and bumped in lockstep with it (see RUNBOOK.md, "Pinned images").
+#
+# Build order: build the radar image first, this image takes it as RADAR_IMAGE.
+#   docker build -f deploy/rust/Dockerfile      -t radar-ng-radar:local .
+#   docker build -f deploy/rust/Dockerfile.open-meteo \
+#     --build-arg RADAR_IMAGE=radar-ng-radar:local \
+#     -t radar-ng-open-meteo-worker:local .
+#
+# Glibc floor: the radar binary is built on bookworm (glibc 2.36). Verify the upstream
+# base image's glibc is not older before publishing (RUNBOOK.md, "glibc floor check").
+
+ARG RADAR_IMAGE=radar-ng-radar:local
+ARG BUSYBOX_IMAGE=busybox:1.36-musl
+ARG OPEN_METEO_IMAGE=ghcr.io/open-meteo/open-meteo:1.6.0@sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da
+
+FROM ${RADAR_IMAGE} AS radar
+
+# Static busybox for the liveness probe (`busybox test -f /tmp/worker-alive`) and the compose
+# healthcheck. The upstream Open-Meteo image has no busybox, so it is copied in, as in Dockerfile.
+FROM ${BUSYBOX_IMAGE} AS busybox
+
+FROM ${OPEN_METEO_IMAGE}
+
+COPY --from=busybox /bin/busybox /usr/local/bin/busybox
+COPY --from=radar /usr/local/bin/radar /usr/local/bin/radar
+
+ENV OPENMETEO_BIN=/app/openmeteo-api \
+    OPENMETEO_DATA_DIR=/app/data \
+    LOG_LEVEL=info
+
+# uid 999 is the upstream image's user; the k8s pod runs as the same uid with fsGroup 999.
+USER 999:999
+
+ENTRYPOINT ["/usr/local/bin/radar"]
+CMD ["worker", "--role", "open-meteo"]

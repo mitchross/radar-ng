@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "tau": 12,
+        "maxwind": 75,
+        "dvlbl": "H",
+        "datelbl": "11:00 AM Tue"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -110,
+          28
+        ]
+      }
+    }
+  ]
+}

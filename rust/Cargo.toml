@@ -1,0 +1,113 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.92"
+license = "MIT"
+version = "0.1.0"
+
+[workspace.dependencies]
+# internal
+radar-types = { path = "crates/radar-types" }
+radar-geo = { path = "crates/radar-geo" }
+radar-storms = { path = "crates/radar-storms" }
+radar-alerts = { path = "crates/radar-alerts" }
+radar-core = { path = "crates/radar-core" }
+radar-tiler = { path = "crates/radar-tiler" }
+radar-grib = { path = "crates/radar-grib" }
+radar-nowcast = { path = "crates/radar-nowcast" }
+radar-ingest = { path = "crates/radar-ingest" }
+radar-aux = { path = "crates/radar-aux" }
+radar-worker = { path = "crates/radar-worker" }
+radar-api = { path = "crates/radar-api" }
+
+# async / runtime
+tokio = { version = "1.47", features = ["full"] }
+tokio-util = "0.7"
+futures = "0.3"
+futures-util = "0.3"
+async-trait = "0.1"
+rayon = "1.12"
+
+# serde / formats
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.18", features = ["v4"] }
+
+# errors / logging
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter", "fmt"] }
+
+# fs / os
+rustix = { version = "1", features = ["fs"] }
+tempfile = "3"
+walkdir = "2"
+
+# numerics / images
+png = "0.18"
+flate2 = "1.1"
+crc32fast = "1"
+sha2 = "0.10"
+blake2 = "0.10"
+hex = "0.4"
+realfft = "3.5"
+rustfft = "6.4"
+pathfinding = "4"
+
+# grib
+grib = { version = "0.19", default-features = false, features = ["png-unpack-with-png-crate", "jpeg2000-unpack-with-hayro", "ccsds-unpack-with-rust-aec"] }
+
+# network
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "stream", "http2"] }
+quick-xml = { version = "0.37", features = ["serialize"] }
+tokio-tungstenite = { version = "0.27", features = ["rustls-tls-webpki-roots"] }
+bytes = "1"
+url = "2.5"
+
+# web
+axum = { version = "0.8", features = ["macros"] }
+tower = { version = "0.5", features = ["limit", "timeout", "util"] }
+tower-http = { version = "0.6", features = ["fs", "compression-gzip", "cors", "trace", "timeout", "set-header"] }
+moka = { version = "0.12", features = ["future", "sync"] }
+hmac = "0.12"
+base64 = "0.22"
+subtle = "2"
+jsonwebtoken = "9"
+
+# storage
+rusqlite = { version = "0.37", features = ["bundled"] }
+
+# temporal
+temporalio-sdk = "1.1"
+temporalio-client = "1.1"
+temporalio-macros = "1.1"
+temporalio-common = "1.1"
+temporalio-workflow = "1.1"
+
+# cli
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# geo
+zip = { version = "2", default-features = false, features = ["deflate"] }
+shapefile = "0.6"
+geojson = "0.24"
+
+# test
+proptest = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+debug = "line-tables-only"
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 2

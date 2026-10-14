@@ -1,0 +1,23 @@
+# TYPE radar_ng_nowcast_skill_runs gauge
+radar_ng_nowcast_skill_runs 10
+# TYPE radar_ng_nowcast_pod gauge
+radar_ng_nowcast_pod{lead_minutes="5",threshold="rain"} 1.0
+radar_ng_nowcast_pod{lead_minutes="5",threshold="heavy"} 0.5
+radar_ng_nowcast_pod{lead_minutes="15",threshold="rain"} 0.833
+radar_ng_nowcast_pod{lead_minutes="15",threshold="heavy"} 0.5
+radar_ng_nowcast_pod{lead_minutes="30",threshold="rain"} 0.833
+radar_ng_nowcast_pod{lead_minutes="30",threshold="heavy"} 0.5
+# TYPE radar_ng_nowcast_far gauge
+radar_ng_nowcast_far{lead_minutes="5",threshold="rain"} 0.0
+radar_ng_nowcast_far{lead_minutes="5",threshold="heavy"} 0.0
+radar_ng_nowcast_far{lead_minutes="15",threshold="rain"} 0.231
+radar_ng_nowcast_far{lead_minutes="15",threshold="heavy"} 0.0
+radar_ng_nowcast_far{lead_minutes="30",threshold="rain"} 0.231
+radar_ng_nowcast_far{lead_minutes="30",threshold="heavy"} 0.0
+# TYPE radar_ng_nowcast_csi gauge
+radar_ng_nowcast_csi{lead_minutes="5",threshold="rain"} 1.0
+radar_ng_nowcast_csi{lead_minutes="5",threshold="heavy"} 0.5
+radar_ng_nowcast_csi{lead_minutes="15",threshold="rain"} 0.667
+radar_ng_nowcast_csi{lead_minutes="15",threshold="heavy"} 0.5
+radar_ng_nowcast_csi{lead_minutes="30",threshold="rain"} 0.667
+radar_ng_nowcast_csi{lead_minutes="30",threshold="heavy"} 0.5

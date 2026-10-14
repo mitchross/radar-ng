@@ -1,0 +1,31 @@
+[package]
+name = "radar-ingest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+radar-storms.workspace = true
+radar-geo.workspace = true
+radar-types.workspace = true
+radar-core.workspace = true
+radar-tiler.workspace = true
+radar-grib.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rayon.workspace = true
+tempfile.workspace = true
+uuid.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+axum.workspace = true
+tokio = { workspace = true, features = ["full"] }

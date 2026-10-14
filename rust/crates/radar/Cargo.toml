@@ -1,0 +1,23 @@
+[package]
+name = "radar"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "radar-ng backend: one binary for the API server, Temporal workers, schedule seeding and debugging"
+
+[[bin]]
+name = "radar"
+path = "src/main.rs"
+
+[dependencies]
+radar-core.workspace = true
+radar-api.workspace = true
+radar-worker.workspace = true
+radar-ingest.workspace = true
+radar-debug = { path = "../radar-debug" }
+anyhow.workspace = true
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+serde_json.workspace = true

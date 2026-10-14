@@ -1,0 +1,59 @@
+# Non-secret tunables for the radar worker (temporal-worker-deployment.yaml) and the api
+# (tile-server-deployment.yaml). Same name as the Python configmap, so envFrom needs no change.
+#
+# Dropped from the Python configmap (no Rust crate reads them; RUNBOOK.md "Env audit"):
+#   MRMS_RENDER_WORKERS, WATCH_RADIUS_KM
+# Deliberately NOT set: USE_ISOLATED_TASK_QUEUES. The legacy model keeps Schedules on the
+# radar-ng queue, as Python does today. Per-role isolated queues are a documented future option
+# (deploy/rust/README.md, "Future: per-role queues").
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: radar-ng-temporal-config
+  namespace: radar-ng
+  labels:
+    app: radar-ng-worker
+data:
+  # Temporal worker tunables. Defaults in radar-worker are 4 / 2 / 25; set here to the Python values.
+  TEMPORAL_GRACEFUL_SHUTDOWN_S: "25"
+  TEMPORAL_MAX_CONCURRENT_ACTIVITIES: "4"
+  TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS: "2"
+  LOG_LEVEL: "info"
+
+  # ingest tunables
+  # Only palettes with a matching backend/shared/palettes/<name>.json are valid. The old
+  # "colorblind" entry crashed nowcast_run because no colorblind.json ships. `muted` is the
+  # colorblind-safe Viridis ramp.
+  PALETTES: "classic,muted,vivid"
+  BACKLOG_PER_CYCLE: "3"
+  MRMS_PREFIX: "CONUS/MergedBaseReflectivityQC_00.50"
+  FORECAST_HOURS: "18"
+  EXTENDED_FORECAST_HOURS: "48"
+  # HRRR secondary layers: wind, rain total, precip type, temperature, clouds.
+  HRRR_ENABLED_LAYERS: "radar-hrrr,wind,precip-accum,precip-type,temperature,cloud"
+
+  # nowcast
+  NOWCAST_HORIZON_MIN: "60"
+  NOWCAST_STEP_MIN: "5"
+  NOWCAST_INPUT_FRAMES: "4"
+
+  # storm-watch and alerts
+  INTENSIFY_DBZ_DELTA: "10"
+  DISSIPATE_DBZ_DELTA: "10"
+  HAIL_DBZ_THRESHOLD: "60"
+  NWS_ALERTS_URL: "https://api.weather.gov/alerts/active?status=actual"
+  NWS_USER_AGENT: "(radar-ng, mitch@vanillax.me)"
+  TROPICAL_FEED_URL: "https://www.nhc.noaa.gov/CurrentStorms.json"
+
+  # lightning
+  LIGHTNING_RETENTION_MIN: "15"
+  LIGHTNING_FLUSH_S: "2.0"
+
+  # api: serving
+  MRMS_MAX_AGE_S: "600"
+  # Code default (radar-api/src/config.rs). The Python deploy had 300 in compose.
+  FORECAST_TTL_S: "900"
+  # WatchStormWorkflow start queue used by the api. In the legacy model every workflow runs on
+  # radar-ng, so the watch must start there too. The Python default radar-ng-alerts has no poller
+  # unless an alerts pool exists (RUNBOOK.md, "Pre-flight", item 4).
+  TEMPORAL_ALERTS_TASK_QUEUE: "radar-ng"

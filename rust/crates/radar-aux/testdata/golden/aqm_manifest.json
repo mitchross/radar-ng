@@ -1,0 +1,1234 @@
+{
+ "flipped": {
+  "entries": [
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 0,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T12:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 1,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T13:00:00+00:00"
+   }
+  ],
+  "file": "aqm_pm25_flipped.grib2",
+  "flip_i": true,
+  "messages": 2,
+  "msg0_nan_count": 19,
+  "msg0_values_f32le": "aqm_pm25_flipped_msg0.f32le",
+  "template": 0
+ },
+ "ozone": {
+  "entries": [
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 0,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T12:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 1,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T13:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 2,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T14:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 3,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T15:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 4,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T16:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 5,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T17:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 6,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T18:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 7,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T19:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 8,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T20:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 9,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T21:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 10,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T22:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 11,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T23:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 12,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T00:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 13,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T01:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 14,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T02:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 15,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T03:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 16,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T04:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 17,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T05:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 18,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T06:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 19,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T07:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 20,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T08:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 21,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T09:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 22,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T10:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 23,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T11:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 24,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T12:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 25,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T13:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 26,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T14:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 27,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T15:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 28,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T16:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 29,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T17:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 30,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T18:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 31,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T19:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 32,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T20:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 33,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T21:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 34,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T22:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 35,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T23:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 36,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T00:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 37,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T01:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 38,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T02:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 39,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T03:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 40,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T04:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 41,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T05:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 42,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T06:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 43,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T07:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 44,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T08:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 45,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T09:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 46,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T10:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 47,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T11:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 48,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T12:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 49,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T13:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 50,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T14:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 51,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T15:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 52,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T16:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 53,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T17:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 54,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T18:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 55,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T19:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 56,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T20:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 57,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T21:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 58,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T22:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 59,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T23:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 60,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T00:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 61,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T01:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 62,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T02:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 63,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T03:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 64,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T04:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 65,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T05:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 66,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T06:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 67,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T07:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 68,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T08:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 69,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T09:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 70,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T10:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 71,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T11:00:00+00:00"
+   }
+  ],
+  "file": "aqm_o3_mini.grib2",
+  "flip_i": false,
+  "messages": 72,
+  "msg0_nan_count": 27,
+  "msg0_values_f32le": "aqm_o3_mini_msg0.f32le",
+  "template": 0
+ },
+ "pm25": {
+  "entries": [
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 0,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T12:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 1,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T13:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 2,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T14:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 3,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T15:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 4,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T16:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 5,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T17:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 6,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T18:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 7,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T19:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 8,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T20:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 9,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T21:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 10,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T22:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 11,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T23:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 12,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T00:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 13,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T01:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 14,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T02:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 15,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T03:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 16,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T04:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 17,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T05:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 18,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T06:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 19,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T07:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 20,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T08:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 21,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T09:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 22,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T10:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 23,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T11:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 24,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T12:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 25,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T13:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 26,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T14:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 27,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T15:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 28,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T16:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 29,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T17:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 30,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T18:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 31,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T19:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 32,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T20:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 33,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T21:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 34,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T22:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 35,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-17T23:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 36,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T00:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 37,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T01:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 38,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T02:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 39,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T03:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 40,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T04:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 41,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T05:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 42,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T06:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 43,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T07:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 44,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T08:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 45,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T09:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 46,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T10:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 47,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T11:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 48,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T12:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 49,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T13:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 50,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T14:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 51,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T15:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 52,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T16:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 53,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T17:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 54,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T18:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 55,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T19:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 56,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T20:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 57,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T21:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 58,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T22:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 59,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-18T23:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 60,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T00:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 61,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T01:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 62,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T02:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 63,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T03:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 64,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T04:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 65,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T05:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 66,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T06:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 67,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T07:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 68,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T08:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 69,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T09:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 70,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T10:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 71,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-19T11:00:00+00:00"
+   }
+  ],
+  "file": "aqm_pm25_mini.grib2",
+  "flip_i": false,
+  "messages": 72,
+  "msg0_nan_count": 21,
+  "msg0_values_f32le": "aqm_pm25_mini_msg0.f32le",
+  "template": 0
+ },
+ "stat": {
+  "entries": [
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 0,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T13:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 1,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T14:00:00+00:00"
+   },
+   {
+    "data_date": 20260716,
+    "data_time": 1200,
+    "message": 2,
+    "nx": 24,
+    "ny": 16,
+    "valid": "2026-07-16T15:00:00+00:00"
+   }
+  ],
+  "file": "aqm_pm25_stat.grib2",
+  "flip_i": false,
+  "messages": 3,
+  "msg0_nan_count": 24,
+  "msg0_values_f32le": "aqm_pm25_stat_msg0.f32le",
+  "template": 8
+ }
+}

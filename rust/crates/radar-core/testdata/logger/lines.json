@@ -1,0 +1,57 @@
+[
+ {
+  "service": "radar-ingest",
+  "level": "WARNING",
+  "msg": "retry",
+  "extras": [
+   [
+    "fn",
+    "fetch_grib"
+   ],
+   [
+    "attempt",
+    1
+   ],
+   [
+    "max_attempts",
+    4
+   ],
+   [
+    "delay",
+    1.0
+   ],
+   [
+    "err",
+    "connection reset"
+   ]
+  ],
+  "line": "{\"ts\": \"2026-06-20T12:00:00+0000\", \"level\": \"WARNING\", \"service\": \"radar-ingest\", \"msg\": \"retry\", \"fn\": \"fetch_grib\", \"attempt\": 1, \"max_attempts\": 4, \"delay\": 1.0, \"err\": \"connection reset\"}"
+ },
+ {
+  "service": "radar-api",
+  "level": "INFO",
+  "msg": "unit \u00b0F \u2192 \u2713",
+  "extras": [
+   [
+    "ok",
+    true
+   ],
+   [
+    "n",
+    0
+   ],
+   [
+    "ratio",
+    0.833
+   ]
+  ],
+  "line": "{\"ts\": \"2026-06-20T12:00:00+0000\", \"level\": \"INFO\", \"service\": \"radar-api\", \"msg\": \"unit \\u00b0F \\u2192 \\u2713\", \"ok\": true, \"n\": 0, \"ratio\": 0.833}"
+ },
+ {
+  "service": "radar-api",
+  "level": "ERROR",
+  "msg": "plain",
+  "extras": [],
+  "line": "{\"ts\": \"2026-06-20T12:00:00+0000\", \"level\": \"ERROR\", \"service\": \"radar-api\", \"msg\": \"plain\"}"
+ }
+]

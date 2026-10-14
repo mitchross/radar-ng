@@ -1,0 +1,127 @@
+# radar-ng worker: the production TemporalWorkerDeployment, now running the Rust image.
+#
+# This is the SAME TWD as deploy/k8s/temporal-worker-deployment.yaml in the Python tree: same
+# name, same queue (radar-ng, role legacy), same PVCs, same env, same securityContext. The
+# only change is the image: the Rust build is the next build of this deployment. The Temporal
+# Worker Controller registers it under the same TEMPORAL_DEPLOYMENT_NAME with a new
+# TEMPORAL_WORKER_BUILD_ID, and ramps new executions to it. Python runs pinned to the old build
+# drain on the old pods.
+#
+# Rollback = put the Python image tag back (the controller re-promotes the previous build).
+# See RUNBOOK.md, "Cutover" and "Rollback".
+#
+# The Temporal Worker Controller injects TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE,
+# TEMPORAL_DEPLOYMENT_NAME and TEMPORAL_WORKER_BUILD_ID. Do not set them here.
+apiVersion: temporal.io/v1alpha1
+kind: TemporalWorkerDeployment
+metadata:
+  name: radar-ng-worker
+  namespace: radar-ng
+  labels:
+    app: radar-ng-worker
+spec:
+  replicas: 2
+  workerOptions:
+    connectionRef:
+      name: cluster-temporal
+    temporalNamespace: default
+  rollout:
+    # FIRST CUTOVER: slow ramp so parity and freshness checks run between steps (RUNBOOK
+    # "Cutover", step 4). Each step is a fraction of NEW workflow executions routed to the Rust
+    # build. To hold at a step, change strategy to Manual and promote by hand.
+    # AFTER the cutover is complete, restore the Python values (commented below).
+    strategy: Progressive
+    steps:
+      - rampPercentage: 5
+        pauseDuration: 30m
+      - rampPercentage: 25
+        pauseDuration: 1h
+      - rampPercentage: 50
+        pauseDuration: 2h
+    # Python steady-state values, restore after the cutover:
+    # steps:
+    #   - rampPercentage: 10
+    #     pauseDuration: 2m
+    #   - rampPercentage: 50
+    #     pauseDuration: 5m
+  sunset:
+    scaledownDelay: 10m
+    deleteDelay: 1h
+  template:
+    metadata:
+      labels:
+        app: radar-ng-worker
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        # Without fsGroup a freshly provisioned PVC is root:root 755 and the first ingest write
+        # dies with PermissionError. Same as the Python TWD.
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      # TEMPORAL_GRACEFUL_SHUTDOWN_S (25 s, see configmap) plus 10 s margin. Workers have no
+      # endpoints to drain, so no preStop hook.
+      terminationGracePeriodSeconds: 35
+      containers:
+        - name: worker
+          # Rust build. Built from deploy/rust/Dockerfile. Entrypoint is `radar`, so args select the role.
+          image: registry.vanillax.me/radar-ng-temporal-worker:REPLACE_ME   # set to the Rust build tag
+          imagePullPolicy: Always
+          args: ["worker", "--role", "legacy"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          env:
+            - name: WORKER_ROLE
+              value: legacy
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://opentelemetry-collector.observability:4317
+            - name: TILE_DIR
+              value: /data/tiles
+            - name: STATE_DIR
+              value: /data/state
+            - name: GRID_DIR
+              value: /data/grids
+            # Push notifications are disabled by default. The send_push_notification activity
+            # logs and returns without touching APNS/FCM. To enable push, set PUSH_DISABLED=0
+            # AND mount the push secret (block commented under volumeMounts/volumes below).
+            - name: PUSH_DISABLED
+              value: "1"
+          envFrom:
+            - configMapRef: { name: radar-ng-temporal-config }
+          volumeMounts:
+            - { name: tiles,  mountPath: /data/tiles }
+            - { name: grids,  mountPath: /data/grids }
+            - { name: state,  mountPath: /data/state }
+            # Push secret (optional; see secret-temporal-worker.yaml.template). Uncomment with
+            # PUSH_DISABLED=0 and APNS_KEY_PATH=/secrets/apns.p8, FCM_CREDENTIALS_PATH=/secrets/fcm.json.
+            # - { name: secrets, mountPath: /secrets, readOnly: true }
+          livenessProbe:
+            # The worker loop touches /tmp/worker-alive every 30 s (radar-worker health.rs). A
+            # missing file means the loop never started. Staleness is not checked (no shell).
+            exec:
+              command: ["/usr/local/bin/busybox", "test", "-f", "/tmp/worker-alive"]
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits:   { cpu: "2",    memory: "4Gi" }
+      volumes:
+        - name: tiles
+          persistentVolumeClaim: { claimName: tiles }
+        - name: grids
+          persistentVolumeClaim: { claimName: grids }
+        - name: state
+          persistentVolumeClaim: { claimName: state }
+        # - name: secrets
+        #   secret:
+        #     secretName: radar-ng-temporal-secrets
+        #     optional: true
+        #     items:
+        #       - { key: apns.p8, path: apns.p8 }
+        #       - { key: fcm.json, path: fcm.json }

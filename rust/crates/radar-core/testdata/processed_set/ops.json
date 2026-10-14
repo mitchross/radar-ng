@@ -1,0 +1,26 @@
+{
+ "max_entries": 3,
+ "ops": [
+  [
+   "add",
+   "a"
+  ],
+  [
+   "add",
+   "b"
+  ],
+  [
+   "update",
+   [
+    "c",
+    "a",
+    "d"
+   ]
+  ]
+ ],
+ "expected_items": [
+  "b",
+  "c",
+  "d"
+ ]
+}

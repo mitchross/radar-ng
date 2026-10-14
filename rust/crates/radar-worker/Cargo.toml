@@ -1,0 +1,56 @@
+[package]
+name = "radar-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+radar-alerts.workspace = true
+radar-storms.workspace = true
+radar-types.workspace = true
+radar-core.workspace = true
+radar-tiler.workspace = true
+radar-ingest.workspace = true
+radar-aux.workspace = true
+radar-nowcast.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio = { workspace = true }
+tokio-util.workspace = true
+radar-grib.workspace = true
+futures.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+tempfile.workspace = true
+rustix.workspace = true
+uuid.workspace = true
+# Temporal SDK 1.1. The `experimental` feature exposes ContinueAsNew initial versioning
+# (AUTO_UPGRADE on the WatchStorm handoff path) and `target_worker_deployment_version_changed`.
+temporalio-sdk = { workspace = true, features = ["experimental"] }
+temporalio-client.workspace = true
+temporalio-macros.workspace = true
+temporalio-common.workspace = true
+temporalio-workflow.workspace = true
+async-trait.workspace = true
+# Raw WorkflowService RPCs (schedule create/describe/update) use tonic request wrappers.
+tonic = "0.14"
+# Duration messages for the schedule protos. The SDK's protos use prost-wkt-types 0.7.2 (renamed
+# `prost-types` inside temporalio-protos), so this must match that version to name the same type.
+prost-wkt-types = "0.7.2"
+# Not used by the library. A direct dependency is what makes Cargo hand this crate's build script the
+# protos' descriptor-set path (`links = "temporalio_protos"`, DEP_TEMPORALIO_PROTOS_DESCRIPTOR_PATH). The
+# replay gate needs the descriptors to parse proto3-JSON histories. Same version the SDK already pulls in.
+temporalio-protos = "0.10.0"
+
+[dev-dependencies]
+# Replay gate: some recorded histories are gzipped (tests/replay.rs).
+flate2.workspace = true
+# Proto3 JSON (camelCase, enum names, base64 bytes, int64 strings) -> binary History. The SDK's own
+# `WorkflowHistory::from_json` expects serde-derive field names, not the proto3 JSON that `temporal workflow
+# show --output json` and the Python SDK export.
+prost-reflect = { version = "0.16", features = ["serde"] }
+prost = "0.14"

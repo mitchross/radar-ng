@@ -1,0 +1,99 @@
+# radar-ng public API (Rust `radar api`). Single container: the Caddy and FastAPI sidecars
+# are gone. The api serves tiles from the tiles PVC, the manifest and forecast routes, and
+# the basemap (PMTiles and styles) itself.
+#
+# Probes:
+#   readiness and liveness use /api/livez (process liveness). It never depends on radar
+#   freshness. /api/health returns 503 when radar data is stale, so using it as a readiness
+#   probe would pull every replica out of rotation during an ingest outage. Use /api/health
+#   for dashboards and alerting, not for probes.
+#
+# Replicas: 1. The PVCs are mounted read-only here. Raise replicas only after confirming
+# the Longhorn access mode (RWX) for tiles, grids, state and basemap (RUNBOOK.md, "Open items").
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tile-server
+  namespace: radar-ng
+  labels:
+    app: radar-ng-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: radar-ng-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: radar-ng-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      # Lets the preStop sleep and the drain finish inside the grace period. The api drains
+      # on SIGTERM. The sleep gives the Service endpoints time to drop this pod first.
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: api
+          image: registry.vanillax.me/radar-ng-tile-server:REPLACE_ME   # set to the Rust build tag
+          imagePullPolicy: IfNotPresent
+          args: ["api"]
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: temporal-frontend.temporal.svc.cluster.local:7233
+            - name: OPEN_METEO_BASE
+              # TODO: the open-meteo API has no Kubernetes home yet (the Python sidecar shared
+              # the RWO PVC). Point this at the service chosen in RUNBOOK.md, "Open items".
+              value: http://open-meteo.radar-ng.svc.cluster.local:8080/v1/forecast
+            - name: BASEMAP_PMTILES
+              value: /basemap/basemap.pmtiles
+          envFrom:
+            - configMapRef: { name: radar-ng-temporal-config }
+          readinessProbe:
+            httpGet: { path: /api/livez, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /api/livez, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/usr/local/bin/busybox", "sleep", "5"]
+          volumeMounts:
+            - { name: tiles,   mountPath: /data/tiles,  readOnly: true }
+            - { name: grids,   mountPath: /data/grids,  readOnly: true }
+            - { name: state,   mountPath: /data/state,  readOnly: true }
+            - { name: basemap, mountPath: /basemap,     readOnly: true }
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "2",    memory: "2Gi" }
+      volumes:
+        - name: tiles
+          persistentVolumeClaim: { claimName: tiles }
+        - name: grids
+          persistentVolumeClaim: { claimName: grids }
+        - name: state
+          persistentVolumeClaim: { claimName: state }
+        - name: basemap
+          persistentVolumeClaim: { claimName: basemap }

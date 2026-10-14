@@ -1,0 +1,105 @@
+# One-shot basemap PMTiles bootstrap/refresh for the Rust api (RUNBOOK §2 open item 4).
+# Kubernetes equivalent of compose's `basemap-bootstrap` + `basemap-publish`.
+#
+# 1. initContainer `extract`: `pmtiles extract` the CONUS bbox from the Protomaps daily build
+#    into basemap.pmtiles.partial on the `basemap` PVC.
+# 2. container `publish`: rename .partial onto basemap.pmtiles. Same volume, so the rename is
+#    atomic. Never write the served path directly: the api reads it with pread, and an
+#    in-place rewrite is what review finding F6 was about. The api notices the new file within
+#    BASEMAP_PMTILES_RECHECK_S (default 10 s) and reopens it; no restart needed.
+#
+# Prerequisites: the `basemap` PVC (mounted read-only by tile-server-deployment.yaml) exists.
+# With a ReadWriteOnce PVC this pod must land on the api's node; the preferred affinity below
+# does that when the api is running. With RWX (Longhorn) placement doesn't matter.
+#
+# Run / refresh:
+#   kubectl -n radar-ng delete job basemap-bootstrap --ignore-not-found
+#   kubectl -n radar-ng apply -f basemap-bootstrap-job.yaml
+#   kubectl -n radar-ng logs -f job/basemap-bootstrap --all-containers
+# To pick a newer build, change BASEMAP_PMTILES_URL (https://build.protomaps.com/YYYYMMDD.pmtiles).
+# Under ArgoCD, keep this file out of the auto-synced path (or add a hook annotation) so a
+# completed Job isn't re-created on every sync.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: basemap-bootstrap
+  namespace: radar-ng
+  labels:
+    app: radar-ng-basemap-bootstrap
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: radar-ng-basemap-bootstrap
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: radar-ng-api
+      initContainers:
+        - name: extract
+          # Same image as compose's basemap-bootstrap. Pin by digest: deploy/rust/pin-images.sh.
+          image: protomaps/go-pmtiles:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - extract
+            - $(BASEMAP_PMTILES_URL)
+            - /basemap/basemap.pmtiles.partial
+            - --bbox=$(BASEMAP_BBOX)
+          env:
+            - name: BASEMAP_PMTILES_URL
+              value: https://build.protomaps.com/20260630.pmtiles
+            - name: BASEMAP_BBOX
+              value: "-125,24,-66,50"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - { name: basemap, mountPath: /basemap }
+            - { name: tmp, mountPath: /tmp }
+      containers:
+        - name: publish
+          image: alpine:3.22
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -ec
+            - |
+              test -s /basemap/basemap.pmtiles.partial
+              mv -f /basemap/basemap.pmtiles.partial /basemap/basemap.pmtiles
+              ls -l /basemap/basemap.pmtiles
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: basemap, mountPath: /basemap }
+      volumes:
+        - name: basemap
+          persistentVolumeClaim: { claimName: basemap }
+        - name: tmp
+          emptyDir: {}

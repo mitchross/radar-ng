@@ -1,0 +1,23 @@
+{
+  "activeStorms": [
+    {
+      "id": "ep172026",
+      "binNumber": "EP2",
+      "name": "Polo",
+      "classification": "HU",
+      "intensity": "100",
+      "pressure": "963",
+      "latitudeNumeric": 25.9,
+      "longitudeNumeric": -112.5,
+      "movementDir": 35,
+      "movementSpeed": 13,
+      "lastUpdate": "2026-09-29T03:00:00.000Z",
+      "forecastTrack": {
+        "kmzFile": "https://example/track.kmz"
+      },
+      "publicAdvisory": {
+        "url": "https://www.nhc.noaa.gov/text/MIATCPEP2.shtml"
+      }
+    }
+  ]
+}

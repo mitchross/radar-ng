@@ -1,0 +1,17 @@
+# ClusterIP for the radar api. Keeps the name `tile-server` so existing ingress and Talos
+# references still resolve.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tile-server
+  namespace: radar-ng
+  labels:
+    app: radar-ng-api
+spec:
+  type: ClusterIP
+  selector:
+    app: radar-ng-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

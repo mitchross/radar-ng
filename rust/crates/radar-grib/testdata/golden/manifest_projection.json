@@ -1,0 +1,20 @@
+{
+  "crs": "+proj=lcc +lon_0=262.500000 +lat_0=38.500000 +lat_1=38.500000 +lat_2=38.500000 +R=6371229.000000",
+  "lcc_points_columns": [
+    "lon",
+    "lat",
+    "x",
+    "y",
+    "inv_lon",
+    "inv_lat"
+  ],
+  "lcc_points_rows": 45,
+  "shape": [
+    40,
+    60
+  ],
+  "src_x_first": -2697520.14252193,
+  "src_x_last": -2520520.142521931,
+  "src_y_first": -1587306.1525566636,
+  "src_y_last": -1470306.1525566636
+}

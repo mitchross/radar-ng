@@ -1,0 +1,25 @@
+[package]
+name = "radar-grib"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+radar-geo.workspace = true
+grib.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+reqwest.workspace = true
+quick-xml.workspace = true
+bytes.workspace = true
+flate2.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+serde.workspace = true
+png.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+serde_json.workspace = true
