@@ -115,6 +115,7 @@ jobs:
 
       - name: Build and push
         if: github.event_name != 'pull_request'
+        id: build
         uses: docker/build-push-action@v7
         with:
           provenance: false
@@ -127,3 +128,10 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=ghcr-web
           cache-to: type=gha,mode=max,scope=ghcr-web
+
+      - name: Published reference
+        if: github.event_name != 'pull_request'
+        run: |
+          ref="ghcr.io/${{ github.repository_owner }}/radar-ng-web:${{ steps.ver.outputs.version }}@${{ steps.build.outputs.digest }}"
+          echo "::notice title=published::$ref"
+          echo "Published \`$ref\`" >> "$GITHUB_STEP_SUMMARY"
