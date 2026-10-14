@@ -263,6 +263,14 @@ def compare_hrrr(res: Results, path: Path, idx_path: Path | None, rust: dict, ru
     res.add(g, "all messages bitwise vs pygrib", "PASS" if not differ else "WARN",
             f"{n_py - len(differ) - len(failed)} equal, {len(differ)} differ"
             + (f" (#{', #'.join(map(str, differ[:10]))})" if differ else ""))
+    by_index = {m["index"]: m for m in messages}
+    for i in differ[:5]:
+        mm = by_index[i]
+        res.add(g, f"differing message #{i}", "INFO",
+                f"{mm['shortName']}/{mm['typeOfLevel']}/{mm['level']} codes {mm['discipline']}.{mm['parameterCategory']}."
+                f"{mm['parameterNumber']} packing {mm['packingType']} E={mm['binaryScaleFactor']} "
+                f"D={mm['decimalScaleFactor']} bitmap={mm['bitmapPresent']} "
+                f"groupSplit={mm['groupSplittingMethodUsed']} missingMgmt={mm['missingValueManagementUsed']}")
     neg = [m for m in messages if (m["binaryScaleFactor"] or 0) < 0 or (m["decimalScaleFactor"] or 0) < 0]
     neg_bad = [m["index"] for m in neg if m["index"] in differ or not decode.get(m["index"], {}).get("ok")]
     if neg:
@@ -313,12 +321,15 @@ def compare_hrrr(res: Results, path: Path, idx_path: Path | None, rust: dict, ru
     try:
         for var, match in hr.VAR_SELECTORS.items():
             rv = rust["vars"].get(var, {})
+            # Python reference: the message production's _extract_variable returns (matched by its
+            # values), not a re-implemented match loop.
             py_idx = None
-            for i, grb in enumerate(grbs, start=1):
-                if py_matches(grb, match):
-                    py_idx = i
-                    break
-            grbs.rewind()
+            ext = hr._extract_variable(path, match)
+            if ext is not None:
+                ext_hash = canonical_hash(canonical_f32(ext.data))
+                hits = [mm["index"] for mm in messages if mm["values_sha256"] == ext_hash]
+                rs_pick = rv.get("selected")
+                py_idx = rs_pick if rs_pick in hits else (hits[0] if hits else None)
             rs_idx = rv.get("selected")
             if py_idx is None and rs_idx is None:
                 res.add(g, f"select {var}", "SKIP" if allow_missing else "FAIL",
@@ -342,16 +353,15 @@ def compare_hrrr(res: Results, path: Path, idx_path: Path | None, rust: dict, ru
                 extra += (f"; python name selector {match} matches nothing (rust's message is pygrib "
                           f"{rm['name']!r} {rm['shortName']}/{rm['typeOfLevel']}/{rm['level']}): "
                           "production Python would skip this layer")
+            if status == "FAIL" and m is not None:
+                extra += (f"; pygrib codes {m['discipline']}.{m['parameterCategory']}.{m['parameterNumber']}"
+                          f" surface {m['typeOfFirstFixedSurface']}")
+                if py_picks.get(var) == [py_idx] and rs_idx is None:
+                    extra += " (the .idx record Rust fetches is this message)"
             res.add(g, f"select {var} (item 3)", status, f"{names}; {codes}{extra}")
             if py_picks.get(var) and py_idx and py_picks[var][0] != py_idx:
                 res.add(g, f"idx record vs message {var}", "WARN",
                         f"idx picks record {py_picks[var]}, name selector picks message #{py_idx}")
-            if py_idx:
-                # The production helper must pick the same message as the replicated loop.
-                ext = hr._extract_variable(path, match)
-                if ext is None or canonical_hash(canonical_f32(ext.data)) != m["values_sha256"]:
-                    res.add(g, f"production _extract_variable {var}", "FAIL",
-                            "returned None or a different message than the match loop")
             if "error" in rv:
                 res.add(g, f"values {var} (item 4)", "FAIL", f"rust decode error: {rv['error'][:120]}")
                 continue

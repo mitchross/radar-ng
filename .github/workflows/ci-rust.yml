@@ -101,7 +101,7 @@ jobs:
         if: failure()
         run: |
           for f in $(find bench/work/preflight -type f \( -name '*.log' -o -name summary.txt \) 2>/dev/null | sort); do
-            body=$( { grep -n -E '(^|[[:space:]|])(FAIL|WARN)([[:space:]|]|$)' "$f" | grep -v -E 'Summary|status +secs' | head -60; grep -n -i -E 'unsupported|error:|panicked' "$f" | grep -v -E 'Compiling|Downloaded|"get_error"|head_error' | tail -20; echo '--- tail ---'; tail -n 25 "$f"; } )
+            body=$( { grep -n -E '(^|[[:space:]|])(FAIL|WARN|INFO)([[:space:]|]|$)' "$f" | grep -v -E 'Summary|status +secs' | head -60; grep -n -i -E 'unsupported|error:|panicked' "$f" | grep -v -E 'Compiling|Downloaded|"get_error"|head_error' | tail -20; echo '--- tail ---'; tail -n 25 "$f"; } )
             [ -n "$body" ] || continue
             body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
             echo "::error title=${f#bench/work/preflight/}::$body"
@@ -179,7 +179,7 @@ jobs:
         if: failure()
         run: |
           for f in $(find bench/work/preflight -type f \( -name '*.log' -o -name summary.txt \) 2>/dev/null | sort); do
-            body=$( { grep -n -E '(^|[[:space:]|])(FAIL|WARN)([[:space:]|]|$)' "$f" | grep -v -E 'Summary|status +secs' | head -60; grep -n -i -E 'unsupported|error:|panicked' "$f" | grep -v -E 'Compiling|Downloaded|"get_error"|head_error' | tail -20; echo '--- tail ---'; tail -n 25 "$f"; } )
+            body=$( { grep -n -E '(^|[[:space:]|])(FAIL|WARN|INFO)([[:space:]|]|$)' "$f" | grep -v -E 'Summary|status +secs' | head -60; grep -n -i -E 'unsupported|error:|panicked' "$f" | grep -v -E 'Compiling|Downloaded|"get_error"|head_error' | tail -20; echo '--- tail ---'; tail -n 25 "$f"; } )
             [ -n "$body" ] || continue
             body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
             echo "::error title=${f#bench/work/preflight/}::$body"

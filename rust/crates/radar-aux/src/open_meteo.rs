@@ -114,18 +114,31 @@ pub async fn open_meteo_sync(
     let argv = command_argv(cfg, args);
     info!(command = %argv.join(" "), "starting open-meteo sync");
 
-    let mut child = Command::new(&argv[0])
-        .args(&argv[1..])
-        .current_dir(cfg.working_dir())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| OpenMeteoError {
-            message: format!("failed to start {}: {e}", argv[0]),
-            retryable: true,
-        })?;
+    // ETXTBSY ("Text file busy") is transient: another thread forked while a write handle to the
+    // binary was still open (a binary just written by an installer or a test). Retry briefly.
+    let mut attempt = 0;
+    let mut child = loop {
+        let spawned = Command::new(&argv[0])
+            .args(&argv[1..])
+            .current_dir(cfg.working_dir())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn();
+        match spawned {
+            Err(e) if e.raw_os_error() == Some(26) && attempt < 20 => {
+                attempt += 1;
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            other => {
+                break other.map_err(|e| OpenMeteoError {
+                    message: format!("failed to start {}: {e}", argv[0]),
+                    retryable: true,
+                })?;
+            }
+        }
+    };
 
     let stdout = child.stdout.take().expect("stdout is piped");
     let stderr = child.stderr.take().expect("stderr is piped");

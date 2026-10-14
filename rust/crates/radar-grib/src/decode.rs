@@ -62,6 +62,9 @@ pub struct MessageSelector {
     pub category: Option<u8>,
     /// Parameter number (Table 4.2).
     pub number: Option<u8>,
+    /// A second accepted parameter number for the same field. HRRR's categorical precipitation types
+    /// were NCEP-local 0.1.192..195 and now have WMO numbers 0.1.33..36; eccodes names both the same.
+    pub number_alt: Option<u8>,
     /// First fixed surface type (Table 4.5).
     pub surface_type: Option<u8>,
     /// First fixed surface value (scale factor applied).
@@ -79,6 +82,12 @@ impl MessageSelector {
         }
     }
 
+    /// Also accept parameter number `alt`.
+    pub fn or_number(mut self, alt: u8) -> Self {
+        self.number_alt = Some(alt);
+        self
+    }
+
     /// Adds a first-surface constraint.
     pub fn at_level(mut self, surface_type: u8, value: f64) -> Self {
         self.surface_type = Some(surface_type);
@@ -90,11 +99,17 @@ impl MessageSelector {
     pub fn matches(&self, info: &MessageInfo) -> bool {
         self.discipline.is_none_or(|d| d == info.discipline)
             && self.category.is_none_or(|c| info.category == Some(c))
-            && self.number.is_none_or(|n| info.number == Some(n))
+            && self
+                .number
+                .is_none_or(|n| info.number == Some(n) || self.number_alt.is_some_and(|a| info.number == Some(a)))
             && self
                 .surface_type
                 .is_none_or(|s| info.surface_type == Some(s))
-            && self.level_value.is_none_or(|v| info.level_value == Some(v))
+            // The ground surface (type 1) has no meaningful value; files leave it missing or 0.
+            && self.level_value.is_none_or(|v| {
+                info.level_value == Some(v)
+                    || (info.surface_type == Some(1) && v == 0.0 && info.level_value.is_none())
+            })
     }
 }
 
