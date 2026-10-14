@@ -101,7 +101,7 @@ jobs:
         if: failure()
         run: |
           for f in $(find bench/work/preflight -type f \( -name '*.log' -o -name summary.txt \) 2>/dev/null | sort); do
-            body=$(grep -E -B3 -A15 'FAIL|error|Error|panicked' "$f" | head -120)
+            body=$( { grep -n -i -E 'unsupported|error:|Error:|panicked|failed|^FAIL' "$f" | grep -v -E 'Compiling|Downloaded|"get_error"|head_error' | tail -40; echo '--- tail ---'; tail -n 40 "$f"; } )
             [ -n "$body" ] || continue
             body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
             echo "::error title=${f#bench/work/preflight/}::$body"
@@ -130,7 +130,7 @@ jobs:
           docker run --rm radar-ng-temporal-worker:ci --version
           # The cluster's worker probes exec: sh -c "test $(find /tmp/worker-alive -mmin -3)"
           docker run --rm --entrypoint sh radar-ng-temporal-worker:ci -c \
-            'touch /tmp/worker-alive && test "$(find /tmp/worker-alive -mmin -3)"'
+            'echo > /tmp/worker-alive && test "$(find /tmp/worker-alive -mmin -3)"'
           test "$(docker image inspect --format '{{ index .Config.Labels "io.radar-ng.replay-gate" }}' radar-ng-temporal-worker:ci)" = rust-offline-replay
       - name: Open-Meteo image contract
         run: |
@@ -162,7 +162,7 @@ jobs:
         if: failure()
         run: |
           for f in $(find bench/work/preflight -type f \( -name '*.log' -o -name summary.txt \) 2>/dev/null | sort); do
-            body=$(grep -E -B3 -A15 'FAIL|error|Error|panicked' "$f" | head -120)
+            body=$( { grep -n -i -E 'unsupported|error:|Error:|panicked|failed|^FAIL' "$f" | grep -v -E 'Compiling|Downloaded|"get_error"|head_error' | tail -40; echo '--- tail ---'; tail -n 40 "$f"; } )
             [ -n "$body" ] || continue
             body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
             echo "::error title=${f#bench/work/preflight/}::$body"

@@ -39,7 +39,7 @@ ARG REPLAY_GATE=1
 FROM ${BUSYBOX_IMAGE} AS busybox
 RUN mkdir -p /out \
     && cp /bin/busybox /out/busybox \
-    && for a in sh find test wget cat ls; do ln -s busybox /out/$a; done
+    && for a in sh find test touch wget cat ls sleep; do ln -s busybox /out/$a; done
 
 # Glyphs for the bundled styles, fetched at build time from a pinned commit so no
 # client ever loads fonts from a third party. Same pin as backend/api/Dockerfile.
