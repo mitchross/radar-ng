@@ -63,6 +63,11 @@ jobs:
               NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
             fi
           fi
+          # The Rust rewrite starts the v2 line. Never publish below it.
+          FLOOR="v2.0.0"
+          if [ "$(printf '%s\n%s\n' "$NEXT" "$FLOOR" | sort -V | head -1)" != "$FLOOR" ]; then
+            NEXT="$FLOOR"
+          fi
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
           echo "Calculated version: $NEXT"
 
@@ -86,6 +91,7 @@ jobs:
             type=raw,value=${{ steps.ver.outputs.version }}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v7
         with:
           provenance: false
@@ -97,3 +103,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=ghcr-temporal-worker
           cache-to: type=gha,mode=max,scope=ghcr-temporal-worker
+
+      - name: Published reference
+        run: |
+          ref="ghcr.io/${{ github.repository_owner }}/radar-ng-temporal-worker:${{ steps.ver.outputs.version }}@${{ steps.build.outputs.digest }}"
+          echo "::notice title=published::$ref"
+          echo "Published \`$ref\`" >> "$GITHUB_STEP_SUMMARY"
