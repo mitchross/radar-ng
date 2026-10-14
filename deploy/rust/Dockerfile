@@ -52,7 +52,7 @@ FROM ${BUILDER_IMAGE} AS build
 # protoc: temporalio's proto build. Rust comes from rustup with the version pinned in
 # rust/rust-toolchain.toml, so the image, CI and local builds use one compiler.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gcc libc6-dev make pkg-config protobuf-compiler \
+    && apt-get install -y --no-install-recommends ca-certificates curl gcc libc6-dev make pkg-config protobuf-compiler libprotobuf-dev \
     && rm -rf /var/lib/apt/lists/*
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \

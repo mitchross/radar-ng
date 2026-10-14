@@ -10,7 +10,7 @@ before/after numbers in `bench/results/latest.md`.
 ## Build and test
 
 Requirements: Rust ≥ 1.92 and `protoc`. The Temporal SDK's proto crate needs `protoc`; install it with
-`apt install protobuf-compiler` or `brew install protobuf`.
+`apt install protobuf-compiler libprotobuf-dev` or `brew install protobuf`.
 
 ```sh
 cd rust
