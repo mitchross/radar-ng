@@ -1,15 +1,19 @@
 name: ghcr · tile-server
 
-# Public GHCR mirror of the tile-server (Caddy + FastAPI) image.
+# Public GHCR image of the tile-server: the Rust `radar api` (deploy/rust/Dockerfile, target `api`),
+# replacing Caddy + FastAPI in one process.
 # Runs on push to master, or manually with an explicit version.
 
 on:
   push:
     branches: [master]
     paths:
-      - 'backend/api/**'
-      - 'backend/shared/**'
+      - 'rust/**'
+      - 'deploy/rust/Dockerfile'
+      - 'deploy/rust/Dockerfile.dockerignore'
       - 'backend/basemap/styles/**'
+      - 'backend/basemap/fetch-glyphs.sh'
+      - '.github/workflows/ghcr-tile-server.yml'
   workflow_dispatch:
     inputs:
       version:
@@ -82,8 +86,9 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           provenance: false
-          context: backend
-          file: backend/api/Dockerfile
+          context: .
+          file: deploy/rust/Dockerfile
+          target: api
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

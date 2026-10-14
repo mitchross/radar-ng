@@ -1,0 +1,5 @@
+# One toolchain everywhere (local, CI, Docker builder) so clippy -D warnings sees the same lints.
+[toolchain]
+channel = "1.97.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

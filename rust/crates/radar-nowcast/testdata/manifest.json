@@ -1,0 +1,96 @@
+{
+ "a4_fc.f64": {
+  "dtype": "<f8",
+  "shape": [
+   4,
+   32,
+   64
+  ]
+ },
+ "a4_input.f32": {
+  "dtype": "<f4",
+  "shape": [
+   3,
+   32,
+   64
+  ]
+ },
+ "ar_pairs.json": {
+  "json": true
+ },
+ "bandpass128_w.f64": {
+  "dtype": "<f8",
+  "shape": [
+   6,
+   128,
+   65
+  ]
+ },
+ "cascade128_field.f64": {
+  "dtype": "<f8",
+  "shape": [
+   128,
+   128
+  ]
+ },
+ "cascade128_levels.f64": {
+  "dtype": "<f8",
+  "shape": [
+   6,
+   128,
+   128
+  ]
+ },
+ "cascade128_stats.json": {
+  "json": true
+ },
+ "corr_check.json": {
+  "json": true
+ },
+ "lk200_medians.json": {
+  "json": true
+ },
+ "lk200_stack.f32": {
+  "dtype": "<f4",
+  "shape": [
+   4,
+   200,
+   300
+  ]
+ },
+ "probmatch.json": {
+  "json": true
+ },
+ "synth128_fc_frac.f64": {
+  "dtype": "<f8",
+  "shape": [
+   3,
+   128,
+   128
+  ]
+ },
+ "synth128_fc_leads.f64": {
+  "dtype": "<f8",
+  "shape": [
+   12,
+   128,
+   128
+  ]
+ },
+ "synth128_stack.f32": {
+  "dtype": "<f4",
+  "shape": [
+   4,
+   128,
+   128
+  ]
+ },
+ "synth128_uv_pysteps.f32": {
+  "dtype": "<f4",
+  "shape": [
+   2,
+   128,
+   128
+  ]
+ }
+}

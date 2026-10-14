@@ -1,0 +1,193 @@
+name: ci · rust
+
+# Checks for the Rust backend (rust/), run on every PR that touches it and on master.
+#
+#   lint-test   cargo fmt, clippy -D warnings, cargo test --workspace (includes the offline
+#               Temporal replay gate over temporal/workflows/replay_fixtures).
+#   real-data   rust/scripts/preflight.sh --only temporal,noaa: worker integration tests against a
+#               throwaway Temporal server, and the newest real MRMS + HRRR files from NOAA decoded by
+#               production Python and by Rust and compared (values bitwise, grids, .idx picks, message
+#               selection, then `radar parity --exact` on the rendered tiles).
+#   images      all three image targets build, glibc floor, image users, the api smoke run, and the
+#               open-meteo image contract (formerly ci-open-meteo-image.yml).
+
+on:
+  pull_request:
+    paths:
+      - 'rust/**'
+      - 'deploy/rust/**'
+      - 'deploy/temporal-dev.yml'
+      - 'bench/py/**'
+      - 'backend/basemap/**'
+      - 'temporal/workflows/replay_fixtures/**'
+      - '.github/workflows/ci-rust.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'rust/**'
+      - 'deploy/rust/**'
+      - 'bench/py/**'
+      - 'backend/basemap/**'
+      - '.github/workflows/ci-rust.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+  PROTOC: /usr/bin/protoc
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler libprotobuf-dev
+      - name: Rust toolchain (rust/rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo fmt --all -- --check
+      - name: clippy
+        run: |
+          set -o pipefail
+          cargo clippy --workspace --all-targets --locked -- -D warnings 2>&1 | tee ../clippy.log
+      - name: test
+        run: |
+          set -o pipefail
+          cargo test --workspace --locked --no-fail-fast 2>&1 | tee ../test.log
+      - name: Annotate failures
+        if: failure()
+        working-directory: .
+        run: |
+          for f in clippy.log test.log; do
+            [ -f "$f" ] || continue
+            body=$(grep -E -A12 '^(error|warning)(\[|:)|^---- |panicked at|^failures:' "$f" | head -150)
+            [ -n "$body" ] || body=$(tail -n 80 "$f")
+            body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
+            echo "::error title=$f::$body"
+          done
+
+  real-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler libprotobuf-dev
+      - name: Rust toolchain (rust/rust-toolchain.toml)
+        working-directory: rust
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: preflight
+      - uses: astral-sh/setup-uv@v6
+      - name: Real NOAA comparison
+        run: rust/scripts/preflight.sh --only noaa --profile release
+      - name: Annotate failures
+        if: failure()
+        run: |
+          for f in $(find bench/work/preflight -type f \( -name '*.log' -o -name summary.txt \) 2>/dev/null | sort); do
+            body=$( { grep -n -E '(^|[[:space:]|])(FAIL|WARN|INFO)([[:space:]|]|$)' "$f" | grep -v -E 'Summary|status +secs' | head -60; grep -n -i -E 'unsupported|error:|panicked' "$f" | grep -v -E 'Compiling|Downloaded|"get_error"|head_error' | tail -20; echo '--- tail ---'; tail -n 25 "$f"; } )
+            [ -n "$body" ] || continue
+            body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
+            echo "::error title=${f#bench/work/preflight/}::$body"
+          done
+      - name: Upload preflight logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preflight-real-data
+          path: bench/work/preflight/
+          if-no-files-found: ignore
+
+  temporal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler libprotobuf-dev
+      - name: Rust toolchain (rust/rust-toolchain.toml)
+        working-directory: rust
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: temporal
+      - name: Worker integration tests against a throwaway Temporal server
+        run: rust/scripts/preflight.sh --only temporal
+
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      OM_IMAGE: radar-ng-open-meteo-worker:preflight
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build images, glibc floor, image users, api smoke run
+        run: rust/scripts/preflight.sh --only docker
+      - name: Worker target builds and carries the probe helpers
+        run: |
+          set -euo pipefail
+          docker build -f deploy/rust/Dockerfile --target worker -t radar-ng-temporal-worker:ci .
+          docker run --rm radar-ng-temporal-worker:ci --version
+          # The cluster's worker probes exec: sh -c "test $(find /tmp/worker-alive -mmin -3)"
+          docker run --rm --entrypoint sh radar-ng-temporal-worker:ci -c \
+            'echo > /tmp/worker-alive && test "$(find /tmp/worker-alive -mmin -3)"'
+          test "$(docker image inspect --format '{{ index .Config.Labels "io.radar-ng.replay-gate" }}' radar-ng-temporal-worker:ci)" = rust-offline-replay
+      - name: Open-Meteo image contract
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh "$OM_IMAGE" -ec '
+            test -x /app/openmeteo-api
+            links="$(ldd /app/openmeteo-api)"
+            if printf "%s\n" "$links" | grep -F "not found"; then exit 1; fi
+          '
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}' "$OM_IMAGE")" = 'MIT AND AGPL-3.0-only'
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.base.digest" }}' "$OM_IMAGE")" = \
+            'sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da'
+          docker run --rm --entrypoint /app/openmeteo-api "$OM_IMAGE" sync --help | grep -F 'Download the open-meteo weather database'
+          docker run --rm "$OM_IMAGE" --version
+      - name: Open-Meteo serve starts (the API pod overrides the command)
+        run: |
+          set -euo pipefail
+          c="om-serve-${GITHUB_RUN_ID}"
+          trap 'docker rm --force "$c" >/dev/null 2>&1 || true' EXIT
+          docker run --detach --name "$c" --publish 127.0.0.1:18080:8080 \
+            --entrypoint /app/openmeteo-api "$OM_IMAGE" serve --env production --hostname 0.0.0.0 --port 8080
+          for _ in $(seq 1 30); do
+            if [ "$(docker inspect --format '{{.State.Running}}' "$c")" != "true" ]; then docker logs "$c"; exit 1; fi
+            if timeout 1 bash -c '</dev/tcp/127.0.0.1/18080' 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          docker logs "$c"; exit 1
+      - name: Annotate failures
+        if: failure()
+        run: |
+          for f in $(find bench/work/preflight -type f \( -name '*.log' -o -name summary.txt \) 2>/dev/null | sort); do
+            body=$( { grep -n -E '(^|[[:space:]|])(FAIL|WARN|INFO)([[:space:]|]|$)' "$f" | grep -v -E 'Summary|status +secs' | head -60; grep -n -i -E 'unsupported|error:|panicked' "$f" | grep -v -E 'Compiling|Downloaded|"get_error"|head_error' | tail -20; echo '--- tail ---'; tail -n 25 "$f"; } )
+            [ -n "$body" ] || continue
+            body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
+            echo "::error title=${f#bench/work/preflight/}::$body"
+          done
+      - name: Upload preflight logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preflight-images
+          path: bench/work/preflight/
+          if-no-files-found: ignore

@@ -1,0 +1,10 @@
+{
+  "sessions_per_unit": 100,
+  "requests_per_100_sessions": 3845,
+  "tile_share": 0.953185955786736,
+  "distinct_urls": 300,
+  "list_lines": 3845,
+  "manifest_frames": 8,
+  "with_upstream": false,
+  "tile_requests_dropped_missing": 675
+}

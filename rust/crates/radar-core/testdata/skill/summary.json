@@ -1,0 +1,93 @@
+{
+ "available": true,
+ "by_lead": [
+  {
+   "heavy": {
+    "bias": 0.5,
+    "csi": 0.5,
+    "false_alarms": 0,
+    "far": 0.0,
+    "hits": 8,
+    "misses": 8,
+    "persistence_csi": 0.0,
+    "pod": 0.5
+   },
+   "lead_minutes": 5,
+   "rain": {
+    "bias": 1.0,
+    "csi": 1.0,
+    "false_alarms": 0,
+    "far": 0.0,
+    "hits": 160,
+    "misses": 0,
+    "persistence_csi": 0.333,
+    "pod": 1.0
+   },
+   "runs": 8
+  },
+  {
+   "heavy": {
+    "bias": 0.5,
+    "csi": 0.5,
+    "false_alarms": 0,
+    "far": 0.0,
+    "hits": 2,
+    "misses": 2,
+    "persistence_csi": 0.0,
+    "pod": 0.5
+   },
+   "lead_minutes": 15,
+   "rain": {
+    "bias": 1.083,
+    "csi": 0.667,
+    "false_alarms": 3,
+    "far": 0.231,
+    "hits": 10,
+    "misses": 2,
+    "persistence_csi": 0.333,
+    "pod": 0.833
+   },
+   "runs": 2
+  },
+  {
+   "heavy": {
+    "bias": 0.5,
+    "csi": 0.5,
+    "false_alarms": 0,
+    "far": 0.0,
+    "hits": 8,
+    "misses": 8,
+    "persistence_csi": 0.0,
+    "pod": 0.5
+   },
+   "lead_minutes": 30,
+   "rain": {
+    "bias": 1.083,
+    "csi": 0.667,
+    "false_alarms": 24,
+    "far": 0.231,
+    "hits": 80,
+    "misses": 16,
+    "persistence_csi": 0.333,
+    "pod": 0.833
+   },
+   "runs": 8
+  }
+ ],
+ "headline": {
+  "csi": 0.667,
+  "far": 0.231,
+  "lead_minutes": 30,
+  "persistence_csi": 0.333,
+  "pod": 0.833,
+  "runs": 8,
+  "window_hours": 24
+ },
+ "runs_scored": 10,
+ "thresholds_dbz": {
+  "heavy": 35.0,
+  "rain": 20.0
+ },
+ "updated_at": "2026-09-30T12:00:00+00:00",
+ "window_hours": 24
+}

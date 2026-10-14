@@ -1,0 +1,1641 @@
+{
+ "cases": [
+  {
+   "name": "legacy_paths_match_timestamp",
+   "defect": null,
+   "storms": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "type": "Feature",
+      "geometry": {
+       "type": "Point",
+       "coordinates": [
+        -84.92,
+        42.92
+       ]
+      },
+      "properties": {
+       "peak_dbz": 55.0,
+       "area_km2": 8.112615032784642,
+       "pixel_count": 9,
+       "bbox": [
+        -85.07720274475918,
+        42.80147539204515,
+        -84.76279725524083,
+        43.038524607954855
+       ],
+       "cell_id": 1,
+       "track_history": [
+        [
+         1783684800.0,
+         -84.92,
+         42.92
+        ]
+       ],
+       "tracking_vector": {
+        "east_kmh": 0.0,
+        "north_kmh": 0.0,
+        "speed_kmh": 0.0,
+        "bearing_deg": 0.0
+       },
+       "tracking_confidence": 0.0,
+       "predicted_bboxes": [
+        {
+         "lead_minutes": 0,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 5,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 10,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        }
+       ]
+      }
+     }
+    ],
+    "generated_at": 1783512000.123,
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "threshold_dbz": 40.0,
+    "cell_count": 1,
+    "prediction_minutes": [
+     0,
+     5,
+     10
+    ],
+    "tracking_vectors": [
+     {
+      "cell_id": 1,
+      "east_kmh": 0.0,
+      "north_kmh": 0.0,
+      "speed_kmh": 0.0,
+      "bearing_deg": 0.0
+     }
+    ]
+   },
+   "manifest": {
+    "schema_version": 2,
+    "layers": {
+     "radar": {
+      "timestamps": [
+       "2026-07-10T12:00:00+00:00"
+      ],
+      "latest": "2026-07-10T12:00:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:00:00+00:00",
+        "path": "2026-07-10T12:00:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     },
+     "nowcast": {
+      "timestamps": [
+       "2026-07-10T12:05:00+00:00",
+       "2026-07-10T12:10:00+00:00"
+      ],
+      "latest": "2026-07-10T12:10:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:05:00+00:00",
+        "path": "2026-07-10T12:05:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       },
+       {
+        "timestamp": "2026-07-10T12:10:00+00:00",
+        "path": "2026-07-10T12:10:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     }
+    },
+    "tile_url_template": "/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png",
+    "updated_at": "2026-07-10T12:00:00+00:00"
+   },
+   "existing_tiles": [
+    "radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png",
+    "nowcast/classic/2026-07-10T12:05:00+00:00/6/16/23.png",
+    "nowcast/classic/2026-07-10T12:10:00+00:00/6/16/23.png"
+   ],
+   "request": {
+    "base_url": "https://radar.example",
+    "lat": 42.9,
+    "lon": -84.9,
+    "zoom": 6,
+    "palette": "classic"
+   },
+   "expected_python": {
+    "plan_id": "2026-07-10T12:00:00+00:00:1:classic:6",
+    "storm_cell_id": 1,
+    "generated_at": 1783512000.123,
+    "tracking_vector": {
+     "east_kmh": 0.0,
+     "north_kmh": 0.0,
+     "speed_kmh": 0.0,
+     "bearing_deg": 0.0
+    },
+    "bboxes": [
+     {
+      "lead_minutes": 0,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "radar",
+      "timestamp": "2026-07-10T12:00:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=radar&palette=classic&timestamp=2026-07-10T12%3A00%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png"
+      ]
+     },
+     {
+      "lead_minutes": 5,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:05:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A05%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/nowcast/classic/2026-07-10T12:05:00+00:00/6/16/23.png"
+      ]
+     },
+     {
+      "lead_minutes": 10,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:10:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A10%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/nowcast/classic/2026-07-10T12:10:00+00:00/6/16/23.png"
+      ]
+     }
+    ],
+    "tile_urls": [
+     "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png",
+     "https://radar.example/tiles/nowcast/classic/2026-07-10T12:05:00+00:00/6/16/23.png",
+     "https://radar.example/tiles/nowcast/classic/2026-07-10T12:10:00+00:00/6/16/23.png"
+    ]
+   }
+  },
+  {
+   "name": "nowcast_run_paths_D1",
+   "defect": "D1",
+   "storms": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "type": "Feature",
+      "geometry": {
+       "type": "Point",
+       "coordinates": [
+        -84.92,
+        42.92
+       ]
+      },
+      "properties": {
+       "peak_dbz": 55.0,
+       "area_km2": 8.112615032784642,
+       "pixel_count": 9,
+       "bbox": [
+        -85.07720274475918,
+        42.80147539204515,
+        -84.76279725524083,
+        43.038524607954855
+       ],
+       "cell_id": 1,
+       "track_history": [
+        [
+         1783684800.0,
+         -84.92,
+         42.92
+        ]
+       ],
+       "tracking_vector": {
+        "east_kmh": 0.0,
+        "north_kmh": 0.0,
+        "speed_kmh": 0.0,
+        "bearing_deg": 0.0
+       },
+       "tracking_confidence": 0.0,
+       "predicted_bboxes": [
+        {
+         "lead_minutes": 0,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 5,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 10,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        }
+       ]
+      }
+     }
+    ],
+    "generated_at": 1783512000.123,
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "threshold_dbz": 40.0,
+    "cell_count": 1,
+    "prediction_minutes": [
+     0,
+     5,
+     10
+    ],
+    "tracking_vectors": [
+     {
+      "cell_id": 1,
+      "east_kmh": 0.0,
+      "north_kmh": 0.0,
+      "speed_kmh": 0.0,
+      "bearing_deg": 0.0
+     }
+    ]
+   },
+   "manifest": {
+    "schema_version": 2,
+    "layers": {
+     "radar": {
+      "timestamps": [
+       "2026-07-10T12:00:00+00:00"
+      ],
+      "latest": "2026-07-10T12:00:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:00:00+00:00",
+        "path": "2026-07-10T12:00:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     },
+     "nowcast": {
+      "timestamps": [
+       "2026-07-10T12:05:00+00:00",
+       "2026-07-10T12:10:00+00:00"
+      ],
+      "latest": "2026-07-10T12:10:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:05:00+00:00",
+        "path": "runs/2026-07-10T12:00:00+00:00/2026-07-10T12:05:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       },
+       {
+        "timestamp": "2026-07-10T12:10:00+00:00",
+        "path": "runs/2026-07-10T12:00:00+00:00/2026-07-10T12:10:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     }
+    },
+    "tile_url_template": "/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png",
+    "updated_at": "2026-07-10T12:00:00+00:00"
+   },
+   "existing_tiles": [
+    "radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png",
+    "nowcast/classic/runs/2026-07-10T12:00:00+00:00/2026-07-10T12:05:00+00:00/6/16/23.png",
+    "nowcast/classic/runs/2026-07-10T12:00:00+00:00/2026-07-10T12:10:00+00:00/6/16/23.png"
+   ],
+   "request": {
+    "base_url": "https://radar.example",
+    "lat": 42.9,
+    "lon": -84.9,
+    "zoom": 6,
+    "palette": "classic"
+   },
+   "expected_python": {
+    "plan_id": "2026-07-10T12:00:00+00:00:1:classic:6",
+    "storm_cell_id": 1,
+    "generated_at": 1783512000.123,
+    "tracking_vector": {
+     "east_kmh": 0.0,
+     "north_kmh": 0.0,
+     "speed_kmh": 0.0,
+     "bearing_deg": 0.0
+    },
+    "bboxes": [
+     {
+      "lead_minutes": 0,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "radar",
+      "timestamp": "2026-07-10T12:00:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=radar&palette=classic&timestamp=2026-07-10T12%3A00%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png"
+      ]
+     },
+     {
+      "lead_minutes": 5,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:05:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A05%3A00%2B00%3A00&zoom=6",
+      "tile_urls": []
+     },
+     {
+      "lead_minutes": 10,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:10:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A10%3A00%2B00%3A00&zoom=6",
+      "tile_urls": []
+     }
+    ],
+    "tile_urls": [
+     "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png"
+    ]
+   },
+   "expected_fixed": {
+    "plan_id": "2026-07-10T12:00:00+00:00:1:classic:6",
+    "storm_cell_id": 1,
+    "generated_at": 1783512000.123,
+    "tracking_vector": {
+     "east_kmh": 0.0,
+     "north_kmh": 0.0,
+     "speed_kmh": 0.0,
+     "bearing_deg": 0.0
+    },
+    "bboxes": [
+     {
+      "lead_minutes": 0,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "radar",
+      "timestamp": "2026-07-10T12:00:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=radar&palette=classic&timestamp=2026-07-10T12%3A00%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png"
+      ]
+     },
+     {
+      "lead_minutes": 5,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:05:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A05%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/nowcast/classic/runs/2026-07-10T12:00:00+00:00/2026-07-10T12:05:00+00:00/6/16/23.png"
+      ]
+     },
+     {
+      "lead_minutes": 10,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:10:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A10%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/nowcast/classic/runs/2026-07-10T12:00:00+00:00/2026-07-10T12:10:00+00:00/6/16/23.png"
+      ]
+     }
+    ],
+    "tile_urls": [
+     "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png",
+     "https://radar.example/tiles/nowcast/classic/runs/2026-07-10T12:00:00+00:00/2026-07-10T12:05:00+00:00/6/16/23.png",
+     "https://radar.example/tiles/nowcast/classic/runs/2026-07-10T12:00:00+00:00/2026-07-10T12:10:00+00:00/6/16/23.png"
+    ]
+   }
+  },
+  {
+   "name": "zoom_clamp_run_paths",
+   "defect": "D1",
+   "storms": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "type": "Feature",
+      "geometry": {
+       "type": "Point",
+       "coordinates": [
+        -84.92,
+        42.92
+       ]
+      },
+      "properties": {
+       "peak_dbz": 55.0,
+       "area_km2": 8.112615032784642,
+       "pixel_count": 9,
+       "bbox": [
+        -85.07720274475918,
+        42.80147539204515,
+        -84.76279725524083,
+        43.038524607954855
+       ],
+       "cell_id": 1,
+       "track_history": [
+        [
+         1783684800.0,
+         -84.92,
+         42.92
+        ]
+       ],
+       "tracking_vector": {
+        "east_kmh": 0.0,
+        "north_kmh": 0.0,
+        "speed_kmh": 0.0,
+        "bearing_deg": 0.0
+       },
+       "tracking_confidence": 0.0,
+       "predicted_bboxes": [
+        {
+         "lead_minutes": 0,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 5,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 10,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        }
+       ]
+      }
+     }
+    ],
+    "generated_at": 1783512000.123,
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "threshold_dbz": 40.0,
+    "cell_count": 1,
+    "prediction_minutes": [
+     0,
+     5,
+     10
+    ],
+    "tracking_vectors": [
+     {
+      "cell_id": 1,
+      "east_kmh": 0.0,
+      "north_kmh": 0.0,
+      "speed_kmh": 0.0,
+      "bearing_deg": 0.0
+     }
+    ]
+   },
+   "manifest": {
+    "schema_version": 2,
+    "layers": {
+     "radar": {
+      "timestamps": [
+       "2026-07-10T12:00:00+00:00"
+      ],
+      "latest": "2026-07-10T12:00:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:00:00+00:00",
+        "path": "2026-07-10T12:00:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     },
+     "nowcast": {
+      "timestamps": [
+       "2026-07-10T12:05:00+00:00",
+       "2026-07-10T12:10:00+00:00"
+      ],
+      "latest": "2026-07-10T12:10:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:05:00+00:00",
+        "path": "runs/2026-07-10T12:00:00+00:00/2026-07-10T12:05:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       },
+       {
+        "timestamp": "2026-07-10T12:10:00+00:00",
+        "path": "runs/2026-07-10T12:00:00+00:00/2026-07-10T12:10:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     }
+    },
+    "tile_url_template": "/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png",
+    "updated_at": "2026-07-10T12:00:00+00:00"
+   },
+   "existing_tiles": [
+    "radar/classic/2026-07-10T12:00:00+00:00/7/33/47.png",
+    "nowcast/classic/runs/2026-07-10T12:00:00+00:00/2026-07-10T12:05:00+00:00/6/16/23.png",
+    "nowcast/classic/runs/2026-07-10T12:00:00+00:00/2026-07-10T12:10:00+00:00/6/16/23.png"
+   ],
+   "request": {
+    "base_url": "https://radar.example",
+    "lat": 42.9,
+    "lon": -84.9,
+    "zoom": 8,
+    "palette": "classic"
+   },
+   "expected_python": {
+    "plan_id": "2026-07-10T12:00:00+00:00:1:classic:8",
+    "storm_cell_id": 1,
+    "generated_at": 1783512000.123,
+    "tracking_vector": {
+     "east_kmh": 0.0,
+     "north_kmh": 0.0,
+     "speed_kmh": 0.0,
+     "bearing_deg": 0.0
+    },
+    "bboxes": [
+     {
+      "lead_minutes": 0,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "radar",
+      "timestamp": "2026-07-10T12:00:00+00:00",
+      "zoom": 7,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=radar&palette=classic&timestamp=2026-07-10T12%3A00%3A00%2B00%3A00&zoom=7",
+      "tile_urls": [
+       "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/7/33/47.png"
+      ]
+     },
+     {
+      "lead_minutes": 5,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:05:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A05%3A00%2B00%3A00&zoom=6",
+      "tile_urls": []
+     },
+     {
+      "lead_minutes": 10,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:10:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A10%3A00%2B00%3A00&zoom=6",
+      "tile_urls": []
+     }
+    ],
+    "tile_urls": [
+     "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/7/33/47.png"
+    ]
+   },
+   "expected_fixed": {
+    "plan_id": "2026-07-10T12:00:00+00:00:1:classic:8",
+    "storm_cell_id": 1,
+    "generated_at": 1783512000.123,
+    "tracking_vector": {
+     "east_kmh": 0.0,
+     "north_kmh": 0.0,
+     "speed_kmh": 0.0,
+     "bearing_deg": 0.0
+    },
+    "bboxes": [
+     {
+      "lead_minutes": 0,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "radar",
+      "timestamp": "2026-07-10T12:00:00+00:00",
+      "zoom": 7,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=radar&palette=classic&timestamp=2026-07-10T12%3A00%3A00%2B00%3A00&zoom=7",
+      "tile_urls": [
+       "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/7/33/47.png"
+      ]
+     },
+     {
+      "lead_minutes": 5,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:05:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A05%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/nowcast/classic/runs/2026-07-10T12:00:00+00:00/2026-07-10T12:05:00+00:00/6/16/23.png"
+      ]
+     },
+     {
+      "lead_minutes": 10,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:10:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A10%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/nowcast/classic/runs/2026-07-10T12:00:00+00:00/2026-07-10T12:10:00+00:00/6/16/23.png"
+      ]
+     }
+    ],
+    "tile_urls": [
+     "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/7/33/47.png",
+     "https://radar.example/tiles/nowcast/classic/runs/2026-07-10T12:00:00+00:00/2026-07-10T12:05:00+00:00/6/16/23.png",
+     "https://radar.example/tiles/nowcast/classic/runs/2026-07-10T12:00:00+00:00/2026-07-10T12:10:00+00:00/6/16/23.png"
+    ]
+   }
+  },
+  {
+   "name": "no_tiles_on_disk",
+   "defect": null,
+   "storms": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "type": "Feature",
+      "geometry": {
+       "type": "Point",
+       "coordinates": [
+        -84.92,
+        42.92
+       ]
+      },
+      "properties": {
+       "peak_dbz": 55.0,
+       "area_km2": 8.112615032784642,
+       "pixel_count": 9,
+       "bbox": [
+        -85.07720274475918,
+        42.80147539204515,
+        -84.76279725524083,
+        43.038524607954855
+       ],
+       "cell_id": 1,
+       "track_history": [
+        [
+         1783684800.0,
+         -84.92,
+         42.92
+        ]
+       ],
+       "tracking_vector": {
+        "east_kmh": 0.0,
+        "north_kmh": 0.0,
+        "speed_kmh": 0.0,
+        "bearing_deg": 0.0
+       },
+       "tracking_confidence": 0.0,
+       "predicted_bboxes": [
+        {
+         "lead_minutes": 0,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 5,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 10,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        }
+       ]
+      }
+     }
+    ],
+    "generated_at": 1783512000.123,
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "threshold_dbz": 40.0,
+    "cell_count": 1,
+    "prediction_minutes": [
+     0,
+     5,
+     10
+    ],
+    "tracking_vectors": [
+     {
+      "cell_id": 1,
+      "east_kmh": 0.0,
+      "north_kmh": 0.0,
+      "speed_kmh": 0.0,
+      "bearing_deg": 0.0
+     }
+    ]
+   },
+   "manifest": {
+    "schema_version": 2,
+    "layers": {
+     "radar": {
+      "timestamps": [
+       "2026-07-10T12:00:00+00:00"
+      ],
+      "latest": "2026-07-10T12:00:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:00:00+00:00",
+        "path": "2026-07-10T12:00:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     },
+     "nowcast": {
+      "timestamps": [
+       "2026-07-10T12:05:00+00:00",
+       "2026-07-10T12:10:00+00:00"
+      ],
+      "latest": "2026-07-10T12:10:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:05:00+00:00",
+        "path": "2026-07-10T12:05:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       },
+       {
+        "timestamp": "2026-07-10T12:10:00+00:00",
+        "path": "2026-07-10T12:10:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     }
+    },
+    "tile_url_template": "/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png",
+    "updated_at": "2026-07-10T12:00:00+00:00"
+   },
+   "existing_tiles": [],
+   "request": {
+    "base_url": "https://radar.example",
+    "lat": 42.9,
+    "lon": -84.9,
+    "zoom": 6,
+    "palette": "classic"
+   },
+   "expected_python": {
+    "plan_id": "2026-07-10T12:00:00+00:00:1:classic:6",
+    "storm_cell_id": 1,
+    "generated_at": 1783512000.123,
+    "tracking_vector": {
+     "east_kmh": 0.0,
+     "north_kmh": 0.0,
+     "speed_kmh": 0.0,
+     "bearing_deg": 0.0
+    },
+    "bboxes": [
+     {
+      "lead_minutes": 0,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "radar",
+      "timestamp": "2026-07-10T12:00:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=radar&palette=classic&timestamp=2026-07-10T12%3A00%3A00%2B00%3A00&zoom=6",
+      "tile_urls": []
+     },
+     {
+      "lead_minutes": 5,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:05:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A05%3A00%2B00%3A00&zoom=6",
+      "tile_urls": []
+     },
+     {
+      "lead_minutes": 10,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:10:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A10%3A00%2B00%3A00&zoom=6",
+      "tile_urls": []
+     }
+    ],
+    "tile_urls": []
+   }
+  },
+  {
+   "name": "lead_without_frame",
+   "defect": null,
+   "storms": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "type": "Feature",
+      "geometry": {
+       "type": "Point",
+       "coordinates": [
+        -84.92,
+        42.92
+       ]
+      },
+      "properties": {
+       "peak_dbz": 55.0,
+       "area_km2": 8.112615032784642,
+       "pixel_count": 9,
+       "bbox": [
+        -85.07720274475918,
+        42.80147539204515,
+        -84.76279725524083,
+        43.038524607954855
+       ],
+       "cell_id": 1,
+       "track_history": [
+        [
+         1783684800.0,
+         -84.92,
+         42.92
+        ]
+       ],
+       "tracking_vector": {
+        "east_kmh": 0.0,
+        "north_kmh": 0.0,
+        "speed_kmh": 0.0,
+        "bearing_deg": 0.0
+       },
+       "tracking_confidence": 0.0,
+       "predicted_bboxes": [
+        {
+         "lead_minutes": 0,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 5,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 10,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        }
+       ]
+      }
+     }
+    ],
+    "generated_at": 1783512000.123,
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "threshold_dbz": 40.0,
+    "cell_count": 1,
+    "prediction_minutes": [
+     0,
+     5,
+     10
+    ],
+    "tracking_vectors": [
+     {
+      "cell_id": 1,
+      "east_kmh": 0.0,
+      "north_kmh": 0.0,
+      "speed_kmh": 0.0,
+      "bearing_deg": 0.0
+     }
+    ]
+   },
+   "manifest": {
+    "schema_version": 2,
+    "layers": {
+     "radar": {
+      "timestamps": [
+       "2026-07-10T12:00:00+00:00"
+      ],
+      "latest": "2026-07-10T12:00:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:00:00+00:00",
+        "path": "2026-07-10T12:00:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     },
+     "nowcast": {
+      "timestamps": [
+       "2026-07-10T12:30:00+00:00"
+      ],
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:30:00+00:00",
+        "path": "2026-07-10T12:30:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     }
+    },
+    "tile_url_template": "/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png",
+    "updated_at": "2026-07-10T12:00:00+00:00"
+   },
+   "existing_tiles": [
+    "radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png"
+   ],
+   "request": {
+    "base_url": "https://radar.example",
+    "lat": 42.9,
+    "lon": -84.9,
+    "zoom": 6,
+    "palette": "classic"
+   },
+   "expected_python": {
+    "plan_id": "2026-07-10T12:00:00+00:00:1:classic:6",
+    "storm_cell_id": 1,
+    "generated_at": 1783512000.123,
+    "tracking_vector": {
+     "east_kmh": 0.0,
+     "north_kmh": 0.0,
+     "speed_kmh": 0.0,
+     "bearing_deg": 0.0
+    },
+    "bboxes": [
+     {
+      "lead_minutes": 0,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "radar",
+      "timestamp": "2026-07-10T12:00:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=radar&palette=classic&timestamp=2026-07-10T12%3A00%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png"
+      ]
+     },
+     {
+      "lead_minutes": 5,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": null,
+      "timestamp": null,
+      "zoom": 6,
+      "style_url": null,
+      "tile_urls": []
+     },
+     {
+      "lead_minutes": 10,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": null,
+      "timestamp": null,
+      "zoom": 6,
+      "style_url": null,
+      "tile_urls": []
+     }
+    ],
+    "tile_urls": [
+     "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png"
+    ]
+   }
+  },
+  {
+   "name": "no_storm_in_range",
+   "defect": null,
+   "storms": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "type": "Feature",
+      "geometry": {
+       "type": "Point",
+       "coordinates": [
+        -84.92,
+        42.92
+       ]
+      },
+      "properties": {
+       "peak_dbz": 55.0,
+       "area_km2": 8.112615032784642,
+       "pixel_count": 9,
+       "bbox": [
+        -85.07720274475918,
+        42.80147539204515,
+        -84.76279725524083,
+        43.038524607954855
+       ],
+       "cell_id": 1,
+       "track_history": [
+        [
+         1783684800.0,
+         -84.92,
+         42.92
+        ]
+       ],
+       "tracking_vector": {
+        "east_kmh": 0.0,
+        "north_kmh": 0.0,
+        "speed_kmh": 0.0,
+        "bearing_deg": 0.0
+       },
+       "tracking_confidence": 0.0,
+       "predicted_bboxes": [
+        {
+         "lead_minutes": 0,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 5,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 10,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        }
+       ]
+      }
+     }
+    ],
+    "generated_at": 1783512000.123,
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "threshold_dbz": 40.0,
+    "cell_count": 1,
+    "prediction_minutes": [
+     0,
+     5,
+     10
+    ],
+    "tracking_vectors": [
+     {
+      "cell_id": 1,
+      "east_kmh": 0.0,
+      "north_kmh": 0.0,
+      "speed_kmh": 0.0,
+      "bearing_deg": 0.0
+     }
+    ]
+   },
+   "manifest": {
+    "schema_version": 2,
+    "layers": {
+     "radar": {
+      "timestamps": [
+       "2026-07-10T12:00:00+00:00"
+      ],
+      "latest": "2026-07-10T12:00:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:00:00+00:00",
+        "path": "2026-07-10T12:00:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     },
+     "nowcast": {
+      "timestamps": [
+       "2026-07-10T12:05:00+00:00",
+       "2026-07-10T12:10:00+00:00"
+      ],
+      "latest": "2026-07-10T12:10:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:05:00+00:00",
+        "path": "2026-07-10T12:05:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       },
+       {
+        "timestamp": "2026-07-10T12:10:00+00:00",
+        "path": "2026-07-10T12:10:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     }
+    },
+    "tile_url_template": "/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png",
+    "updated_at": "2026-07-10T12:00:00+00:00"
+   },
+   "existing_tiles": [],
+   "request": {
+    "base_url": "https://radar.example",
+    "lat": 10.0,
+    "lon": 10.0,
+    "zoom": 6,
+    "palette": "classic"
+   },
+   "expected_python": {
+    "plan_id": null,
+    "storm_cell_id": null,
+    "bboxes": [],
+    "tile_urls": []
+   }
+  },
+  {
+   "name": "nearest_storm_wins",
+   "defect": null,
+   "storms": {
+    "type": "FeatureCollection",
+    "features": [
+     {
+      "type": "Feature",
+      "geometry": {
+       "type": "Point",
+       "coordinates": [
+        -84.92,
+        42.92
+       ]
+      },
+      "properties": {
+       "peak_dbz": 55.0,
+       "area_km2": 8.112615032784642,
+       "pixel_count": 9,
+       "bbox": [
+        -85.07720274475918,
+        42.80147539204515,
+        -84.76279725524083,
+        43.038524607954855
+       ],
+       "cell_id": 1,
+       "track_history": [
+        [
+         1783684800.0,
+         -84.92,
+         42.92
+        ]
+       ],
+       "tracking_vector": {
+        "east_kmh": 0.0,
+        "north_kmh": 0.0,
+        "speed_kmh": 0.0,
+        "bearing_deg": 0.0
+       },
+       "tracking_confidence": 0.0,
+       "predicted_bboxes": [
+        {
+         "lead_minutes": 0,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 5,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        },
+        {
+         "lead_minutes": 10,
+         "bbox": [
+          -85.077203,
+          42.801475,
+          -84.762797,
+          43.038525
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "type": "Feature",
+      "geometry": {
+       "type": "Point",
+       "coordinates": [
+        -70.0,
+        30.0
+       ]
+      },
+      "properties": {
+       "peak_dbz": 55.0,
+       "area_km2": 8.112615032784642,
+       "pixel_count": 9,
+       "bbox": [
+        -85.07720274475918,
+        42.80147539204515,
+        -84.76279725524083,
+        43.038524607954855
+       ],
+       "cell_id": 9,
+       "track_history": [
+        [
+         1783684800.0,
+         -84.92,
+         42.92
+        ]
+       ],
+       "tracking_vector": {
+        "east_kmh": 0.0,
+        "north_kmh": 0.0,
+        "speed_kmh": 0.0,
+        "bearing_deg": 0.0
+       },
+       "tracking_confidence": 0.0,
+       "predicted_bboxes": [
+        {
+         "lead_minutes": 0,
+         "bbox": [
+          -70.5,
+          29.5,
+          -69.5,
+          30.5
+         ]
+        },
+        {
+         "lead_minutes": 5,
+         "bbox": [
+          -70.5,
+          29.5,
+          -69.5,
+          30.5
+         ]
+        },
+        {
+         "lead_minutes": 10,
+         "bbox": [
+          -70.5,
+          29.5,
+          -69.5,
+          30.5
+         ]
+        }
+       ]
+      }
+     }
+    ],
+    "generated_at": 1783512000.123,
+    "timestamp": "2026-07-10T12:00:00+00:00",
+    "threshold_dbz": 40.0,
+    "cell_count": 1,
+    "prediction_minutes": [
+     0,
+     5,
+     10
+    ],
+    "tracking_vectors": [
+     {
+      "cell_id": 1,
+      "east_kmh": 0.0,
+      "north_kmh": 0.0,
+      "speed_kmh": 0.0,
+      "bearing_deg": 0.0
+     }
+    ]
+   },
+   "manifest": {
+    "schema_version": 2,
+    "layers": {
+     "radar": {
+      "timestamps": [
+       "2026-07-10T12:00:00+00:00"
+      ],
+      "latest": "2026-07-10T12:00:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:00:00+00:00",
+        "path": "2026-07-10T12:00:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     },
+     "nowcast": {
+      "timestamps": [
+       "2026-07-10T12:05:00+00:00",
+       "2026-07-10T12:10:00+00:00"
+      ],
+      "latest": "2026-07-10T12:10:00+00:00",
+      "palettes": [
+       "classic"
+      ],
+      "frames": [
+       {
+        "timestamp": "2026-07-10T12:05:00+00:00",
+        "path": "2026-07-10T12:05:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       },
+       {
+        "timestamp": "2026-07-10T12:10:00+00:00",
+        "path": "2026-07-10T12:10:00+00:00",
+        "palettes": [
+         "classic"
+        ]
+       }
+      ]
+     }
+    },
+    "tile_url_template": "/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png",
+    "updated_at": "2026-07-10T12:00:00+00:00"
+   },
+   "existing_tiles": [
+    "radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png",
+    "nowcast/classic/2026-07-10T12:05:00+00:00/6/16/23.png",
+    "nowcast/classic/2026-07-10T12:10:00+00:00/6/16/23.png"
+   ],
+   "request": {
+    "base_url": "https://radar.example",
+    "lat": 42.9,
+    "lon": -84.9,
+    "zoom": 6,
+    "palette": "classic"
+   },
+   "expected_python": {
+    "plan_id": "2026-07-10T12:00:00+00:00:1:classic:6",
+    "storm_cell_id": 1,
+    "generated_at": 1783512000.123,
+    "tracking_vector": {
+     "east_kmh": 0.0,
+     "north_kmh": 0.0,
+     "speed_kmh": 0.0,
+     "bearing_deg": 0.0
+    },
+    "bboxes": [
+     {
+      "lead_minutes": 0,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "radar",
+      "timestamp": "2026-07-10T12:00:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=radar&palette=classic&timestamp=2026-07-10T12%3A00%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png"
+      ]
+     },
+     {
+      "lead_minutes": 5,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:05:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A05%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/nowcast/classic/2026-07-10T12:05:00+00:00/6/16/23.png"
+      ]
+     },
+     {
+      "lead_minutes": 10,
+      "bbox": [
+       -85.077203,
+       42.801475,
+       -84.762797,
+       43.038525
+      ],
+      "layer": "nowcast",
+      "timestamp": "2026-07-10T12:10:00+00:00",
+      "zoom": 6,
+      "style_url": "https://radar.example/api/storm-prefetch/style.json?layer=nowcast&palette=classic&timestamp=2026-07-10T12%3A10%3A00%2B00%3A00&zoom=6",
+      "tile_urls": [
+       "https://radar.example/tiles/nowcast/classic/2026-07-10T12:10:00+00:00/6/16/23.png"
+      ]
+     }
+    ],
+    "tile_urls": [
+     "https://radar.example/tiles/radar/classic/2026-07-10T12:00:00+00:00/6/16/23.png",
+     "https://radar.example/tiles/nowcast/classic/2026-07-10T12:05:00+00:00/6/16/23.png",
+     "https://radar.example/tiles/nowcast/classic/2026-07-10T12:10:00+00:00/6/16/23.png"
+    ]
+   }
+  }
+ ]
+}

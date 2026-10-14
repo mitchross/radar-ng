@@ -1,0 +1,4 @@
+# Extra packages for the API load run (on top of ../py/requirements.txt). The API's own
+# requirements are in backend/api/api/requirements.txt of the radar-ng tree.
+fastapi
+uvicorn

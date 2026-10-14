@@ -1,0 +1,241 @@
+{
+  "generator": "Run with python3 -I against routes_workflows.py (authenticated_user, _b64decode).",
+  "signing_key": "vector-signing-key-2026",
+  "cases": [
+    {
+      "name": "valid",
+      "authorization": "Bearer eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjo0MTAyNDQ0ODAwfQ.GCsDIfiISYfUnFXaSl5l7Qgh08L6Fo-cSF9bh7kVp0E",
+      "python": {
+        "ok": "user-42"
+      },
+      "rust": {
+        "ok": "user-42"
+      },
+      "note": ""
+    },
+    {
+      "name": "valid_float_exp",
+      "authorization": "Bearer eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjo0MTAyNDQ0ODAwLjV9.ad368xvq8p1diUntlT8hjr7E3wwR_jKLYZiTaOvmNaI",
+      "python": {
+        "ok": "user-42"
+      },
+      "rust": {
+        "ok": "user-42"
+      },
+      "note": ""
+    },
+    {
+      "name": "numeric_sub_is_str",
+      "authorization": "Bearer eyJzdWIiOjQyLCJleHAiOjQxMDI0NDQ4MDB9.-gInjsYJknK7u_dKl9uaT0gdfN_mUkcl3phAt7fJX3A",
+      "python": {
+        "ok": "42"
+      },
+      "rust": {
+        "ok": "42"
+      },
+      "note": ""
+    },
+    {
+      "name": "string_exp_accepted",
+      "authorization": "Bearer eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjoiNDEwMjQ0NDgwMCJ9.Ub-6NxfARIXmFydwh5-IGn1E-xoRCccvt4wkiDThKsM",
+      "python": {
+        "ok": "user-42"
+      },
+      "rust": {
+        "ok": "user-42"
+      },
+      "note": ""
+    },
+    {
+      "name": "trailing_whitespace_after_bearer",
+      "authorization": "Bearer   eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjo0MTAyNDQ0ODAwfQ.GCsDIfiISYfUnFXaSl5l7Qgh08L6Fo-cSF9bh7kVp0E  ",
+      "python": {
+        "ok": "user-42"
+      },
+      "rust": {
+        "ok": "user-42"
+      },
+      "note": ""
+    },
+    {
+      "name": "lowercase_scheme_rejected",
+      "authorization": "bearer eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjo0MTAyNDQ0ODAwfQ.GCsDIfiISYfUnFXaSl5l7Qgh08L6Fo-cSF9bh7kVp0E",
+      "python": {
+        "status": 401,
+        "detail": "missing bearer token"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "missing bearer token"
+      },
+      "note": ""
+    },
+    {
+      "name": "missing_header",
+      "authorization": null,
+      "python": {
+        "status": 401,
+        "detail": "missing bearer token"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "missing bearer token"
+      },
+      "note": ""
+    },
+    {
+      "name": "no_scheme",
+      "authorization": "eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjo0MTAyNDQ0ODAwfQ.GCsDIfiISYfUnFXaSl5l7Qgh08L6Fo-cSF9bh7kVp0E",
+      "python": {
+        "status": 401,
+        "detail": "missing bearer token"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "missing bearer token"
+      },
+      "note": ""
+    },
+    {
+      "name": "wrong_key",
+      "authorization": "Bearer eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjo0MTAyNDQ0ODAwfQ.w6Ujn23XvE9pwWPJmhkOqgd6HTgL6yTK7hRSYTdT3wA",
+      "python": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "note": ""
+    },
+    {
+      "name": "expired",
+      "authorization": "Bearer eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjoxMDAwfQ.eZeqO5dZ3aD2QKW4D0j8yZTcREIvBeD8fHjZ4lkUmqs",
+      "python": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "note": ""
+    },
+    {
+      "name": "empty_subject",
+      "authorization": "Bearer eyJzdWIiOiIiLCJleHAiOjQxMDI0NDQ4MDB9.i1q-Ar0vRUa4Gsx44d0zmXd3UM_UwrvQA1BvIXUll6A",
+      "python": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "note": ""
+    },
+    {
+      "name": "missing_sub",
+      "authorization": "Bearer eyJleHAiOjQxMDI0NDQ4MDB9.eV5xKt_YNx93zc2UU-dtQsZErbjTuKNgAWbLVCjo34c",
+      "python": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "note": ""
+    },
+    {
+      "name": "missing_dot",
+      "authorization": "Bearer eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjo0MTAyNDQ0ODAwfQGCsDIfiISYfUnFXaSl5l7Qgh08L6Fo-cSF9bh7kVp0E",
+      "python": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "note": ""
+    },
+    {
+      "name": "three_segments",
+      "authorization": "Bearer eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjo0MTAyNDQ0ODAwfQ.GCsDIfiISYfUnFXaSl5l7Qgh08L6Fo-cSF9bh7kVp0E.extra",
+      "python": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "note": ""
+    },
+    {
+      "name": "payload_not_object",
+      "authorization": "Bearer WzEsMiwzXQ.DJ6dHe40r0T6k7DhJtAgRa9XgMn0WMefNiGxssWf7IE",
+      "python": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "note": ""
+    },
+    {
+      "name": "tampered_payload",
+      "authorization": "Bearer eyJzdWIiOiJhZG1pbiIsImV4cCI6NDEwMjQ0NDgwMH0.GCsDIfiISYfUnFXaSl5l7Qgh08L6Fo-cSF9bh7kVp0E",
+      "python": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "note": ""
+    },
+    {
+      "name": "signature_padding_accepted_by_python",
+      "authorization": "Bearer eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjo0MTAyNDQ0ODAwfQ.GCsDIfiISYfUnFXaSl5l7Qgh08L6Fo-cSF9bh7kVp0E==",
+      "python": {
+        "ok": "user-42"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "note": "Python re-pads and accepts; the strict Rust decoder rejects non-canonical padding (spec 6.2)."
+    },
+    {
+      "name": "signature_trailing_junk",
+      "authorization": "Bearer eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjo0MTAyNDQ0ODAwfQ.GCsDIfiISYfUnFXaSl5l7Qgh08L6Fo-cSF9bh7kVp0E!",
+      "python": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "note": "Rejected by both; the junk character changes the decode."
+    },
+    {
+      "name": "nonfinite_exp_nan",
+      "authorization": "Bearer eyJzdWIiOiJ1c2VyLTQyIiwiZXhwIjpOYU59.UGEAKaE2VuRf-DUglt-jKO2uctaqdeh5Dmuw2COf9cI",
+      "python": {
+        "ok": "user-42"
+      },
+      "rust": {
+        "status": 401,
+        "detail": "invalid bearer token"
+      },
+      "note": "Python: nan <= now is False, so it accepts. Rust rejects non-finite exp (deliberate)."
+    }
+  ]
+}

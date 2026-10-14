@@ -1,0 +1,42 @@
+[package]
+name = "radar-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "radar-ng tile API: axum replacement for Caddy + FastAPI + go-pmtiles"
+
+[dependencies]
+radar-types.workspace = true
+radar-core.workspace = true
+radar-storms.workspace = true
+
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+axum.workspace = true
+tower-http = { workspace = true, features = ["fs", "trace", "set-header"] }
+tower.workspace = true
+moka.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+blake2.workspace = true
+base64.workspace = true
+subtle.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+bytes.workspace = true
+url.workspace = true
+rustix.workspace = true
+hex.workspace = true
+temporalio-client.workspace = true
+temporalio-common.workspace = true
+pmtiles = { version = "0.24", default-features = false, features = ["iter-async", "write"] }
+lru = "0.12"
+
+[dev-dependencies]
+tempfile.workspace = true
+http-body-util = "0.1"

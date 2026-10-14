@@ -1,0 +1,351 @@
+{
+  "hrrr": {
+    "messages": [
+      {
+        "category": 16,
+        "discipline": 0,
+        "eccodes_lats_f64": {
+          "dtype": "float64",
+          "file": "hrrr_refc_lats.f64le",
+          "shape": [
+            40,
+            60
+          ]
+        },
+        "eccodes_lons_f64": {
+          "dtype": "float64",
+          "file": "hrrr_refc_lons.f64le",
+          "shape": [
+            40,
+            60
+          ]
+        },
+        "eccodes_name": "Maximum/Composite radar reflectivity",
+        "eccodes_packingType": "grid_complex_spatial_differencing",
+        "eccodes_projString": "+proj=lcc +lon_0=262.500000 +lat_0=38.500000 +lat_1=38.500000 +lat_2=38.500000 +R=6371229.000000",
+        "eccodes_shortName": "refc",
+        "eccodes_typeOfLevel": "atmosphere",
+        "flags": 0,
+        "grid_relative": false,
+        "level": 0,
+        "missing_count": 521,
+        "name": "refc",
+        "number": 196,
+        "nx": 60,
+        "ny": 40,
+        "packing": "grid_complex_spatial_differencing",
+        "typeOfLevel": 10,
+        "values_f32": {
+          "dtype": "float32",
+          "file": "hrrr_refc_values.f32le",
+          "shape": [
+            2400
+          ]
+        },
+        "values_f64": {
+          "dtype": "float64",
+          "file": "hrrr_refc_values.f64le",
+          "shape": [
+            2400
+          ]
+        }
+      },
+      {
+        "category": 0,
+        "discipline": 0,
+        "eccodes_lats_f64": {
+          "dtype": "float64",
+          "file": "hrrr_t2m_lats.f64le",
+          "shape": [
+            40,
+            60
+          ]
+        },
+        "eccodes_lons_f64": {
+          "dtype": "float64",
+          "file": "hrrr_t2m_lons.f64le",
+          "shape": [
+            40,
+            60
+          ]
+        },
+        "eccodes_name": "Temperature",
+        "eccodes_packingType": "grid_complex_spatial_differencing",
+        "eccodes_projString": "+proj=lcc +lon_0=262.500000 +lat_0=38.500000 +lat_1=38.500000 +lat_2=38.500000 +R=6371229.000000",
+        "eccodes_shortName": "t",
+        "eccodes_typeOfLevel": "heightAboveGround",
+        "flags": 0,
+        "grid_relative": false,
+        "level": 2,
+        "missing_count": 0,
+        "name": "t2m",
+        "number": 0,
+        "nx": 60,
+        "ny": 40,
+        "packing": "grid_complex_spatial_differencing",
+        "typeOfLevel": 103,
+        "values_f32": {
+          "dtype": "float32",
+          "file": "hrrr_t2m_values.f32le",
+          "shape": [
+            2400
+          ]
+        },
+        "values_f64": {
+          "dtype": "float64",
+          "file": "hrrr_t2m_values.f64le",
+          "shape": [
+            2400
+          ]
+        }
+      },
+      {
+        "category": 2,
+        "discipline": 0,
+        "eccodes_lats_f64": {
+          "dtype": "float64",
+          "file": "hrrr_u10_lats.f64le",
+          "shape": [
+            40,
+            60
+          ]
+        },
+        "eccodes_lons_f64": {
+          "dtype": "float64",
+          "file": "hrrr_u10_lons.f64le",
+          "shape": [
+            40,
+            60
+          ]
+        },
+        "eccodes_name": "U component of wind",
+        "eccodes_packingType": "grid_complex_spatial_differencing",
+        "eccodes_projString": "+proj=lcc +lon_0=262.500000 +lat_0=38.500000 +lat_1=38.500000 +lat_2=38.500000 +R=6371229.000000",
+        "eccodes_shortName": "u",
+        "eccodes_typeOfLevel": "heightAboveGround",
+        "flags": 8,
+        "grid_relative": true,
+        "level": 10,
+        "missing_count": 0,
+        "name": "u10",
+        "number": 2,
+        "nx": 60,
+        "ny": 40,
+        "packing": "grid_complex_spatial_differencing",
+        "typeOfLevel": 103,
+        "values_f32": {
+          "dtype": "float32",
+          "file": "hrrr_u10_values.f32le",
+          "shape": [
+            2400
+          ]
+        },
+        "values_f64": {
+          "dtype": "float64",
+          "file": "hrrr_u10_values.f64le",
+          "shape": [
+            2400
+          ]
+        }
+      },
+      {
+        "category": 2,
+        "discipline": 0,
+        "eccodes_lats_f64": {
+          "dtype": "float64",
+          "file": "hrrr_v10_lats.f64le",
+          "shape": [
+            40,
+            60
+          ]
+        },
+        "eccodes_lons_f64": {
+          "dtype": "float64",
+          "file": "hrrr_v10_lons.f64le",
+          "shape": [
+            40,
+            60
+          ]
+        },
+        "eccodes_name": "V component of wind",
+        "eccodes_packingType": "grid_simple",
+        "eccodes_projString": "+proj=lcc +lon_0=262.500000 +lat_0=38.500000 +lat_1=38.500000 +lat_2=38.500000 +R=6371229.000000",
+        "eccodes_shortName": "v",
+        "eccodes_typeOfLevel": "heightAboveGround",
+        "flags": 8,
+        "grid_relative": true,
+        "level": 10,
+        "missing_count": 0,
+        "name": "v10",
+        "number": 3,
+        "nx": 60,
+        "ny": 40,
+        "packing": "grid_simple",
+        "typeOfLevel": 103,
+        "values_f32": {
+          "dtype": "float32",
+          "file": "hrrr_v10_values.f32le",
+          "shape": [
+            2400
+          ]
+        },
+        "values_f64": {
+          "dtype": "float64",
+          "file": "hrrr_v10_values.f64le",
+          "shape": [
+            2400
+          ]
+        }
+      },
+      {
+        "category": 7,
+        "discipline": 0,
+        "eccodes_lats_f64": {
+          "dtype": "float64",
+          "file": "hrrr_cape_lats.f64le",
+          "shape": [
+            40,
+            60
+          ]
+        },
+        "eccodes_lons_f64": {
+          "dtype": "float64",
+          "file": "hrrr_cape_lons.f64le",
+          "shape": [
+            40,
+            60
+          ]
+        },
+        "eccodes_name": "Convective available potential energy",
+        "eccodes_packingType": "grid_complex",
+        "eccodes_projString": "+proj=lcc +lon_0=262.500000 +lat_0=38.500000 +lat_1=38.500000 +lat_2=38.500000 +R=6371229.000000",
+        "eccodes_shortName": "cape",
+        "eccodes_typeOfLevel": "surface",
+        "flags": 0,
+        "grid_relative": false,
+        "level": 0,
+        "missing_count": 0,
+        "name": "cape",
+        "number": 6,
+        "nx": 60,
+        "ny": 40,
+        "packing": "grid_complex",
+        "typeOfLevel": 1,
+        "values_f32": {
+          "dtype": "float32",
+          "file": "hrrr_cape_values.f32le",
+          "shape": [
+            2400
+          ]
+        },
+        "values_f64": {
+          "dtype": "float64",
+          "file": "hrrr_cape_values.f64le",
+          "shape": [
+            2400
+          ]
+        }
+      },
+      {
+        "category": 1,
+        "discipline": 0,
+        "eccodes_lats_f64": {
+          "dtype": "float64",
+          "file": "hrrr_apcp_lats.f64le",
+          "shape": [
+            40,
+            60
+          ]
+        },
+        "eccodes_lons_f64": {
+          "dtype": "float64",
+          "file": "hrrr_apcp_lons.f64le",
+          "shape": [
+            40,
+            60
+          ]
+        },
+        "eccodes_name": "Total Precipitation",
+        "eccodes_packingType": "grid_complex",
+        "eccodes_projString": "+proj=lcc +lon_0=262.500000 +lat_0=38.500000 +lat_1=38.500000 +lat_2=38.500000 +R=6371229.000000",
+        "eccodes_shortName": "tp",
+        "eccodes_typeOfLevel": "surface",
+        "flags": 0,
+        "grid_relative": false,
+        "level": 0,
+        "missing_count": 0,
+        "name": "apcp",
+        "number": 8,
+        "nx": 60,
+        "ny": 40,
+        "packing": "grid_complex",
+        "typeOfLevel": 1,
+        "values_f32": {
+          "dtype": "float32",
+          "file": "hrrr_apcp_values.f32le",
+          "shape": [
+            2400
+          ]
+        },
+        "values_f64": {
+          "dtype": "float64",
+          "file": "hrrr_apcp_values.f64le",
+          "shape": [
+            2400
+          ]
+        }
+      }
+    ]
+  },
+  "mrms": {
+    "eccodes_lats_f64": {
+      "dtype": "float64",
+      "file": "mrms_eccodes_lats.f64le",
+      "shape": [
+        35,
+        70
+      ]
+    },
+    "eccodes_lons_f64": {
+      "dtype": "float64",
+      "file": "mrms_eccodes_lons.f64le",
+      "shape": [
+        35,
+        70
+      ]
+    },
+    "file": "mrms_regular_ll_png.grib2",
+    "lat_axis_f64": {
+      "dtype": "float64",
+      "file": "mrms_lat_axis.f64le",
+      "shape": [
+        35
+      ]
+    },
+    "lon_axis_f64": {
+      "dtype": "float64",
+      "file": "mrms_lon_axis.f64le",
+      "shape": [
+        70
+      ]
+    },
+    "missing_count": 155,
+    "ni": 70,
+    "nj": 35,
+    "template": "5.41",
+    "values_f32": {
+      "dtype": "float32",
+      "file": "mrms_values.f32le",
+      "shape": [
+        2450
+      ]
+    },
+    "values_f64": {
+      "dtype": "float64",
+      "file": "mrms_values.f64le",
+      "shape": [
+        2450
+      ]
+    }
+  }
+}

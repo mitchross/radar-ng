@@ -30,6 +30,10 @@ than one image. The production images are:
 - `ghcr.io/mitchross/radar-ng-open-meteo-worker`
 - `ghcr.io/mitchross/radar-ng-basemap`
 
+The temporal-worker, tile-server and open-meteo-worker images are built from the Rust workspace
+(`deploy/rust/Dockerfile` targets `worker`, `api`, `open-meteo`) and are drop-ins for the former
+Python images: same names, env, ports, uids and probes. See `deploy/rust/RUNBOOK.md` section 0.
+
 Never deploy `latest`. GitOps pins immutable semver tags; record the digest and
 the OCI `org.opencontainers.image.revision` label during rollout verification.
 

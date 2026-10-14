@@ -1,0 +1,20 @@
+{
+  "layers": [
+    {
+      "id": 3,
+      "name": "EP2 Forecast Cone"
+    },
+    {
+      "id": 4,
+      "name": "EP2 Forecast Track"
+    },
+    {
+      "id": 5,
+      "name": "EP2 Forecast Points"
+    },
+    {
+      "id": 6,
+      "name": "AT1 Forecast Cone"
+    }
+  ]
+}

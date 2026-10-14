@@ -1,0 +1,30 @@
+[package]
+name = "radar-debug"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "radar-ng debug harness: live-stack health, latency, disk and Temporal checks (port of tools/debug_harness), and tile-pyramid parity"
+
+[dependencies]
+radar-core.workspace = true
+radar-types.workspace = true
+
+anyhow.workspace = true
+clap.workspace = true
+tokio.workspace = true
+futures.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+walkdir.workspace = true
+png.workspace = true
+rayon.workspace = true
+rustix.workspace = true
+temporalio-client.workspace = true
+temporalio-common.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

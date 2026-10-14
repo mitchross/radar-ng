@@ -1,0 +1,38 @@
+[
+ {
+  "value": "plain",
+  "json": "\"plain\""
+ },
+ {
+  "value": "\u00b0F",
+  "json": "\"\\u00b0F\""
+ },
+ {
+  "value": "a\"b\\c",
+  "json": "\"a\\\"b\\\\c\""
+ },
+ {
+  "value": "tab\tnew\nline\rcr",
+  "json": "\"tab\\tnew\\nline\\rcr\""
+ },
+ {
+  "value": "\u0001\u001f",
+  "json": "\"\\u0001\\u001f\""
+ },
+ {
+  "value": "\u007f",
+  "json": "\"\\u007f\""
+ },
+ {
+  "value": "\u2192 \u2713 \ud83d\ude00",
+  "json": "\"\\u2192 \\u2713 \\ud83d\\ude00\""
+ },
+ {
+  "value": "\u00e9",
+  "json": "\"\\u00e9\""
+ },
+ {
+  "value": "",
+  "json": "\"\""
+ }
+]

@@ -1,16 +1,18 @@
 name: ghcr · open-meteo-worker
 
-# Public GHCR mirror of the secondary (open_meteo_sync) worker image.
+# Public GHCR image of the Open-Meteo API + sync worker: the Open-Meteo base with the Rust `radar`
+# binary (deploy/rust/Dockerfile, target `open-meteo`).
 
 on:
   push:
     branches: [master]
     paths:
-      - 'temporal/open_meteo_worker.py'
-      - 'temporal/open_meteo_worker.Dockerfile'
-      - 'temporal/requirements.txt'
-      - 'backend/open_meteo_sync/**'
-      - 'backend/shared/logger.py'
+      - 'rust/**'
+      - 'deploy/rust/Dockerfile'
+      - 'deploy/rust/Dockerfile.dockerignore'
+      - 'backend/basemap/styles/**'
+      - 'backend/basemap/fetch-glyphs.sh'
+      - '.github/workflows/ghcr-open-meteo-worker.yml'
   workflow_dispatch:
     inputs:
       version:
@@ -84,7 +86,8 @@ jobs:
         with:
           provenance: false
           context: .
-          file: temporal/open_meteo_worker.Dockerfile
+          file: deploy/rust/Dockerfile
+          target: open-meteo
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: |

@@ -1,0 +1,28 @@
+[package]
+name = "radar-bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Before/after benchmark runners (Rust side) for the radar-ng port. Not part of the service."
+
+[dependencies]
+radar-core.workspace = true
+radar-geo.workspace = true
+radar-tiler.workspace = true
+radar-grib.workspace = true
+radar-storms.workspace = true
+radar-nowcast.workspace = true
+radar-api.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+# noaa_dump (pre-cutover NOAA check): Utc::now() for the radar-grib finders, and the client type the
+# NAQFC finder takes.
+chrono.workspace = true
+reqwest.workspace = true
+# getrusage for CPU time (rustix 1.1 does not expose it). Measurement only.
+libc = "0.2"

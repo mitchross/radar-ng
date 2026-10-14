@@ -59,8 +59,11 @@ jobs:
             docker pull -q "${REGISTRY}/${img}:latest"
             if [ "$svc" = "temporal-worker" ]; then
               # An image without the embedded replay gate predates it and must never be promoted.
-              docker run --rm --entrypoint python "${REGISTRY}/${img}:latest" \
-                -m unittest -q temporal.workflows.test_replay temporal.workflows.test_workflow_discovery
+              # Rust images run the offline replay gate during the build and carry this label.
+              gate=$(docker image inspect --format '{{ index .Config.Labels "io.radar-ng.replay-gate" }}' "${REGISTRY}/${img}:latest")
+              if [ "$gate" != "rust-offline-replay" ]; then
+                echo "::error::${img}:latest has no replay-gate label; refusing to promote"; exit 1
+              fi
             fi
             docker tag "${REGISTRY}/${img}:latest" "${REGISTRY}/${img}:${NEXT}"
             docker push -q "${REGISTRY}/${img}:${NEXT}"

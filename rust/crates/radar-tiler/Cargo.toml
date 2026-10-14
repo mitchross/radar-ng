@@ -1,0 +1,24 @@
+[package]
+name = "radar-tiler"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+radar-geo.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+rustix.workspace = true
+uuid.workspace = true
+png.workspace = true
+flate2.workspace = true
+crc32fast.workspace = true
+sha2.workspace = true
+blake2.workspace = true
+hex.workspace = true
+rayon.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+png.workspace = true
