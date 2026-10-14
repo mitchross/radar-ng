@@ -312,7 +312,7 @@ fn section_bytes<'a>(bytes: &'a [u8], info: &grib::SectionInfo) -> Result<&'a [u
         .ok_or_else(|| GribError::Parse(format!("section {} lies outside the message", info.num)))
 }
 
-/// Converts the stored lat/lon integers (micro-degrees) to degrees.
+/// Converts stored micro-degree integers to degrees (Lambert template 3.30 parameters).
 #[inline]
 fn micro_deg(v: i32) -> f64 {
     f64::from(v) / 1e6
@@ -321,6 +321,22 @@ fn micro_deg(v: i32) -> f64 {
 #[inline]
 fn micro_deg_u(v: u32) -> f64 {
     f64::from(v) / 1e6
+}
+
+/// Degrees for a stored lat/lon integer under template 3.0's angle unit.
+///
+/// WMO note 1 to template 3.0 (and eccodes' `angleDivisor`/`angleMultiplier`): when the basic angle
+/// is 0 or missing (all ones), or the subdivisions are 0 or missing, the unit is 10^-6 degree.
+/// Otherwise it is `basic_angle / subdivisions` degrees, evaluated as eccodes does
+/// (`value / subdivisions * basic_angle`). MRMS sets basic angle 1 with 1,000,000 subdivisions.
+#[inline]
+pub(crate) fn grid_deg(v: f64, basic_angle: u32, subdivisions: u32) -> f64 {
+    if basic_angle == 0 || basic_angle == u32::MAX || subdivisions == 0 || subdivisions == u32::MAX
+    {
+        v / 1e6
+    } else {
+        v / f64::from(subdivisions) * f64::from(basic_angle)
+    }
 }
 
 /// Python: `lons = np.where(lons > 180.0, lons - 360.0, lons)`.
@@ -335,11 +351,10 @@ fn regular_axes(
     t: &grib::def::grib2::template::Template3_0,
 ) -> Result<(usize, usize, Vec<f64>, Vec<f64>)> {
     let g = &t.lat_lon.grid;
-    if g.initial_production_domain_basic_angle != 0 {
-        return Err(GribError::Unsupported(
-            "regular_ll with a basic angle".into(),
-        ));
-    }
+    let (basic, sub) = (
+        g.initial_production_domain_basic_angle,
+        g.basic_angle_subdivisions,
+    );
     let scan = t.lat_lon.scanning_mode.0;
     if scan & 0x80 != 0 || scan & 0x20 != 0 {
         return Err(GribError::Unsupported(format!(
@@ -348,13 +363,13 @@ fn regular_axes(
     }
     let (ni, nj) = (g.ni as usize, g.nj as usize);
     let lats = linspace(
-        micro_deg(g.first_point_lat),
-        micro_deg(g.last_point_lat),
+        grid_deg(f64::from(g.first_point_lat), basic, sub),
+        grid_deg(f64::from(g.last_point_lat), basic, sub),
         nj,
     );
     let lons: Vec<f64> = linspace(
-        micro_deg_u(g.first_point_lon),
-        micro_deg_u(g.last_point_lon),
+        grid_deg(f64::from(g.first_point_lon), basic, sub),
+        grid_deg(f64::from(g.last_point_lon), basic, sub),
         ni,
     )
     .into_iter()
@@ -498,6 +513,20 @@ pub fn nanmedian(values: &[f64]) -> f64 {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn template_3_0_angle_units() {
+        // Basic angle 0 or missing: micro-degrees.
+        assert_eq!(super::grid_deg(54_995_000.0, 0, 0), 54.995);
+        assert_eq!(super::grid_deg(54_995_000.0, u32::MAX, u32::MAX), 54.995);
+        assert_eq!(super::grid_deg(54_995_000.0, 0, 1_000_000), 54.995);
+        // MRMS: basic angle 1, 10^6 subdivisions (same unit, explicit).
+        assert_eq!(super::grid_deg(54_995_000.0, 1, 1_000_000), 54.995);
+        assert_eq!(super::grid_deg(230_005_000.0, 1, 1_000_000), 230.005);
+        // A coarser unit: basic angle 1, 1000 subdivisions (millidegrees).
+        assert_eq!(super::grid_deg(54_995.0, 1, 1000), 54.995);
+    }
+
     use super::*;
 
     #[test]
