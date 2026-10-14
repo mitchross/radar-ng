@@ -929,7 +929,7 @@ function buildStackServices(
   const rows: StackServiceRow[] = [
     {
       name: "tile-server",
-      image: "radar api (Rust) · /api + /tiles",
+      image: "Caddy + FastAPI · /api + /tiles",
       status: !reachable ? "error" : status.status === "ok" ? "healthy" : "updating",
       ports: status?.checked_at ? fmtAge(Math.max(0, nowS - Date.parse(status.checked_at) / 1000)) : "—",
     },
