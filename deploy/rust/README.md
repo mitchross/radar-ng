@@ -1,12 +1,11 @@
 # radar-ng deploy (Rust build)
 
-Deployment assets for the Rust build of the production topology: one radar image for the api and
-the workers, an Open-Meteo worker image, a compose stack for a single node, Kubernetes manifests
-that mirror the Python `deploy/k8s/` tree, and the cutover runbook. The build context is the repository
+Deployment assets for the Rust build: the Dockerfile (targets `api`, `worker`, `open-meteo`), a compose
+stack for a single node, and the runbook. Cluster manifests live in `mitchross/talos-argocd-proxmox`
+and change only through GitOps commits synced by Argo CD. The build context is the repository
 root, and the Cargo workspace lives in `rust/`.
 
-Start with [RUNBOOK.md](RUNBOOK.md). Section 0 is the production path (GHCR image bump in
-talos-argocd-proxmox); the `k8s/` manifests here are for fresh installs.
+Start with [RUNBOOK.md](RUNBOOK.md).
 
 ## Model
 
@@ -30,13 +29,6 @@ Per-role isolated queues are a future option, not the default (RUNBOOK section 9
 | `Dockerfile.dockerignore` | Build context excludes for `Dockerfile` (keeps `rust/` and `backend/basemap/`; drops Python, data, `target/`) |
 | `Dockerfile` targets | `api` (tile-server), `worker` (temporal-worker), `open-meteo` (radar on the pinned Open-Meteo image, uid 999) |
 | `docker-compose.yml` | Single-node stack: Temporal, `worker` (legacy), `open-meteo-worker`, `open-meteo`, `api`, and a one-shot basemap bootstrap. Per-role services are commented as the optional layout |
-| `k8s/configmap-temporal-config.yaml` | Shared tunables for the api and the worker. Same name as the Python configmap |
-| `k8s/temporal-connection.yaml` | `TemporalConnection` for the cluster frontend |
-| `k8s/temporal-worker-deployment.yaml` | `radar-ng-worker` TWD on the Rust image, role `legacy`. Same securityContext, PVCs, env, and envFrom as the Python TWD |
-| `k8s/open-meteo-worker-deployment.yaml` | `radar-ng-open-meteo-worker` TWD on the Open-Meteo-based image, role `open-meteo` |
-| `k8s/tile-server-deployment.yaml`, `k8s/tile-server-service.yaml` | The api: single container, probes on `/api/livez`, read-only PVCs |
-| `k8s/secret-temporal-worker.yaml.template` | Optional push secret (APNS and FCM), mounted by the worker when push is enabled |
-| `k8s/README.md` | Manifest layout, placeholders, probes, storage |
 | (CI) | `.github/workflows/ci-rust.yml`: fmt, clippy `-D warnings`, tests, real-NOAA + Temporal checks, image builds; `ghcr-*.yml` publish |
 | `RUNBOOK.md` | Pre-flight, ramp, verification, rollback, decommissioning, open items |
 
@@ -75,7 +67,7 @@ The worker command is `worker --role <role>`, and `WORKER_ROLE` is set to the sa
 
 ## Environment
 
-Every variable in `docker-compose.yml` and `k8s/*.yaml` was checked against the names the Rust
+Every variable in `docker-compose.yml` and the talos-argocd-proxmox radar-ng manifests was checked against the names the Rust
 crates read (string literals in `rust/crates/*/src`). Result:
 
 - **Rust-read:** every radar variable carried over from the Python configmap and TWDs.
@@ -91,7 +83,7 @@ RUNBOOK section 10.
 
 ## Checks performed
 
-- All YAML parses: `docker-compose.yml`, every `k8s/*.yaml`, and the
+- All YAML parses: `docker-compose.yml` and the
   secret template (PyYAML `safe_load_all`).
 - Manifest consistency: `radar-ng-worker` and `radar-ng-open-meteo-worker` each have the Python
   name, queue, and role, the Rust args, and no `TEMPORAL_TASK_QUEUE` or `USE_ISOLATED_TASK_QUEUES`.
@@ -115,7 +107,6 @@ RUNBOOK section 10.
 - **`cargo clippy --workspace -- -D warnings` fails until existing warnings are fixed.** Clippy
   reported warnings in `rust/crates/radar-core/src/grid_dump.rs` (outside radar-debug, which is
   clean). CI runs this gate, so the job fails until those are fixed.
-- **Image tags are placeholders** in `k8s/` (`REPLACE_ME`). They must come from CI builds.
 - **The Python reliability plan expects `radar-ng-alerts` pollers** for the watch-start queue.
   The single-TWD model has none. This build sets `TEMPORAL_ALERTS_TASK_QUEUE=radar-ng` (RUNBOOK
   open item 3).
@@ -135,12 +126,12 @@ RUNBOOK section 10.
   before the first check, runs every 60 s, and fails after 5 misses. The health task runs from
   startup, so a sync that takes up to 35 minutes does not trip it.
 - Push-token registration (`/v1`) returns 503 `push token store is read-only` when `STATE_DIR` is not
-  writable (F9). Compose and k8s mount `state` read-only in the api, so `/v1` push tokens need a
+  writable (F9). Compose and the cluster mount `state` read-only in the api, so `/v1` push tokens need a
   writable state mount before they can be enabled. Until then the 503 is the expected answer.
 - The api's readiness is `/api/livez`, not `/api/health`. `/api/health` returns 503 when radar data
   is stale, and that would drain every replica during an ingest outage.
 - `SEED_SCHEDULES=1` is set on the compose `worker` (legacy seeds by default in Python too). The
-  k8s TWD leaves it unset, matching Python.
+  cluster leaves it unset, matching Python.
 
 ## Future: per-role queues (not the default)
 

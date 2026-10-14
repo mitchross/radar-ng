@@ -34,9 +34,9 @@ scaled to zero. Keep the pod count and VUS the same for both.
 ## Commands
 
 ```
-# steady profile, default parameters (10 pods x 10 VUs)
-kubectl -n radar apply -f load/k8s/k6-job.yaml          # BASE_URL in the Job env
-kubectl -n radar logs job/k6-radar --all-containers    # per-pod JSON summaries
+# steady profile, default parameters (10 pods x 10 VUs). The Job is deployed through GitOps:
+# commit load/k8s/k6-job.yaml (BASE_URL in its env) under the radar-ng app in talos-argocd-proxmox,
+# let Argo sync it, read the per-pod JSON summaries in the Argo UI or Loki, then remove the commit.
 
 # stress profile: four steps up to 20 VUs per pod (60 pods x 20 VUs = 1,200 users)
 # edit completions/parallelism/maxFailedIndexes to 60, VUS to 20, add PROFILE=stress

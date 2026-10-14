@@ -22,7 +22,7 @@ Status: **implemented, pre-cutover** (2026-10-14). Owner: Mitch. Specs are in `s
   - a live Temporal server: the dev server can't be downloaded there
   - Docker image builds
 
-  `deploy/rust/RUNBOOK.md` §2 lists the pre-cutover checks to run on a machine with network access.
+  `ci-rust.yml` runs those checks on every PR on GitHub's runners.
 
 ## Goal
 
@@ -85,31 +85,15 @@ These are frozen. Every crate's tests assert them.
    `watch:` + sha256(user\0cell), and `WatchStormHandoff` schema v1 (`specs/spec-temporal.md` §1, §10.3).
 4. **Tile pixels:** decoded tile pixels must match. PNG bytes need not, because flate2 output differs from zlib.
 
-## Cutover strategy: the Rust image is the next build of the existing worker deployments
+## Cutover strategy: same GHCR images, bumped through GitOps
 
-Production runs **one** `TemporalWorkerDeployment` (`radar-ng-worker`, role `legacy`, queue `radar-ng`) plus the
-open-meteo TWD, and the Temporal Worker Controller progressively ramps every new build. The Rust port registers
-the **same workflow types, activity names, queues and schedules**, so the cutover is just an image change on those
-same TWDs. There are no new queues and no schedule changes:
-
-1. Deploy the `radar api` pod in place of the tile-server pod: same Service, same port `:8080`, and one container
-   instead of Caddy + uvicorn + the go-pmtiles sidecar.
-2. Point `radar-ng-worker` at the Rust image with `args: [worker, --role, legacy]`. For the first cutover use a
-   slow ramp (5% / 30 min → 25% / 1 h → 50% / 2 h, see `deploy/rust/k8s/temporal-worker-deployment.yaml`).
-   Check freshness and parity at every step with `radar debug doctor`.
-3. Pinned Python executions drain on the Python pods (the controller's sunset), and new executions land on Rust.
-4. **Rollback** is reverting the image tag. The controller re-promotes the previous build.
-5. Repeat for the open-meteo TWD.
-
-Coexistence during the ramp:
-- Both builds write to the same PVCs. If a pyramid is already complete under the other build's identity, the
-  Rust publisher treats it as published (`ExistingForeign`) and never retries forever.
-- The manifest uses the same `flock` sidecar as Python.
-- If Python rewrites `storms.json` during the ramp it drops `next_cell_id`, which allows at most one storm-ID
-  reuse. This is acceptable.
-
-Per-role isolated pools (`USE_ISOLATED_TASK_QUEUES=1`, queues `radar-ng-mrms` etc.) stay supported as an optional
-future layout. They are not part of the cutover. The concrete steps are in `deploy/rust/RUNBOOK.md`.
+Production runs from `mitchross/talos-argocd-proxmox` via Argo CD: five isolated worker pools
+(`radar-ng-worker-{mrms,nowcast,hrrr,aux,alerts}`, `AllAtOnce` behind the `RadarDeploymentSmokeWorkflow`
+gate), the `tile-server` Deployment, and the open-meteo Deployment. The Rust images are drop-ins
+published under the same GHCR names (`radar-ng-temporal-worker`, `radar-ng-tile-server`,
+`radar-ng-open-meteo-worker`), so the cutover is the usual Renovate tag bump in the GitOps repo, merged
+and synced by Argo. No manifest changes, no `kubectl apply`. Rollback is reverting that commit. Old
+workflow executions are disposable. Details: `deploy/rust/RUNBOOK.md`.
 
 ## Python defects found by the specs
 
@@ -140,7 +124,7 @@ default, `NWS_USER_AGENT`, `OPEN_METEO_BASE`. Rust follows the **code** values, 
 | 3 | `radar-api` (every route + static tiles + PMTiles basemap), replacing Caddy, uvicorn and go-pmtiles | the API test checklist (spec-api §15) is ported and green; k6 `load/k6-radar.js` p95 ≤ Python |
 | 4 | HRRR, air quality, tropical, lightning, alerts, cleanup, Open-Meteo, push, WatchStorm | each role's invariants pass; one role at a time is promoted via `set-current-version` |
 | 5 | Nowcast (LK + S-PROG) | golden-value tolerances (spec-nowcast App. A); 7-day POD/CSI from `nowcast-skill.json` within 2 pts of Python |
-| 6 | Port the debug harness, Dockerfiles + k8s + compose, docs | one image; Python, Caddy and go-pmtiles images deleted |
+| 6 | Port the debug harness, Dockerfile targets + compose, CI, docs | GHCR images built from Rust; Python, Caddy and go-pmtiles retired |
 
 ## Benchmarks and load test (before/after)
 

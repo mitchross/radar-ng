@@ -16,14 +16,15 @@
 #   backend/basemap/fetch-glyphs.sh   glyph fetcher, pinned commit below
 #
 # Pins:
-#   RUST_IMAGE       rust 1.92 matches workspace rust-version = "1.92" (bookworm, glibc 2.36)
+#   BUILDER_IMAGE    debian bookworm (glibc 2.36, same as the distroless runtime); rustup installs the
+#                    toolchain pinned in rust/rust-toolchain.toml
 #   RUNTIME_IMAGE    distroless cc-debian12 matches the builder's glibc; no shell, no package manager
 #   busybox          static musl build, used only for container healthchecks (wget / test)
 #
 # Non-root: the image runs as uid 1000 (same as the Python api and worker images) so the
 # pod securityContext (runAsUser 1000 / fsGroup 1000) and the Dockerfile agree.
 
-ARG RUST_IMAGE=rust:1.92-bookworm
+ARG BUILDER_IMAGE=debian:bookworm-slim
 ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian12:latest
 ARG BUSYBOX_IMAGE=busybox:1.36-musl
 ARG ALPINE_IMAGE=alpine:3.22
@@ -47,15 +48,21 @@ RUN apk add --no-cache curl
 COPY backend/basemap/fetch-glyphs.sh /fetch-glyphs.sh
 RUN /fetch-glyphs.sh 028c18f713baecad011301ff7a69acc39bcc2ae7 /glyphs "Noto Sans Regular"
 
-FROM ${RUST_IMAGE} AS build
-# protoc: temporalio's proto build. PROTOC is set explicitly so the build does not depend
-# on the vendored fallback resolving inside the container.
+FROM ${BUILDER_IMAGE} AS build
+# protoc: temporalio's proto build. Rust comes from rustup with the version pinned in
+# rust/rust-toolchain.toml, so the image, CI and local builds use one compiler.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends protobuf-compiler \
+    && apt-get install -y --no-install-recommends ca-certificates curl gcc libc6-dev make pkg-config protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
-ENV PROTOC=/usr/bin/protoc \
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH \
+    PROTOC=/usr/bin/protoc \
     CARGO_TERM_COLOR=never \
     CARGO_INCREMENTAL=0
+COPY rust/rust-toolchain.toml /tmp/rust-toolchain.toml
+RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal \
+        --default-toolchain "$(sed -n 's/^channel = "\(.*\)"/\1/p' /tmp/rust-toolchain.toml)"
 
 WORKDIR /src/rust
 COPY rust/ ./

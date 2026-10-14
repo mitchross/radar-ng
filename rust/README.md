@@ -61,7 +61,9 @@ Environment variables keep the Python names: `TILE_DIR`, `STATE_DIR`, `GRID_DIR`
 | `radar-bench` | Rust side of the before/after benchmarks (`bench/`) |
 | `radar` | the binary |
 
-## Must verify on a machine with network access
+## Real-data and image checks
+
+`.github/workflows/ci-rust.yml` runs all of this on every PR on GitHub's runners. To run it locally:
 
 The port was built and tested in a sandbox that could not reach NOAA S3, Temporal's CLI downloads, or a
 Docker daemon. Before the cutover, run the preflight from the repository root:
