@@ -21,7 +21,8 @@ rm -rf "$OUT" "$TILES"
 
 fail=0
 ok() { printf 'PASS  %s\n' "$*"; }
-bad() { printf 'FAIL  %s\n' "$*"; fail=1; }
+bad() { printf 'FAIL  %s\n' "$*"; [ -z "${GITHUB_ACTIONS:-}" ] || echo "::error title=live-noaa::$*"; fail=1; }
+trap '[ -z "${GITHUB_ACTIONS:-}" ] || echo "::error title=live-noaa::line $LINENO: $BASH_COMMAND exited $?"' ERR
 
 (cd "$ROOT" && cargo build --release --locked -p radar --bin radar -p radar-bench --bin noaa_dump)
 BIN="$ROOT/target/release"
