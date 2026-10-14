@@ -128,7 +128,7 @@ before relying on this path (spec D16 and section 13.3).
 
 - **F2 open-meteo liveness.** `run_open_meteo_pool` starts `health_file_loop` before the poller. The loop is its
   own task, so it keeps touching the alive file during a sync of up to about 35 minutes. The
-  open-meteo image target copies in busybox, and the probe timings are looser (`deploy/rust`). Not covered by a
+  open-meteo image target copies in busybox, and the probe timings are looser (`deploy`). Not covered by a
   test: the loop needs a live Temporal client.
 - **F3 bounded fan-out.** `workflows::bounded` is a hand-written sliding window in input order, not `buffered`.
   A slot frees when any in-flight item finishes, as `Semaphore` plus `gather` does in Python. Results come back in

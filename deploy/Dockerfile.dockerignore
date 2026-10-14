@@ -1,0 +1,5 @@
+# Build context for deploy/Dockerfile is the repository root; the image needs only rust/.
+*
+!rust/
+rust/target/
+rust/**/target/

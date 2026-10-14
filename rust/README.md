@@ -4,7 +4,7 @@ This is the Rust port of the whole radar-ng backend. It replaces `backend/`, `te
 `tools/debug_harness`, Caddy and the go-pmtiles sidecar with a single binary, `radar`. The app (`frontend/`)
 and the web radar (`web/`) are unchanged. They see the same URLs, JSON and tiles.
 
-The plan is in `docs/rust-migration/PLAN.md`, the cutover steps in `deploy/rust/RUNBOOK.md`, and the
+The plan is in `docs/rust-migration/PLAN.md`, the cutover steps in `deploy/RUNBOOK.md`, and the
 before/after numbers in `bench/results/latest.md`.
 
 ## Build and test
@@ -88,5 +88,5 @@ It needs cargo, protoc, Docker with compose and buildx, and uv (Arch:
 5. **docker**: builds both images, then runs the glibc floor and image-user checks and a smoke run of
    `radar api`.
 
-`--help` lists the options, and `deploy/rust/RUNBOOK.md` section 2 explains how to read the results. The
+`--help` lists the options, and `deploy/RUNBOOK.md` section 2 explains how to read the results. The
 end-to-end MRMS timing and the k6 load test against the cluster are still separate (`bench/README.md`).

@@ -93,7 +93,7 @@ gate), the `tile-server` Deployment, and the open-meteo Deployment. The Rust ima
 published under the same GHCR names (`radar-ng-temporal-worker`, `radar-ng-tile-server`,
 `radar-ng-open-meteo-worker`), so the cutover is the usual Renovate tag bump in the GitOps repo, merged
 and synced by Argo. No manifest changes, no `kubectl apply`. Rollback is reverting that commit. Old
-workflow executions are disposable. Details: `deploy/rust/RUNBOOK.md`.
+workflow executions are disposable. Details: `deploy/RUNBOOK.md`.
 
 ## Python defects found by the specs
 
