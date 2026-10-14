@@ -95,13 +95,13 @@ jobs:
           workspaces: rust
           key: preflight
       - uses: astral-sh/setup-uv@v6
-      - name: Temporal integration tests and real NOAA comparison
-        run: rust/scripts/preflight.sh --only temporal,noaa --profile release
+      - name: Real NOAA comparison
+        run: rust/scripts/preflight.sh --only noaa --profile release
       - name: Annotate failures
         if: failure()
         run: |
           for f in $(find bench/work/preflight -type f \( -name '*.log' -o -name summary.txt \) 2>/dev/null | sort); do
-            body=$( { grep -n -i -E 'unsupported|error:|Error:|panicked|failed|^FAIL' "$f" | grep -v -E 'Compiling|Downloaded|"get_error"|head_error' | tail -40; echo '--- tail ---'; tail -n 40 "$f"; } )
+            body=$( { grep -n -E '(^|[[:space:]|])(FAIL|WARN)([[:space:]|]|$)' "$f" | grep -v -E 'Summary|status +secs' | head -60; grep -n -i -E 'unsupported|error:|panicked' "$f" | grep -v -E 'Compiling|Downloaded|"get_error"|head_error' | tail -20; echo '--- tail ---'; tail -n 25 "$f"; } )
             [ -n "$body" ] || continue
             body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
             echo "::error title=${f#bench/work/preflight/}::$body"
@@ -113,6 +113,23 @@ jobs:
           name: preflight-real-data
           path: bench/work/preflight/
           if-no-files-found: ignore
+
+  temporal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler libprotobuf-dev
+      - name: Rust toolchain (rust/rust-toolchain.toml)
+        working-directory: rust
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: temporal
+      - name: Worker integration tests against a throwaway Temporal server
+        run: rust/scripts/preflight.sh --only temporal
 
   images:
     runs-on: ubuntu-latest
@@ -162,7 +179,7 @@ jobs:
         if: failure()
         run: |
           for f in $(find bench/work/preflight -type f \( -name '*.log' -o -name summary.txt \) 2>/dev/null | sort); do
-            body=$( { grep -n -i -E 'unsupported|error:|Error:|panicked|failed|^FAIL' "$f" | grep -v -E 'Compiling|Downloaded|"get_error"|head_error' | tail -40; echo '--- tail ---'; tail -n 40 "$f"; } )
+            body=$( { grep -n -E '(^|[[:space:]|])(FAIL|WARN)([[:space:]|]|$)' "$f" | grep -v -E 'Summary|status +secs' | head -60; grep -n -i -E 'unsupported|error:|panicked' "$f" | grep -v -E 'Compiling|Downloaded|"get_error"|head_error' | tail -20; echo '--- tail ---'; tail -n 25 "$f"; } )
             [ -n "$body" ] || continue
             body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
             echo "::error title=${f#bench/work/preflight/}::$body"
