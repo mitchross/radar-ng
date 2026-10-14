@@ -376,6 +376,9 @@ pub async fn get_vector_tile(
         return respond::caddy_error(StatusCode::NOT_FOUND);
     };
     let Some(reader) = open_archive(&state).await else {
+        if !state.config.basemap_tiles_upstream.is_empty() {
+            return proxy_vector_tile(&state, zoom, xn, yn).await;
+        }
         return respond::caddy_error(StatusCode::SERVICE_UNAVAILABLE);
     };
     let encoding = reader.get_header().tile_compression.content_encoding();
@@ -416,6 +419,55 @@ pub async fn get_vector_tile(
             respond::caddy_error(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
+}
+
+/// Proxy one vector tile to the go-pmtiles server, as Caddy did:
+/// `/basemap/tiles/{z}/{x}/{y}.mvt` becomes `{upstream}/basemap/{z}/{x}/{y}.mvt` (archive `basemap`).
+/// Status, body and the content headers pass through; cache and CORS headers are set like Caddy's.
+async fn proxy_vector_tile(state: &AppState, z: u8, x: u32, y: u32) -> Response {
+    let url = format!(
+        "{}/basemap/{z}/{x}/{y}.mvt",
+        state.config.basemap_tiles_upstream
+    );
+    // Tiles are stored gzip-encoded; pass the bytes through untouched instead of letting the shared
+    // client decompress them (it advertises and decodes gzip).
+    static PASSTHROUGH: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let client = PASSTHROUGH.get_or_init(|| {
+        reqwest::Client::builder()
+            .no_gzip()
+            .build()
+            .unwrap_or_else(|_| state.http.clone())
+    });
+    let fetched = match upstream::get(client, &url, &[], &[], Duration::from_secs(15)).await {
+        Ok(f) => f,
+        Err(err) => {
+            tracing::warn!("basemap tile proxy to {url} failed: {err}");
+            return respond::caddy_error(StatusCode::BAD_GATEWAY);
+        }
+    };
+    if fetched.status.is_client_error() || fetched.status.is_server_error() {
+        return respond::caddy_error(fetched.status);
+    }
+    let mut headers = HeaderMap::new();
+    for name in [
+        header::CONTENT_TYPE,
+        header::CONTENT_ENCODING,
+        header::ETAG,
+        header::LAST_MODIFIED,
+    ] {
+        if let Some(v) = fetched.headers.get(&name) {
+            headers.insert(name, v.clone());
+        }
+    }
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=86400"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        HeaderValue::from_static("*"),
+    );
+    (fetched.status, headers, fetched.body).into_response()
 }
 
 /// The origin for relative URLs in a style: `X-Forwarded-Proto` (or `http`) and `X-Forwarded-Host`

@@ -2,13 +2,11 @@
 
 Deployment assets for the Rust build of the production topology: one radar image for the api and
 the workers, an Open-Meteo worker image, a compose stack for a single node, Kubernetes manifests
-that mirror the Python `deploy/k8s/` tree, CI, and the cutover runbook.
+that mirror the Python `deploy/k8s/` tree, and the cutover runbook. The build context is the repository
+root, and the Cargo workspace lives in `rust/`.
 
-This directory is copied into the repository as `deploy/` (and `github-workflows/rust.yml` as
-`.github/workflows/rust.yml`). Paths inside the files assume that layout: the build context is
-the repository root, and the Cargo workspace lives in `rust/`.
-
-Start with [RUNBOOK.md](RUNBOOK.md). Its section 2 lists the open items that block the cutover.
+Start with [RUNBOOK.md](RUNBOOK.md). Section 0 is the production path (GHCR image bump in
+talos-argocd-proxmox); the `k8s/` manifests here are for fresh installs.
 
 ## Model
 
@@ -30,7 +28,7 @@ Per-role isolated queues are a future option, not the default (RUNBOOK section 9
 |---|---|
 | `Dockerfile` | Multi-stage radar image. Builder `rust:1.92-bookworm` with BuildKit cache mounts, `cargo build --release --locked -p radar`. Runtime distroless `cc-debian12`, uid 1000, busybox for healthchecks |
 | `Dockerfile.dockerignore` | Build context excludes for `Dockerfile` (keeps `rust/` and `backend/basemap/`; drops Python, data, `target/`) |
-| `Dockerfile.open-meteo` | The radar binary on the pinned Open-Meteo image (uid 999), for the open-meteo worker |
+| `Dockerfile` targets | `api` (tile-server), `worker` (temporal-worker), `open-meteo` (radar on the pinned Open-Meteo image, uid 999) |
 | `docker-compose.yml` | Single-node stack: Temporal, `worker` (legacy), `open-meteo-worker`, `open-meteo`, `api`, and a one-shot basemap bootstrap. Per-role services are commented as the optional layout |
 | `k8s/configmap-temporal-config.yaml` | Shared tunables for the api and the worker. Same name as the Python configmap |
 | `k8s/temporal-connection.yaml` | `TemporalConnection` for the cluster frontend |
@@ -39,7 +37,7 @@ Per-role isolated queues are a future option, not the default (RUNBOOK section 9
 | `k8s/tile-server-deployment.yaml`, `k8s/tile-server-service.yaml` | The api: single container, probes on `/api/livez`, read-only PVCs |
 | `k8s/secret-temporal-worker.yaml.template` | Optional push secret (APNS and FCM), mounted by the worker when push is enabled |
 | `k8s/README.md` | Manifest layout, placeholders, probes, storage |
-| `github-workflows/rust.yml` | CI: fmt, clippy with `-D warnings`, test (with protoc), image builds, glibc floor check, image user check |
+| (CI) | `.github/workflows/ci-rust.yml`: fmt, clippy `-D warnings`, tests, real-NOAA + Temporal checks, image builds; `ghcr-*.yml` publish |
 | `RUNBOOK.md` | Pre-flight, ramp, verification, rollback, decommissioning, open items |
 
 ## Build and run
@@ -59,9 +57,9 @@ radar debug doctor                         # acceptance check; see RUNBOOK.md se
 Images by hand (from the repository root):
 
 ```bash
-docker build -f deploy/rust/Dockerfile -t radar-ng-radar:local .
-docker build -f deploy/rust/Dockerfile.open-meteo --build-arg RADAR_IMAGE=radar-ng-radar:local \
-  -t radar-ng-open-meteo-worker:local .
+docker build -f deploy/rust/Dockerfile --target api        -t radar-ng-radar:local .
+docker build -f deploy/rust/Dockerfile --target worker     -t radar-ng-temporal-worker:local .
+docker build -f deploy/rust/Dockerfile --target open-meteo -t radar-ng-open-meteo-worker:local .
 ```
 
 ## Image contract
@@ -93,7 +91,7 @@ RUNBOOK section 10.
 
 ## Checks performed
 
-- All YAML parses: `docker-compose.yml`, `github-workflows/rust.yml`, every `k8s/*.yaml`, and the
+- All YAML parses: `docker-compose.yml`, every `k8s/*.yaml`, and the
   secret template (PyYAML `safe_load_all`).
 - Manifest consistency: `radar-ng-worker` and `radar-ng-open-meteo-worker` each have the Python
   name, queue, and role, the Rust args, and no `TEMPORAL_TASK_QUEUE` or `USE_ISOLATED_TASK_QUEUES`.
@@ -107,7 +105,7 @@ RUNBOOK section 10.
   unverified.
 - `docker compose config`, `kubeconform`, `hadolint`, and the GitHub workflow have not been run.
 - `cargo build -p radar` has not been run for the deploy path.
-- The glibc floor (`Dockerfile.open-meteo`) is unverified (RUNBOOK section 8.1).
+- The glibc floor (open-meteo target) is checked in CI (`ci-rust.yml`) (RUNBOOK section 8.1).
 - The worker's freshness behavior (alive file age) is not checked by the probe.
 
 ## Known problems in the inputs

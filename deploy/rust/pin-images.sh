@@ -17,7 +17,6 @@ CHECK=0
 
 FILES=(
   "$HERE/Dockerfile"
-  "$HERE/Dockerfile.open-meteo"
   "$HERE/docker-compose.yml"
   "$HERE/k8s/basemap-bootstrap-job.yaml"
 )

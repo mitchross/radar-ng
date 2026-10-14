@@ -1442,3 +1442,59 @@ async fn push_token_registration_is_503_when_the_state_directory_is_read_only() 
         json!({"detail": "push token store is read-only"})
     );
 }
+
+/// Drop-in for the current cluster: with no local archive, `/basemap/tiles/*` proxies to the go-pmtiles
+/// service with Caddy's rewrite (`/basemap/{z}/{x}/{y}.mvt`) and headers.
+#[tokio::test]
+async fn basemap_tiles_proxy_to_go_pmtiles_when_no_local_archive() {
+    let pmtiles = Router::new().route(
+        "/basemap/{z}/{x}/{ymvt}",
+        get(
+            |AxPath((z, x, ymvt)): AxPath<(String, String, String)>| async move {
+                if (z.as_str(), x.as_str(), ymvt.as_str()) == ("4", "3", "5.mvt") {
+                    (
+                        [
+                            (header::CONTENT_TYPE, "application/x-protobuf"),
+                            (header::CONTENT_ENCODING, "gzip"),
+                        ],
+                        b"MVT".to_vec(),
+                    )
+                        .into_response_boxed()
+                } else {
+                    StatusCode::NO_CONTENT.into_response_boxed()
+                }
+            },
+        ),
+    );
+    let base = mock(pmtiles).await;
+    let env = Env::new();
+    let app = env.app(|c| {
+        c.pmtiles_path = std::path::PathBuf::from("/nonexistent/basemap.pmtiles");
+        c.basemap_tiles_upstream = base.clone();
+    });
+
+    let (status, headers, body) = send(&app, get_req("/basemap/tiles/4/3/5.mvt")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, b"MVT");
+    assert_eq!(header_str(&headers, "content-encoding"), "gzip");
+    assert_eq!(
+        header_str(&headers, "content-type"),
+        "application/x-protobuf"
+    );
+    assert_eq!(
+        header_str(&headers, "cache-control"),
+        "public, max-age=86400"
+    );
+    assert_eq!(header_str(&headers, "access-control-allow-origin"), "*");
+
+    let (status, _, _) = send(&app, get_req("/basemap/tiles/4/3/6.mvt")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Fallback disabled and no archive: 503 as before.
+    let app = env.app(|c| {
+        c.pmtiles_path = std::path::PathBuf::from("/nonexistent/basemap.pmtiles");
+        c.basemap_tiles_upstream = String::new();
+    });
+    let (status, _, _) = send(&app, get_req("/basemap/tiles/4/3/5.mvt")).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+}

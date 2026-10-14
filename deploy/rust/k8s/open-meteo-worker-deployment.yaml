@@ -1,7 +1,7 @@
 # radar-ng open-meteo worker: the production TemporalWorkerDeployment, now on the Rust build.
 #
 # Same TWD as deploy/k8s/open-meteo-worker-deployment.yaml in the Python tree. The image is
-# the Dockerfile.open-meteo build (the radar binary on the pinned Open-Meteo image), which runs
+# the open-meteo target of deploy/rust/Dockerfile (the radar binary on the pinned Open-Meteo image), which runs
 # `radar worker --role open-meteo` and subprocess-execs /app/openmeteo-api for model syncs.
 # Uid 999 is the upstream Open-Meteo user, kept from the Python deployment.
 apiVersion: temporal.io/v1alpha1
@@ -71,7 +71,7 @@ spec:
             # The health loop touches /tmp/worker-alive every 30 s from its own task, so it keeps
             # ticking during a sync (open_meteo_sync runs up to ~35 min). Timings are generous: a
             # restart only happens after ~5 minutes with no file. busybox is copied into the image
-            # by Dockerfile.open-meteo (F2).
+            # by the open-meteo image target (F2).
             exec:
               command: ["/usr/local/bin/busybox", "test", "-f", "/tmp/worker-alive"]
             initialDelaySeconds: 120

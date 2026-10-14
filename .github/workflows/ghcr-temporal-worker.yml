@@ -1,18 +1,18 @@
 name: ghcr · temporal-worker
 
-# Public GHCR mirror of the main Temporal worker image.
-# The temporal Dockerfile COPYs all of backend/ into the image, so any
-# backend change (not just temporal/) must rebuild it.
+# Public GHCR image of the Temporal worker: the Rust `radar` binary (deploy/rust/Dockerfile, target
+# `worker`). Drop-in for the former Python image: WORKER_ROLE picks the pool, same env and probes.
 
 on:
   push:
     branches: [master]
     paths:
-      - 'temporal/**'
-      - 'backend/**'
-      # These belong only to the separately built Open-Meteo activity worker.
-      - '!temporal/open_meteo_worker.py'
-      - '!temporal/open_meteo_worker.Dockerfile'
+      - 'rust/**'
+      - 'deploy/rust/Dockerfile'
+      - 'deploy/rust/Dockerfile.dockerignore'
+      - 'backend/basemap/styles/**'
+      - 'backend/basemap/fetch-glyphs.sh'
+      - '.github/workflows/ghcr-temporal-worker.yml'
   workflow_dispatch:
     inputs:
       version:
@@ -26,8 +26,8 @@ concurrency:
   group: ghcr-temporal-worker-release
   cancel-in-progress: false
 
-# The replay gate is a RUN step in temporal/Dockerfile, so a nondeterministic
-# workflow change fails the build below before any tag can be pushed.
+# The replay gate is a RUN step in deploy/rust/Dockerfile (REPLAY_GATE=1): every recorded Python
+# history must replay on the Rust workflows, or the build fails before any tag is pushed.
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -90,7 +90,8 @@ jobs:
         with:
           provenance: false
           context: .
-          file: temporal/Dockerfile
+          file: deploy/rust/Dockerfile
+          target: worker
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -181,14 +181,12 @@ services:
     restart: unless-stopped
 
   # open-meteo role: the radar binary on the Open-Meteo image. Syncs GFS/HRRR model data into
-  # openmeteo-data, which the open-meteo service serves. Built from Dockerfile.open-meteo, which
-  # needs the radar image built first (see Usage above).
+  # openmeteo-data, which the open-meteo service serves. The `open-meteo` target of the same Dockerfile.
   open-meteo-worker:
     build:
       context: ../..
-      dockerfile: deploy/rust/Dockerfile.open-meteo
-      args:
-        RADAR_IMAGE: radar-ng-radar:local
+      dockerfile: deploy/rust/Dockerfile
+      target: open-meteo
     image: radar-ng-open-meteo-worker:local
     command: ["worker", "--role", "open-meteo"]
     environment:
@@ -212,7 +210,7 @@ services:
   # Serves what open-meteo-worker syncs. Starts empty; the open-meteo sync schedules fill
   # /app/data. Until the first sync completes, /api/forecast responses are null or empty.
   open-meteo:
-    # Pinned to the same digest as deploy/rust/Dockerfile.open-meteo. Upstream :latest has shipped
+    # Pinned to the same digest as deploy/rust/Dockerfile (open-meteo target). Upstream :latest has shipped
     # broken builds (1.5.3 missing libparquet-glib crashed serve with exit 127). Bump both together.
     image: ghcr.io/open-meteo/open-meteo:1.6.0@sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da
     command: ["serve", "--bind", "0.0.0.0:8080"]
@@ -268,6 +266,7 @@ services:
     build:
       context: ../..
       dockerfile: deploy/rust/Dockerfile
+      target: api
     image: radar-ng-radar:local
     command: ["api"]
     ports:

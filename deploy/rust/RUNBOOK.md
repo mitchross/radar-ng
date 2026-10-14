@@ -1,31 +1,51 @@
 # radar-ng Rust runbook
 
-Operating procedure for moving radar-ng from the Python build to the Rust build, and for
-rollback. Read `docs/PLAN.md` for the strategy. This file is the procedure.
+How the Rust build reaches production, and how to roll back. `docs/rust-migration/PLAN.md` has the
+strategy.
 
-Status: the assets are written but not built, run, or deployed. Docker was not available where
-they were written, so no image was built and no stack or cluster was exercised. Treat every
-command here as untested until it has run once in the target environment.
+## 0. Production cutover (what actually ships)
 
-## 1. Model
+Production manifests live in `mitchross/talos-argocd-proxmox`
+(`my-apps/personal-projects/radar-ng/`). The Rust images are **drop-ins for the existing GHCR
+image names**, so the cutover is an image-tag bump in that repo, and nothing else changes:
 
-Production runs two TemporalWorkerDeployments (TWDs). The Rust build is the next build of the
-same TWDs. Names, queues, schedules, PVCs, and env stay the same. Only the image changes.
+| GHCR image | Built from | What runs it in the cluster | What changes there |
+|---|---|---|---|
+| `radar-ng-temporal-worker` | `deploy/rust/Dockerfile --target worker` | the five WorkerDeployments `radar-ng-worker-{mrms,nowcast,hrrr,aux,alerts}` (role from `WORKER_ROLE`, isolated queues, `AllAtOnce` behind the `RadarDeploymentSmokeWorkflow` gate) | image tag only |
+| `radar-ng-tile-server` | `--target api` | `deployment-tile-server.yaml` (port 8080, `/api/livez`, `Recreate`, read-only PVCs) | image tag only |
+| `radar-ng-open-meteo-worker` | `--target open-meteo` | `deployment-open-meteo.yaml`: the `open-meteo` serve container (command `/app/openmeteo-api`) and the `sync-worker` sidecar (default command) | image tag only |
 
-| TWD | Queue | Role | Python image | Rust image (same TWD) |
-|---|---|---|---|---|
-| `radar-ng-worker` | `radar-ng` | `legacy` (every workflow) | `radar-ng-temporal-worker` | `radar-ng-temporal-worker` (Rust build tag), `radar worker --role legacy` |
-| `radar-ng-open-meteo-worker` | `radar-ng-open-meteo` | `open-meteo` | `radar-ng-open-meteo-worker` | `radar-ng-open-meteo-worker` (Rust build tag), `radar worker --role open-meteo` |
+Why no manifest changes are needed:
+- Same env names and defaults (every variable those manifests set is read by the Rust code except
+  `MRMS_RENDER_WORKERS`, which has no meaning in Rust, and `WATCH_RADIUS_KM`, which matches the
+  Rust constant 20 km).
+- Same uids (1000; 999 for open-meteo), ports (8080, metrics 9464), and probe files
+  (`/tmp/worker-alive`, `/tmp/temporal-healthy`). The worker image carries busybox `sh`, `find` and
+  `test` because the probes exec `sh -c "test $(find ... -mmin -3)"`.
+- `/basemap/tiles/*` is proxied to the existing go-pmtiles `basemap` Service when no local
+  `.pmtiles` archive is mounted (`BASEMAP_TILES_UPSTREAM`, default `http://basemap:8081`), exactly
+  as Caddy did. Mounting the archive in the api later lets the basemap Deployment go.
+- The aux pool still seeds Schedules (`SEED_SCHEDULES=1`). The Rust seeder writes the same
+  definitions with sorted-key args, so it doesn't churn them.
 
-The Temporal Worker Controller registers the new image under the same `TEMPORAL_DEPLOYMENT_NAME`
-with a new `TEMPORAL_WORKER_BUILD_ID`, then ramps new workflow executions to it according to
-`spec.rollout`. Executions pinned to the Python build finish on the Python pods. Schedules stay on
-`radar-ng`, so nothing is repointed.
+Release path: merge to `master` -> `ghcr-*.yml` builds and pushes the next semver (the worker build
+runs the offline replay gate first) -> Renovate opens the tag bump in talos-argocd-proxmox -> merge it
+-> Argo CD syncs. Each worker pool runs the smoke workflow on the new build before the controller
+promotes it; a pool whose smoke fails stays on Python.
 
-Rollback is an image change: put the Python image back and the controller re-promotes the
-previous build.
+To de-risk, merge the bumps one image at a time (workers, then tile-server, then open-meteo), or edit
+the Renovate PR so only one pool moves first (start with `aux`, then `mrms`).
 
-The api (`tile-server` Deployment and Service) is not versioned. Its cutover is a plain image swap.
+**Rollback:** revert the bump commit in talos-argocd-proxmox. The Python images
+(`radar-ng-temporal-worker:v1.1.50`, `radar-ng-tile-server:v1.1.27`,
+`radar-ng-open-meteo-worker:v1.1.11`) stay in GHCR. Pause Renovate for radar-ng if it would re-propose
+the Rust tag.
+
+**Check after each bump:** `radar debug doctor` (or the Grafana radar dashboard): MRMS frame age
+under 10 min, nowcast and HRRR publishing, `/api/health` 200, no restarts.
+
+The rest of this runbook (sections 1-12) was written for the single-TWD layout in `deploy/k8s/` and
+for fresh installs from `deploy/rust/k8s/`; production uses section 0.
 
 ## 2. Open items that block the cutover
 
@@ -47,7 +67,7 @@ rust/scripts/preflight.sh --only noaa   # rerun one step (tools, test, temporal,
 | 2 test | `cargo test --workspace` in `rust/`, which includes the offline replay gate (`radar-worker --test replay`) | any test fails |
 | 3 temporal | `docker compose -f deploy/temporal-dev.yml up -d postgres temporal`, waits for :7233 and namespace `default`, runs `TEMPORAL_TEST_ADDRESS=localhost:7233 cargo test -p radar-worker --test integration -- --test-threads=1`, then `down` (volumes kept; `--keep-temporal` leaves it up) | the server is not ready in 240 s, or an integration test fails |
 | 4 noaa | Downloads the newest MRMS `.grib2.gz`, the latest HRRR `wrfsfcf01.grib2` + `.idx`, the 13-variable ranged subset and a NAQFC file with the `radar-grib` network code (`noaa_dump fetch`, cached in `bench/work/noaa/`), then compares production Python (pygrib, `backend.*`) with Rust (`bench/py/verify_noaa.py` against `noaa_dump dump`): MRMS values bitwise, axes ≤ 1e-9, south-up flip; HRRR `.idx` format and `IDX_MATCHERS` vs `idx_matcher` picks, name selectors vs code selectors for all 13 variables, values bitwise, Lambert lat/lon ≤ 1e-9, every message of the file decoded and hashed, negative E/D, the ranged subset vs the whole file; NAQFC grid 227 (informational). Then renders the MRMS frame with Python's indexed renderer and with `radar render-once` and runs `radar parity --exact` | any FAIL row (WARN rows are for reading) |
-| 5 docker | Builds `deploy/rust/Dockerfile` and `Dockerfile.open-meteo` (tags `:preflight`, context = repo root, needs `backend/basemap/styles/`), the glibc floor (8.1, plus `radar --version` inside the open-meteo image), image users (8.2), and a smoke run of `radar api` on empty data: `/api/livez` 200 and `/api/health` 503 `no_mrms_tiles` | a build fails, glibc too old, wrong user, or a wrong status |
+| 5 docker | Builds the `api` and `open-meteo` targets of `deploy/rust/Dockerfile` (tags `:preflight`, context = repo root, needs `backend/basemap/styles/`), the glibc floor (8.1, plus `radar --version` inside the open-meteo image), image users (8.2), and a smoke run of `radar api` on empty data: `/api/livez` 200 and `/api/health` 503 `no_mrms_tiles` | a build fails, glibc too old, wrong user, or a wrong status |
 
 Read these lines in the output before going on:
 
@@ -109,9 +129,9 @@ Logs and a summary go to `bench/work/preflight/<timestamp>/`. `--noaa-cached` re
 |---|---|---|---|
 | Rust builder | `rust:1.92-bookworm` | `Dockerfile` | Matches workspace `rust-version = "1.92"` |
 | Runtime | `gcr.io/distroless/cc-debian12:latest` | `Dockerfile` | Pin to a digest in CI. glibc 2.36 |
-| busybox | `busybox:1.36-musl` | `Dockerfile`, `Dockerfile.open-meteo` | Healthchecks only (`wget`, `test`, `sleep`). The open-meteo liveness probe uses it too (F2) |
+| busybox | `busybox:1.36-musl` | `Dockerfile` | Healthchecks only (`wget`, `test`, `sleep`). The open-meteo liveness probe uses it too (F2) |
 | alpine | `alpine:3.22` | `Dockerfile` (`ALPINE_IMAGE`), compose `basemap-publish` | Glyph staging in `Dockerfile`; the rename step in compose |
-| Open-Meteo | `ghcr.io/open-meteo/open-meteo:1.6.0@sha256:e1517a01…9dd9da` | compose, `Dockerfile.open-meteo` | Same digest everywhere. Bump together |
+| Open-Meteo | `ghcr.io/open-meteo/open-meteo:1.6.0@sha256:e1517a01…9dd9da` | compose, `Dockerfile` (open-meteo target) | Same digest everywhere. Bump together |
 | Temporal server | `temporalio/auto-setup:1.25.2` | compose only | Production uses the cluster's server |
 | Temporal UI | `temporalio/ui:2.31.2` | compose (`ui` profile) | |
 | Postgres | `postgres:16-alpine` | compose | |
@@ -364,7 +384,7 @@ docker run --rm --entrypoint /bin/sh ghcr.io/open-meteo/open-meteo:1.6.0 -c 'ldd
 
 The highest GLIBC symbol the radar binary needs must be at or below the open-meteo base's glibc.
 If it is not, build the radar image on a matching base, or on musl, and re-check. CI runs the same
-check (`github-workflows/rust.yml`).
+check (`.github/workflows/ci-rust.yml`).
 
 ### 8.2 Image users
 

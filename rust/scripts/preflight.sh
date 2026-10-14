@@ -13,7 +13,7 @@
 #   4 noaa      real MRMS + HRRR (+ NAQFC) files: Python (pygrib, production code) vs Rust decode,
 #               selection, axes, S3 403/404 probe, then Python indexed render vs Rust render with
 #               `radar parity --exact`. Checklist: rust/crates/radar-grib/README.md
-#   5 docker    build deploy/rust/Dockerfile and Dockerfile.open-meteo, glibc floor (RUNBOOK 8.1),
+#   5 docker    build deploy/rust/Dockerfile (api and open-meteo targets), glibc floor (RUNBOOK 8.1),
 #               image users (8.2), smoke run of `radar api` (/api/livez 200, /api/health 503)
 #
 # Logs and outputs: bench/work/preflight/<UTC timestamp>/ (summary.txt, one log per step).
@@ -609,13 +609,13 @@ step_docker() {
   fi
 
   # 5a: builds (context = repo root; the radar Dockerfile has its own .dockerignore next to it).
-  if ! run env DOCKER_BUILDKIT=1 docker build -f "$DEPLOY/Dockerfile" -t "$radar_tag" "$DOCKER_CONTEXT"; then
+  if ! run env DOCKER_BUILDKIT=1 docker build -f "$DEPLOY/Dockerfile" --target api -t "$radar_tag" "$DOCKER_CONTEXT"; then
     record 5a "build radar image" FAIL "$(( $(now_s) - t0 ))" "see $CUR_LOG"; return 0
   fi
   record 5a "build radar image" "$([ "$DRY_RUN" = 1 ] && echo DRY || echo PASS)" "$(( $(now_s) - t0 ))" ""
   local t1; t1=$(now_s)
-  if ! run env DOCKER_BUILDKIT=1 docker build -f "$DEPLOY/Dockerfile.open-meteo" \
-       --build-arg "RADAR_IMAGE=$radar_tag" -t "$om_tag" "$DOCKER_CONTEXT"; then
+  if ! run env DOCKER_BUILDKIT=1 docker build -f "$DEPLOY/Dockerfile" --target open-meteo \
+       -t "$om_tag" "$DOCKER_CONTEXT"; then
     record 5a "build open-meteo image" FAIL "$(( $(now_s) - t1 ))" "see $CUR_LOG"; return 0
   fi
   record 5a "build open-meteo image" "$([ "$DRY_RUN" = 1 ] && echo DRY || echo PASS)" "$(( $(now_s) - t1 ))" ""

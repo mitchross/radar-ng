@@ -97,6 +97,11 @@ pub struct Config {
     pub places_timeout_s: f64,
     /// `USGS_IMAGERY_BASE` (new). Default `https://basemap.nationalmap.gov`.
     pub usgs_imagery_base: String,
+    /// `BASEMAP_TILES_UPSTREAM`: a go-pmtiles server to proxy `/basemap/tiles/*` to when the local
+    /// `BASEMAP_PMTILES` archive is absent (Caddy's `reverse_proxy basemap:8081`). Default
+    /// `http://basemap:8081`, so the image drops into a cluster that still runs the basemap service.
+    /// Empty disables the fallback.
+    pub basemap_tiles_upstream: String,
     /// `IMAGERY_CACHE_MAX_BYTES` (new, moka). Default 128 MiB. Zero disables the cache.
     pub imagery_cache_max_bytes: u64,
     /// `TRUSTED_PROXIES` (new): extra comma-separated IPs or CIDRs trusted for `X-Forwarded-For`,
@@ -171,6 +176,9 @@ impl Config {
             usgs_imagery_base: str_var("USGS_IMAGERY_BASE", "https://basemap.nationalmap.gov")
                 .trim_end_matches('/')
                 .to_string(),
+            basemap_tiles_upstream: str_var("BASEMAP_TILES_UPSTREAM", "http://basemap:8081")
+                .trim_end_matches('/')
+                .to_string(),
             imagery_cache_max_bytes: pos_u64("IMAGERY_CACHE_MAX_BYTES", 128 * 1024 * 1024)?,
             trusted_proxies_extra: str_var("TRUSTED_PROXIES", ""),
         })
@@ -221,6 +229,7 @@ impl Config {
             geocode_cache_max_entries: 1024,
             places_timeout_s: 6.0,
             usgs_imagery_base: "https://basemap.nationalmap.gov".into(),
+            basemap_tiles_upstream: String::new(),
             imagery_cache_max_bytes: 0,
             trusted_proxies_extra: String::new(),
         }
