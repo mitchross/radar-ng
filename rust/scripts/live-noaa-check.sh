@@ -52,15 +52,15 @@ cells=$((h * w))
 [ "$nan" -lt "$cells" ] && ok "mrms values present ($nan of $cells cells missing)" || bad "mrms: every cell missing"
 
 # HRRR: each variable has .idx records and a selected, decodable message.
-while IFS=$'\t' read -r var selected err records; do
+while IFS=$'\t' read -r var selected records err; do
   if [ "$selected" != null ] && [ -z "$err" ] && [ "$records" -gt 0 ]; then
     ok "hrrr $var: message #$selected, $records idx record(s)"
   else
     bad "hrrr $var: selected=$selected idx_records=$records ${err}"
   fi
 done < <(jq -r '.hrrr as $h | $h.vars | to_entries[] |
-  [.key, (.value.selected // "null" | tostring), (.value.error // ""),
-   (($h.idx.picks[.key].records // []) | length | tostring)] | @tsv' "$R")
+  [.key, (.value.selected // "null" | tostring),
+   (($h.idx.picks[.key].records // []) | length | tostring), (.value.error // "")] | @tsv' "$R")
 if [ -n "$subset" ]; then
   # The ranged download (what production fetches) must decode to the same values as the whole file.
   diff_vars=$(jq -r '.hrrr as $h | [$h.subset.vars | to_entries[] | . as $e
