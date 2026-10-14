@@ -162,3 +162,20 @@ Run these on a machine with NOAA access. Each item has a concrete check. `rust/s
 - `hrrr::fetch_hour` returns bytes. Writing them to a temp file and calling `decode` is the caller's job.
 - `S3Client::new(http::client()?, hrrr::BASE_URL)` is the production setup. Tests can point it at a
   local server.
+
+## Verified against real NOAA files (CI, 2026-10-14)
+
+`ci-rust.yml` (job `real-data`) checks every PR against the newest live files:
+
+- MRMS `MergedBaseReflectivityQC_00.50`: values bitwise equal to pygrib, axes within 1e-9, and the
+  rendered pyramid identical to Python's indexed renderer (`radar parity --exact`, 675/675 tiles). Fixed
+  on the way: template 3.0 basic angle 1 / 10^6 subdivisions (MRMS) is now honored.
+- HRRR `wrfsfcf01`: all 13 radar-ng variables selected, `.idx` picks equal to Python's, values bitwise,
+  Lambert lat/lon within 1e-9. 168 of 170 messages are bitwise equal; the two that differ are cloud
+  ceiling and cloud top height (0.3.5, complex packing with a bitmap and E<0), which radar-ng doesn't
+  read. Categorical precipitation types are matched by both the NCEP-local (0.1.192-195) and WMO
+  (0.1.33-36) numbers.
+- NAQFC grid 227 decodes (template 3.30, data 5.3). The AWS mirror answered 404 for the newest run and
+  NOMADS 200, so the NOMADS fallback is exercised.
+- Missing objects answer 404 on all three buckets, so the pending-hour and `.idx` fallback paths work
+  as written.

@@ -273,9 +273,14 @@ def compare_hrrr(res: Results, path: Path, idx_path: Path | None, rust: dict, ru
                 f"groupSplit={mm['groupSplittingMethodUsed']} missingMgmt={mm['missingValueManagementUsed']}")
     neg = [m for m in messages if (m["binaryScaleFactor"] or 0) < 0 or (m["decimalScaleFactor"] or 0) < 0]
     neg_bad = [m["index"] for m in neg if m["index"] in differ or not decode.get(m["index"], {}).get("ok")]
+    used = {v.get("selected") for v in rust.get("vars", {}).values() if v.get("selected")}
     if neg:
-        res.add(g, "negative E/D scale factors (item 8)", "PASS" if not neg_bad else "FAIL",
-                f"{len(neg)} messages with E<0 or D<0, {len(neg) - len(neg_bad)} bitwise equal")
+        # Only the 13 variables radar-ng reads must be exact; another field that differs is reported.
+        used_bad = [i for i in neg_bad if i in used]
+        status = "PASS" if not neg_bad else ("FAIL" if used_bad else "WARN")
+        res.add(g, "negative E/D scale factors (item 8)", status,
+                f"{len(neg)} messages with E<0 or D<0, {len(neg) - len(neg_bad)} bitwise equal"
+                + (f"; differing #{', #'.join(map(str, neg_bad))} are not fields radar-ng reads" if neg_bad and not used_bad else ""))
     else:
         res.add(g, "negative E/D scale factors (item 8)", "WARN", "no message in this file has E<0 or D<0")
     gs = [m["index"] for m in messages if m["groupSplittingMethodUsed"] not in (None, 1)]
