@@ -1,5 +1,9 @@
 # Backend, Temporal and Kubernetes review, 2026-09-29
 
+> **Historical record.** Written against the Python backend, which was replaced by the Rust backend
+> (`rust/`, v2.0.0, 2026-10-14). Paths under `backend/`, `temporal/` and `tools/`, and the Caddy and
+> FastAPI tile-server, no longer exist; see [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current layout.
+
 Review of the radar-ng backend, the Temporal control plane and the
 Kubernetes deployment (talos-argocd-proxmox `my-apps/personal-projects/radar-ng`),
 against the goal of a fully self-hosted service with no API keys. Evidence:

@@ -1,5 +1,9 @@
 # radar-ng — total review (2026-07-04)
 
+> **Historical record.** Written against the Python backend, which was replaced by the Rust backend
+> (`rust/`, v2.0.0, 2026-10-14). Paths under `backend/`, `temporal/` and `tools/`, and the Caddy and
+> FastAPI tile-server, no longer exist; see [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current layout.
+
 Full-stack review: frontend, backend API, ingest pipeline, Temporal
 orchestration, deploy/CI. Every finding below was verified against the code at
 `84015b8` (file:line refs). Companion deliverable: the reusable debug harness

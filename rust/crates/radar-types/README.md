@@ -1,16 +1,15 @@
 # radar-types
 
-Temporal wire contract for the radar-ng Rust port. This crate holds everything that
+Temporal wire contract for radar-ng. This crate holds everything that
 crosses the Temporal boundary, so the Rust workers, the API and the seeder can share one
-definition. It is wire-compatible with the Python workers: JSON payloads (`json/plain`),
+definition. It stayed wire-compatible with the former Python workers: JSON payloads (`json/plain`),
 snake_case field names, and the same workflow, activity, signal, query, patch, queue and
 schedule names.
 
-Sources of truth: `specs/spec-temporal.md` (sections 1, 2, 4, 6, 10 and 11) and the payload
+Sources of truth: `docs/rust-migration/specs/spec-temporal.md` (sections 1, 2, 4, 6, 10 and 11) and the payload
 sections of `spec-ingest-mrms-hrrr.md` (section 2), `spec-ingest-aux.md` (sections 2 and 4) and
-`spec-nowcast.md` (section 2). Cross-checked against `temporal/workflows/*.py`,
-`backend/*/activities.py`, `backend/api/api/storm_watch_activities.py`,
-`temporal/schedules/seed.py` and `temporal/task_queues.py`.
+`spec-nowcast.md` (section 2). It was cross-checked against the Python workflows, activities, seeder and task-queue
+module before they were removed.
 
 ## Public API
 
@@ -91,9 +90,8 @@ the push code, not in this crate.
 
 ## Deferred
 
-- **Replay fixtures** (spec-temporal section 0, D13). `temporal/workflows/replay_fixtures/` is absent
-  from the upload, so wire compatibility with retained histories is not verified here. The
-  behaviour is verified against the Python source and tests only.
+- **Replay fixtures** are not checked in this crate. Wire compatibility with the retained histories is
+  proven by the replay gate in `radar-worker` (`tests/replay.rs`).
 - **Heartbeat detail shapes** (spec-ingest-mrms-hrrr section 2.4, spec-nowcast section 2.1). They
   are informational and not modelled.
 - **Lenient decoding** of `NaN` or `Infinity` in old payloads, which may need a custom parser if

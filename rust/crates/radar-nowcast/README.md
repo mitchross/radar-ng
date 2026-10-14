@@ -4,7 +4,7 @@ The radar-ng nowcast, in two layers:
 
 - **Numerical core** (pure computation on `Field2` buffers): pyramidal Lucas-Kanade motion,
   semi-Lagrangian advection, FFT cascade, AR(2), CDF probability matching, S-PROG, verification
-  scores. Replaces the pysteps pieces used by `backend/nowcast/activities.py`.
+  scores. A from-scratch replacement for the pysteps pieces the Python nowcast used.
 - **Activity glue** (`nowcast_run`): input grid selection, grid reads, preprocessing, motion and
   forecast, point grids and tile pyramids, the atomic manifest swap, the status file and the
   post-commit skill scoring. A plain async function with no Temporal types; the worker wraps it.
@@ -106,8 +106,7 @@ to float precision. "Approximate" means an independent re-implementation, not bi
 
 ## Activity glue (`run.rs`, `select.rs`, `inputs.rs`, `render.rs`, `score.rs`, `status.rs`)
 
-Follows `specs/spec-nowcast.md` sections 2 to 5, 8 to 11 and 13, and the Python reference
-`backend/nowcast/activities.py`.
+Follows `docs/rust-migration/specs/spec-nowcast.md` sections 2 to 5, 8 to 11 and 13, and the former Python nowcast activity.
 
 1. **Setup**: the processed-anchor file (`nowcast.json`, last 100 anchors) short-circuits an anchor
    already committed. `select_input_grids` (spec 4.2) picks the input grids on the 5-minute marks, with
@@ -295,15 +294,14 @@ sampler (the bilinear weights are the same across the window) is the next step t
 
 ## Regenerating the fixtures
 
-Prerequisites: Python 3.13 with pysteps 1.21.5. numpy below 2 had no wheel for 3.13 here, so numpy
-2.5.4 was used. pysteps also needed `jsmin`, `jsonschema` and `matplotlib` to import. In the sandbox,
-PyPI is reached through the proxy:
+Prerequisites: Python 3.13 with pysteps 1.21.5 (the fixtures were made with numpy 2.5.4; pysteps also
+needs `jsmin`, `jsonschema` and `matplotlib` to import):
 
 ```
-python3 -m venv /tmp/venv-nowcast
-NO_PROXY= no_proxy= HTTPS_PROXY=$HTTPS_PROXY /tmp/venv-nowcast/bin/pip install pysteps==1.21.5 numpy
-cd crates/radar-nowcast/testdata
-/tmp/venv-nowcast/bin/python -I gen_golden.py
+python3 -m venv <venv>
+<venv>/bin/pip install pysteps==1.21.5 numpy jsmin jsonschema matplotlib
+cd rust/crates/radar-nowcast/testdata
+<venv>/bin/python -I gen_golden.py
 ```
 
 `-I` keeps the script from importing modules from the current directory. The generator writes

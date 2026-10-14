@@ -7,7 +7,7 @@ The app has four distinct time horizons and must name them honestly:
 | Horizon | Product | Source | User-facing label |
 | --- | --- | --- | --- |
 | Past to now | measured reflectivity | NOAA MRMS, with selected NEXRAD Level II close-range detail | Observed radar |
-| 0–60 minutes, stretch to 90 | motion extrapolation from recent observations | MRMS/NEXRAD + pySTEPS | Radar nowcast |
+| 0–60 minutes, stretch to 90 | motion extrapolation from recent observations | MRMS/NEXRAD + Lucas-Kanade/S-PROG extrapolation (`radar-nowcast`) | Radar nowcast |
 | 1–48 hours | simulated reflectivity | NOAA HRRR | Model radar guidance |
 | 2–10 days | precipitation probability/rate, not reflectivity | RRFS when operational, then GFS/GEFS | Precipitation outlook |
 
@@ -83,8 +83,8 @@ predictable at street scale days in advance.
 ### Now through 60 minutes
 
 - Use 4–6 cadence-validated observed frames.
-- Run optical flow and deterministic/probabilistic pySTEPS at explicit
-  fractional input timesteps.
+- Run optical flow and deterministic/probabilistic S-PROG extrapolation
+  (`radar-nowcast`) at explicit fractional input timesteps.
 - Verify displacement, mass growth/decay, edge effects, and stale-input gates.
 - Add ensemble perturbations and calibrated probability bands only after
   backtesting; freshness alone is not confidence.

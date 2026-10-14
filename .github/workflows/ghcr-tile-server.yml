@@ -1,7 +1,7 @@
 name: ghcr · tile-server
 
 # Public GHCR image of the tile-server: the Rust `radar api` (deploy/Dockerfile, target `api`),
-# replacing Caddy + FastAPI in one process.
+# one process serving tiles, basemap and the API.
 # Runs on push to master, or manually with an explicit version.
 
 on:

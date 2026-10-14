@@ -12,10 +12,6 @@
 .env*.local
 .env
 
-# data
-backend/pmtiles-data/*.pmtiles
-pmtiles-data/*.pmtiles
-
 # OpenWolf capture scratch
 .wolf/designqc-captures/
 
@@ -23,15 +19,10 @@ pmtiles-data/*.pmtiles
 UI-Handoff/
 *.zip
 
-# Python
+# Python (fixture generators under rust/crates/*/testdata, frontend/scripts)
 __pycache__/
 *.pyc
-*.pyo
 .venv/
-venv/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
 
 # Editor
 .vscode/.history/

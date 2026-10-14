@@ -1,15 +1,21 @@
 # Contributing to radar-ng
 
-Thanks for your interest! radar-ng is a monorepo with a Python ingest/tile
-pipeline and an Expo mobile app. This doc covers how to get set up and the
-conventions the project follows.
+Thanks for your interest! radar-ng is a monorepo with a Rust ingest/tile pipeline and API, an Expo
+mobile app, and a web radar. This doc covers how to get set up and the conventions the project
+follows.
 
 ## Getting set up
 
 See **[GETTING_STARTED.md](GETTING_STARTED.md)** — it covers running the stack
 (Docker Compose or Kubernetes) and the mobile app.
 
-- **Backend / pipeline:** Python 3.12. Code lives in `backend/` (activities) and `temporal/` (workflows + workers).
+- **Backend / pipeline:** Rust, one Cargo workspace in `rust/` (toolchain pinned in `rust/rust-toolchain.toml`; `protoc` required). See [rust/README.md](rust/README.md).
+  ```bash
+  cd rust
+  cargo fmt --all -- --check
+  cargo clippy --workspace --all-targets -- -D warnings
+  cargo test --workspace
+  ```
 - **Frontend:** Expo (SDK 58 preview) + TypeScript, package manager is **[Bun](https://bun.sh)**.
   ```bash
   cd frontend
@@ -31,7 +37,9 @@ See **[GETTING_STARTED.md](GETTING_STARTED.md)** — it covers running the stack
 2. Keep changes focused; match the style and comment density of the surrounding code.
 3. **Verify before you push:**
    - Frontend: `bunx tsc --noEmit`, `bun run test`, and `bun run lint` must all pass.
-   - Backend: run the relevant tests under `backend/`.
+   - Web (`web/`): `bun run build` (typecheck + Vite build) and `bun run test`.
+   - Backend: `cargo fmt --check`, `cargo clippy -D warnings` and `cargo test` for the crates you touched. CI (`ci-rust.yml`) also runs the Temporal integration tests, the live-NOAA check and the image builds.
+   - User-facing features ship to both the app (`frontend/`) and the web radar (`web/`) in the same change.
 4. Open a PR against `master` with a clear description of the what and the why.
 
 ## Self-hosted only
@@ -40,8 +48,8 @@ Clients (phone, Watch, widget) talk **only** to the operator's own servers at ru
 API keys and third-party map, imagery, geocoding or tile services, including keyless platform ones
 like MapKit snapshots and CLGeocoder. Public data is fine when the *server* fetches it: the tile
 server proxies NWS alerts, Photon geocoding and USGS imagery. `frontend/__tests__/selfHosted.test.ts`
-and the bundled-style check in `backend/api/api/test_routes_places.py` enforce this. The CarPlay
-target's Apple routing is the one documented exception while its entitlement is pending.
+enforces this for the app. The CarPlay target's Apple routing is the one documented exception while
+its entitlement is pending.
 
 ## Commit / PR conventions
 

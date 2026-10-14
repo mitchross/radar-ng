@@ -1,6 +1,6 @@
 # radar-ng → Rust: migration plan
 
-Status: **implemented, pre-cutover** (2026-10-14). Owner: Mitch. Specs are in `specs/` and the independent review is in `REVIEW.md`.
+Status: **complete: production runs the Rust backend (v2.0.0, 2026-10-14); Python removed.** Owner: Mitch. Specs are in `specs/` and the independent review is in `REVIEW.md`; both are historical. Current docs: `rust/README.md`, `deploy/README.md`, `ARCHITECTURE.md`.
 
 ## Where it stands
 
@@ -11,18 +11,14 @@ Status: **implemented, pre-cutover** (2026-10-14). Owner: Mitch. Specs are in `s
 - Golden fixtures were produced by running the original Python. Tiles match pixel-for-pixel, storms exactly,
   GRIB decoding bitwise, and nowcast at a correlation of at least 0.999 against pysteps.
 - An independent review found 10 defects (`REVIEW.md`). All are fixed and have regression tests.
-- Measured on the same 2-core box with identical inputs (`bench/results/latest.md`):
+- Measured on the same 2-core box with identical inputs (`benchmark-results.md`):
   - tile render **12.9×** faster than production Python (4.3× vs Python's indexed renderer)
   - storms **64×** faster
   - nowcast **4×** faster, using 2.4× less RAM
   - the API sustains 13k rps on one core, where FastAPI tops out at ~550 rps; p99 at 1000 rps is 2.6 ms vs 194 ms,
     with 12 MB RSS vs 78 MB
-- **Not yet verified here:**
-  - real NOAA files: S3 is blocked in the build sandbox
-  - a live Temporal server: the dev server can't be downloaded there
-  - Docker image builds
-
-  `ci-rust.yml` runs those checks on every PR on GitHub's runners.
+- Real NOAA files, a live Temporal server and the Docker image builds are checked by `ci-rust.yml` on every
+  PR (jobs `live-noaa`, `temporal`, `images`).
 
 ## Goal
 
@@ -92,8 +88,8 @@ Production runs from `mitchross/talos-argocd-proxmox` via Argo CD: five isolated
 gate), the `tile-server` Deployment, and the open-meteo Deployment. The Rust images are drop-ins
 published under the same GHCR names (`radar-ng-temporal-worker`, `radar-ng-tile-server`,
 `radar-ng-open-meteo-worker`), so the cutover is the usual Renovate tag bump in the GitOps repo, merged
-and synced by Argo. No manifest changes, no `kubectl apply`. Rollback is reverting that commit. Old
-workflow executions are disposable. Details: `deploy/RUNBOOK.md`.
+and synced by Argo. No manifest changes, no `kubectl apply`. Old workflow executions are disposable.
+Releases are forward-only: a problem is fixed by a new release. Details: `deploy/RUNBOOK.md`.
 
 ## Python defects found by the specs
 
@@ -128,8 +124,8 @@ default, `NWS_USER_AGENT`, `OPEN_METEO_BASE`. Rust follows the **code** values, 
 
 ## Benchmarks and load test (before/after)
 
-Every comparison runs Python and Rust **on the same inputs on the same machine**, and the harness lives in
-`bench/`. Results go to `bench/results/<date>-<host>.json` plus a markdown report.
+Every comparison ran Python and Rust **on the same inputs on the same machine**. The harness (`bench/`) was
+removed with the Python code; the results are in `benchmark-results.md`.
 
 | bench | Python baseline | Rust | metric |
 |---|---|---|---|
@@ -158,8 +154,7 @@ Micro-benches run in CI-like conditions here. The end-to-end and k6 runs happen 
 ## Known risks
 
 1. **Nowcast parity.** pysteps' LK uses OpenCV's Shi-Tomasi and pyramidal LK. Exact replication is out of
-   scope, so it is validated statistically with skill scores. Keep the Python nowcast build available as the
-   rollback version until it passes.
+   scope, so it is validated statistically with skill scores (`/api/nowcast/skill`).
 2. **GRIB edge cases.** Verify against real files before trusting the decoder: MRMS 5.41 bitmap handling,
    HRRR 5.3 with bitmap, NAQFC templates.
 3. **Temporal server version** for Worker Deployments; fall back to separate queues if needed.

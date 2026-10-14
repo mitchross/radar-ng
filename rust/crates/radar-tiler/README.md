@@ -1,9 +1,9 @@
 # radar-tiler
 
-Rust port of radar-ng's tile renderer (`backend/shared/tiler.py`, `png_palette.py`,
+radar-ng's tile renderer (ported from the former Python `tiler.py`, `png_palette.py` and
 `palettes.py`). It renders one source grid into one Web Mercator XYZ pyramid per palette,
 published atomically, with indexed (palette-mode) PNG tiles. Behavior follows
-`specs/spec-tiler.md`; the decisions in `docs/PLAN.md` override it where they differ.
+`docs/rust-migration/specs/spec-tiler.md`; the decisions in `docs/rust-migration/PLAN.md` override it where they differ.
 
 Renderer identity: `"indexed-rs1"` (PLAN option B). Rust never reuses or adopts Python
 pyramids; see Deviations.
@@ -141,31 +141,27 @@ test for the single-palette case only.
 
 Total: 102 passed, 0 failed, 1 ignored.
 
-Benchmark (release, 2 cores in this sandbox): 3500 x 7000 MRMS-like grid, zooms 4 to 7,
+Benchmark (release, 2 cores): 3500 x 7000 MRMS-like grid, zooms 4 to 7,
 palettes classic/muted/vivid, 615 tiles per palette, 1.59 s wall. Run with:
 
     cargo test -p radar-tiler --release --test bench -- --ignored --nocapture
 
 ## Regenerating the golden fixtures
 
-`testdata/gen_golden.py` imports the Python reference from a radar-ng checkout and writes
-`testdata/` (it never writes into radar-ng):
+`testdata/gen_golden.py` imports the Python reference from a radar-ng checkout from before the Python removal (for example commit `5b3cb39`) and writes
+`testdata/` (it never writes into that checkout):
 
-    python3 -m venv <scratch>/venv-tiler
-    NO_PROXY=localhost,127.0.0.1,::1 no_proxy=localhost,127.0.0.1,::1 \
-        <scratch>/venv-tiler/bin/pip install numpy Pillow scipy pyproj
-    PYTHONDONTWRITEBYTECODE=1 <scratch>/venv-tiler/bin/python testdata/gen_golden.py /path/to/radar-ng
+    python3 -m venv <venv>
+    <venv>/bin/pip install numpy Pillow scipy pyproj
+    PYTHONDONTWRITEBYTECODE=1 <venv>/bin/python testdata/gen_golden.py /path/to/old-checkout
 
-The `NO_PROXY` override is needed in this sandbox, where `pypi.org` is listed in `NO_PROXY`
-and pip then skips the proxy. `HTTPS_PROXY` stays as it is.
-
-`assets/` holds verbatim copies of `backend/shared/palettes/{classic,muted,vivid}.json` and
-`backend/shared/color_tables.json`, embedded with `include_str!`.
+`assets/` holds the palettes (`classic`, `muted`, `vivid`) and `color_tables.json`, embedded with
+`include_str!`; they are the only palette source.
 
 ## TODO
 
 - Fault-injection hooks for the fsync order and the EIO/EINVAL/ENOTEMPTY publish paths, so
   the Python durability and race tests can be ported.
 - A Python fixture for the Lambert-conformal (HRRR) projected path.
-- Real-data parity runs (MRMS, HRRR) once the cutover caller is wired; the fixtures are
-  synthetic.
+- HRRR real-data parity; the fixtures are synthetic. (MRMS was checked against live data with
+  `radar parity --exact`, see `radar-grib/README.md`.)

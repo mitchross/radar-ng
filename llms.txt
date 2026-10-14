@@ -1,24 +1,26 @@
 # radar-ng
 
-> Hyper-local weather radar with a self-hosted tile pipeline: a CARROT-Weather-style Expo mobile app backed by a Python + Temporal ingest/render pipeline on Kubernetes. Pure NOAA data (MRMS / HRRR / NWS / lightning), sub-2-minute radar refresh, rendered on hardware you own — no third-party aggregators, no API keys, no accounts.
+> Hyper-local weather radar with a self-hosted tile pipeline: a CARROT-Weather-style Expo mobile app backed by a Rust + Temporal ingest/render pipeline on Kubernetes. Pure NOAA data (MRMS / HRRR / NWS / lightning), sub-2-minute radar refresh, rendered on hardware you own — no third-party aggregators, no API keys, no accounts.
 
 radar-ng is a monorepo:
-- `backend/` — Python 3.12 ingest + tile-rendering Temporal activities (MRMS radar, HRRR forecast, NAQFC air quality, lightning, tropical, nowcast, open-meteo sync).
-- `temporal/` — Temporal workflows + workers that orchestrate the pipeline (scheduled via Temporal Schedules, no cron).
+- `rust/` — Cargo workspace building one binary, `radar`: the HTTP API and tile server, the Temporal workers (MRMS radar, HRRR forecast, NAQFC air quality, lightning, tropical, nowcast, open-meteo sync, alerts), the schedule seeder (Temporal Schedules, no cron) and the `radar debug` diagnostics.
 - `frontend/` — Expo SDK 58 / TypeScript iOS + Android app (the "Weather Clear" light UI).
-- `deploy/` — Docker Compose golden path + reference Kubernetes manifests.
+- `web/` — the web radar (Vite + TypeScript).
+- `deploy/` — the Dockerfile (three image targets), the Docker Compose stack, and the release runbook.
 
-First-party container images publish to `ghcr.io/mitchross/radar-ng-{tile-server,temporal-worker,open-meteo-worker}`. The live Kubernetes manifests live in a separate gitops repo, `mitchross/talos-argocd-proxmox` (Talos + ArgoCD). The tile-server is Caddy (static tile serving + cache headers + routing) in front of FastAPI/uvicorn.
+First-party container images publish to `ghcr.io/mitchross/radar-ng-{tile-server,temporal-worker,open-meteo-worker}`. The live Kubernetes manifests live in a separate gitops repo, `mitchross/talos-argocd-proxmox` (Talos + ArgoCD). The tile-server is the same Rust binary (`radar api`, axum): static tiles with immutable cache headers, the basemap, and the JSON API on one port.
 
 ## Docs
-- [README](https://github.com/mitchross/radar-ng/blob/master/README.md): overview, why it exists, endpoint reference, architecture diagrams.
+- [README](https://github.com/mitchross/radar-ng/blob/master/README.md): overview, quick start, architecture diagrams.
 - [Getting started](https://github.com/mitchross/radar-ng/blob/master/GETTING_STARTED.md): clone → run the stack (Compose or your own k8s cluster) → run the app.
 - [Architecture](https://github.com/mitchross/radar-ng/blob/master/ARCHITECTURE.md): every component, the per-frame pipeline, Temporal orchestration, frame carousel, caching.
-- [Configuration](https://github.com/mitchross/radar-ng/blob/master/docs/configuration.md): every environment variable, plus the `BASEMAP_PMTILES_URL` gotcha and the k8s self-healing basemap.
+- [Configuration](https://github.com/mitchross/radar-ng/blob/master/docs/configuration.md): the environment variables operators set, plus the `BASEMAP_PMTILES_URL` gotcha.
 - [Self-hosting (Docker Compose)](https://github.com/mitchross/radar-ng/blob/master/docs/self-hosting.md): the ~10-minute golden path.
 - [Kubernetes](https://github.com/mitchross/radar-ng/blob/master/docs/kubernetes.md): bring-your-own-cluster — Temporal, storage, probes, PVCs, HPA.
 - [Tuning](https://github.com/mitchross/radar-ng/blob/master/docs/tuning.md): make it faster / cheaper / fresher, knob by knob.
 - [Running the app](https://github.com/mitchross/radar-ng/blob/master/docs/running-the-app.md): Expo build, device, CarPlay, Apple Watch.
+- [Rust backend](https://github.com/mitchross/radar-ng/blob/master/rust/README.md): crates, build, tests, CI.
+- [Debugging a live stack](https://github.com/mitchross/radar-ng/blob/master/docs/debug-harness.md): `radar debug` checks.
 - [Releasing](https://github.com/mitchross/radar-ng/blob/master/docs/releasing.md): image tags and release flow.
 - [Contributing](https://github.com/mitchross/radar-ng/blob/master/CONTRIBUTING.md): dev setup, verification, conventions.
 

@@ -1,10 +1,10 @@
 # radar-debug
 
-Rust port of `tools/debug_harness` (the Python harness that inspected a live radar-ng stack), plus the
-offline tile-pyramid comparison behind `radar parity` (see below). It is a
-library with one entry point, `run(DebugArgs) -> anyhow::Result<i32>`, which the `radar` binary calls
-for `radar debug <check>`. It has the same checks, the same human and JSON output, and the same exit
-codes (0 healthy, 1 any `fail`).
+Live-stack diagnostics behind `radar debug <check>`, plus the offline tile-pyramid comparison behind
+`radar parity` (see below). It is a library with one entry point, `run(DebugArgs) -> anyhow::Result<i32>`,
+which the `radar` binary calls. It is a port of the former Python debug harness, with the same checks,
+human and JSON output, and exit codes (0 healthy, 1 any `fail`). Operator guide:
+`docs/debug-harness.md`.
 
 It inspects a **live** stack the way the app does. HTTP checks go through the public serving path
 (`radar api` on the tile-server port), so the numbers are client-perceived numbers.
@@ -16,7 +16,7 @@ It inspects a **live** stack the way the app does. HTTP checks go through the pu
 | `doctor` | everything below, one sweep and a summary line | server, Temporal (unless the check is run elsewhere) |
 | `pipeline` | is the data fresh? per-layer staleness against schedule cadence, radar frame completeness over the trailing hour, forecast-horizon collapse, lightning feed age | server URL |
 | `api` | are the endpoints fast? p50 and p95 per endpoint against a budget. Tells a *degraded* `/api/health` (503 by design on stale radar) from a *down* one | server URL |
-| `tiles` | is the serving path right? real tiles for every manifest layer at z4 to z8: latency, 404 rate, and the `Cache-Control` contract (observed layers `max-age=86400`, others `max-age=120`) | server URL |
+| `tiles` | is the serving path right? real tiles for every manifest layer at z4 to z8: latency, 404 rate, and the `Cache-Control` contract (`max-age=86400` on every tile) | server URL |
 | `client` | can a cold phone keep up? replays the app's playback pattern (3x3 viewport, last N frames) against the 420 ms tick and reports worst-frame latency and bytes | server URL |
 | `temporal` | is the control plane healthy? every schedule present, unpaused, recently fired, with the last run's result. Failed runs in the last 6 h with the terminal failure message from history. Workflows running more than 2 h. Activities on attempt > 1 with their live heartbeat | Temporal frontend |
 | `disk` | is the storage sane? PVC headroom, orphaned `<ts>.tmp` staging dirs, leaked `MRMS_TMP_ROOT` and `HRRR_TMP_ROOT` work dirs, per-palette frame-count skew, and manifest-vs-disk drift (a manifest timestamp with no tiles on disk is a frame every client 404s) | run where the volumes are mounted |
@@ -39,13 +39,14 @@ pointed at a remote server does not print a spurious failure.
 
 ## `radar parity`: tile-pyramid parity
 
-`radar parity` is not a live-stack check. It compares two tile roots offline (PLAN "Verification"),
-normally one written by the Python build and one by the Rust build, and lives in the `parity` module.
-The `radar` binary wires it as a top-level subcommand.
+`radar parity` is not a live-stack check. It compares two tile roots offline and lives in the `parity`
+module; the `radar` binary wires it as a top-level subcommand. It was built to compare the Python and
+Rust builds, which is where the flag names come from: `--python-root` is the reference root and
+`--rust-root` the candidate.
 
 ```sh
-radar parity --python-root A --rust-root B                 # default threshold (Python legacy RGBA)
-radar parity --python-root A --rust-root B --exact         # Python indexed renderer: must match exactly
+radar parity --python-root A --rust-root B                 # default threshold (10% of pixels)
+radar parity --python-root A --rust-root B --exact         # same renderer on both sides: must match exactly
 radar parity --python-root A --rust-root B --layer radar --palette classic \
     --frame 2026-10-14T06:00:00Z --min-zoom 4 --max-zoom 7 --json
 ```
@@ -56,7 +57,7 @@ radar parity --python-root A --rust-root B --layer radar --palette classic \
 | `--layer` (alias `--product`), `--palette`, `--frame` | restrict the comparison (each repeatable). `--frame` matches the frame path, its last segment (HRRR's `runs/<run>/<ts>`), or the timestamp in `Z` or `+00:00` form |
 | `--min-zoom`, `--max-zoom` | zoom range |
 | `--max-diff-pct` | per-frame threshold: percentage of pixels that differ visibly (default 10) |
-| `--exact` | Python indexed reference: threshold 0, tile sets, palette indices and manifest entries must match |
+| `--exact` | threshold 0; tile sets, palette indices and manifest entries must match |
 | `--python-manifest`, `--rust-manifest` | `manifest.json` or the state dir holding it. Default: `<root>/manifest.json` when present |
 | `--json` | one JSON document (`frames`, `frames_only_python`, `frames_only_rust`, `manifest`, `summary`) |
 | `--threads` | decoder threads (default: all cores) |
@@ -84,14 +85,11 @@ paths (HRRR) work. Other `.png` files are counted in `summary.ignored_files`. Sy
 layer `palettes` and metadata keys, frame timestamps on one side (timing, reported only), and per
 common frame its `path`, `palettes`, key set and differing values (values are informational).
 
-**Threshold.** `diff_pct` is visibly differing pixels over every pixel compared in the frame. Python
-production writes **legacy RGBA** tiles, which sample colour before classifying. Against Rust's
-indexed tiles they are about 92% identical by design (bench: 92.1%), and the legacy tile set has some
-extra edge tiles. `radar parity` on the bench pyramid (3500 x 7000 synthetic MRMS field, z4 to z7)
-gives 92.8% to 92.9% identical per palette, 216 Python tiles against 195 Rust tiles per palette, and
-26% to 28% of the differing pixels are transparency edges. The default `--max-diff-pct 10` accepts that.
-Python's **indexed** renderer is the algorithm Rust implements. Against it the output is identical
-(585/585 tiles, identical indices and RGBA, on the same bench pyramid), so use `--exact`.
+**Threshold.** `diff_pct` is visibly differing pixels over every pixel compared in the frame. The default
+10% was calibrated on the Python build's legacy RGBA tiles, which sample colour before classifying and are
+about 92% pixel-identical to the indexed tiles by design. Pyramids rendered from the same input by the
+same renderer should match exactly, so compare them with `--exact` (the Python indexed renderer and Rust matched 585/585 tiles on the
+benchmark pyramid, and 675/675 on a live MRMS frame).
 
 **Status and exit code.** A frame is `fail` when it is over the threshold, or has an undecodable or
 size-mismatched tile, or (with `--exact`) its tile sets or palette indices differ. Otherwise it is
@@ -206,17 +204,12 @@ Each is deliberate. Where a Python defect is fixed, it is marked as such.
 
 ## Not verified
 
-- **Live Temporal.** The `temporal` and the Temporal part of `doctor` compile against `temporalio-client` 1.1.0,
-  and the connect-failure path was run against a closed port (FAIL, exit 1). Schedule describe, list
-  workflows, failure history and pending-activity decoding have not been run against a Temporal server, and
-  no dev server was available in this environment. Run `radar debug temporal` against the staging frontend
-  before trusting it.
-- **Real Open-Meteo, real PVCs.** The HTTP checks were run end to end against a fake stack in this environment
-  (manifest, tiles with the cache contract, the point endpoints). The disk checks were run against tempdir
-  fixtures only.
+- **Live Temporal.** Tests cover the connect-failure path (FAIL, exit 1) only. Schedule describe, list
+  workflows, failure history and pending-activity decoding are not covered by tests.
+- **Real PVCs.** The HTTP checks were tested end to end against a fake stack (manifest, tiles with the cache
+  contract, the point endpoints). The disk checks are tested against tempdir fixtures only.
 
 ## Golden fixtures
 
 None. The output format is pinned by `model::tests::pretty_json_matches_python_indent_2` and the
-`python_reprs` and `age_str` tests, which encode the Python behaviour. If a Python harness run is wanted as a
-byte-for-byte reference, run `python -m tools.debug_harness <check> --json` against the same stack and diff.
+`python_reprs` and `age_str` tests, which encode the former Python harness's formatting.

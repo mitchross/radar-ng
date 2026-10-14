@@ -4,8 +4,8 @@
 //
 // The API rate-limits per client IP (20 rps, burst 60, /api/* only). Each k6
 // pod is one client, so per-pod load stays under that and the Job runs several
-// pods in parallel: total load = PODS x VUs per pod. Tiles are served by Caddy
-// and are not rate-limited.
+// pods in parallel: total load = PODS x VUs per pod. Tiles are served from the
+// api's static lane and are not rate-limited.
 import http from "k6/http";
 import { check, sleep } from "k6";
 import { Rate, Trend } from "k6/metrics";

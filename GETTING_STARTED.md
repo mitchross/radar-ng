@@ -1,8 +1,8 @@
 # Getting started with radar-ng
 
-radar-ng is a monorepo: a Python ingest/tile pipeline (`backend/`, `temporal/`)
-and an Expo mobile app (`frontend/`). This guide gets you from clone → running
-stack → app on your phone.
+radar-ng is a monorepo: a Rust ingest/tile pipeline and API (`rust/`), an Expo
+mobile app (`frontend/`), and a web radar (`web/`). This guide gets you from
+clone → running stack → app on your phone.
 
 There are two paths:
 
@@ -21,8 +21,8 @@ the NWS User-Agent.
 - For the app: **Node 20+** and **[Bun](https://bun.sh)** (the frontend uses Bun), plus the **Expo** toolchain (`npx expo`). A physical device with **Expo Go**, or an iOS/Android simulator.
 - Roughly **3–4 GB disk** for the CONUS basemap + a working set of radar tiles.
 
-You do **not** need to build the backend images yourself — they're published to
-GHCR (see [Images](#images)). Compose can also build them locally.
+You do **not** need a Rust toolchain to run the stack — the images are published
+to GHCR (see [Images](#images)), and Compose builds them locally inside Docker.
 
 ---
 
@@ -32,17 +32,18 @@ The three first-party application images are published to GitHub Container Regis
 
 | Image | Role |
 |---|---|
-| `ghcr.io/mitchross/radar-ng-tile-server` | Caddy + FastAPI: serves `/api/*`, `/v1/*`, and tiles |
-| `ghcr.io/mitchross/radar-ng-temporal-worker` | Main Temporal worker — all ingest/render activities (MRMS, HRRR, lightning, nowcast, alerts, cleanup) |
-| `ghcr.io/mitchross/radar-ng-open-meteo-worker` | Secondary worker — the `open_meteo_sync` activity only |
+| `ghcr.io/mitchross/radar-ng-tile-server` | `radar api`: serves tiles, the basemap, `/api/*` and `/v1/*` |
+| `ghcr.io/mitchross/radar-ng-temporal-worker` | `radar worker`: the ingest/render activities (MRMS, HRRR, lightning, nowcast, alerts, cleanup); `WORKER_ROLE` picks the pool |
+| `ghcr.io/mitchross/radar-ng-open-meteo-worker` | the Open-Meteo image plus `radar worker --role open-meteo` (the `open_meteo_sync` activity only) |
+
+All three run the same Rust binary, built from `deploy/Dockerfile`.
 
 Third-party images you'll also run: `temporalio/auto-setup` (or your own
 Temporal), `postgres:16` (Temporal's datastore), `ghcr.io/open-meteo/open-meteo`,
-and **`protomaps/go-pmtiles`** for the basemap (radar-ng ships a
-`basemap-bootstrap` step that downloads a CONUS PMTiles extract into a volume —
-see Path A / [docs/self-hosting.md](docs/self-hosting.md); the basemap isn't a
-prebuilt GHCR image because the map data is fetched at deploy time, not baked
-into a public image).
+and **`protomaps/go-pmtiles`** for the one-time `basemap-bootstrap` step that
+downloads a CONUS PMTiles extract into a volume (see Path A /
+[docs/self-hosting.md](docs/self-hosting.md)). The api serves that archive
+itself; the map data is fetched at deploy time, not baked into a public image.
 
 > Tags are auto-semver (`vX.Y.Z`) plus `latest`. Pin a `vX.Y.Z` in production.
 
@@ -63,14 +64,16 @@ cp .env.example .env
 Bootstrap the basemap once (~1–2 GB CONUS extract), then bring the stack up:
 
 ```bash
-docker compose run --rm basemap-bootstrap    # one-time
-docker compose up -d                          # add --profile ui for the Temporal Web UI
+docker compose run --rm basemap-bootstrap    # one-time download
+docker compose run --rm basemap-publish      # move it into place
+docker compose build api                     # the radar image; `worker` runs it without building
+docker compose up -d --build                 # add --profile ui for the Temporal Web UI
 ```
 
 Verify (first radar frame lands ~2 min after boot):
 
 ```bash
-curl localhost:8080/api/livez     # 200 once Caddy + FastAPI answer
+curl localhost:8080/api/livez     # 200 once the api answers
 curl localhost:8080/api/health    # "degraded" until the first frame, then "ok"
 curl localhost:8080/api/manifest.json  # layers appearing
 ```
@@ -81,10 +84,10 @@ Then [point the app](#running-the-app) at `http://<your-host>:8080`.
 
 ## Path B — run it in your own Kubernetes cluster
 
-The compose stack maps 1:1 to k8s. Reference manifests live in
-**[`deploy/k8s/`](deploy/k8s/)** (and see its
-[README](deploy/k8s/README.md)); the canonical live manifests are in the
-[talos-argocd-proxmox repo](https://github.com/mitchross/talos-argocd-proxmox/tree/main/my-apps/development/radar-ng).
+The compose stack maps 1:1 to k8s. There are no ready-to-apply manifests in
+this repo; the live manifests in the
+[talos-argocd-proxmox repo](https://github.com/mitchross/talos-argocd-proxmox/tree/main/my-apps/personal-projects/radar-ng)
+(`my-apps/personal-projects/radar-ng/`) are the reference to copy and adapt.
 
 ### What you must provide
 
@@ -95,11 +98,11 @@ The compose stack maps 1:1 to k8s. Reference manifests live in
    - Run `temporalio/auto-setup` for a quick single-binary Temporal, **or**
    - Point at an existing Temporal you already run.
    - Temporal needs a **datastore** — **PostgreSQL** (a `postgres:16` StatefulSet, CloudNativePG, or managed PG) or Cassandra. The Helm chart / auto-setup can provision this for you.
-   - Create the namespace the workers use (default: `default`).
+   - Create the namespace the workers use (default: `default`; production uses `radar-ng`).
 
 3. **Storage (this is the part people miss):**
-   - **Shared tile storage.** The tile-server *serves* tiles that the worker *writes*, so they need shared access to the same volume. Easiest is an **RWX** class — **NFS**, CephFS, or Longhorn-RWX. If you only have **RWO**, co-locate the tile-server and worker on one node (nodeAffinity/`podAffinity`) so they can share the volume.
-   - **Open-Meteo data volume** (`openmeteo-data`): the open-meteo serve pod and its sync sidecar share one volume — **RWO is fine**, but they must be co-located (the reference manifest runs the sync worker as a **sidecar** in the serve pod for exactly this reason).
+   - **Shared tile storage.** The tile-server *serves* tiles that the workers *write*, so they need shared access to the same volume. Easiest is an **RWX** class — **NFS**, CephFS, or Longhorn-RWX. If you only have **RWO**, co-locate the tile-server and workers on one node (nodeAffinity/`podAffinity`) so they can share the volume.
+   - **Open-Meteo data volume** (`openmeteo-data`): the open-meteo serve container and its sync worker share one volume — **RWO is fine**, but they must be co-located (the reference manifest runs the sync worker as a **sidecar** in the serve pod for exactly this reason).
    - **Basemap volume** (~1–2 GB for CONUS), plus small volumes for `grids`/`state`.
    - Rough sizing: basemap 1–2 GB, tiles working set a few GB (a `TileCleanup` workflow prunes old frames), open-meteo data a few GB.
 
@@ -107,17 +110,18 @@ The compose stack maps 1:1 to k8s. Reference manifests live in
 
 ### Deploy steps
 
-1. **Get the images** — pull the three `ghcr.io/mitchross/radar-ng-*` application images (or mirror them into your own registry and update the manifest image refs). For the basemap, use `protomaps/go-pmtiles` + the bootstrap fetch.
-2. **Temporal** — stand up Temporal + Postgres and the `TemporalConnection` CR ([`deploy/k8s/temporal-connection.yaml`](deploy/k8s/temporal-connection.yaml)).
-3. **Config** — apply [`configmap-temporal-config.yaml`](deploy/k8s/configmap-temporal-config.yaml). **Set `NWS_USER_AGENT` to your email.** All other tunables have sane defaults (palettes, retention, nowcast horizon, forecast hours) — see [docs/tuning.md](docs/tuning.md).
-4. **Workers** — apply the two worker deployments. They poll the same task queue; the main worker registers every activity except `open_meteo_sync`, the open-meteo worker registers only that one. Temporal dispatches by registration — nothing else to wire.
-5. **Tile-server + open-meteo + basemap** — apply the serve deployments, services, PVCs, and your ingress/Gateway. (These live in the talos repo's `my-apps/development/radar-ng/`; use them as templates.)
-6. **Basemap bootstrap** — run the one-time basemap fetch (a Job) so the map isn't gray.
-7. **Schedules** — the worker seeds Temporal Schedules on boot (set `SKIP_SCHEDULE_SEED=1` to disable). No cron needed.
+1. **Get the images** — the three `ghcr.io/mitchross/radar-ng-*` images, pinned by `vX.Y.Z@sha256:…` (or mirror them into your own registry).
+2. **Temporal** — stand up Temporal + Postgres. The reference uses the Temporal Worker Controller (`TemporalConnection` + `WorkerDeployment` CRs) so each release is smoke-tested before promotion; plain Deployments running `radar worker` also work.
+3. **Config** — the worker tunables go in a ConfigMap. **Set `NWS_USER_AGENT` to your email.** Everything else has working defaults (palettes, retention, nowcast horizon, forecast hours) — see [docs/configuration.md](docs/configuration.md) and [docs/tuning.md](docs/tuning.md).
+4. **Workers** — either one worker with `WORKER_ROLE=legacy` (every workflow on queue `radar-ng`), or five role pools (`mrms`, `nowcast`, `hrrr`, `aux`, `alerts`) with `USE_ISOLATED_TASK_QUEUES=1`, as production runs. Add the open-meteo worker (`--role open-meteo`). Temporal dispatches by registration — nothing else to wire.
+5. **Tile-server + open-meteo + basemap** — the serve Deployments, Services, PVCs, and your ingress/Gateway. The api serves the basemap from `BASEMAP_PMTILES` if mounted, or proxies `/basemap/tiles/*` to a go-pmtiles service at `BASEMAP_TILES_UPSTREAM`.
+6. **Basemap** — fetch the PMTiles extract once into the basemap volume so the map isn't gray.
+7. **Schedules** — exactly one worker seeds Temporal Schedules on boot (`SEED_SCHEDULES=1`; `legacy` seeds by default, `SKIP_SCHEDULE_SEED=1` disables it). No cron needed.
 
 Verify the same endpoints as Path A against your ingress host:
-`/api/livez`, `/api/health`, `/api/manifest`. Deeper k8s notes (probes, HPA,
-PVCs) are in [docs/kubernetes.md](docs/kubernetes.md).
+`/api/livez`, `/api/health`, `/api/manifest.json`, or run
+`radar debug doctor --server https://<host>` ([docs/debug-harness.md](docs/debug-harness.md)).
+Deeper k8s notes (probes, HPA, PVCs) are in [docs/kubernetes.md](docs/kubernetes.md).
 
 ---
 

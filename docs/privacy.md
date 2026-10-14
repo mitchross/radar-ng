@@ -103,14 +103,12 @@ optional OS background refresh. Neither client creates a push token.
 ### 4.1 Tile-server access logs — retained for ~24 hours
 
 The forecast, nowcast, storm-prefetch and inspect paths contain the rounded position, and the tile
-server logs them. Verified read-only against the cluster on 2026-09-24:
+server logs them:
 
-- `backend/api/Caddyfile` ends with `log { output stdout format console }`. Log records carry the
-  full `uri`, e.g. `"uri": "/api/forecast/42.96/-85.67"`.
-- The uvicorn process logs the same path a second time
-  (`INFO: 10.244.5.241:0 - "GET /api/livez HTTP/1.1" 200 OK`), so a coordinate appears **twice per
-  request**. Removing Caddy's `log` directive alone would not stop it.
-- The `opentelemetry/OpenTelemetryCollector/otel-agent` DaemonSet tails `/var/log/pods/*/*/*.log`
+- `radar api` writes one JSON access-log line per request to stdout (`rust/crates/radar-api/src/edge.rs`),
+  with `method`, the full `uri` (e.g. `"uri": "/api/forecast/42.96/-85.67"`), `status`, `duration` and
+  `user_agent`. `/api/livez` and `/api/health` are not logged. A coordinate appears once per request.
+- Cluster log pipeline, verified read-only on 2026-09-24: the `opentelemetry/OpenTelemetryCollector/otel-agent` DaemonSet tails `/var/log/pods/*/*/*.log`
   and excludes only `opentelemetry_*` and `loki-stack_*`, so `radar-ng/tile-server` is in scope. It
   exports through `otel-gateway` to Loki.
 - `loki-stack/ConfigMap/loki` sets `retention_period: 24h`, `retention_delete_delay: 2h` and

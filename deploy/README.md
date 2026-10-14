@@ -1,52 +1,37 @@
-# radar-ng deploy (Rust build)
+# radar-ng deploy
 
-Deployment assets for the Rust build: the Dockerfile (targets `api`, `worker`, `open-meteo`), a compose
-stack for a single node, and the runbook. Cluster manifests live in `mitchross/talos-argocd-proxmox`
-and change only through GitOps commits synced by Argo CD. The build context is the repository
-root, and the Cargo workspace lives in `rust/`.
+Build and run assets for the Rust backend: one Dockerfile with three targets, a single-node compose
+stack, and the release runbook. The build context is the repository root; the Cargo workspace is in
+`rust/`. Cluster manifests live in `mitchross/talos-argocd-proxmox`
+(`my-apps/personal-projects/radar-ng/`) and change only through GitOps PRs synced by Argo CD.
 
-Start with [RUNBOOK.md](RUNBOOK.md).
-
-## Model
-
-The Rust build is the next build of the same production TemporalWorkerDeployments. Names, queues,
-schedules, PVCs, and env stay as they are. Only the image changes. The Temporal Worker Controller
-ramps new executions to the Rust build, pinned Python executions drain, and rollback is an image
-revert.
-
-| TWD | Queue | Role | Image |
-|---|---|---|---|
-| `radar-ng-worker` | `radar-ng` | `legacy` | radar image, `radar worker --role legacy` |
-| `radar-ng-open-meteo-worker` | `radar-ng-open-meteo` | `open-meteo` | open-meteo image, `radar worker --role open-meteo` |
-
-Per-role isolated queues are a future option, not the default (RUNBOOK section 9).
+Releases and post-release checks: [RUNBOOK.md](RUNBOOK.md).
 
 ## Files
 
 | Path | What it is |
 |---|---|
-| `Dockerfile` | Multi-stage radar image. Builder `rust:1.92-bookworm` with BuildKit cache mounts, `cargo build --release --locked -p radar`. Runtime distroless `cc-debian12`, uid 1000, busybox for healthchecks |
-| `Dockerfile.dockerignore` | Build context excludes for `Dockerfile` (keeps `rust/` and `rust/assets/basemap/`; drops Python, data, `target/`) |
-| `Dockerfile` targets | `api` (tile-server), `worker` (temporal-worker), `open-meteo` (radar on the pinned Open-Meteo image, uid 999) |
-| `docker-compose.yml` | Single-node stack: Temporal, `worker` (legacy), `open-meteo-worker`, `open-meteo`, `api`, and a one-shot basemap bootstrap. Per-role services are commented as the optional layout |
-| (CI) | `.github/workflows/ci-rust.yml`: fmt, clippy `-D warnings`, tests, real-NOAA + Temporal checks, image builds; `ghcr-*.yml` publish |
-| `RUNBOOK.md` | Pre-flight, ramp, verification, rollback, decommissioning, open items |
+| `Dockerfile` | Builder `debian:bookworm-slim` with the toolchain from `rust/rust-toolchain.toml` and `protoc`; runs the offline replay gate (`REPLAY_GATE=1`), then `cargo build --release --locked -p radar`. Runtime distroless `cc-debian12`, uid 1000, static busybox for probes, bundled styles and glyphs under `/srv/basemap` |
+| `Dockerfile.dockerignore` | Build-context excludes (keeps `rust/`, drops `target/`, app and data) |
+| `docker-compose.yml` | Single-node stack: Temporal, `worker` (role `legacy`), `open-meteo-worker`, `open-meteo`, `api`, and one-shot `basemap-bootstrap` / `basemap-publish` |
+| `.env.example` | Compose settings; copy to `.env` |
+| `temporal-dev.yml` | Throwaway Temporal (Postgres, auto-setup, UI) for the worker integration tests |
+| `pin-images.sh` | Pins third-party base images in `deploy/` to their current digests |
+| `RUNBOOK.md` | What ships, release path, checks, Temporal notes, tile parity |
 
-## Build and run
+## Images
 
-Compose (single node, from `deploy/`):
+| GHCR image | Target | Default command | User | Port |
+|---|---|---|---|---|
+| `radar-ng-tile-server` | `api` | `radar api` | `1000:1000` | 8080 |
+| `radar-ng-temporal-worker` | `worker` | `radar worker` (role from `WORKER_ROLE`, default `legacy`) | `1000:1000` | 9464 (metrics) |
+| `radar-ng-open-meteo-worker` | `open-meteo` | `radar worker --role open-meteo` on the pinned Open-Meteo image | `999:999` | — |
 
-```bash
-cp .env.example .env                       # NWS_USER_AGENT and BASEMAP_PMTILES_URL at minimum
-docker compose run --rm basemap-bootstrap  # one-shot basemap download to basemap.pmtiles.partial
-docker compose run --rm basemap-publish    # rename it to basemap.pmtiles (the api reloads it, no restart)
-docker compose build api                   # the radar image must exist before open-meteo-worker
-docker compose up -d --build
-curl http://localhost:8080/api/livez
-radar debug doctor                         # acceptance check; see RUNBOOK.md section 6
-```
+The open-meteo image also contains `/app/openmeteo-api`; the cluster's serve container overrides the
+command to run it. `radar --help` lists the subcommands: `api`, `worker`, `seed`, `watchdog`, `debug`,
+`render-once`, `parity`.
 
-Images by hand (from the repository root):
+Build by hand from the repository root:
 
 ```bash
 docker build -f deploy/Dockerfile --target api        -t radar-ng-radar:local .
@@ -54,88 +39,37 @@ docker build -f deploy/Dockerfile --target worker     -t radar-ng-temporal-worke
 docker build -f deploy/Dockerfile --target open-meteo -t radar-ng-open-meteo-worker:local .
 ```
 
-## Image contract
+## Compose stack
 
-| Image | Entrypoint | Default command | User |
-|---|---|---|---|
-| `radar-ng-radar` | `/usr/local/bin/radar` | `api` | `1000:1000` |
-| `radar-ng-open-meteo-worker` | `/usr/local/bin/radar` | `worker --role open-meteo` | `999:999` |
+From `deploy/`:
 
-The worker command is `worker --role <role>`, and `WORKER_ROLE` is set to the same value
-(the smoke activity reads the env var). The `radar` subcommands are `api`, `worker --role <r>`,
-`seed`, `watchdog`, `debug ...`, and `render-once <grib> <out>`.
+```bash
+cp .env.example .env                       # NWS_USER_AGENT and BASEMAP_PMTILES_URL at minimum
+docker compose run --rm basemap-bootstrap  # one-shot basemap download to basemap.pmtiles.partial
+docker compose run --rm basemap-publish    # rename it to basemap.pmtiles (the api reopens it, no restart)
+docker compose build api                   # the radar image; `worker` runs it but does not build it
+docker compose up -d --build
+curl http://localhost:8080/api/livez
+radar debug doctor                         # see docs/debug-harness.md
+```
 
-## Environment
+Compose runs one `legacy` worker that registers every workflow on task queue `radar-ng` and seeds the
+Schedules. Production runs five role pools on isolated queues (`USE_ISOLATED_TASK_QUEUES=1`); the
+commented block at the end of `docker-compose.yml` shows that layout for compose.
 
-Every variable in `docker-compose.yml` and the talos-argocd-proxmox radar-ng manifests was checked against the names the Rust
-crates read (string literals in `rust/crates/*/src`). Result:
+## Behaviour worth knowing
 
-- **Rust-read:** every radar variable carried over from the Python configmap and TWDs.
-- **Infra-only (not read by radar):** Temporal auto-setup and Postgres settings, the Temporal UI
-  CORS setting, and `OTEL_EXPORTER_OTLP_ENDPOINT` (read by the OpenTelemetry SDK).
-- **Dropped:** `WATCH_RADIUS_KM` and `MRMS_RENDER_WORKERS`. No Rust crate reads them. RUNBOOK open
-  item 7 asks to confirm before cutover.
-- **Deliberately not set:** `USE_ISOLATED_TASK_QUEUES`. The legacy model keeps Schedules on
-  `radar-ng`, as Python does.
-
-Config drift follows the code (`FORECAST_TTL_S` 900, not the old compose value of 300). See
-RUNBOOK section 10.
-
-## Checks performed
-
-- All YAML parses: `docker-compose.yml` and the
-  secret template (PyYAML `safe_load_all`).
-- Manifest consistency: `radar-ng-worker` and `radar-ng-open-meteo-worker` each have the Python
-  name, queue, and role, the Rust args, and no `TEMPORAL_TASK_QUEUE` or `USE_ISOLATED_TASK_QUEUES`.
-  Compose `worker` and `open-meteo-worker` have the matching command and `WORKER_ROLE`. The removed
-  services (`basemap`, `tile-server`) are absent. Every `depends_on` target exists.
-- Env audit (script not committed; re-run by grepping the crates for the names).
-
-## Not checked
-
-- No image was built. Docker was not available. The Dockerfile syntax and cache-mount usage are
-  unverified.
-- `docker compose config`, `kubeconform`, `hadolint`, and the GitHub workflow have not been run.
-- `cargo build -p radar` has not been run for the deploy path.
-- The glibc floor (open-meteo target) is checked in CI (`ci-rust.yml`) (RUNBOOK section 8.1).
-- The worker's freshness behavior (alive file age) is not checked by the probe.
-
-## Known problems in the inputs
-
-- **`rust/assets/basemap/styles/` is not in the uploaded tree.** The Python api Dockerfile copies it
-  from there, and the Rust image does too. Restore it before the first build.
-- **`cargo clippy --workspace -- -D warnings` fails until existing warnings are fixed.** Clippy
-  reported warnings in `rust/crates/radar-core/src/grid_dump.rs` (outside radar-debug, which is
-  clean). CI runs this gate, so the job fails until those are fixed.
-- **The Python reliability plan expects `radar-ng-alerts` pollers** for the watch-start queue.
-  The single-TWD model has none. This build sets `TEMPORAL_ALERTS_TASK_QUEUE=radar-ng` (RUNBOOK
-  open item 3).
-
-## Deviations from the Python deploy
-
-- One radar image for the api and the worker (was: Python api image, Python worker image, Caddy,
-  go-pmtiles). The Python TWD names, queues, and PVCs are unchanged.
-- The api is one container with no Caddy, uvicorn, or sidecar. It serves PMTiles and styles
-  itself. The go-pmtiles service is gone. `basemap-bootstrap` still fills the volume, and it writes
-  `basemap.pmtiles.partial`. `basemap-publish` renames that file into place (F6), so the api never
-  reads a half-written archive. The api checks the archive's file identity every
-  `BASEMAP_PMTILES_RECHECK_S` (default 10) and reopens it after a rename.
-- Workers run as uid 1000 (were root in compose). `volume-init` chowns the named volumes.
-- The worker and open-meteo TWDs have a liveness probe on `/tmp/worker-alive`. The Python TWDs had
-  none. The open-meteo image copies in a static busybox for that probe (F2). Its probe waits 120 s
-  before the first check, runs every 60 s, and fails after 5 misses. The health task runs from
-  startup, so a sync that takes up to 35 minutes does not trip it.
-- Push-token registration (`/v1`) returns 503 `push token store is read-only` when `STATE_DIR` is not
-  writable (F9). Compose and the cluster mount `state` read-only in the api, so `/v1` push tokens need a
-  writable state mount before they can be enabled. Until then the 503 is the expected answer.
-- The api's readiness is `/api/livez`, not `/api/health`. `/api/health` returns 503 when radar data
-  is stale, and that would drain every replica during an ingest outage.
-- `SEED_SCHEDULES=1` is set on the compose `worker` (legacy seeds by default in Python too). The
-  cluster leaves it unset, matching Python.
-
-## Future: per-role queues (not the default)
-
-Per-role isolated queues (`USE_ISOLATED_TASK_QUEUES=1`, queues `radar-ng-<role>`, one TWD per role)
-are supported by `radar-types` and `radar-worker`. The commented block in `docker-compose.yml`
-shows the shape. RUNBOOK section 9 has the procedure. This is a separate change after the legacy
-cutover is stable.
+- **Readiness is `/api/livez`, not `/api/health`.** `/api/health` returns 503 when radar data is stale,
+  which would drain every replica during an ingest outage.
+- **Basemap.** The api serves `BASEMAP_PMTILES` itself and rechecks its file identity every
+  `BASEMAP_PMTILES_RECHECK_S` (default 10), so renaming a new archive over it takes effect without a
+  restart. Never write the served path in place. With no local archive, `/basemap/tiles/*` is proxied
+  to `BASEMAP_TILES_UPSTREAM` (default `http://basemap:8081`), which is how the cluster runs.
+- **Push tokens.** `/v1/push-tokens` answers 503 `push token store is read-only` when `STATE_DIR` is not
+  writable. Compose and the cluster mount `state` read-only in the api, so enabling push tokens needs a
+  writable mount.
+- **Workers run as uid 1000.** The compose `volume-init` service chowns the named volumes.
+- **Worker liveness** is `/tmp/worker-alive`, touched every 30 s from startup, including during a long
+  Open-Meteo sync.
+- **Environment names** are the ones the crates read; each crate README lists them.
+  `WATCH_RADIUS_KM` and `MRMS_RENDER_WORKERS` are not read.

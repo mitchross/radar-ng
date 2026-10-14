@@ -12,7 +12,7 @@
 
   <!-- title block -->
   <text x="48" y="72" font-family="Georgia, 'Times New Roman', serif" font-size="22" fill="#211f1b">System architecture — radar-ng</text>
-  <text x="48" y="94" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#5d574d">free NOAA data · Temporal-orchestrated Python pipeline · static tile serving · Expo app — the hot radar path is drawn in terracotta</text>
+  <text x="48" y="94" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#5d574d">free NOAA data · Temporal-orchestrated Rust pipeline · static tile serving · Expo app — the hot radar path is drawn in terracotta</text>
 
   <!-- legend -->
   <circle cx="1020" cy="62" r="4" fill="#5d574d"/>
@@ -65,7 +65,7 @@
 
   <!-- ================= ZONE 2 : TEMPORAL PIPELINE ================= -->
   <rect x="336" y="120" width="392" height="700" rx="16" fill="#8a5cc2" fill-opacity="0.06" stroke="#8a5cc2" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
-  <text x="356" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#8a5cc2">TEMPORAL PIPELINE · temporal/ + backend/</text>
+  <text x="356" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#8a5cc2">TEMPORAL PIPELINE · rust/ (radar worker)</text>
 
   <rect x="356" y="164" width="352" height="88" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="356" y="166" width="3" height="84" rx="1.5" fill="#8a5cc2"/>
@@ -88,7 +88,7 @@
   <text x="384" y="421" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">per-hour fan-out · Semaphore(8) · failure-isolated</text>
 
   <rect x="372" y="442" width="320" height="50" rx="8" fill="#8a5cc2" fill-opacity="0.07"/>
-  <text x="384" y="462" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#211f1b">nowcast — pysteps S-PROG</text>
+  <text x="384" y="462" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#211f1b">nowcast — LK + S-PROG</text>
   <text x="384" y="479" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">optical-flow extrapolation · +60 min · 5-min steps</text>
 
   <rect x="372" y="500" width="320" height="50" rx="8" fill="#8a5cc2" fill-opacity="0.07"/>
@@ -104,7 +104,7 @@
   <rect x="356" y="664" width="352" height="132" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="356" y="666" width="3" height="128" rx="1.5" fill="#8a5cc2"/>
   <text x="372" y="688" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">Atomic publish</text>
-  <text x="372" y="708" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">tiles render into a .tmp dir, then os.rename into place —</text>
+  <text x="372" y="708" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">tiles render into a .tmp dir, then rename into place —</text>
   <text x="372" y="726" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">the manifest never advertises a half-written frame.</text>
   <text x="372" y="748" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">nowcast swaps its whole manifest layer per run</text>
   <text x="372" y="764" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">(replace semantics — stale predictions never linger)</text>
@@ -143,21 +143,21 @@
 
   <!-- ================= ZONE 4 : SERVING ================= -->
   <rect x="1032" y="120" width="256" height="700" rx="16" fill="#2e8b6f" fill-opacity="0.06" stroke="#2e8b6f" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
-  <text x="1052" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#2e8b6f">SERVING · backend/api</text>
+  <text x="1052" y="146" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#2e8b6f">SERVING · radar api</text>
 
   <rect x="1052" y="164" width="216" height="128" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="1052" y="166" width="3" height="124" rx="1.5" fill="#2e8b6f"/>
   <text x="1068" y="188" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">tile-server</text>
-  <text x="1068" y="206" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Caddy — static /tiles/*</text>
-  <text x="1068" y="222" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">FastAPI — /api/* · /v1/*</text>
+  <text x="1068" y="206" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">static lane — /tiles/*</text>
+  <text x="1068" y="222" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">routes — /api/* · /v1/*</text>
   <text x="1068" y="242" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">radar tiles: 24 h immutable</text>
-  <text x="1068" y="258" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">forecast tiles: 120 s · manifest 15 s</text>
+  <text x="1068" y="258" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">forecast tiles: run-scoped · manifest 15 s</text>
   <text x="1068" y="274" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">HPA scaled · /api/livez probe</text>
 
   <rect x="1052" y="308" width="216" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="1052" y="310" width="3" height="70" rx="1.5" fill="#2e8b6f"/>
   <text x="1068" y="332" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap</text>
-  <text x="1068" y="350" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Protomaps · go-pmtiles</text>
+  <text x="1068" y="350" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">Protomaps · PMTiles</text>
   <text x="1068" y="368" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">vector tiles · 1 d cache</text>
 
   <rect x="1052" y="398" width="216" height="74" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>

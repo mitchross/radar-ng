@@ -4,7 +4,7 @@ Temporal control plane for radar-ng. It holds the 13 workflow types, the activit
 the sibling ingest, aux, alerts, nowcast and smoke crates, the schedule seeder, the schedule watchdog, and the
 worker process. The wire contract (names, payload shapes, retry constants, schedule definitions, queues,
 and environment variable names) comes from `radar-types`. Behaviour follows
-`specs/spec-temporal.md`. Deviations are listed below.
+`docs/rust-migration/specs/spec-temporal.md`. Deviations are listed below.
 
 ## Coverage
 
@@ -75,21 +75,13 @@ TEMPORAL_TEST_ADDRESS=localhost:7233 cargo test -p radar-worker --test integrati
 
 Set `TEMPORAL_TEST_NAMESPACE` to use a namespace other than `default`.
 
-## Cutover via Worker Versioning
+## Worker Versioning
 
-Versioning turns on only when both `TEMPORAL_DEPLOYMENT_NAME` and `TEMPORAL_WORKER_BUILD_ID` are non-empty.
-Workflows default to `PINNED` (spec 3.6). A pinned run stays on the build that started it.
-
-1. Deploy the new build with a new `TEMPORAL_WORKER_BUILD_ID`, and keep the old pool running. Pinned runs
-   drain on the old build.
-2. Only new work, and Continue-as-New with `AUTO_UPGRADE` (the WatchStorm handoff), moves to the new build.
-3. Promote the new build with the Temporal CLI's worker-deployment commands. Confirm the flags against your CLI
-   version. Rolling back means setting the previous build as current again.
-4. Keep the Python pools running until their executions drain. `docs/temporal-safe-deployments.md` is the
-   source for the operator steps.
-
-Confirm that the production Temporal server supports Worker Deployments and `AUTO_UPGRADE` on Continue-as-New
-before relying on this path (spec D16 and section 13.3).
+Versioning turns on only when both `TEMPORAL_DEPLOYMENT_NAME` and `TEMPORAL_WORKER_BUILD_ID` are non-empty;
+in production the Temporal Worker Controller sets them. Workflows default to `PINNED` (spec 3.6): a run stays
+on the build that started it. Only new work, and Continue-as-New with `AUTO_UPGRADE` (the WatchStorm handoff),
+moves to a new build. The controller promotes a build after `RadarDeploymentSmokeWorkflow` passes on it.
+Operator notes: `docs/temporal-safe-deployments.md` and `deploy/RUNBOOK.md`.
 
 ## Deviations from the spec
 
@@ -116,15 +108,13 @@ before relying on this path (spec D16 and section 13.3).
    assumed SDK default that has not been checked against the Python SDK.
 7. **Open-meteo pool.** It runs through `run_worker` with role `open-meteo`, not as a separate binary (spec D1
    allows this). It registers no metrics or tracing and uses a 25 s drain. It runs the same health loop as the
-   main pool, from the start, so `/tmp/worker-alive` is touched every 30 s during a sync (F2). Binary packaging
-   is deferred.
-8. **Deployment smoke.** The pysteps and ecCodes checks have no native equivalent here and are not performed.
-   The palette, PNG, grid and volume checks are native. The smoke gate is therefore weaker than the Python
-   gate. This needs a decision before cutover.
+   main pool, from the start, so `/tmp/worker-alive` is touched every 30 s during a sync (F2).
+8. **Deployment smoke.** The palette, PNG, grid and volume checks are native. The Python gate also imported
+   pysteps and ecCodes; the Rust build has no such runtime modules, so those checks have no counterpart.
 9. **Metrics.** Prometheus is served at `TEMPORAL_METRICS_BIND` (default `0.0.0.0:9464`, `off` disables it).
-   OTLP tracing is deferred. The Python interceptor has no Rust equivalent yet.
+   OTLP tracing is deferred.
 
-## Review fixes (docs/REVIEW.md)
+## Review fixes (docs/rust-migration/REVIEW.md)
 
 - **F2 open-meteo liveness.** `run_open_meteo_pool` starts `health_file_loop` before the poller. The loop is its
   own task, so it keeps touching the alive file during a sync of up to about 35 minutes. The
@@ -145,23 +135,22 @@ before relying on this path (spec D16 and section 13.3).
     results stay in input order, and a zero limit is treated as one.
 - **F8 schedule arguments.** `json_payload` writes canonical JSON with sorted keys at every depth, as Python's
   `json.dumps(sort_keys=True)` does. `comparable()` compares the arguments as parsed JSON values, so key order
-  does not count as a change. Python and Rust seeders therefore stop rewriting each other's schedules.
+  does not count as a change, and re-seeding does not rewrite unchanged schedules.
 
 ## Replay
 
-`tests/replay.rs` is the offline determinism gate, the Rust side of `temporal/workflows/test_replay.py`. It
-needs no Temporal server. It reads the Python worker's recorded histories from
-`testdata/replay_fixtures/<WorkflowType>/<version>/<scenario>.json[.gz]`. These are copied unchanged from
-`temporal/workflows/replay_fixtures`, so the crate's tests run on their own. The copy has 143 histories: versions
+`tests/replay.rs` is the offline determinism gate. It needs no Temporal server. It replays the histories in
+`testdata/replay_fixtures/<WorkflowType>/<version>/<scenario>.json[.gz]`, which were recorded from the Python
+worker releases (see `testdata/replay_fixtures/README.md`). There are 143 histories: versions
 v1.1.26, v1.1.27 and v1.1.49 for every workflow, plus `src-e8c8659` for WatchStorm and the deployment smoke
-workflow. When the Python repo adds a version directory, copy it here as well.
+workflow.
 
 What it checks:
 
 - `fixture_tree_matches_registry`: the fixture tree, `REQUIRED_SCENARIOS` and the `all` registration name the
   same 13 workflow types. It also checks the version regex, that labels are unique, and that the first event
   starts the directory's workflow type.
-- `required_scenarios_are_retained_and_prove_their_path`: `REQUIRED_SCENARIOS` is copied from `test_replay.py`.
+- `required_scenarios_are_retained_and_prove_their_path`: `REQUIRED_SCENARIOS` is carried over from the Python gate.
   Every release keeps every required scenario, and each history contains the event types or scheduled
   activity names that prove its path.
 - `every_fixture_replays`: replays every history with the SDK's `WorkflowReplayer`. The workflows are
@@ -219,7 +208,7 @@ Not covered by fixtures (reasoned, not proven):
   Python's semaphore semantics, so it is the version expected to match.
 - A WatchStorm timer cancelled in a later task (`TimerCanceled`), and a timer-ID gap after an iteration whose
   wait was satisfied at once. No fixture records either case.
-- Continue-as-new with the handoff path under a real version change. `test_watch_storm_handoff.py` needs a
+- Continue-as-new with the handoff path under a real version change. The Python handoff test needed a
   server, and it has no Rust port.
 
 ## Known gaps and TODOs
@@ -229,12 +218,12 @@ Not covered by fixtures (reasoned, not proven):
   re-seed), the health probe, visibility listing, and signalling a missing watch. Running the spec 10.1
   scenarios against a server with fake activities, and porting the WatchStorm version-handoff test, are still
   open.
-- **Integration tests have not been run here.** This sandbox has no Temporal server and no Docker daemon, so
-  all four tests passed through their skip path. Run them against a dev server before relying on them.
+- **Integration tests** run in CI (`ci-rust.yml`, job `temporal`) against `deploy/temporal-dev.yml`. The job
+  fails if they take the skip path.
 - **`ScheduleKicker` ignores the `timeout` argument.** `radar-ingest` wraps the call in its own timeout.
 - **Spec section 13 items marked `[VERIFY-SDK]` are unverified.** These are `RetryPolicy` defaults, schedule run
   ID format, `AUTO_UPGRADE` behaviour, and heartbeat payload shapes.
 - **Spec D3 and D19.** The API routes watches to the alerts queue regardless of `USE_ISOLATED_TASK_QUEUES`.
   The worker does not detect a missing alerts pool. That check belongs in the API or the deployment.
-- **Spec D15.** APNS collapse IDs are truncated as in Python (kept for compatibility). Decide before cutover.
-- **Deferred:** OTLP tracing, binary entry point, pysteps and ecCodes smoke checks, and WASM (not applicable).
+- **Spec D15.** APNS collapse IDs are truncated as in Python (kept for compatibility).
+- **Deferred:** OTLP tracing.

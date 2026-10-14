@@ -1,5 +1,9 @@
 # Load test and bottlenecks, 2026-09-26
 
+> **Historical record.** Written against the Python backend, which was replaced by the Rust backend
+> (`rust/`, v2.0.0, 2026-10-14). Paths under `backend/`, `temporal/` and `tools/`, and the Caddy and
+> FastAPI tile-server, no longer exist; see [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current layout.
+
 Two in-cluster k6 runs of `load/k6-radar.js` via `load/k8s/k6-job.yaml`: 10 pods, 10 → 20 virtual users each, 11 minutes. The traffic mix is app sessions (manifest, forecast, alerts, nowcast, geocode, 2 FPS playback of a 3×3 z6 viewport) plus widget refreshes, across 15 US places. Each pod is its own client IP, so the per-IP API rate limit (20 rps, burst 60) is never the limit.
 
 ## Results

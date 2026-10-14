@@ -2,9 +2,9 @@
 
 MRMS and HRRR ingest activity bodies for radar-ng, as plain async functions. The crate has no Temporal
 types. The worker crate wraps these functions as activities and supplies the `ActivityInfo` and heartbeat
-sink. Replaces `backend/ingest_mrms/activities.py` and `backend/ingest_hrrr/activities.py`.
+sink.
 
-Source of truth: `specs/spec-ingest-mrms-hrrr.md`. Defect decisions: `docs/PLAN.md` (Python defects table).
+Source of truth: `docs/rust-migration/specs/spec-ingest-mrms-hrrr.md`. Defect decisions: `docs/rust-migration/PLAN.md` (Python defects table).
 
 ## Coverage
 
@@ -42,8 +42,7 @@ Crate root:
 - `Heartbeat` (`Arc<dyn Fn(serde_json::Value) + Send + Sync>`), `heartbeat::noop()`, `heartbeat::during`
   (async I/O), `heartbeat::blocking` (CPU work on `spawn_blocking`).
 - `ActivityInfo { workflow_id, run_id, activity_id, attempt }`, used for scratch directory names.
-- `bench_render_once(grib_path, out_dir) -> anyhow::Result<BenchReport>`, mirroring
-  `backend/scripts/bench_render_once.py`.
+- `bench_render_once(grib_path, out_dir) -> anyhow::Result<BenchReport>`, behind `radar render-once`.
 
 `mrms` activities:
 

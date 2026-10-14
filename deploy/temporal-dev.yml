@@ -1,15 +1,15 @@
-# Local-only Temporal dev stack for radar-ng workflow iteration.
+# Throwaway Temporal for the radar-worker integration tests (CI job `temporal` in ci-rust.yml).
 #
 # Usage:
-#   cd deploy && docker compose -f temporal-dev.yml up --build
-#   open http://localhost:8080            # Temporal Web UI
-#   temporal --address localhost:7233 workflow list
+#   docker compose -f deploy/temporal-dev.yml up -d postgres temporal
+#   cd rust && TEMPORAL_TEST_ADDRESS=localhost:7233 cargo test -p radar-worker --test integration
+#   docker compose -f deploy/temporal-dev.yml up -d temporal-ui   # optional Web UI at :8080
+#   docker compose -f deploy/temporal-dev.yml down -v
 #
-# Persists nothing past the volumes below. Brings up:
-#   - postgres:        backing store for Temporal (cleared by `down -v`)
-#   - temporal:        Temporal server bootstrapped via auto-setup
-#   - temporal-ui:     Web UI at :8080
-#   - radar-ng-worker: our worker, built from temporal/Dockerfile
+# Brings up:
+#   - postgres:     backing store for Temporal (cleared by `down -v`)
+#   - temporal:     Temporal server bootstrapped via auto-setup
+#   - temporal-ui:  Web UI at :8080
 
 services:
   postgres:
@@ -54,29 +54,5 @@ services:
     ports:
       - "8080:8080"
 
-  worker:
-    build:
-      context: ..
-      dockerfile: temporal/Dockerfile
-    image: radar-ng-temporal-worker:dev
-    container_name: radar-ng-worker
-    depends_on:
-      - temporal
-    environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_NAMESPACE=default
-      - TILE_DIR=/data/tiles
-      - STATE_DIR=/data/state
-      - PALETTES=classic
-      - BACKLOG_PER_CYCLE=1
-      - TEMPORAL_MAX_CONCURRENT_ACTIVITIES=2
-      - TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS=1
-      - MRMS_RENDER_WORKERS=1
-    volumes:
-      - tile-data:/data
-    # Temporal needs ~30s to be reachable on first boot — restart loop covers it
-    restart: on-failure
-
 volumes:
   pg-data:
-  tile-data:

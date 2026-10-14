@@ -12,7 +12,7 @@
 
   <!-- title block -->
   <text x="48" y="72" font-family="Georgia, 'Times New Roman', serif" font-size="22" fill="#211f1b">Temporal orchestration — the control plane</text>
-  <text x="48" y="94" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#5d574d">Schedules → workflows → activities on the radar-ng task queue · no cron anywhere · mobile reaches Temporal only through FastAPI</text>
+  <text x="48" y="94" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#5d574d">Schedules → workflows → activities on per-role task queues · no cron anywhere · mobile reaches Temporal only through the api</text>
 
   <!-- legend -->
   <circle cx="1120" cy="62" r="4" fill="#3a7bd5"/>
@@ -48,7 +48,7 @@
   <text x="510" y="183" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#211f1b">nowcast</text>
   <rect x="510" y="192" width="44" height="16" rx="8" fill="#c2603a" fill-opacity="0.12"/>
   <text x="532" y="204" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" font-weight="600" fill="#c2603a">2 min</text>
-  <text x="562" y="204" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#8c857a">pysteps S-PROG +60 m</text>
+  <text x="562" y="204" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#8c857a">LK + S-PROG +60 m</text>
 
   <rect x="713" y="162" width="202" height="54" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="713" y="164" width="3" height="50" rx="1.5" fill="#8a5cc2"/>
@@ -133,7 +133,7 @@
   <rect x="640" y="402" width="232" height="108" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="640" y="404" width="3" height="104" rx="1.5" fill="#8a5cc2"/>
   <text x="656" y="424" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">NowcastWorkflow</text>
-  <text x="656" y="442" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">pysteps S-PROG extrapolation</text>
+  <text x="656" y="442" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">LK + S-PROG extrapolation</text>
   <text x="656" y="460" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">single CPU-heavy activity</text>
   <text x="656" y="475" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">2 attempts · 300 s heartbeat</text>
 
@@ -190,13 +190,13 @@
 
   <!-- ================= ZONE C : WORKERS ================= -->
   <rect x="48" y="690" width="1102" height="170" rx="16" fill="#2e8b6f" fill-opacity="0.06" stroke="#2e8b6f" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 3"/>
-  <text x="68" y="716" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#2e8b6f">WORKERS · PYTHON 3.12 · TEMPORAL SDK</text>
+  <text x="68" y="716" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#2e8b6f">WORKERS · RUST · TEMPORAL SDK</text>
 
   <rect x="68" y="732" width="620" height="108" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="68" y="734" width="3" height="104" rx="1.5" fill="#2e8b6f"/>
-  <text x="84" y="756" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">radar-ng worker — temporal/worker.py</text>
+  <text x="84" y="756" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">radar-ng worker — radar worker --role</text>
   <text x="84" y="774" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">task queue radar-ng — every workflow + 20 activities, max 4 concurrent</text>
-  <text x="84" y="792" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">activities live in backend/: mrms_process_frame · hrrr_process_forecast_hour</text>
+  <text x="84" y="792" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">activities in rust/crates: mrms_process_frame · hrrr_process_forecast_hour</text>
   <text x="84" y="807" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">nowcast_run · tile_cleanup_sweep · fetch_nws_active_alerts · send_push_notification</text>
   <text x="84" y="822" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">SIGTERM → graceful drain (25 s) · worker versioning via build_id</text>
 
@@ -205,7 +205,7 @@
   <text x="896" y="756" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">open-meteo worker</text>
   <text x="896" y="774" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">queue radar-ng-open-meteo</text>
   <text x="896" y="792" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">separate pod — image carries</text>
-  <text x="896" y="807" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">the Swift open-meteo binary</text>
+  <text x="896" y="807" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">the open-meteo binary</text>
   <text x="896" y="822" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">writes the openmeteo PVC</text>
 
   <!-- worker seeds schedules (left margin loop) -->
@@ -257,14 +257,14 @@
 
   <rect x="1210" y="296" width="282" height="96" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="1210" y="298" width="3" height="92" rx="1.5" fill="#2e8b6f"/>
-  <text x="1226" y="320" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">backend/api — FastAPI /v1</text>
+  <text x="1226" y="320" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">radar api — /v1</text>
   <text x="1226" y="338" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">POST /v1/push-tokens</text>
   <text x="1226" y="353" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">POST /v1/watches</text>
   <text x="1226" y="368" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">GET · DELETE /v1/watches/{user}/{storm}</text>
 
   <line x1="1351" y1="392" x2="1351" y2="438" stroke="#8c857a" stroke-width="1.75" stroke-linecap="round" marker-end="url(#arrSec)"/>
   <rect x="1270" y="404" width="162" height="17" rx="8" fill="#ffffff" stroke="#eee6d8" stroke-width="1"/>
-  <text x="1351" y="416" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">temporalio.client.Client</text>
+  <text x="1351" y="416" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">temporalio-client (Rust)</text>
 
   <rect x="1210" y="442" width="282" height="76" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="1210" y="444" width="3" height="72" rx="1.5" fill="#8a5cc2"/>

@@ -1,15 +1,15 @@
 # radar-alerts
 
-Plain async implementations of the alert, lightning and storm-watch activities for the radar-ng Rust port, plus the
+Plain async implementations of the alert, lightning and storm-watch activities for radar-ng, plus the
 APNs and FCM push senders. The crate has no Temporal types. The worker crate wraps each function as an activity with
 the same name, retry policy and timeouts.
 
-Sources of truth: `specs/spec-ingest-aux.md` (sections 6, 10), `specs/spec-temporal.md` (sections 4.10 to 4.12 and 8),
-`specs/spec-shared.md` (sections 8 and 9), and `docs/PLAN.md` (Python defects table).
+Sources of truth: `docs/rust-migration/specs/spec-ingest-aux.md` (sections 6, 10), `docs/rust-migration/specs/spec-temporal.md` (sections 4.10 to 4.12 and 8),
+`docs/rust-migration/specs/spec-shared.md` (sections 8 and 9), and `docs/rust-migration/PLAN.md` (Python defects table).
 
 ## Coverage
 
-| Area | Module | Python origin |
+| Area | Module | Former Python module |
 |---|---|---|
 | Blitzortung websocket consumer, LZW decode, strike buffer, `lightning.json` writer | `lightning` | `backend/ingest_lightning/activities.py` |
 | NWS active alerts, seen-set state, watch matching | `alerts` | `backend/api/api/storm_watch_activities.py` |
@@ -50,7 +50,8 @@ matches the Python `ApplicationError(non_retryable=True)` split.
 | `tests/storm_watch.rs` | 5 | Synthetic radar grid (meta plus f32 `.bin`): sampling, same-frame suppression, out-of-grid, fill values. Change-detection threshold table and configured thresholds |
 
 Golden fixtures live in `testdata/`. They were generated from the original Python with
-`RADAR_NG_ROOT=<radar-ng checkout> <venv>/bin/python testdata/gen_golden.py`, run from the crate directory.
+`RADAR_NG_ROOT=<checkout> <venv>/bin/python testdata/gen_golden.py`, run from the crate directory, where
+`<checkout>` is a radar-ng checkout from before the Python removal (for example commit `5b3cb39`).
 `testdata/keys/` holds throwaway test keys. They protect nothing.
 
 ## Deviations from the Python behaviour
@@ -85,8 +86,8 @@ Golden fixtures live in `testdata/`. They were generated from the original Pytho
 
 ## Deferred and not verified
 
-- **Live services.** This environment cannot reach NOAA, Apple, Google or the Blitzortung hosts. Every external path is
-  tested against a local mock or fixture, not against the real service.
+- **Live services.** The tests never reach NOAA, Apple, Google or the Blitzortung hosts. Every external path is
+  tested against a local mock or fixture.
 - **APNs over HTTP/2 and TLS.** The mock uses `http://`, which runs HTTP/1.1. The h2 negotiation over TLS that APNs needs
   is untested.
 - **Temporal wiring.** `WatchSignaler` is implemented in the worker crate. The query and signal names must match the

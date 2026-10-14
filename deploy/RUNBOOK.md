@@ -1,142 +1,107 @@
-# radar-ng Rust runbook
+# radar-ng runbook
 
-How the Rust build reaches production and how to roll it back. Everything goes through Git: images
-are built by GitHub Actions, and the cluster changes only by commits to `mitchross/talos-argocd-proxmox`
-that Argo CD syncs. No `kubectl apply`, no hand-edited cluster state. `docs/rust-migration/PLAN.md`
-has the strategy.
+How a release reaches production and how to check it. Images are built by GitHub Actions; the cluster
+changes only through PRs to `mitchross/talos-argocd-proxmox` that Argo CD syncs. No `kubectl apply`, no
+hand-edited cluster state.
+
+Releases are forward-only. A bad release is fixed by a new release: merge the fix, let a new
+`vX.Y.Z` publish, bump the GitOps tag. The old Python images are not a fallback.
 
 ## 1. What ships
-
-The Rust images are drop-ins for the GHCR images the cluster already runs, under the same names:
 
 | GHCR image | `deploy/Dockerfile` target | Runs in (talos-argocd-proxmox `my-apps/personal-projects/radar-ng/`) |
 |---|---|---|
 | `radar-ng-temporal-worker` | `worker` | the five WorkerDeployments `radar-ng-worker-{mrms,nowcast,hrrr,aux,alerts}` (`temporal-workers/worker-pools.yaml`) |
 | `radar-ng-tile-server` | `api` | `deployment-tile-server.yaml` |
-| `radar-ng-open-meteo-worker` | `open-meteo` | `deployment-open-meteo.yaml` (serve container + `sync-worker` sidecar) |
+| `radar-ng-open-meteo-worker` | `open-meteo` | `deployment-open-meteo.yaml` (serve container and `sync-worker` sidecar) |
 
-Nothing else in the GitOps repo changes:
-- Env names and defaults are the same. Every variable the manifests set is read by Rust, except
-  `MRMS_RENDER_WORKERS` (meaningless in Rust) and `WATCH_RADIUS_KM` (20, equal to the Rust constant).
-- Same uids (1000; 999 for open-meteo), ports (8080; worker metrics 9464), probe files
-  (`/tmp/worker-alive`, `/tmp/temporal-healthy`). The worker image carries busybox `sh`, `find`, `test`
-  for the `sh -c "test $(find ...)"` exec probes.
-- The api proxies `/basemap/tiles/*` to the existing go-pmtiles `basemap` Service when no local
-  archive is mounted (`BASEMAP_TILES_UPSTREAM`, default `http://basemap:8081`), as Caddy did.
-- The aux pool keeps seeding Schedules (`SEED_SCHEDULES=1`); the Rust seeder writes the same
-  definitions with sorted-key args, so the Schedules don't churn.
+All three run the same `radar` binary. Ports: 8080 (api), 9464 (worker metrics). Users: 1000, and 999
+for open-meteo. Worker probes read `/tmp/worker-alive` and `/tmp/temporal-healthy`; the image carries
+busybox `sh`, `find` and `test` for the exec probes.
+
+The api serves `/basemap/tiles/*` from a local archive when `BASEMAP_PMTILES` exists, and otherwise
+proxies to `BASEMAP_TILES_UPSTREAM` (default `http://basemap:8081`). The cluster uses the proxy, with
+the go-pmtiles `basemap` Deployment in the GitOps repo.
 
 ## 2. Release path
 
-1. Merge the change to `radar-ng` `master`. `ci-rust.yml` must be green first: tests, clippy,
-   the offline replay gate, Temporal integration tests, the real-NOAA comparison against production
-   Python, and all three image builds with smoke runs.
-2. `ghcr-temporal-worker.yml`, `ghcr-tile-server.yml`, `ghcr-open-meteo-worker.yml` push the next
-   semver (`:vX.Y.Z`, `:sha-…`, `:latest`). The worker build runs the replay gate again inside the image build.
-3. Renovate opens the tag bump in `talos-argocd-proxmox` (or open it by hand: change the `image:`
-   tag and `@sha256` digest on the lines listed in section 1). Cluster CI validates it.
+1. Merge to `radar-ng` `master` with `ci-rust.yml` green: fmt, clippy, tests (including the offline
+   replay gate), Temporal integration tests, the live-NOAA check, and all three image builds with their
+   smoke runs.
+2. `ghcr-temporal-worker.yml`, `ghcr-tile-server.yml` and `ghcr-open-meteo-worker.yml` push the next
+   semver (`:vX.Y.Z`, never below v2.0.0), `:sha-…` and `:latest`. Each run prints the published
+   `tag@digest` in its summary. The worker image build runs the replay gate again.
+3. Bump the `image:` tag and `@sha256` digest in `talos-argocd-proxmox` by PR, on every line listed in
+   section 1 (Renovate may open it). Cluster CI validates it.
 4. Merge it. Argo CD syncs `my-apps-radar-ng`.
-   - Each worker pool runs `RadarDeploymentSmokeWorkflow` on the new build before the Temporal
-     Worker Controller promotes it (`rollout.gate`). A pool whose smoke fails stays on the old build.
-   - `tile-server` is a `Recreate` Deployment: a short gap in tile serving while the pod swaps.
+   - Each worker pool runs `RadarDeploymentSmokeWorkflow` on the new build before the Temporal Worker
+     Controller promotes it (`rollout.gate`). A pool whose smoke fails stays on its current build until
+     a fixed release replaces the candidate.
+   - `tile-server` is a `Recreate` Deployment: tile serving pauses briefly while the pod swaps.
 
-To go slower, bump one image per GitOps PR (workers first, then tile-server, then open-meteo), or edit
-the Renovate PR so one pool moves first (`aux`, then `mrms`).
+## 3. Checks after each bump
 
-Old workflow executions don't need to be kept. Executions pinned to the Python build either finish on
-the old pods during the controller's sunset (`scaledownDelay: 10m`) or are dropped with them; the next
-Schedule fire starts fresh on Rust. Long-lived `WatchStormWorkflow` runs are disabled in production
-(`DISABLE_WORKFLOW_ROUTES=1`), so nothing user-facing is lost.
-
-## 3. Check after each bump
-
-From any machine (the debug checks are HTTP and Temporal client calls, read-only):
+The debug checks are read-only HTTP and Temporal client calls and run from any machine:
 
 ```bash
 radar debug doctor --server https://radar.vanillax.me --temporal-address <temporal-frontend>:7233 --namespace radar-ng
-radar debug doctor --server https://radar.vanillax.me --skip-temporal   # HTTP checks only
+# without Temporal access
+radar debug doctor --server https://radar.vanillax.me --skip-temporal
 ```
 
-or the Grafana radar dashboard: MRMS frame age under 10 minutes, nowcast and HRRR publishing,
-`/api/health` 200, no pod restarts, Argo app Healthy.
+Or the Grafana radar dashboard: MRMS frame age under 10 minutes, nowcast and HRRR publishing,
+`/api/health` 200, no pod restarts, Argo app Healthy. [docs/debug-harness.md](../docs/debug-harness.md)
+explains each check.
 
-## 4. Rollback
+## 4. Temporal notes
 
-Revert the bump commit in `talos-argocd-proxmox` and let Argo sync. The Python images stay in GHCR
-(`radar-ng-temporal-worker:v1.1.50`, `radar-ng-tile-server:v1.1.27`,
-`radar-ng-open-meteo-worker:v1.1.11`). If Renovate would re-propose the Rust tag, close its PR or add
-an `ignoreVersions` rule for radar-ng in the Renovate config (also a GitOps commit).
+- Workflows are `PINNED`: a run stays on the build that started it. Old executions are disposable. Runs
+  pinned to a retired build either finish during the controller's `scaledownDelay` (10 min) or may be
+  terminated; the next Schedule fire starts fresh on the current build.
+- With `OverlapPolicy.SKIP`, one orphaned pinned run blocks every later fire of its Schedule. The
+  GitOps repo's `my-apps/personal-projects/radar-ng/RUNBOOK.md` covers finding and clearing orphaned
+  pinned executions and controller-ownership errors.
+- Long-lived `WatchStormWorkflow` runs are off in production (`DISABLE_WORKFLOW_ROUTES=1`).
+- Exactly one pool seeds Schedules (`aux`, `SEED_SCHEDULES=1`). The seeder writes canonical JSON with
+  sorted keys, so re-seeding does not churn unchanged Schedules.
 
 ## 5. Tile parity
 
-`radar parity` decodes every PNG of two tile roots and compares them. Both
-roots use the `TILE_DIR` layout (`<root>/<layer>/<palette>/<frame path>/<z>/<x>/<y>.png`), and
-every `(layer, palette, frame)` present on both sides is compared. It runs offline (no server,
-no Temporal) and decodes on all cores.
+`radar parity` decodes every PNG of two tile roots and compares them offline (no server, no Temporal),
+on all cores. Use it to compare two builds' output for the same frames, for example before and after a
+renderer change. The flags `--python-root` and `--rust-root` are historical names for the reference and
+the candidate root. Both roots use the `TILE_DIR` layout
+(`<root>/<layer>/<palette>/<frame path>/<z>/<x>/<y>.png`).
 
 ```bash
-# Against Python production (legacy RGBA tiles): default threshold, 10% differing pixels per frame
-radar parity --python-root /mnt/py-tiles --rust-root /mnt/rs-tiles
-# Against Python's indexed renderer: everything must match
-radar parity --python-root /mnt/py-indexed --rust-root /mnt/rs-tiles --exact
-# One layer and one frame (Z or +00:00), zooms 4 to 7, with manifests, as JSON
+# Same input, same renderer on both sides: everything must match
+radar parity --python-root /mnt/ref-tiles --rust-root /mnt/new-tiles --exact
+# One layer and frame, zooms 4 to 7, with manifests, as JSON
 radar parity --python-root A --rust-root B --layer radar --frame 2026-10-14T06:00:00Z \
-  --min-zoom 4 --max-zoom 7 --python-manifest /mnt/py-state --rust-manifest /mnt/rs-state --json
+  --min-zoom 4 --max-zoom 7 --python-manifest /mnt/ref-state --rust-manifest /mnt/new-state --json
 ```
 
-What is compared, per frame:
+Per frame it reports tiles on one side only (compared against a transparent tile, which is what a
+client gets for a 404), identical tiles and pixels, the largest channel delta, the kind of each
+differing pixel, palette indices when both tiles are indexed, and manifest differences when both
+manifests are given. Without `--exact` a frame fails when more than `--max-diff-pct` (default 10) of
+its pixels differ visibly. Exit status: 0 pass (warnings allowed), 1 a frame failed, 2 nothing to
+compare or a root could not be read.
 
-- Tile sets: tiles on one side only. A missing tile is compared against a fully transparent tile,
-  which is what a client gets for a 404.
-- Every tile decoded to RGBA, whether it is indexed or RGBA: identical tiles, percentage of
-  identical pixels, largest channel delta, and the kind of each differing pixel (`alpha_edge`:
-  transparent on one side only; `alpha_only`; `color`; `transparent_rgb_only`, which is invisible
-  and not counted).
-- Palette indices, when both tiles are indexed.
-- Manifests, when both are given (or `<root>/manifest.json` exists): frame lists, paths, palettes,
-  and frame and layer keys. Frame-list differences are timing and are reported only.
+For a one-frame spot check, `radar render-once <mrms.grib2.gz> <out>` renders one MRMS frame into
+`<out>/<palette>/bench/...` and prints timings.
 
-Reading the result:
+## 6. Build checks and base images
 
-- **Python legacy RGBA vs Rust (production today).** Expect about 92% identical pixels (bench:
-  92.1%; `radar parity` on the bench pyramid: 92.9% per palette) and a few extra Python tiles at
-  the edges (648 vs 585 on the bench). Most differing pixels are colour steps at class boundaries
-  and coverage edges, because legacy samples colour before classifying. The default
-  `--max-diff-pct 10` passes this. A frame over 10% is `✗`, and a frame within it is `⚠` with
-  its numbers. The 10% was calibrated on the synthetic bench field (7.1% to 7.2% per palette).
-  Real MRMS frames have more class boundaries, so record the per-frame numbers of the first real
-  run (`--json`) and adjust `--max-diff-pct` if frames sit close to 10%. The threshold is a share
-  of all tile pixels, so a frame that is mostly transparent can hide a local defect: read the
-  `max Δ` and `differing_tiles` (in `--json`) too.
-- **Python indexed vs Rust.** Use `--exact`. Same tile sets, same palette indices, same RGBA, and
-  matching manifest entries. Any difference fails.
-- Exit status: 0 pass (warnings allowed), 1 a frame failed, 2 no frame present on both sides, or a
-  root could not be read.
-
-For a one-frame spot check, `radar render-once <grib> <out>` writes `<out>/<palette>/bench/...`.
-Put it and the Python render of the same GRIB (`bench/README.md`) under
-`<root>/<layer>/<palette>/<frame>/` with the same frame name (symlinks are followed), then run
-`radar parity` on the two roots.
-
-## 6. Build checks
-
-CI runs these on every PR (`ci-rust.yml`, job `images`): the glibc floor (the open-meteo target puts a
+CI (`ci-rust.yml`, job `images`) checks on every PR: the glibc floor (the open-meteo target puts a
 bookworm-built binary on the Open-Meteo base, so `radar --version` must run there), image users
-(`1000:1000`, `999:999`), the api smoke run, and the Open-Meteo image contract. Locally:
-`rust/scripts/preflight.sh --only docker`.
+(`1000:1000`, `999:999`), the replay-gate label, the worker probe helpers, an api smoke run on empty
+data, and the Open-Meteo image contract.
 
-`deploy/pin-images.sh` pins every base image in `deploy/` to its current digest; commit the diff.
+`deploy/pin-images.sh` pins the third-party base images in `deploy/` to their current digests
+(`--check` only prints). Review and commit the diff.
 
 ## 7. Local stack
 
-`deploy/docker-compose.yml` runs the whole thing on one machine (Temporal, workers, api,
-open-meteo). It is for development and self-hosting, not the cluster.
-
-## 8. Decommissioning Python
-
-After the Rust images have run in production for a while: delete `backend/api/` (Python api, Caddyfile,
-start.sh), the Python worker code and Dockerfiles under `temporal/` and `backend/`, `ci-backend.yml`'s
-Python jobs, the Gitea `build-*.yml` workflows, and `deploy/k8s` + `deploy/docker-compose.yml`. Keep
-`rust/assets/basemap/styles/` and `fetch-glyphs.sh` (the Rust image copies them) and
-`temporal/workflows/replay_fixtures/` only as long as the replay gate is wanted. In the GitOps repo,
-`deployment-basemap.yaml` can go once the api mounts the `pmtiles` volume and sets `BASEMAP_PMTILES`.
+`deploy/docker-compose.yml` runs the whole pipeline on one machine (Temporal, workers, api,
+open-meteo). It is for development and self-hosting, not the cluster. See [README.md](README.md).

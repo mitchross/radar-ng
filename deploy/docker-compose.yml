@@ -1,16 +1,15 @@
-# radar-ng single-node quick start, Rust build of the production topology.
+# radar-ng single-node stack.
 #
-# Mirrors the production TemporalWorkerDeployments: one legacy worker on task queue `radar-ng`
-# (every workflow, Schedules on radar-ng) plus the open-meteo worker. One radar image
-# (deploy/Dockerfile) runs the api and the worker; the role is the command.
-#
-# Per-role isolated queues are a documented future option and are commented out at the bottom.
+# One `legacy` worker on task queue `radar-ng` (every workflow, Schedules on radar-ng) plus the
+# open-meteo worker. One radar image (deploy/Dockerfile) runs the api and the worker; the role is
+# the command. Production splits the worker into five role pools on isolated queues; the commented
+# block at the bottom shows that layout.
 #
 # Usage (from deploy/, the directory this file lives in):
 #   cp .env.example .env              # at minimum: NWS_USER_AGENT, BASEMAP_PMTILES_URL
 #   docker compose run --rm basemap-bootstrap   # one-shot, ~1-2 GB range download to basemap.pmtiles.partial
 #   docker compose run --rm basemap-publish     # renames the download into place
-#   docker compose build api                    # radar image first: open-meteo-worker needs it
+#   docker compose build api                    # radar image first: `worker` runs it without building
 #   docker compose up -d --build
 #
 #   curl http://localhost:8080/api/livez
@@ -36,8 +35,8 @@ x-temporal-env: &temporal-env
   TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-temporal:7233}
   TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
 
-# Tunables for the worker. Lab-sized defaults; production values are in
-# k8s/configmap-temporal-config.yaml.
+# Tunables for the worker. Lab-sized defaults; production values are in the talos-argocd-proxmox
+# radar-ng manifests (temporal-workers/configmap-temporal-config.yaml).
 x-worker-env: &worker-env
   <<: *temporal-env
   TILE_DIR: /data/tiles
@@ -138,9 +137,8 @@ services:
     restart: unless-stopped
 
   # --- Volume ownership ------------------------------------------------------
-  # Named volumes are created root-owned. The Python worker ran as root and could write them;
-  # the Rust images run as uid 1000 (open-meteo: 999). This one-shot chowns the volumes before
-  # anything else starts.
+  # Named volumes are created root-owned; the images run as uid 1000 (open-meteo: 999). This
+  # one-shot chowns the volumes before anything else starts.
   volume-init:
     image: busybox:1.36-musl
     user: "0:0"
@@ -157,8 +155,7 @@ services:
     restart: "no"
 
   # --- Workers ---------------------------------------------------------------
-  # Production legacy role: all workflows on radar-ng. In the legacy model this worker also
-  # seeds the Schedules at boot. One seeder only, so leave SEED_SCHEDULES=1 on this service alone.
+  # Legacy role: all workflows on radar-ng. This worker also seeds the Schedules at boot. One seeder only, so leave SEED_SCHEDULES=1 on this service alone.
   worker:
     image: radar-ng-radar:local
     pull_policy: never
@@ -282,12 +279,11 @@ services:
       - TEMPORAL_ADDRESS=${TEMPORAL_ADDRESS:-temporal:7233}
       - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
       # WatchStormWorkflow start queue. Legacy runs every workflow on radar-ng, so the watch
-      # must start there (see k8s/configmap-temporal-config.yaml).
+      # must start there (the code default, radar-ng-alerts, is for isolated queues).
       - TEMPORAL_ALERTS_TASK_QUEUE=radar-ng
       - OPEN_METEO_BASE=${OPEN_METEO_BASE:-http://open-meteo:8080/v1/forecast}
       - MRMS_MAX_AGE_S=${MRMS_MAX_AGE_S:-600}
-      # Code default is 900 (radar-api/src/config.rs). The old compose value was 300. Keep the
-      # code default unless a measured reason says otherwise (RUNBOOK.md, "Config drift").
+      # Code default is 900 (radar-api/src/config.rs).
       - FORECAST_TTL_S=${FORECAST_TTL_S:-900}
       - BASEMAP_PMTILES=/basemap/basemap.pmtiles
     volumes:
@@ -306,11 +302,10 @@ services:
     logging: *default-logging
     restart: unless-stopped
 
-  # --- Optional: per-role isolated queues (future, NOT the default) -----------
-  # Enable only after the legacy cutover is complete and stable. Set USE_ISOLATED_TASK_QUEUES=1
-  # on the worker and api, then replace `worker` with one service per role. Each polls its
-  # default isolated queue (radar-ng-<role>), and the seeder rewrites every Schedule to its
-  # declared queue. RUNBOOK.md section 9 has the procedure.
+  # --- Optional: per-role isolated queues (the production layout) -----------
+  # Set USE_ISOLATED_TASK_QUEUES=1 on the workers, drop the api's TEMPORAL_ALERTS_TASK_QUEUE
+  # override (default radar-ng-alerts), then replace `worker` with one service per role. Each polls its default isolated
+  # queue (radar-ng-<role>), and the seeder rewrites every Schedule to its declared queue.
   #
   # mrms:
   #   image: radar-ng-radar:local
