@@ -220,6 +220,13 @@ export async function fetchMapAlerts(serverUrl: string, signal?: AbortSignal): P
   return res.json();
 }
 
+/** SPC categorical convective outlook for `day` (1-3); SPC's own fill and stroke colors per area. */
+export async function fetchOutlook(serverUrl: string, day: 1 | 2 | 3, signal?: AbortSignal): Promise<GeoJSON.FeatureCollection> {
+  const res = await fetchWithTimeout(`${serverUrl}/api/outlooks?day=${day}`, {}, signal);
+  if (!res.ok) throw new Error(`outlook ${res.status}`);
+  return res.json();
+}
+
 /** Optional LLM "what / what to do" for an NWS alert; null on any failure, never throws. */
 export async function explainAlert(
   serverUrl: string,
