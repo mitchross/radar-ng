@@ -20,6 +20,7 @@ First-party container images publish to `ghcr.io/mitchross/radar-ng-{tile-server
 - [Tuning](https://github.com/mitchross/radar-ng/blob/master/docs/tuning.md): make it faster / cheaper / fresher, knob by knob.
 - [Running the app](https://github.com/mitchross/radar-ng/blob/master/docs/running-the-app.md): Expo build, device, CarPlay, Apple Watch.
 - [Rust backend](https://github.com/mitchross/radar-ng/blob/master/rust/README.md): crates, build, tests, CI.
+- [Rust migration handoff](https://github.com/mitchross/radar-ng/blob/master/docs/rust-migration/HANDOFF.md): what changed in the Python → Rust move, where things live, release rules, gotchas.
 - [Debugging a live stack](https://github.com/mitchross/radar-ng/blob/master/docs/debug-harness.md): `radar debug` checks.
 - [Releasing](https://github.com/mitchross/radar-ng/blob/master/docs/releasing.md): image tags and release flow.
 - [Contributing](https://github.com/mitchross/radar-ng/blob/master/CONTRIBUTING.md): dev setup, verification, conventions.
