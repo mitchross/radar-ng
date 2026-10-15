@@ -81,6 +81,8 @@ pub struct Config {
     pub nws_alert_detail_base: String,
     /// `NWS_USER_AGENT`. Default `(radar-ng, admin@example.com)` as in the code.
     pub nws_user_agent: String,
+    /// `SPC_OUTLOOK_BASE`. Default `https://www.spc.noaa.gov/products/outlook`.
+    pub spc_outlook_base: String,
     /// `ALERTS_TTL_S`. Default 60.
     pub alerts_ttl_s: u64,
     /// `ALERTS_CACHE_MAX_ENTRIES`. Default 1024.
@@ -155,6 +157,10 @@ impl Config {
             briefing_ttl_s: pos_u64("BRIEFING_TTL_S", 600)?,
             llm_breaker_failures: pos_u64("LLM_BREAKER_FAILURES", 3)? as u32,
             llm_breaker_cooldown_s: pos_u64("LLM_BREAKER_COOLDOWN_S", 300)?,
+            spc_outlook_base: str_var(
+                "SPC_OUTLOOK_BASE",
+                "https://www.spc.noaa.gov/products/outlook",
+            ),
             nws_point_alerts_url: str_var(
                 "NWS_POINT_ALERTS_URL",
                 "https://api.weather.gov/alerts/active",
@@ -219,6 +225,7 @@ impl Config {
             llm_breaker_failures: 3,
             llm_breaker_cooldown_s: 300,
             nws_point_alerts_url: "https://api.weather.gov/alerts/active".into(),
+            spc_outlook_base: "https://www.spc.noaa.gov/products/outlook".into(),
             nws_alert_detail_base: "https://api.weather.gov/alerts".into(),
             nws_user_agent: "(radar-ng, admin@example.com)".into(),
             alerts_ttl_s: 60,

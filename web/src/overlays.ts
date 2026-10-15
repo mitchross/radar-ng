@@ -1,12 +1,12 @@
 /**
- * Vector overlays drawn above the radar: NWS warning polygons, tracked storm
- * cells, lightning and tropical cyclones. Each keeps its last payload so a map
+ * Vector overlays drawn above the radar: SPC severe outlook areas, NWS warning
+ * polygons, tracked storm cells, lightning and tropical cyclones. Each keeps its last payload so a map
  * style switch re-adds it without a refetch.
  */
 import type { Feature, FeatureCollection } from "geojson";
 import type { GeoJSONSource, Map as MLMap, MapGeoJSONFeature } from "maplibre-gl";
 
-export type OverlayId = "warnings" | "storms" | "lightning" | "tropical";
+export type OverlayId = "outlook" | "warnings" | "storms" | "lightning" | "tropical";
 type FC = FeatureCollection;
 
 const FONT = ["Noto Sans Regular"];
@@ -16,6 +16,7 @@ const TRACK_MINUTES = [15, 30, 45, 60];
 const MIN_TRACK_CONFIDENCE = 0.4;
 
 export const OVERLAYS: { id: OverlayId; name: string; hint: string; refreshMs: number }[] = [
+  { id: "outlook", name: "Severe outlook", hint: "SPC day-1 thunderstorm risk areas", refreshMs: 10 * 60_000 },
   { id: "warnings", name: "Warnings", hint: "NWS storm-based warning polygons", refreshMs: 60_000 },
   { id: "storms", name: "Storm tracks", hint: "Tracked cells with 60-minute paths", refreshMs: 60_000 },
   { id: "lightning", name: "Lightning", hint: "Strikes in the last 15 minutes", refreshMs: 30_000 },
@@ -163,6 +164,7 @@ export const compass = (deg: number) => ["N", "NE", "E", "SE", "S", "SW", "W", "
 // ---------- map wiring ----------
 
 const SOURCES: Record<OverlayId, string[]> = {
+  outlook: ["ov-outlook"],
   warnings: ["ov-warnings"],
   storms: ["ov-storm-past", "ov-storm-tracks", "ov-storm-ticks", "ov-storm-cells"],
   lightning: ["ov-lightning"],
@@ -184,6 +186,9 @@ export class Overlays {
     const m = this.map;
     const vis = (id: OverlayId) => (this.enabled.has(id) ? "visible" : "none") as "visible" | "none";
 
+    // SPC ships its own category colors; under the warnings, which are more urgent.
+    m.addLayer({ id: "ov-outlook-fill", type: "fill", source: "ov-outlook", layout: { visibility: vis("outlook") }, paint: { "fill-color": ["coalesce", ["get", "fill"], "#c1e9c1"] as never, "fill-opacity": 0.28 } });
+    m.addLayer({ id: "ov-outlook-line", type: "line", source: "ov-outlook", layout: { visibility: vis("outlook") }, paint: { "line-color": ["coalesce", ["get", "stroke"], "#55bb55"] as never, "line-width": 1.5 } });
     m.addLayer({ id: "ov-warnings-fill", type: "fill", source: "ov-warnings", layout: { visibility: vis("warnings") }, paint: { "fill-color": warningColor, "fill-opacity": 0.14 } });
     m.addLayer({ id: "ov-warnings-line", type: "line", source: "ov-warnings", layout: { visibility: vis("warnings") }, paint: { "line-color": warningColor, "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1.5, 9, 3] } });
 
@@ -217,6 +222,7 @@ export class Overlays {
     if (this.enabled.has("tropical")) ids.push("ov-tropical-position", "ov-tropical-points");
     if (this.enabled.has("storms")) ids.push("ov-storm-cells");
     if (this.enabled.has("warnings")) ids.push("ov-warnings-fill");
+    if (this.enabled.has("outlook")) ids.push("ov-outlook-fill");
     return ids.filter((id) => this.map.getLayer(id));
   }
 
@@ -249,7 +255,7 @@ export class Overlays {
   }
 
   async refresh(id: OverlayId) {
-    const url = { warnings: "/api/alerts/map", storms: "/api/storms", lightning: "/api/lightning", tropical: "/api/tropical" }[id];
+    const url = { outlook: "/api/outlooks?day=1", warnings: "/api/alerts/map", storms: "/api/storms", lightning: "/api/lightning", tropical: "/api/tropical" }[id];
     let fc: FC;
     try {
       const res = await fetch(url);
@@ -304,6 +310,9 @@ export function describeFeature(f: MapGeoJSONFeature, cells: StormCell[]): strin
   if (f.layer.id.startsWith("ov-warnings")) {
     const color = WARNING_COLORS.find(([e]) => e === p.event)?.[1] ?? "#9aa4be";
     return `<div class="readout"><b style="color:${color}">${esc(p.event).toUpperCase()}</b><div class="v">${esc(p.areaDesc).split(";").slice(0, 3).join(", ")}</div><small>${p.ends || p.expires ? `Until ${esc(until(p.ends ?? p.expires))}` : esc(p.severity)}</small></div>`;
+  }
+  if (f.layer.id === "ov-outlook-fill") {
+    return `<div class="readout"><b style="color:${esc(p.stroke)}">SEVERE OUTLOOK · ${esc(p.label)}</b><div class="v">${esc(p.name)}</div><small>Today · until ${esc(until(p.expire))}</small></div>`;
   }
   if (f.layer.id === "ov-tropical-position") {
     const cat = p.category ? `Category ${p.category} hurricane` : esc(p.classification);

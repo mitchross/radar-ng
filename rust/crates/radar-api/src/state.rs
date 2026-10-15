@@ -128,6 +128,8 @@ pub struct Inner {
     pub nowcast_cache: Cache<(String, String, String), Arc<Value>>,
     /// NWS alert bodies by 3-dp point key, plus the `__map__` key.
     pub alerts_cache: Cache<String, Arc<Value>>,
+    /// Encoded SPC outlook responses by day (1..=3).
+    pub outlook_cache: Cache<i64, Bytes>,
     /// Geocoder search results by `query|limit`.
     pub geocode_cache: Cache<String, Arc<Value>>,
     /// Reverse-geocode results by 3-dp point.
@@ -210,6 +212,10 @@ impl AppState {
             alerts_cache: Cache::builder()
                 .max_capacity(config.alerts_cache_max_entries)
                 .time_to_live(ttl(config.alerts_ttl_s))
+                .build(),
+            outlook_cache: Cache::builder()
+                .max_capacity(3)
+                .time_to_live(ttl(crate::outlooks::OUTLOOK_TTL_S))
                 .build(),
             geocode_cache: Cache::builder()
                 .max_capacity(config.geocode_cache_max_entries)
