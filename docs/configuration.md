@@ -172,8 +172,12 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `OPEN_METEO_BASE` | `http://open-meteo:8080/v1/forecast` | Forecast upstream; default is the bundled self-hosted Open-Meteo. |
 | `MRMS_MAX_AGE_S` | `600` | Radar age (s) past which `/api/health` reports `degraded`. |
 | `FORECAST_TTL_S` | `900` | In-process forecast response cache TTL (s); the cluster sets 300. |
-| `FORECAST_CACHE_MAX_ENTRIES` | `512` | Bound for the in-process point-forecast cache. |
-| `WIND_CACHE_MAX_ENTRIES` | `48` | Bound for decoded wind-grid cache entries. |
+| `FORECAST_CACHE_MAX_BYTES` | `67108864` (64 MiB) | Byte budget for cached forecast bodies (replaces `FORECAST_CACHE_MAX_ENTRIES`). |
+| `WIND_CACHE_MAX_BYTES` | `33554432` (32 MiB) | Byte budget for cached wind-field bodies (replaces `WIND_CACHE_MAX_ENTRIES`). |
+| `NOWCAST_POINT_CACHE_MAX_BYTES` | `16777216` (16 MiB) | Byte budget for cached nowcast point bodies. |
+| `ALERTS_CACHE_MAX_BYTES` | `16777216` (16 MiB) | Byte budget for point-to-zone lookups and direct point alert bodies. |
+| `GEOCODE_CACHE_MAX_BYTES` | `8388608` (8 MiB) | Byte budget for each geocode cache (forward, reverse). |
+| `NWS_POINTS_URL` | `https://api.weather.gov/points` | NWS point-to-zone lookup used to match zone alerts. |
 | `API_RATE_LIMIT_RPS` | `20` | Per-client token refill rate for API routes. |
 | `API_RATE_LIMIT_BURST` | `60` | Per-client API token bucket capacity. |
 | `DISABLE_WORKFLOW_ROUTES` | `0` | Disable watch/push mutation routes until an identity issuer and signing key are configured. |

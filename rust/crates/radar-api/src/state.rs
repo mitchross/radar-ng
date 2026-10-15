@@ -3,8 +3,10 @@
 //!
 //! Every cache is in-process and per replica, as in Python (spec 11). TTL caches use `moka` with a
 //! cache-wide time-to-live (entries expire `ttl` after insertion, and a hit does not extend it,
-//! matching the Python `(insert_time, body)` tuples). The manifest and skill snapshots are single
-//! entries behind a `Mutex`, and no lock is ever held across an `.await`.
+//! matching the Python `(insert_time, body)` tuples). Response caches hold the encoded body and
+//! are bounded by bytes. Caches filled from an upstream are `moka::future` caches, so concurrent
+//! misses for one key make one upstream call. The manifest and skill snapshots are single entries
+//! behind a `Mutex`, and no lock is ever held across an `.await`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -13,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
+use moka::future::Cache as AsyncCache;
 use moka::sync::Cache;
 use radar_core::nowcast_skill::SkillConfig;
 use radar_core::push_tokens::PushTokenStore;
@@ -20,6 +23,7 @@ use radar_storms::StormConfig;
 use serde_json::Value;
 use tokio::sync::{Mutex as AsyncMutex, Semaphore, watch};
 
+use crate::alerts::{AlertFeed, PointZones, ZONES_TTL};
 use crate::client_ip::TrustedProxies;
 use crate::config::Config;
 use crate::metrics::Metrics;
@@ -118,22 +122,26 @@ pub struct Inner {
     pub manifest: Mutex<Option<(Instant, Arc<ManifestSnapshot>)>>,
     /// Last successfully read manifest, served when a read fails.
     pub manifest_last_good: Mutex<Option<Arc<Value>>>,
-    /// Single-entry skill summary with its expiry.
-    pub skill: Mutex<Option<(Instant, Arc<Value>)>>,
+    /// Single-entry skill summary, re-read only when the skill log changes.
+    pub skill: Mutex<Option<crate::nowcast::SkillCache>>,
     /// Open-Meteo bodies by rounded cell.
-    pub forecast_cache: Cache<String, Arc<Value>>,
+    pub forecast_cache: AsyncCache<String, Bytes>,
     /// Wind-field responses by resolved timestamp (TTL 300 s).
-    pub wind_cache: Cache<String, Arc<Value>>,
+    pub wind_cache: Cache<String, Bytes>,
     /// Nowcast point bodies (without `skill`) by `(run_id, lat3, lon3)`. No TTL.
-    pub nowcast_cache: Cache<(String, String, String), Arc<Value>>,
-    /// NWS alert bodies by 3-dp point key, plus the `__map__` key.
-    pub alerts_cache: Cache<String, Arc<Value>>,
+    pub nowcast_cache: Cache<(String, String, String), Bytes>,
+    /// The national NWS alert feed, one entry (TTL `ALERTS_TTL_S`).
+    pub alert_feed: AsyncCache<(), Arc<AlertFeed>>,
+    /// NWS zones by 3-dp point key (TTL one day).
+    pub alert_zones: AsyncCache<String, Arc<PointZones>>,
+    /// Direct `?point=` alert bodies by 3-dp point key, for points without zones.
+    pub alerts_cache: AsyncCache<String, Bytes>,
     /// Encoded SPC outlook responses by day (1..=3).
     pub outlook_cache: Cache<i64, Bytes>,
     /// Geocoder search results by `query|limit`.
-    pub geocode_cache: Cache<String, Arc<Value>>,
+    pub geocode_cache: Cache<String, Bytes>,
     /// Reverse-geocode results by 3-dp point.
-    pub reverse_cache: Cache<String, Arc<Value>>,
+    pub reverse_cache: Cache<String, Bytes>,
     /// Briefing and explainer bodies (TTL `BRIEFING_TTL_S`, max 512).
     pub briefing_cache: Cache<String, Arc<Value>>,
     /// The LLM breaker.
@@ -151,6 +159,12 @@ pub struct Inner {
     pub pmtiles: AsyncMutex<Option<crate::basemap::OpenArchive>>,
     /// SQLite push-token store under `STATE_DIR`.
     pub push_tokens: PushTokenStore,
+}
+
+/// A moka weight in bytes, saturating at `u32::MAX`.
+#[must_use]
+pub fn weight(bytes: usize) -> u32 {
+    u32::try_from(bytes).unwrap_or(u32::MAX)
 }
 
 impl AppState {
@@ -180,9 +194,7 @@ impl AppState {
         let ttl = |secs: u64| Duration::from_secs(secs);
         let imagery_cache = Cache::builder()
             .max_capacity(config.imagery_cache_max_bytes)
-            .weigher(|_k: &(u8, u64, u64), v: &CachedImagery| {
-                u32::try_from(v.body.len()).unwrap_or(u32::MAX)
-            })
+            .weigher(|_k: &(u8, u64, u64), v: &CachedImagery| weight(v.body.len()))
             .time_to_live(Duration::from_secs(604_800))
             .build();
         let inner = Inner {
@@ -198,19 +210,34 @@ impl AppState {
             manifest: Mutex::new(None),
             manifest_last_good: Mutex::new(None),
             skill: Mutex::new(None),
-            forecast_cache: Cache::builder()
-                .max_capacity(config.forecast_cache_max_entries)
+            forecast_cache: AsyncCache::builder()
+                .max_capacity(config.forecast_cache_max_bytes)
+                .weigher(|k: &String, v: &Bytes| weight(k.len() + v.len()))
                 .time_to_live(ttl(config.forecast_ttl_s))
                 .build(),
             wind_cache: Cache::builder()
-                .max_capacity(config.wind_cache_max_entries)
+                .max_capacity(config.wind_cache_max_bytes)
+                .weigher(|k: &String, v: &Bytes| weight(k.len() + v.len()))
                 .time_to_live(ttl(300))
                 .build(),
             nowcast_cache: Cache::builder()
-                .max_capacity(config.nowcast_point_cache_max_entries)
+                .max_capacity(config.nowcast_point_cache_max_bytes)
+                .weigher(|k: &(String, String, String), v: &Bytes| {
+                    weight(k.0.len() + k.1.len() + k.2.len() + v.len())
+                })
                 .build(),
-            alerts_cache: Cache::builder()
-                .max_capacity(config.alerts_cache_max_entries)
+            alert_feed: AsyncCache::builder()
+                .max_capacity(1)
+                .time_to_live(ttl(config.alerts_ttl_s))
+                .build(),
+            alert_zones: AsyncCache::builder()
+                .max_capacity(config.alerts_cache_max_bytes)
+                .weigher(|k: &String, v: &Arc<PointZones>| weight(k.len() + v.weight()))
+                .time_to_live(ZONES_TTL)
+                .build(),
+            alerts_cache: AsyncCache::builder()
+                .max_capacity(config.alerts_cache_max_bytes)
+                .weigher(|k: &String, v: &Bytes| weight(k.len() + v.len()))
                 .time_to_live(ttl(config.alerts_ttl_s))
                 .build(),
             outlook_cache: Cache::builder()
@@ -218,11 +245,13 @@ impl AppState {
                 .time_to_live(ttl(crate::outlooks::OUTLOOK_TTL_S))
                 .build(),
             geocode_cache: Cache::builder()
-                .max_capacity(config.geocode_cache_max_entries)
+                .max_capacity(config.geocode_cache_max_bytes)
+                .weigher(|k: &String, v: &Bytes| weight(k.len() + v.len()))
                 .time_to_live(ttl(config.geocode_ttl_s))
                 .build(),
             reverse_cache: Cache::builder()
-                .max_capacity(config.geocode_cache_max_entries)
+                .max_capacity(config.geocode_cache_max_bytes)
+                .weigher(|k: &String, v: &Bytes| weight(k.len() + v.len()))
                 .time_to_live(ttl(config.geocode_ttl_s))
                 .build(),
             briefing_cache: Cache::builder()
@@ -254,6 +283,28 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn response_caches_are_bounded_by_bytes_not_entries() {
+        let dir = std::env::temp_dir();
+        let mut config = Config::defaults_for(dir.clone(), dir.clone(), dir);
+        config.geocode_cache_max_bytes = 10_000;
+        let state = AppState::new(config).expect("state");
+        for i in 0..40 {
+            state
+                .geocode_cache
+                .insert(format!("q{i}"), Bytes::from(vec![b'x'; 1000]));
+        }
+        state.geocode_cache.run_pending_tasks();
+        assert!(state.geocode_cache.weighted_size() <= 10_000);
+        assert!(state.geocode_cache.entry_count() < 10);
+        // One body larger than the whole budget is not kept.
+        state
+            .geocode_cache
+            .insert("big".into(), Bytes::from(vec![b'x'; 20_000]));
+        state.geocode_cache.run_pending_tasks();
+        assert!(state.geocode_cache.get("big").is_none());
+    }
 
     #[test]
     fn breaker_opens_at_threshold_and_resets_count() {

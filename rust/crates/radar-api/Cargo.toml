@@ -10,13 +10,14 @@ description = "radar-ng tile API: axum replacement for Caddy + FastAPI + go-pmti
 radar-types.workspace = true
 radar-core.workspace = true
 radar-storms.workspace = true
+radar-alerts.workspace = true
 
 anyhow.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 axum.workspace = true
-tower-http = { workspace = true, features = ["fs", "trace", "set-header"] }
+tower-http = { workspace = true, features = ["fs", "trace", "set-header", "compression-gzip", "compression-br"] }
 tower.workspace = true
 moka.workspace = true
 hmac.workspace = true
@@ -40,4 +41,6 @@ percent-encoding = "2"
 
 [dev-dependencies]
 tempfile.workspace = true
+futures.workspace = true
+flate2.workspace = true
 http-body-util = "0.1"

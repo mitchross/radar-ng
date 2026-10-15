@@ -1,22 +1,21 @@
-//! Location endpoints that keep clients talking only to this server (spec 5.15 to 5.18, 8).
+//! Location endpoints that keep clients talking only to this server (spec 5.17, 5.18, 8). The
+//! alert endpoints are in `alerts`.
 //!
-//! - `GET /api/alerts`: NWS active alerts for a point, passed through.
-//! - `GET /api/alerts/map`: storm-based alert polygons, slimmed.
 //! - `GET /api/geocode` and `GET /api/reverse-geocode`: the self-hosted geocoder when
 //!   `GEOCODER_URL` is set, otherwise Photon. Neither set means 503 with no upstream call.
 //!
 //! Upstream failures are `502 {"error":"upstream_unavailable"}` with `no-store`, never a cached or
-//! empty body. An empty alert list must only ever mean that NWS said there are none.
+//! empty body.
 //!
 //! Defect D8 fix: a Photon `osm_id` that is not an integer drops that feature. Python raised
 //! `ValueError` and answered 500.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::State;
 use axum::http::{StatusCode, Uri};
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
+use bytes::Bytes;
 use radar_core::pycompat::{float_repr, is_falsy, py_int, py_str};
 use radar_core::time::round_digits;
 use serde_json::{Map, Value, json};
@@ -40,11 +39,6 @@ const SETTLEMENTS: [&str; 10] = [
     "locality",
 ];
 
-/// Properties kept on `/api/alerts/map` features (spec 5.16).
-const MAP_FIELDS: [&str; 9] = [
-    "id", "event", "severity", "urgency", "headline", "sent", "expires", "ends", "areaDesc",
-];
-
 /// Cache key for a point: `"<round(lat,3)>,<round(lon,3)>"` with Python float repr.
 #[must_use]
 pub fn point_key(lat: f64, lon: f64) -> String {
@@ -59,13 +53,12 @@ fn in_range(lat: f64, lon: f64) -> bool {
     (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon)
 }
 
-fn ok_json(body: &Value, max_age: u64) -> Response {
-    respond::json(
+fn ok_json(body: Bytes, max_age: u64) -> Response {
+    respond::json_bytes(
         StatusCode::OK,
         body,
         Some(&respond::public_max_age(max_age)),
     )
-    .into_response()
 }
 
 fn not_configured() -> Response {
@@ -82,119 +75,6 @@ fn geocoding_configured(state: &AppState) -> bool {
 
 fn upstream_timeout(state: &AppState, factor: f64) -> Duration {
     Duration::from_secs_f64((state.config.places_timeout_s * factor).max(0.001))
-}
-
-/// GET the NWS point or map endpoint. `Some(body)` only for a JSON object with a `features` list.
-async fn fetch_nws(
-    state: &AppState,
-    query: Vec<(&str, String)>,
-    timeout: Duration,
-) -> Option<Value> {
-    let headers = [
-        ("User-Agent", state.config.nws_user_agent.as_str()),
-        ("Accept", "application/geo+json"),
-    ];
-    let fetched = upstream::get(
-        &state.http,
-        &state.config.nws_point_alerts_url,
-        &query,
-        &headers,
-        timeout,
-    )
-    .await
-    .ok()?;
-    if !fetched.is_success() {
-        return None;
-    }
-    let body = fetched.json()?;
-    let has_features = body
-        .as_object()
-        .and_then(|o| o.get("features"))
-        .is_some_and(Value::is_array);
-    has_features.then_some(body)
-}
-
-/// The NWS point collection for a point (cached per 3-dp key). `Err(())` on any upstream failure.
-/// Shared with the briefing, which treats a failure as "no alerts".
-///
-/// # Errors
-/// Returns `Err(())` for a transport error, non-2xx status, non-JSON body or a missing `features` list.
-pub async fn alerts_for(state: &AppState, lat: f64, lon: f64) -> Result<Arc<Value>, ()> {
-    let key = point_key(lat, lon);
-    if let Some(hit) = state.alerts_cache.get(&key) {
-        return Ok(hit);
-    }
-    let timeout = upstream_timeout(state, 1.0);
-    let body = Arc::new(
-        fetch_nws(state, vec![("point", key.clone())], timeout)
-            .await
-            .ok_or(())?,
-    );
-    state.alerts_cache.insert(key, body.clone());
-    Ok(body)
-}
-
-/// `GET /api/alerts?lat=&lon=`.
-pub async fn get_alerts(State(state): State<AppState>, uri: Uri) -> Response {
-    let raw = uri.query();
-    let mut issues = Issues::new();
-    let lat = issues.float("query", "lat", query_param(raw, "lat").as_deref());
-    let lon = issues.float("query", "lon", query_param(raw, "lon").as_deref());
-    if let Err(resp) = issues.finish() {
-        return resp;
-    }
-    let (Some(lat), Some(lon)) = (lat, lon) else {
-        return respond::internal_error();
-    };
-    if !in_range(lat, lon) {
-        return respond::detail(StatusCode::UNPROCESSABLE_ENTITY, "lat/lon out of range");
-    }
-    match alerts_for(&state, lat, lon).await {
-        Ok(body) => ok_json(&body, state.config.alerts_ttl_s),
-        Err(()) => respond::upstream_unavailable_no_store(),
-    }
-}
-
-/// Slim the NWS collection to storm-based polygons (`geometry` truthy), keeping nine properties.
-#[must_use]
-pub fn map_features(body: &Value) -> Value {
-    let features: Vec<Value> = body
-        .get("features")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|f| {
-            let obj = f.as_object()?;
-            let geometry = obj.get("geometry").filter(|g| !is_falsy(g))?;
-            let props = obj.get("properties").filter(|p| !is_falsy(p)).and_then(Value::as_object);
-            let mut out = Map::new();
-            for key in MAP_FIELDS {
-                let value = props.and_then(|p| p.get(key)).cloned().unwrap_or(Value::Null);
-                out.insert(key.to_string(), value);
-            }
-            Some(json!({ "type": "Feature", "geometry": geometry, "properties": Value::Object(out) }))
-        })
-        .collect();
-    json!({ "type": "FeatureCollection", "features": features })
-}
-
-/// `GET /api/alerts/map`.
-pub async fn get_alerts_map(State(state): State<AppState>) -> Response {
-    let ttl = state.config.alerts_ttl_s;
-    if let Some(hit) = state.alerts_cache.get("__map__") {
-        return ok_json(&hit, ttl);
-    }
-    let timeout = upstream_timeout(&state, 2.0);
-    match fetch_nws(&state, vec![("status", "actual".to_string())], timeout).await {
-        Some(body) => {
-            let out = Arc::new(map_features(&body));
-            state
-                .alerts_cache
-                .insert("__map__".to_string(), out.clone());
-            ok_json(&out, ttl)
-        }
-        None => respond::upstream_unavailable_no_store(),
-    }
 }
 
 /// `_place_from_feature` (spec 8.1). Settlements only when `reverse` is false.
@@ -375,7 +255,7 @@ pub async fn get_geocode(State(state): State<AppState>, uri: Uri) -> Response {
     let query = q.split_whitespace().collect::<Vec<_>>().join(" ");
     let key = format!("{}|{}", query.to_lowercase(), limit);
     if let Some(hit) = state.geocode_cache.get(&key) {
-        return ok_json(&hit, 3600);
+        return ok_json(hit, 3600);
     }
     let found = if state.config.geocoder_url.is_empty() {
         photon_search(&state, &query, limit).await
@@ -384,9 +264,9 @@ pub async fn get_geocode(State(state): State<AppState>, uri: Uri) -> Response {
     };
     match found {
         Some(body) => {
-            let body = Arc::new(body);
+            let body = respond::encode(&body);
             state.geocode_cache.insert(key, body.clone());
-            ok_json(&body, 3600)
+            ok_json(body, 3600)
         }
         None => respond::upstream_unavailable_no_store(),
     }
@@ -464,7 +344,7 @@ pub async fn get_reverse_geocode(State(state): State<AppState>, uri: Uri) -> Res
     }
     let key = point_key(lat, lon);
     if let Some(hit) = state.reverse_cache.get(&key) {
-        return ok_json(&hit, 3600);
+        return ok_json(hit, 3600);
     }
     let (rlat, rlon) = (round_digits(lat, 3), round_digits(lon, 3));
     let found = if state.config.geocoder_url.is_empty() {
@@ -474,9 +354,9 @@ pub async fn get_reverse_geocode(State(state): State<AppState>, uri: Uri) -> Res
     };
     match found {
         Ok(place) => {
-            let body = Arc::new(json!({ "place": place }));
+            let body = respond::encode(&json!({ "place": place }));
             state.reverse_cache.insert(key, body.clone());
-            ok_json(&body, 3600)
+            ok_json(body, 3600)
         }
         Err(()) => respond::upstream_unavailable_no_store(),
     }
@@ -535,21 +415,5 @@ mod tests {
         let place = place_from_geocoder(&row).expect("row");
         assert_eq!(place["countryCode"], json!("US"));
         assert!(place_from_geocoder(&json!({"bad": 1})).is_none());
-    }
-
-    #[test]
-    fn map_keeps_storm_polygons_and_nine_properties() {
-        let body = json!({"features": [
-            {"geometry": {"type": "Polygon", "coordinates": []},
-             "properties": {"id": "urn:1", "event": "Severe Thunderstorm Warning", "description": "long"}},
-            {"geometry": null, "properties": {"id": "urn:2"}}
-        ]});
-        let out = map_features(&body);
-        let features = out["features"].as_array().expect("array");
-        assert_eq!(features.len(), 1);
-        let props = features[0]["properties"].as_object().expect("props");
-        assert_eq!(props.len(), 9);
-        assert!(!props.contains_key("description"));
-        assert_eq!(props["ends"], Value::Null);
     }
 }

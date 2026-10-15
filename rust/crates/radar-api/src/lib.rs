@@ -9,6 +9,7 @@
 //! Public surface: [`router`] builds the application, [`serve`] runs it, and [`AppState::from_env`]
 //! reads the process configuration.
 
+mod alerts;
 mod basemap;
 mod briefing;
 mod client_ip;
@@ -37,18 +38,43 @@ use std::net::SocketAddr;
 
 use anyhow::{Context, Result};
 use axum::Router;
+use axum::http::{HeaderMap, StatusCode, Version, header};
 use axum::middleware::{from_fn, from_fn_with_state};
+use tower_http::compression::CompressionLayer;
+use tower_http::compression::predicate::{Predicate, SizeAbove};
 
 pub use config::Config;
 pub use state::AppState;
 
+/// True for the JSON and text bodies the API produces. Tiles, imagery and vector tiles are binary
+/// or already compressed, so they are never compressed again.
+fn is_json_or_text(
+    _: StatusCode,
+    _: Version,
+    headers: &HeaderMap,
+    _: &axum::http::Extensions,
+) -> bool {
+    headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| {
+            let ct = ct.to_ascii_lowercase();
+            ct.starts_with("application/json")
+                || ct.starts_with("application/geo+json")
+                || ct.starts_with("text/")
+        })
+}
+
 /// The whole application: the `/api` routes, the `/v1` routes (unless `DISABLE_WORKFLOW_ROUTES=1`),
-/// the static lanes, and the global middleware.
+/// the static lanes, and the global middleware. Only the API routes are compressed (gzip or br,
+/// from `Accept-Encoding`); the static lanes serve their bytes as stored.
 pub fn router(state: AppState) -> Router {
     let mut api = edge::api_router();
     if state.config.workflow_routes_enabled {
         api = api.merge(workflows::routes());
     }
+    let api =
+        api.layer(CompressionLayer::new().compress_when(SizeAbove::new(1024).and(is_json_or_text)));
     let statics = basemap::static_router(
         state.config.tile_dir.clone(),
         state.config.basemap_root.clone(),
