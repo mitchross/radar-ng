@@ -36,6 +36,7 @@ use temporalio_sdk::{Runtime, Worker, WorkerOptions, WorkflowRegistrationError};
 use crate::activities::alerts::{AlertsActivities, AlertsDeps};
 use crate::activities::aqm::AqmActivities;
 use crate::activities::aux::AuxActivities;
+use crate::activities::global_model::GlobalModelActivities;
 use crate::activities::hrrr::HrrrActivities;
 use crate::activities::mrms::MrmsActivities;
 use crate::activities::nowcast::NowcastActivities;
@@ -50,6 +51,7 @@ use crate::temporal_io::{ScheduleKicker, TemporalWatchSignaler, connect};
 use crate::watchdog::{watch_schedules, watched_schedules};
 use crate::workflows::airquality::IngestAirQualityWorkflow;
 use crate::workflows::deployment_smoke::RadarDeploymentSmokeWorkflow;
+use crate::workflows::global_model::IngestGlobalModelWorkflow;
 use crate::workflows::hrrr::IngestHrrrWorkflow;
 use crate::workflows::lightning::IngestLightningWorkflow;
 use crate::workflows::mrms::IngestMrmsWorkflow;
@@ -97,7 +99,10 @@ pub fn registration(role: WorkerRole) -> Registration {
         WorkerRole::Legacy | WorkerRole::All => wire::ALL_WORKFLOW_TYPES.to_vec(),
         WorkerRole::Mrms => vec![wire::WORKFLOW_INGEST_MRMS],
         WorkerRole::Nowcast => vec![wire::WORKFLOW_NOWCAST],
-        WorkerRole::Hrrr => vec![wire::WORKFLOW_INGEST_HRRR],
+        WorkerRole::Hrrr => vec![
+            wire::WORKFLOW_INGEST_HRRR,
+            wire::WORKFLOW_INGEST_GLOBAL_MODEL,
+        ],
         WorkerRole::Aux => vec![
             wire::WORKFLOW_INGEST_LIGHTNING,
             wire::WORKFLOW_INGEST_TROPICAL,
@@ -133,6 +138,11 @@ pub fn registration(role: WorkerRole) -> Registration {
             wire::ACTIVITY_HRRR_PUBLISH_RUN,
             wire::ACTIVITY_HRRR_MARK_PROCESSED,
             wire::ACTIVITY_HRRR_CLEANUP,
+            wire::ACTIVITY_GLOBAL_MODEL_FIND_LATEST_RUN,
+            wire::ACTIVITY_GLOBAL_MODEL_PROCESS_HOUR,
+            wire::ACTIVITY_GLOBAL_MODEL_PUBLISH_RUN,
+            wire::ACTIVITY_GLOBAL_MODEL_MARK_PROCESSED,
+            wire::ACTIVITY_GLOBAL_MODEL_CLEANUP,
         ],
         WorkerRole::Aux => vec![
             wire::ACTIVITY_LIGHTNING_CONSUME_STREAM,
@@ -320,6 +330,7 @@ pub fn register_workflows<T: WorkflowTarget>(
             wire::WORKFLOW_REGISTER_PUSH_TOKEN => target.add::<RegisterPushTokenWorkflow>()?,
             wire::WORKFLOW_DELETE_PUSH_TOKEN => target.add::<DeletePushTokenWorkflow>()?,
             wire::WORKFLOW_DEPLOYMENT_SMOKE => target.add::<RadarDeploymentSmokeWorkflow>()?,
+            wire::WORKFLOW_INGEST_GLOBAL_MODEL => target.add::<IngestGlobalModelWorkflow>()?,
             other => anyhow::bail!("no workflow implementation for {other}"),
         }
     }
@@ -337,6 +348,7 @@ fn add_activities(
             builder = builder.register_activities(MrmsActivities::new(ctx.clone()));
         }
         if needs(role, WorkerRole::Hrrr) {
+            builder = builder.register_activities(GlobalModelActivities::new(ctx.clone()));
             builder = builder.register_activities(HrrrActivities::new(ctx));
         }
     }
@@ -591,13 +603,13 @@ mod tests {
     fn legacy_and_all_register_the_full_registry_minus_open_meteo() {
         for role in [WorkerRole::Legacy, WorkerRole::All] {
             let reg = registration(role);
-            assert_eq!(reg.workflows.len(), 13, "{role:?} workflow count");
+            assert_eq!(reg.workflows.len(), 14, "{role:?} workflow count");
             assert_eq!(
                 set(&reg.workflows),
                 set(&wire::ALL_WORKFLOW_TYPES),
                 "{role:?} workflows"
             );
-            assert_eq!(reg.activities.len(), 29, "{role:?} activity count");
+            assert_eq!(reg.activities.len(), 34, "{role:?} activity count");
             assert_eq!(
                 set(&reg.activities),
                 all_but_open_meteo(),
@@ -720,9 +732,13 @@ mod tests {
         let hrrr = registration(WorkerRole::Hrrr);
         assert_eq!(
             set(&hrrr.workflows),
-            set(&[wire::WORKFLOW_INGEST_HRRR, smoke_wf])
+            set(&[
+                wire::WORKFLOW_INGEST_HRRR,
+                wire::WORKFLOW_INGEST_GLOBAL_MODEL,
+                smoke_wf
+            ])
         );
-        assert_eq!(hrrr.activities.len(), 7);
+        assert_eq!(hrrr.activities.len(), 12);
 
         let aux = registration(WorkerRole::Aux);
         assert_eq!(

@@ -11,7 +11,7 @@ use std::str::FromStr;
 use thiserror::Error;
 
 // ---------------------------------------------------------------------------
-// Workflow types (13, registry in temporal/workflows/__init__.py)
+// Workflow types (13 from temporal/workflows/__init__.py, plus one Rust-only)
 // ---------------------------------------------------------------------------
 
 /// `RadarDeploymentSmokeWorkflow` (deployment gate, every role).
@@ -40,9 +40,11 @@ pub const WORKFLOW_WATCH_STORM: &str = "WatchStormWorkflow";
 pub const WORKFLOW_REGISTER_PUSH_TOKEN: &str = "RegisterPushTokenWorkflow";
 /// `DeletePushTokenWorkflow` (compatibility only; replay of retained histories).
 pub const WORKFLOW_DELETE_PUSH_TOKEN: &str = "DeletePushTokenWorkflow";
+/// `IngestGlobalModelWorkflow` (Rust-only): GFS long-range radar and the UV Index, one layer per run.
+pub const WORKFLOW_INGEST_GLOBAL_MODEL: &str = "IngestGlobalModelWorkflow";
 
-/// All 13 registered workflow type names.
-pub const ALL_WORKFLOW_TYPES: [&str; 13] = [
+/// All 14 registered workflow type names.
+pub const ALL_WORKFLOW_TYPES: [&str; 14] = [
     WORKFLOW_DEPLOYMENT_SMOKE,
     WORKFLOW_INGEST_MRMS,
     WORKFLOW_INGEST_HRRR,
@@ -56,10 +58,11 @@ pub const ALL_WORKFLOW_TYPES: [&str; 13] = [
     WORKFLOW_WATCH_STORM,
     WORKFLOW_REGISTER_PUSH_TOKEN,
     WORKFLOW_DELETE_PUSH_TOKEN,
+    WORKFLOW_INGEST_GLOBAL_MODEL,
 ];
 
 // ---------------------------------------------------------------------------
-// Activity names (`@activity.defn(name=...)`, 30 in total)
+// Activity names (30 from `@activity.defn(name=...)`, plus five Rust-only)
 // ---------------------------------------------------------------------------
 
 /// `radar_deployment_smoke`.
@@ -86,6 +89,17 @@ pub const ACTIVITY_HRRR_PUBLISH_RUN: &str = "hrrr_publish_run";
 pub const ACTIVITY_HRRR_MARK_PROCESSED: &str = "hrrr_mark_processed";
 /// `hrrr_cleanup`.
 pub const ACTIVITY_HRRR_CLEANUP: &str = "hrrr_cleanup";
+
+/// `global_model_find_latest_run`.
+pub const ACTIVITY_GLOBAL_MODEL_FIND_LATEST_RUN: &str = "global_model_find_latest_run";
+/// `global_model_process_hour`.
+pub const ACTIVITY_GLOBAL_MODEL_PROCESS_HOUR: &str = "global_model_process_hour";
+/// `global_model_publish_run`.
+pub const ACTIVITY_GLOBAL_MODEL_PUBLISH_RUN: &str = "global_model_publish_run";
+/// `global_model_mark_processed`.
+pub const ACTIVITY_GLOBAL_MODEL_MARK_PROCESSED: &str = "global_model_mark_processed";
+/// `global_model_cleanup`.
+pub const ACTIVITY_GLOBAL_MODEL_CLEANUP: &str = "global_model_cleanup";
 
 /// `aqm_find_latest_run`.
 pub const ACTIVITY_AQM_FIND_LATEST_RUN: &str = "aqm_find_latest_run";
@@ -129,10 +143,10 @@ pub const ACTIVITY_SIGNAL_MATCHING_STORM_WATCHES: &str = "signal_matching_storm_
 /// name stays reserved for compatibility (spec-temporal section 8.1).
 pub const ACTIVITY_SEND_PUSH_NOTIFICATION: &str = "send_push_notification";
 
-/// All 30 activity names registered by the Python code (including the reserved
-/// `send_push_notification`). The legacy pool serves all of them except
-/// `open_meteo_sync`.
-pub const ALL_ACTIVITY_NAMES: [&str; 30] = [
+/// All 35 activity names: the 30 the Python code registered (including the reserved
+/// `send_push_notification`) and the five Rust-only `global_model_*` ones. The legacy pool serves all
+/// of them except `open_meteo_sync`.
+pub const ALL_ACTIVITY_NAMES: [&str; 35] = [
     ACTIVITY_RADAR_DEPLOYMENT_SMOKE,
     ACTIVITY_MRMS_LIST_UNPROCESSED_KEYS,
     ACTIVITY_MRMS_PROCESS_FRAME,
@@ -144,6 +158,11 @@ pub const ALL_ACTIVITY_NAMES: [&str; 30] = [
     ACTIVITY_HRRR_PUBLISH_RUN,
     ACTIVITY_HRRR_MARK_PROCESSED,
     ACTIVITY_HRRR_CLEANUP,
+    ACTIVITY_GLOBAL_MODEL_FIND_LATEST_RUN,
+    ACTIVITY_GLOBAL_MODEL_PROCESS_HOUR,
+    ACTIVITY_GLOBAL_MODEL_PUBLISH_RUN,
+    ACTIVITY_GLOBAL_MODEL_MARK_PROCESSED,
+    ACTIVITY_GLOBAL_MODEL_CLEANUP,
     ACTIVITY_AQM_FIND_LATEST_RUN,
     ACTIVITY_AQM_RENDER_CHUNK,
     ACTIVITY_AQM_PUBLISH_RUN,

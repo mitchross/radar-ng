@@ -487,6 +487,18 @@ pub fn prune_grid_layer(cfg: &GridConfig, layer: &str, keep: Option<u64>) -> usi
     }
 }
 
+/// Layers written less often than `GRID_MAX_AGE_S` keep their grids at least this long (seconds). The
+/// UV Index runs once a day, so a 12 h sweep would empty it every morning.
+pub const LAYER_MIN_AGE_S: [(&str, u64); 1] = [("uv", 36 * 3600)];
+
+/// The age sweep's cutoff for `layer`: `GRID_MAX_AGE_S`, raised by [`LAYER_MIN_AGE_S`].
+pub fn max_age_for(cfg: &GridConfig, layer: &str) -> u64 {
+    LAYER_MIN_AGE_S
+        .iter()
+        .find(|(l, _)| *l == layer)
+        .map_or(cfg.max_age_s, |(_, min)| cfg.max_age_s.max(*min))
+}
+
 /// `cleanup_old_grids()`: apply keep-N per layer, then sweep files older than `GRID_MAX_AGE_S`. Run
 /// directories older than the cutoff are removed too (D11). Layers that cannot take the lock are skipped.
 pub fn cleanup_old_grids(cfg: &GridConfig) -> Result<usize, GridError> {
@@ -494,9 +506,6 @@ pub fn cleanup_old_grids(cfg: &GridConfig) -> Result<usize, GridError> {
         return Ok(0);
     }
     let now = SystemTime::now();
-    let cutoff = now
-        .checked_sub(Duration::from_secs(cfg.max_age_s))
-        .unwrap_or(UNIX_EPOCH);
     let mut removed = 0usize;
     for entry in fs::read_dir(&cfg.grid_dir)? {
         let layer_dir = entry?.path();
@@ -508,6 +517,9 @@ pub fn cleanup_old_grids(cfg: &GridConfig) -> Result<usize, GridError> {
             .and_then(|n| n.to_str())
             .unwrap_or_default()
             .to_string();
+        let cutoff = now
+            .checked_sub(Duration::from_secs(max_age_for(cfg, &layer_name)))
+            .unwrap_or(UNIX_EPOCH);
         let Ok(_lock) = layer_lock(&layer_dir, &fsutil::fsync_dir) else {
             continue;
         };

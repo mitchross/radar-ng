@@ -81,6 +81,21 @@ const REQUIRED_SCENARIOS: &[(&str, Scenarios)] = &[
         ],
     ),
     (
+        "IngestGlobalModelWorkflow",
+        &[
+            (
+                "success",
+                &[COMPLETED, Activity("global_model_mark_processed")],
+            ),
+            (
+                "partial",
+                &[COMPLETED, Activity("global_model_publish_run")],
+            ),
+            ("hour-activity-error", &[ACTIVITY_FAILED, COMPLETED]),
+            ("find-activity-error", &[ACTIVITY_FAILED, FAILED]),
+        ],
+    ),
+    (
         "IngestAirQualityWorkflow",
         &[
             ("success", &[COMPLETED, Activity("aqm_mark_processed")]),

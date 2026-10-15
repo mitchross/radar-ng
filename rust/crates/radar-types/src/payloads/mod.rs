@@ -17,6 +17,7 @@
 pub mod airquality;
 pub mod alerts;
 pub mod cleanup;
+pub mod global_model;
 pub mod hrrr;
 pub mod lightning;
 pub mod mrms;

@@ -70,6 +70,20 @@ pub struct IngestConfig {
     pub storms: StormConfig,
     /// `PACKED_TILES` (default on): write packed data tile buckets for the MRMS layers.
     pub packed_tiles: bool,
+    /// `GFS_RADAR_ENABLED` (default on): render GFS composite reflectivity as `radar-gfs`.
+    pub gfs_radar_enabled: bool,
+    /// `GFS_RADAR_FIRST_HOUR` (default 24): first GFS forecast hour rendered.
+    pub gfs_radar_first_hour: u32,
+    /// `GFS_RADAR_LAST_HOUR` (default 84): last GFS forecast hour rendered.
+    pub gfs_radar_last_hour: u32,
+    /// Base URL of the GFS bucket.
+    pub gfs_base_url: String,
+    /// `UV_ENABLED` (default on): render the NOAA/CPC UV Index forecast as `uv`.
+    pub uv_enabled: bool,
+    /// `UV_LAST_HOUR` (default 96): last UV forecast hour rendered (from f01).
+    pub uv_last_hour: u32,
+    /// Base URL of the UV Index product.
+    pub uv_base_url: String,
 }
 
 impl IngestConfig {
@@ -117,6 +131,13 @@ impl IngestConfig {
             grid: GridConfig::from_env()?,
             storms: StormConfig::from_env()?,
             packed_tiles: env::bool_var("PACKED_TILES", true)?,
+            gfs_radar_enabled: env::bool_var("GFS_RADAR_ENABLED", true)?,
+            gfs_radar_first_hour: env::int_var_clamped("GFS_RADAR_FIRST_HOUR", 24, 1, 120)? as u32,
+            gfs_radar_last_hour: env::int_var_clamped("GFS_RADAR_LAST_HOUR", 84, 1, 120)? as u32,
+            gfs_base_url: radar_grib::gfs::BASE_URL.to_string(),
+            uv_enabled: env::bool_var("UV_ENABLED", true)?,
+            uv_last_hour: env::int_var_clamped("UV_LAST_HOUR", 96, 1, 120)? as u32,
+            uv_base_url: radar_grib::uvi::BASE_URL.to_string(),
             paths,
         })
     }
@@ -143,6 +164,13 @@ impl IngestConfig {
             hrrr_grid_dump_step_deg: 0.03,
             palettes: vec!["classic".into()],
             packed_tiles: true,
+            gfs_radar_enabled: true,
+            gfs_radar_first_hour: 24,
+            gfs_radar_last_hour: 84,
+            gfs_base_url: radar_grib::gfs::BASE_URL.to_string(),
+            uv_enabled: true,
+            uv_last_hour: 96,
+            uv_base_url: radar_grib::uvi::BASE_URL.to_string(),
             paths,
         })
     }

@@ -295,10 +295,10 @@ fn grid_store_files_older_than_the_grid_window_are_removed() {
 }
 
 #[test]
-fn reports_all_twelve_layers_swept() {
+fn reports_all_fourteen_layers_swept() {
     let e = env();
     let res = tile_cleanup_sweep_at(&e.cfg, SystemTime::now()).unwrap();
-    assert_eq!(res.layers_swept, 12);
+    assert_eq!(res.layers_swept, 14);
     assert_eq!(res.tile_dirs_removed, 0);
     assert_eq!(res.grid_files_removed, 0);
 }

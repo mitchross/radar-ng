@@ -1,4 +1,4 @@
-//! radar-ingest: MRMS and HRRR ingest activity bodies as plain async functions (no Temporal types).
+//! radar-ingest: MRMS, HRRR and global-model (GFS radar, UV) ingest activity bodies as plain async functions (no Temporal types).
 //!
 //! The worker crate wraps these. See README.md for the public API and deviations from the Python.
 
@@ -6,6 +6,7 @@ pub mod bench;
 pub mod common;
 pub mod config;
 pub mod ctx;
+pub mod global_model;
 pub mod heartbeat;
 pub mod hrrr;
 pub mod mrms;

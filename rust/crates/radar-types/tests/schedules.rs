@@ -1,4 +1,5 @@
-//! Schedule parity with `temporal/schedules/seed.py` (spec-temporal section 6.2 and section 11, items 1 to 6 and 18).
+//! Schedule parity with `temporal/schedules/seed.py` (spec-temporal section 6.2 and section 11, items 1 to 6 and 18),
+//! plus the two Rust-only global-model schedules.
 
 use radar_types::schedules::{
     GFS013_VARIABLES, GFS025_SURFACE_VARIABLES, HRRR_VARIABLES, OverlapPolicy, ScheduleDef,
@@ -141,6 +142,26 @@ fn expected_table() -> Vec<Row> {
             "radar-ng-aux",
             json!([{"model": "ncep_hrrr_conus", "variables": HRRR_VARIABLES, "past_days": 1}]),
         ),
+        (
+            "ingest-gfs-radar",
+            "IngestGlobalModelWorkflow",
+            1800,
+            None,
+            3600,
+            2400,
+            "radar-ng-hrrr",
+            json!(["radar-gfs"]),
+        ),
+        (
+            "ingest-uv",
+            "IngestGlobalModelWorkflow",
+            3600,
+            None,
+            3600,
+            2400,
+            "radar-ng-hrrr",
+            json!(["uv"]),
+        ),
     ]
 }
 
@@ -148,7 +169,7 @@ fn expected_table() -> Vec<Row> {
 fn all_schedules_matches_spec_table_in_order() {
     let defs = all_schedules();
     let expected = expected_table();
-    assert_eq!(defs.len(), 12);
+    assert_eq!(defs.len(), 14);
     assert_eq!(defs.len(), expected.len());
     for (def, row) in defs.iter().zip(expected.iter()) {
         let (id, wf, interval, jitter, catchup, timeout, queue, args) = row;

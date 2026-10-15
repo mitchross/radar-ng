@@ -7,6 +7,7 @@
 
 pub mod airquality;
 pub mod deployment_smoke;
+pub mod global_model;
 pub mod hrrr;
 pub mod lightning;
 pub mod mrms;

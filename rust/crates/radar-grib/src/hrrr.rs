@@ -223,27 +223,40 @@ pub async fn fetch_hour(
     needed: &[HrrrVar],
 ) -> Result<Fetched> {
     let key = file_key(init, fhr);
+    let matchers: Vec<&[&str]> = needed.iter().map(|v| v.idx_matcher()).collect();
+    match fetch_subset(s3, &key, &matchers).await? {
+        Some(fetched) => Ok(fetched),
+        None => fetch_full_file(s3, &key).await,
+    }
+}
+
+/// Steps 2 and 3 of [`fetch_hour`] for any object with a `.idx` sidecar (HRRR, GFS). `Ok(None)` when the
+/// index answers 404; the caller decides whether to fall back to the whole object.
+pub async fn fetch_subset(
+    s3: &S3Client,
+    key: &str,
+    matchers: &[&[&str]],
+) -> Result<Option<Fetched>> {
     let idx_key = format!("{key}.idx");
     let idx_text = match get_text(s3, &idx_key).await {
         Ok(text) => text,
-        Err(e) if e.is_not_found() => return fetch_full_file(s3, &key).await,
+        Err(e) if e.is_not_found() => return Ok(None),
         Err(e) => return Err(e),
     };
     let records = parse_idx(&idx_text)?;
-    let matchers: Vec<&[&str]> = needed.iter().map(|v| v.idx_matcher()).collect();
-    let ranges: Vec<ByteRange> = pick_ranges(&records, &matchers);
+    let ranges: Vec<ByteRange> = pick_ranges(&records, matchers);
     if ranges.is_empty() {
-        return Ok(Fetched::NoMatchingFields);
+        return Ok(Some(Fetched::NoMatchingFields));
     }
     let mut out = Vec::new();
     for range in ranges {
-        let chunk = s3.get_range(&key, range, RANGE_TIMEOUT).await?;
+        let chunk = s3.get_range(key, range, RANGE_TIMEOUT).await?;
         out.extend_from_slice(&chunk);
     }
-    Ok(Fetched::Data {
+    Ok(Some(Fetched::Data {
         bytes: Bytes::from(out),
         full_file: false,
-    })
+    }))
 }
 
 async fn fetch_full_file(s3: &S3Client, key: &str) -> Result<Fetched> {
