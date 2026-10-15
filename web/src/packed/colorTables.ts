@@ -2,10 +2,11 @@
  * The tile renderer's color tables, from `/api/palettes` ({palette: {color_key: table}}).
  * Until (or unless) that answers, reflectivity falls back to the bands in palettes.ts.
  */
+import type { ServerPalettes } from "../layerLegends";
 import { PALETTES, type PaletteId } from "../palettes";
 import type { ColorTable } from "./format";
 
-export type ServerPalettes = Partial<Record<PaletteId, Record<string, ColorTable>>>;
+export type { ServerPalettes };
 
 /** palettes.ts mirrors the reflectivity JSON: the top band ends at 75 dBZ and nothing below 5 dBZ draws. */
 const REFLECTIVITY_TOP = 75;
@@ -24,13 +25,4 @@ export function fallbackTable(palette: PaletteId, colorKey: string): ColorTable 
 
 export function colorTable(server: ServerPalettes | null, palette: PaletteId, colorKey: string): ColorTable | undefined {
   return server?.[palette]?.[colorKey] ?? fallbackTable(palette, colorKey);
-}
-
-export async function fetchServerPalettes(): Promise<ServerPalettes | null> {
-  try {
-    const res = await fetch("/api/palettes");
-    return res.ok ? ((await res.json()) as ServerPalettes) : null;
-  } catch {
-    return null;
-  }
 }
