@@ -1954,3 +1954,189 @@ async fn basemap_tiles_proxy_to_go_pmtiles_when_no_local_archive() {
     let (status, _, _) = send(&app, get_req("/basemap/tiles/4/3/5.mvt")).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Satellite (NASA GIBS)
+// ---------------------------------------------------------------------------------------------
+
+/// A 256 px PNG of one RGBA color, like a GIBS GeoColor tile.
+fn solid_tile(rgba: [u8; 4]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut encoder = png::Encoder::new(&mut out, 256, 256);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().expect("header");
+    let px: Vec<u8> = std::iter::repeat_n(rgba, 256 * 256).flatten().collect();
+    writer.write_image_data(&px).expect("data");
+    writer.finish().expect("finish");
+    out
+}
+
+fn decode_tile(bytes: &[u8]) -> Vec<u8> {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .expect("png");
+    let mut buf = vec![0; reader.output_buffer_size().expect("size")];
+    let info = reader.next_frame(&mut buf).expect("frame");
+    buf.truncate(info.buffer_size());
+    buf
+}
+
+/// The 10-minute GIBS step `back` steps before now, in the tile path form.
+fn gibs_step(back: i64) -> String {
+    let floored = Utc::now().timestamp() / 600 * 600 - back * 600;
+    chrono::DateTime::from_timestamp(floored, 0)
+        .expect("time")
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
+}
+
+type Seen = Arc<std::sync::Mutex<Vec<String>>>;
+
+/// A mock GIBS. DescribeDomains lists `times` for East and `times[1..]` for West. Tiles are solid red
+/// (East) or blue (West), except `missing`, which is a 404. Tile requests are recorded in `seen`.
+async fn mock_gibs(times: Vec<String>, missing: String, seen: Seen) -> String {
+    let domain = move |layer: &str| {
+        let list = if layer.starts_with("GOES-East") {
+            times.join(",")
+        } else {
+            times[1..].join(",")
+        };
+        format!("<Domains><DimensionDomain><Domain>{list}</Domain></DimensionDomain></Domains>")
+    };
+    type TilePath = (String, String, String, String, String, String);
+    let gibs = Router::new()
+        .route(
+            "/1.0.0/{layer}/default/{set}/all/{range}",
+            get(
+                move |AxPath((layer, _, _)): AxPath<(String, String, String)>| {
+                    let body = domain(&layer);
+                    async move { ([(header::CONTENT_TYPE, "text/xml")], body) }
+                },
+            ),
+        )
+        .route(
+            "/{layer}/default/{time}/{set}/{z}/{row}/{colpng}",
+            get(
+                move |AxPath((layer, time, set, z, row, col)): AxPath<TilePath>| {
+                    seen.lock()
+                        .expect("seen")
+                        .push(format!("{layer}/{time}/{set}/{z}/{row}/{col}"));
+                    let missing = time == missing;
+                    async move {
+                        if missing {
+                            return (StatusCode::NOT_FOUND, "no such time").into_response_boxed();
+                        }
+                        let color = if layer.starts_with("GOES-East") {
+                            [255, 0, 0, 255]
+                        } else {
+                            [0, 0, 255, 255]
+                        };
+                        ([(header::CONTENT_TYPE, "image/png")], solid_tile(color))
+                            .into_response_boxed()
+                    }
+                },
+            ),
+        );
+    mock(gibs).await
+}
+
+/// The manifest lists the frames both GIBS layers have. Tiles go out in WMTS row/col order with
+/// immutable caching, seam tiles are spliced, and invalid paths never reach GIBS.
+#[tokio::test]
+async fn satellite_layer_lists_shared_frames_and_proxies_tiles() {
+    let times = vec![gibs_step(3), gibs_step(2), gibs_step(1)];
+    let missing = gibs_step(5);
+    let seen: Seen = Arc::default();
+    let base = mock_gibs(times.clone(), missing.clone(), seen.clone()).await;
+    let env = Env::new();
+    write_json(&env.path("state/manifest.json"), &manifest(None, None));
+    let app = env.app(|c| {
+        c.gibs_wmts_base = base.clone();
+        c.satellite_cache_max_bytes = 4 * 1024 * 1024;
+    });
+    let fetches = || seen.lock().expect("seen").len();
+
+    let (status, _, body) = get_json(&app, "/api/manifest.json").await;
+    assert_eq!(status, StatusCode::OK);
+    let layer = &body["layers"]["satellite"];
+    let paths: Vec<&str> = layer["frames"]
+        .as_array()
+        .expect("frames")
+        .iter()
+        .map(|f| f["path"].as_str().expect("path"))
+        .collect();
+    assert_eq!(paths, [times[1].as_str(), times[2].as_str()], "East ∩ West");
+    assert_eq!(layer["timestamps"].as_array().map(Vec::len), Some(2));
+    assert_eq!(layer["frames"][0]["max_zoom"], json!(7));
+
+    // Grand Rapids at z6 is GOES-East only. WMTS wants the row (y) before the column (x).
+    let uri = format!("/tiles/satellite/{}/6/16/23.png", times[2]);
+    let (status, headers, body) = send(&app, get_req(&uri)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(header_str(&headers, "content-type"), "image/png");
+    assert_eq!(
+        header_str(&headers, "cache-control"),
+        "public, max-age=86400, immutable"
+    );
+    assert_eq!(header_str(&headers, "access-control-allow-origin"), "*");
+    assert_eq!(&decode_tile(&body)[..4], [255, 0, 0, 255]);
+    assert_eq!(
+        seen.lock().expect("seen").last().cloned(),
+        Some(format!(
+            "GOES-East_ABI_GeoColor_v0_NRT/{}/GoogleMapsCompatible_Level7/6/23/16.png",
+            times[2]
+        ))
+    );
+    let (again, _, _) = send(&app, get_req(&uri)).await;
+    assert_eq!(again, StatusCode::OK);
+    assert_eq!(fetches(), 1, "the second request is a cache hit");
+
+    // z0 crosses both seams: West, East from 106.1° W to 73.9° E, then West again.
+    let world = format!("/tiles/satellite/{}/0/0/0.png", times[2]);
+    let (status, _, body) = send(&app, get_req(&world)).await;
+    assert_eq!(status, StatusCode::OK);
+    let rgba = decode_tile(&body);
+    let px = |c: usize| rgba[c * 4..c * 4 + 4].to_vec();
+    let (east, west) = (vec![255, 0, 0, 255], vec![0, 0, 255, 255]);
+    assert_eq!(
+        [px(52), px(53), px(180), px(181)],
+        [west.clone(), east.clone(), east, west]
+    );
+
+    // A time GIBS does not have is a no-store 404.
+    let (status, headers, _) = send(
+        &app,
+        get_req(&format!("/tiles/satellite/{missing}/3/2/3.png")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(header_str(&headers, "cache-control"), "no-store");
+
+    let before = fetches();
+    let future = gibs_step(-2);
+    let stale = gibs_step(40);
+    for bad in [
+        format!("/tiles/satellite/{}/8/1/1.png", times[2]),
+        format!("/tiles/satellite/{}/3/8/1.png", times[2]),
+        format!("/tiles/satellite/{}/3/01/1.png", times[2]),
+        format!("/tiles/satellite/{}/3/1/1.jpg", times[2]),
+        format!("/tiles/satellite/{future}/3/1/1.png"),
+        format!("/tiles/satellite/{stale}/3/1/1.png"),
+        "/tiles/satellite/2026-10-15T22:13:00Z/3/1/1.png".into(),
+        "/tiles/satellite/2026-10-15/3/1/1.png".into(),
+        "/tiles/satellite/x/3/1".into(),
+    ] {
+        let (status, headers, _) = send(&app, get_req(&bad)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{bad}");
+        assert_eq!(header_str(&headers, "cache-control"), "no-store", "{bad}");
+    }
+    assert_eq!(fetches(), before, "invalid paths never reach GIBS");
+
+    // `GIBS_WMTS_BASE` empty: no layer and no proxy.
+    let off = env.app(|c| c.gibs_wmts_base = String::new());
+    let (_, _, body) = get_json(&off, "/api/manifest.json").await;
+    assert!(body["layers"].get("satellite").is_none());
+    let (status, _, _) = send(&off, get_req(&uri)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

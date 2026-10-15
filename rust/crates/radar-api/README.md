@@ -72,6 +72,7 @@ Static lane (not under `/api`):
 | `/basemap/styles/*` | `ServeDir` on `BASEMAP_ROOT/styles` | `public, max-age=3600` |
 | `/basemap/fonts/*` | `ServeDir` on `BASEMAP_ROOT/fonts` | `public, max-age=604800` |
 | `/basemap/imagery/{z}/{x}/{y}.jpg` | USGS proxy with moka cache | `public, max-age=604800` on hits and misses |
+| `/tiles/satellite/{time}/{z}/{x}/{y}.png` | NASA GIBS GOES GeoColor proxy (`satellite.rs`): GOES-East east of 106.1° W, GOES-West west of it, seam tiles spliced. `time` is a 10-minute step in the last 6 h; `z` is 0 to 7. Moka cache (`SATELLITE_CACHE_MAX_BYTES`) | `public, max-age=86400, immutable` |
 | `/basemap/tiles/{z}/{x}/{y}.mvt` | `pmtiles` crate reading `BASEMAP_PMTILES` through a positioned-read backend (F6); proxied to `BASEMAP_TILES_UPSTREAM` (default `http://basemap:8081`) when no local archive exists | `public, max-age=86400` |
 
 ACAO `*` is set on the static lane. Errors on the static lane are overridden to
@@ -190,6 +191,7 @@ Environment variables (see `src/config.rs`): `LISTEN_ADDR`, `TILE_DIR`, `GRID_DI
 `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_S`, `LLM_MAX_CONCURRENCY`,
 `LLM_BREAKER_FAILURES`, `LLM_BREAKER_COOLDOWN_S`, `BRIEFING_TTL_S`, `NWS_POINT_ALERTS_URL`,
 `NWS_ALERT_DETAIL_BASE`, `NWS_USER_AGENT`, `USGS_IMAGERY_BASE`, `IMAGERY_CACHE_MAX_BYTES`,
+`GIBS_WMTS_BASE`, `SATELLITE_CACHE_MAX_BYTES`,
 `API_RATE_LIMIT_RPS`, `API_RATE_LIMIT_BURST`, `TRUSTED_PROXIES`, `DISABLE_WORKFLOW_ROUTES`,
 `WORKFLOW_API_SIGNING_KEY` (or `WORKFLOW_AUTH_SIGNING_KEY`), `TEMPORAL_ADDRESS`,
 `TEMPORAL_NAMESPACE`, `TEMPORAL_ALERTS_TASK_QUEUE`. The old `*_CACHE_MAX_ENTRIES` variables are ignored.

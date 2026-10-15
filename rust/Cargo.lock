@@ -2466,6 +2466,7 @@ dependencies = [
  "moka",
  "percent-encoding",
  "pmtiles",
+ "png",
  "radar-alerts",
  "radar-core",
  "radar-storms",
