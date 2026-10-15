@@ -192,7 +192,7 @@ export interface PackedFrames {
 }
 
 const lutKeyOf = (meta: PackedMeta) =>
-  `${meta.color_key}|${meta.scale}|${meta.offset}|${meta.types?.stride ?? 0}|${meta.types?.classes.join(",") ?? ""}`;
+  `${meta.color_key}|${meta.scale}|${meta.offset}` + (meta.types ? `|${meta.types.stride}|${meta.types.classes.join(",")}` : "");
 
 /**
  * Where each frame lives in packed tiles. A frame's layer is its `source` (the merged radar
