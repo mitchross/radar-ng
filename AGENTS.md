@@ -1,5 +1,12 @@
 # Agent Instructions
 
+## Backend is Rust (since 2026-10-14)
+
+The backend is the Rust workspace in `rust/` (one binary, `radar`); the old Python backend was removed.
+Read `docs/rust-migration/HANDOFF.md` before backend, CI or deploy work. Releases go GHCR `vX.Y.Z` →
+tag@digest PR in `mitchross/talos-argocd-proxmox` → Argo CD. GitOps only, no `kubectl apply`.
+Forward-only: fix a bad release with a new release; never roll back.
+
 ## Mink Knowledge Capture
 
 Keep Mink updated during substantive work. Hooks may track session state automatically, but durable decisions, verified root causes, runbooks, and gotchas require explicit note capture with `mink note` or `/mink:note`.

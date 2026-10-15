@@ -1,6 +1,6 @@
 # radar-ng → Rust: migration plan
 
-Status: **complete: production runs the Rust backend (v2.0.0, 2026-10-14); Python removed.** Owner: Mitch. Specs are in `specs/` and the independent review is in `REVIEW.md`; both are historical. Current docs: `rust/README.md`, `deploy/README.md`, `ARCHITECTURE.md`.
+Status: **complete: production runs the Rust backend (v2.0.0, 2026-10-14); Python removed.** Owner: Mitch. Specs are in `specs/` and the independent review is in `REVIEW.md`; both are historical. Current docs: `HANDOFF.md` (start here), `rust/README.md`, `deploy/README.md`, `ARCHITECTURE.md`.
 
 ## Where it stands
 
