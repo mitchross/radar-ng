@@ -511,7 +511,7 @@ mod tests {
         // The Python fallback list omitted these two; the Rust set must include them.
         assert!(ids.iter().any(|i| i == "ingest-airquality"));
         assert!(ids.iter().any(|i| i == "open-meteo-sync-gfs025"));
-        assert_eq!(ids.len(), 12);
+        assert_eq!(ids.len(), 13);
     }
 
     #[test]

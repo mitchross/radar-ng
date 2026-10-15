@@ -21,9 +21,10 @@ use tracing::info;
 
 /// Per-layer retention in minutes (`LAYER_RETENTION_MIN`, verbatim). `air-quality` and `ozone` are not
 /// here: `aqm_cleanup` owns them.
-pub const LAYER_RETENTION_MIN: [(&str, i64); 12] = [
+pub const LAYER_RETENTION_MIN: [(&str, i64); 13] = [
     ("radar", 240),
     ("radar-composite", 240),
+    ("precip-24h", 240),
     ("nowcast", 60),
     ("radar-hrrr", 720),
     ("temperature", 720),
@@ -276,8 +277,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn retention_table_has_twelve_layers_and_no_aqm() {
-        assert_eq!(LAYER_RETENTION_MIN.len(), 12);
+    fn retention_table_has_thirteen_layers_and_no_aqm() {
+        assert_eq!(LAYER_RETENTION_MIN.len(), 13);
         assert!(
             LAYER_RETENTION_MIN
                 .iter()

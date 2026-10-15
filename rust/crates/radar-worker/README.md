@@ -13,7 +13,7 @@ and environment variable names) comes from `radar-types`. Behaviour follows
 | `config` | 3.1 | `WorkerConfig::from_env` and the `TEMPORAL_*` and `SEED_SCHEDULES` settings, with defaults and clamps |
 | `activities::*` | 4.x, 5.x, 8, 9.2 | 30 activity names in `radar_types::wire` (29 registered by `legacy` and `all`, and `open_meteo_sync` on its own pool), with heartbeats, cancellation, and retryable or non-retryable mapping |
 | `workflows::*` | 4.x | 13 workflow types. Activity options come from `radar_types::retry`. Concurrency is bounded deterministically |
-| `seed` | 6.4, 6.5 | Create or update all 12 schedules from `radar_types::schedules::all_schedules()`. Retries only retryable RPC codes. Compares before updating |
+| `seed` | 6.4, 6.5 | Create or update all 13 schedules from `radar_types::schedules::all_schedules()`. Retries only retryable RPC codes. Compares before updating |
 | `watchdog` | 7 | Stall predicate, per-timer suppression, and the `TEMPORAL_SCHEDULE_STALLED` error log |
 | `health` | 9.1 | Two-attempt health probe. Touches the health and alive files every 30 s |
 | `temporal_io` | 5.2, 5.3 | `ScheduleKicker` (nowcast kick) and `TemporalWatchSignaler` (alert matching) over the Temporal client |

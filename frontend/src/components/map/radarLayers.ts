@@ -15,6 +15,7 @@ export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] =
   { id: "dewpoint", name: "Dew Point", icon: "drop" },
   { id: "wind", name: "Wind", icon: "wind" },
   { id: "precip-accum", name: "Rain Total", icon: "drop" },
+  { id: "precip-24h", name: "Past 24 Hr Precip", icon: "drop" },
   { id: "cloud", name: "Clouds", icon: "cloud" },
   { id: "air-quality", name: "Air Quality", icon: "dust" },
   { id: "ozone", name: "Ozone", icon: "ozone" },

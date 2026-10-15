@@ -31,6 +31,7 @@ Give the MRMS worker burst CPU headroom over its request — the parallel palett
 ## Ingest cadence + catch-up
 
 - The two MRMS schedules fire every minute (`MRMS_POLL_INTERVAL_S` in `rust/crates/radar-types/src/schedules.rs`) although NOAA publishes a frame every ~2 minutes at an unpredictable offset: polling twice per frame halves the average wait for a new key. The list is a single S3 request, and `OverlapPolicy.SKIP` drops a tick that lands while a frame is still rendering.
+- `ingest-mrms-qpe-24h` fires every 5 minutes (`MRMS_QPE_POLL_INTERVAL_S`). Its product is hourly and lands about 16 minutes after the hour. The worker skips it unless `MRMS_QPE_24H_ENABLED=1`.
 - `BACKLOG_PER_CYCLE` (code default 3, compose lab default 2, cluster 1) — after downtime, each fire processes up to N unprocessed S3 keys, newest-first. Keep it at 1 while one frame is slower than the source cadence; raising it can make freshness worse by extending each workflow run.
 - `MRMS_MAX_AGE_S=600` (tile-server env) — staleness budget before `/api/health` reports `degraded` (HTTP 503) and the app shows its "data delayed" banner. 600 s tolerates ~3 missed frames. Loosen it on deliberately slow setups rather than living with a permanently red health check; don't tighten below ~300 s or normal NOAA jitter will page you.
 
@@ -40,9 +41,9 @@ The `tile-cleanup` schedule sweeps hourly. Per-layer retention is `LAYER_RETENTI
 
 | layers | retention |
 |---|---|
-| radar, radar-composite | 4 h |
+| radar, radar-composite, precip-24h | 4 h |
 | nowcast | 1 h |
-| all HRRR-derived (radar-hrrr, temperature, wind, cape, precip-*, cloud, …) | 12 h |
+| all HRRR-derived (radar-hrrr, temperature, wind, cape, precip-type, precip-accum, cloud, …) | 12 h |
 
 Retention × cadence × pyramid size is your steady-state disk (~5 GB). Longer radar retention = longer scrub-back history in the app's timeline, linearly more disk.
 
