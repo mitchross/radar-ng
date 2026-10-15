@@ -8,6 +8,7 @@ const REFL: Quantizer = Quantizer {
     scale: 2.5,
     offset: 0.0,
     floor: 5.0,
+    typed: false,
 };
 
 /// A regular grid over lon -100..-90, lat 30..40 (0.1 degree), south-up, filled with `value`.

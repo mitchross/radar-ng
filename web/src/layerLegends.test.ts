@@ -19,6 +19,13 @@ describe("layerLegend", () => {
     expect(temp.gradient).toContain("rgb(128,0,255) 0.0%");
   });
 
+  it("colors the observed 24-hour total with the rain-total table", () => {
+    const observed = layerLegend(palettes, "vivid", "precip-24h")!;
+    expect(observed.title).toBe("Past 24 hr precip (in)");
+    expect(observed.gradient).toBe(layerLegend(palettes, "vivid", "precip-accum")!.gradient);
+    expect(observed.labels).toEqual(["0.01", "8+"]);
+  });
+
   it("returns null when the server tables are missing or the layer has none", () => {
     expect(layerLegend(null, "classic", "temperature")).toBeNull();
     expect(layerLegend(palettes, "classic", "air-quality")).toBeNull();

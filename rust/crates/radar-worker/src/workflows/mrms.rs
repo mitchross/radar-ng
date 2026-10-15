@@ -1,4 +1,4 @@
-//! `IngestMrmsWorkflow` (spec 4.2). Schedules `ingest-mrms-base` and `ingest-mrms-composite`.
+//! `IngestMrmsWorkflow` (spec 4.2). Schedules `ingest-mrms-base`, `ingest-mrms-composite` and `ingest-mrms-qpe-24h`.
 
 use radar_types::payloads::mrms::{
     CleanupInput, CleanupResult, IngestMrmsArgs, IngestMrmsResult, MarkProcessedInput,

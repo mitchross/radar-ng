@@ -24,6 +24,7 @@ use serde_json::{Value, json};
 use crate::error::{Result, TilerError};
 use crate::geometry::{MAX_ZOOM, SourceGeometry};
 use crate::render::{Overview, Sampler};
+use crate::typed::{TYPE_CODE_STRIDE, TypePlane};
 
 /// Edge of one block (one tile) of the atlas, in pixels.
 pub const PACKED_TILE_SIZE: usize = 512;
@@ -49,6 +50,8 @@ pub struct Quantizer {
     /// sub-threshold noise made real MRMS tiles several times larger. A floor below
     /// `offset + scale` stores the values between the two as code 1.
     pub floor: f64,
+    /// Typed codes: `class * TYPE_CODE_STRIDE + min(q, TYPE_CODE_STRIDE - 1)` ([`Self::code`]).
+    pub typed: bool,
 }
 
 impl Quantizer {
@@ -71,7 +74,27 @@ impl Quantizer {
             scale,
             offset,
             floor,
+            typed: false,
         })
+    }
+
+    /// The same quantizer with typed codes.
+    pub fn with_types(self) -> Quantizer {
+        Quantizer {
+            typed: true,
+            ..self
+        }
+    }
+
+    /// The stored code of `value` with precipitation class `class`: `quantize(value)` for an untyped
+    /// quantizer, else `class * 32 + min(q, 31)`, and 0 when `q` is 0.
+    #[inline]
+    pub fn code(&self, value: f32, class: u8) -> u8 {
+        let q = self.quantize(value);
+        if !self.typed || q == 0 {
+            return q;
+        }
+        class.min(7) * TYPE_CODE_STRIDE + q.min(TYPE_CODE_STRIDE - 1)
     }
 
     /// NaN or a value below `floor` is 0; otherwise `q = clamp(floor((value - offset) / scale), 1,
@@ -133,6 +156,7 @@ pub fn atlas_dims(n_slots: usize, tile: usize) -> (usize, usize) {
 /// as the colored renderer samples it, but without classifying.
 pub struct ValueSampler<'a> {
     inner: Sampler<'a>,
+    types: Option<TypePlane>,
 }
 
 impl<'a> ValueSampler<'a> {
@@ -169,7 +193,32 @@ impl<'a> ValueSampler<'a> {
             tile_size,
             zooms,
         )?;
-        Ok(Self { inner })
+        Ok(Self { inner, types: None })
+    }
+
+    /// Attach a per-cell precipitation class plane (same shape as the grid).
+    pub fn with_types(mut self, types: Option<TypePlane>) -> Result<Self> {
+        if let Some(t) = &types
+            && t.len() != self.inner.cell_count()
+        {
+            return Err(TilerError::Invalid(
+                "type plane must have one class per grid cell".into(),
+            ));
+        }
+        self.types = types;
+        Ok(self)
+    }
+
+    /// Classes of tile `index` into `out` (`tile * tile`); all 0 without a type plane.
+    pub fn sample_types(&self, index: usize, out: &mut Vec<u8>) -> Result<()> {
+        match &self.types {
+            Some(t) => self.inner.types_at(index, t.classes(), out),
+            None => {
+                out.clear();
+                out.resize(self.tile_size() * self.tile_size(), 0);
+                Ok(())
+            }
+        }
     }
 
     /// Tile edge in pixels.
@@ -218,11 +267,17 @@ pub struct BucketState {
     pub v: u64,
     /// Slot timestamps, in slot order.
     pub slots: Vec<String>,
+    /// The slots hold typed codes (`"types": 32` in the file).
+    pub typed: bool,
 }
 
 impl BucketState {
     fn to_json(&self) -> Value {
-        json!({"v": self.v, "slots": self.slots})
+        let mut doc = json!({"v": self.v, "slots": self.slots});
+        if self.typed {
+            doc["types"] = json!(TYPE_CODE_STRIDE);
+        }
+        doc
     }
 }
 
@@ -250,7 +305,8 @@ pub fn read_bucket(dir: &Path) -> Result<Option<BucketState>> {
                 .ok_or_else(|| TilerError::Corrupt(format!("{BUCKET_FILE}: non-string slot")))
         })
         .collect::<Result<Vec<_>>>()?;
-    Ok(Some(BucketState { v, slots }))
+    let typed = value.get("types").is_some_and(|t| !t.is_null());
+    Ok(Some(BucketState { v, slots, typed }))
 }
 
 /// Every bucket under `layer_dir` that has a bucket file, as `(id, state)` sorted by id. A missing
@@ -327,6 +383,13 @@ pub fn pack_frames(
     let _lock = LayerLock::acquire(&layer_dir.join(LOCK_FILE))?;
     let bucket_dir = layer_dir.join(bucket_id);
     let previous = read_bucket(&bucket_dir)?;
+    if previous.as_ref().is_some_and(|b| b.typed != quant.typed) {
+        // The slots of one bucket share one code space; the next bucket starts with the new one.
+        return Err(TilerError::Invalid(format!(
+            "bucket {bucket_id} holds {} codes",
+            if quant.typed { "untyped" } else { "typed" }
+        )));
+    }
     let mut slots = previous
         .as_ref()
         .map(|b| b.slots.clone())
@@ -375,14 +438,17 @@ pub fn pack_frames(
     let tiles_written = work
         .par_iter()
         .map_init(
-            || (Vec::new(), Vec::new()),
-            |(values, planes), (coord, indices)| ctx.merge_tile(*coord, indices, values, planes),
+            || (Vec::new(), Vec::new(), Vec::new()),
+            |(values, types, planes), (coord, indices)| {
+                ctx.merge_tile(*coord, indices, values, types, planes)
+            },
         )
         .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
 
     let bucket = BucketState {
         v: previous.map_or(0, |b| b.v) + 1,
         slots,
+        typed: quant.typed,
     };
     fs::create_dir_all(&bucket_dir)?;
     let text = serde_json::to_string(&bucket.to_json())
@@ -421,6 +487,7 @@ impl MergeCtx<'_, '_, '_> {
         (z, x, y): (u32, u32, u32),
         indices: &[Option<usize>],
         values: &mut Vec<f32>,
+        types: &mut Vec<u8>,
         planes: &mut Vec<u8>,
     ) -> Result<u64> {
         let t = self.tile;
@@ -434,8 +501,15 @@ impl MergeCtx<'_, '_, '_> {
                 continue;
             }
             let plane = &mut planes[f * plane_len..(f + 1) * plane_len];
-            for (q, &v) in plane.iter_mut().zip(values.iter()) {
-                *q = self.quant.quantize(v);
+            if self.quant.typed {
+                self.frames[f].sampler.sample_types(index, types)?;
+                for ((q, &v), &c) in plane.iter_mut().zip(values.iter()).zip(types.iter()) {
+                    *q = self.quant.code(v, c);
+                }
+            } else {
+                for (q, &v) in plane.iter_mut().zip(values.iter()) {
+                    *q = self.quant.quantize(v);
+                }
             }
             any_data |= plane.iter().any(|&q| q != 0);
         }

@@ -60,6 +60,7 @@ const WEATHER_LAYERS: readonly LayerType[] = [
   "wind",
   "cape",
   "precip-accum",
+  "precip-24h",
   "cloud",
   "air-quality",
   "ozone",

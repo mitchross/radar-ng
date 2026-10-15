@@ -153,6 +153,35 @@ describe("parsePackedMeta", () => {
     expect(parsePackedMeta({ ...META, scale: 0 })).toBeNull();
     expect(parsePackedMeta({ ...META, buckets: [{ id: "x", v: 1, slots: new Array(25).fill("t") }] })).toBeNull();
   });
+
+  it("accepts typed codes only as v2 with a valid types object", () => {
+    const types = { stride: 32, classes: ["rain", "snow", "mix"] };
+    expect(parsePackedMeta({ ...META, version: 2, types })?.types).toEqual(types);
+    expect(parsePackedMeta({ ...META, version: 2 })).toBeNull();
+    expect(parsePackedMeta({ ...META, version: 1, types })).toBeNull();
+    expect(parsePackedMeta({ ...META, version: 2, types: { stride: 0, classes: ["rain"] } })).toBeNull();
+    expect(parsePackedMeta({ ...META, version: 2, types: { stride: 32, classes: [1] } })).toBeNull();
+    expect(parsePackedMeta(META)?.types).toBeUndefined();
+  });
+});
+
+describe("buildLut with typed codes", () => {
+  const table = classic.reflectivity;
+  const types = { stride: 32, classes: ["rain", "snow", "mix"] };
+  const lut = buildLut(table, 2.5, 0, types);
+
+  it("colors class * 32 + q with the class ramp", () => {
+    expect(rgbaAt(lut, 12)).toEqual([0, 140, 0, 220]); // rain 30 dBZ
+    expect(rgbaAt(lut, 32 + 12)).toEqual(table.types!.snow!.ranges![5].rgba);
+    expect(rgbaAt(lut, 64 + 12)).toEqual(table.types!.mix!.ranges![5].rgba);
+    expect(rgbaAt(lut, 64)).toEqual([0, 0, 0, 0]);
+    expect(rgbaAt(lut, 96 + 1)).toEqual([0, 0, 0, 0]);
+  });
+
+  it("keeps rain codes identical to the untyped table", () => {
+    const plain = buildLut(table, 2.5, 0);
+    for (let q = 1; q < 32; q++) expect(rgbaAt(lut, q)).toEqual(rgbaAt(plain, q));
+  });
 });
 
 describe("tileCover", () => {

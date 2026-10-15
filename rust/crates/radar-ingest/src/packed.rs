@@ -11,15 +11,16 @@ use chrono::{DateTime, Utc};
 use radar_core::env::Paths;
 use radar_core::manifest::canonical_timestamp;
 use radar_core::manifest::packed::{
-    PACKED_DIR, PackedBucket, PackedLayout, observation_bucket_expired, observation_bucket_id,
-    remove_packed_buckets,
+    PACKED_DIR, PackedBucket, PackedLayout, PackedTypes, observation_bucket_expired,
+    observation_bucket_id, remove_packed_buckets,
 };
 use radar_geo::Grid;
-use radar_tiler::Overview;
 use radar_tiler::packed::{
     PACKED_COLS, PACKED_MAX_SLOTS, PACKED_TILE_SIZE, PackFrame, PackOutcome, Quantizer,
     ValueSampler, pack_frames,
 };
+use radar_tiler::typed::{TYPE_CLASSES, TYPE_CODE_STRIDE};
+use radar_tiler::{Overview, TypePlane};
 
 /// 512-px zooms packed for MRMS: the 256-px pyramid's 4 to 7.
 pub const MRMS_PACKED_ZOOMS: [u32; 4] = [3, 4, 5, 6];
@@ -31,8 +32,9 @@ pub fn packed_layer_dir(paths: &Paths, layer: &str) -> PathBuf {
     paths.tile_dir.join(PACKED_DIR).join(layer)
 }
 
-/// The manifest `packed` object of an MRMS layer, without its buckets.
-pub fn mrms_layout() -> PackedLayout {
+/// The manifest `packed` object of an MRMS layer, without its buckets. `typed` layers store
+/// precipitation-type codes.
+pub fn mrms_layout(typed: bool) -> PackedLayout {
     let q = reflectivity();
     PackedLayout {
         tile_size: PACKED_TILE_SIZE as u32,
@@ -44,6 +46,10 @@ pub fn mrms_layout() -> PackedLayout {
         categorical: false,
         scale: q.scale,
         offset: q.offset,
+        types: typed.then(|| PackedTypes {
+            stride: u32::from(TYPE_CODE_STRIDE),
+            classes: TYPE_CLASSES.iter().map(|c| c.to_string()).collect(),
+        }),
     }
 }
 
@@ -51,13 +57,16 @@ fn reflectivity() -> Quantizer {
     Quantizer::for_color_key(COLOR_KEY).expect("reflectivity is in the quantization table")
 }
 
-/// Pack one MRMS frame into its observation bucket. Returns the bucket for the manifest, or `None`
-/// when the bucket is already full. Takes the layer's packing lock; call it from a blocking thread.
+/// Pack one MRMS frame into its observation bucket. A `typed` layer stores typed codes; a frame
+/// without `types` is all rain. Returns the bucket for the manifest, or `None` when the bucket is
+/// already full. Takes the layer's packing lock; call it from a blocking thread.
 pub fn pack_observation(
     paths: &Paths,
     layer: &str,
     timestamp: &str,
     grid: &Grid,
+    typed: bool,
+    types: Option<TypePlane>,
 ) -> anyhow::Result<Option<PackedBucket>> {
     let started = Instant::now();
     // Slots carry the manifest's canonical frame timestamp, so clients can match them.
@@ -69,13 +78,19 @@ pub fn pack_observation(
         &MRMS_PACKED_ZOOMS,
         PACKED_TILE_SIZE,
         Some(Overview::Max),
-    )?;
+    )?
+    .with_types(types)?;
     let frames = [PackFrame {
         timestamp: &slot,
         sampler: &sampler,
     }];
     let layer_dir = packed_layer_dir(paths, layer);
-    match pack_frames(&layer_dir, &id, &frames, reflectivity())? {
+    let quant = if typed {
+        reflectivity().with_types()
+    } else {
+        reflectivity()
+    };
+    match pack_frames(&layer_dir, &id, &frames, quant)? {
         PackOutcome::Written {
             bucket,
             tiles_written,
@@ -165,10 +180,10 @@ mod tests {
         let t2 = "2026-10-15T19:00:36+00:00";
         for t in [t0, t1, t2] {
             add_frame(&paths.state_dir, "radar", t, &AddOptions::default()).unwrap();
-            let bucket = pack_observation(&paths, "radar", t, &grid)
+            let bucket = pack_observation(&paths, "radar", t, &grid, false, None)
                 .unwrap()
                 .unwrap();
-            upsert_packed_bucket(&paths.state_dir, "radar", &mrms_layout(), &bucket).unwrap();
+            upsert_packed_bucket(&paths.state_dir, "radar", &mrms_layout(false), &bucket).unwrap();
         }
         let m = read_manifest(&paths.state_dir).unwrap();
         let buckets = packed_buckets(&m, "radar");

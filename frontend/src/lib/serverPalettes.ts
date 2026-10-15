@@ -12,16 +12,19 @@ export interface ColorRange {
 export interface ColorTable {
   unit?: string;
   ranges: ColorRange[];
+  /** Reflectivity only: snow and mix ramps; `ranges` is rain. */
+  types?: Partial<Record<"snow" | "mix", { ranges: ColorRange[] }>>;
 }
 export type ServerPalettes = Partial<Record<Palette, Record<string, ColorTable>>>;
 
-/** Layer to palette key, as the server's HRRR `layer_color_key` maps them. */
+/** Layer to palette key, as the server's HRRR `layer_color_key` and MRMS QPE map them. */
 const LAYER_TABLES: Partial<Record<LayerType, { key: string; title: string; unit: string }>> = {
   temperature: { key: "temperature", title: "Temperature", unit: "°F" },
   "feels-like": { key: "temperature", title: "Feels Like", unit: "°F" },
   dewpoint: { key: "dewpoint", title: "Dew Point", unit: "°F" },
   wind: { key: "wind_speed", title: "Wind", unit: "mph" },
   "precip-accum": { key: "precip_accum", title: "Rain Total", unit: "in" },
+  "precip-24h": { key: "precip_accum", title: "Past 24 Hr", unit: "in" },
   cloud: { key: "cloud_cover", title: "Clouds", unit: "%" },
 };
 
@@ -34,6 +37,26 @@ export interface ServerLegend {
 const hex = ([r, g, b]: ColorRange["rgba"]) =>
   "#" + [r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("");
 const fmt = (v: number) => String(Number(v.toFixed(2)));
+
+export interface PrecipTypeRamp {
+  label: "Rain" | "Snow" | "Mix";
+  /** Weak to strong. */
+  colors: string[];
+}
+
+/** Rain, snow and mix ramps of the radar palette, for frames the server colors by precipitation type. */
+export function precipTypeRamps(palettes: ServerPalettes | null | undefined, palette: Palette): PrecipTypeRamp[] | null {
+  const table = (palettes?.[palette] ?? palettes?.classic)?.reflectivity;
+  const snow = table?.types?.snow?.ranges;
+  const mix = table?.types?.mix?.ranges;
+  if (!table?.ranges?.length || !snow?.length || !mix?.length) return null;
+  const colors = (ranges: ColorRange[]) => ranges.map((r) => hex(r.rgba));
+  return [
+    { label: "Rain", colors: colors(table.ranges) },
+    { label: "Snow", colors: colors(snow) },
+    { label: "Mix", colors: colors(mix) },
+  ];
+}
 
 export function serverLegend(
   palettes: ServerPalettes | null | undefined,

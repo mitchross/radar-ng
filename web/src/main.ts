@@ -8,7 +8,7 @@ import "./style.css";
 import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabled, track } from "./analytics";
 import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
-import { css, LEGEND_TICKS, PALETTES, type PaletteId } from "./palettes";
+import { css, LEGEND_TICKS, PALETTES, typeRamps, type PaletteId } from "./palettes";
 import { fetchServerPalettes, layerLegend, type ServerPalettes } from "./layerLegends";
 import {
   aqiLabel,
@@ -66,6 +66,7 @@ const LAYERS: { id: string; name: string; needs: string }[] = [
   { id: "dewpoint", name: "Dew point", needs: "dewpoint" },
   { id: "wind", name: "Wind", needs: "wind" },
   { id: "precip-accum", name: "Rain total", needs: "precip-accum" },
+  { id: "precip-24h", name: "Past 24 hr precip", needs: "precip-24h" },
   { id: "cloud", name: "Clouds", needs: "cloud" },
   { id: "air-quality", name: "Air quality", needs: "air-quality" },
   { id: "ozone", name: "Ozone", needs: "ozone" },
@@ -538,6 +539,15 @@ function renderLegend() {
       `<div class="legend-title"><span>Precipitation</span><span class="legend-tag">${PALETTES[state.palette].name}</span></div>` +
       `<div class="legend-bar" style="background:linear-gradient(90deg,${bands.map((b, i) => `${css(b.rgba)} ${pos(b.min)} ${pos(bands[i + 1]?.min ?? hi)}`).join(",")})"></div>` +
       `<div class="legend-ticks">${LEGEND_TICKS.map(([dbz, name]) => `<span style="left:${pos(dbz)}">${name}</span>`).join("")}</div>`;
+    // Observed radar is colored by precipitation type when the server says so.
+    if (state.manifest?.layers.radar?.precip_type === true) {
+      el.innerHTML +=
+        `<div class="legend-types">` +
+        typeRamps(state.palette)
+          .map((r) => `<div class="legend-type"><span>${r.label}</span><div class="legend-type-bar" style="background:${r.gradient}"></div></div>`)
+          .join("") +
+        `</div>`;
+    }
     return;
   }
   const table = layerLegend(serverPalettes, state.palette, state.layer);
@@ -1158,7 +1168,7 @@ map.on("click", async (e) => {
     else if (["temperature", "feels-like", "dewpoint"].includes(state.layer)) text = `${Math.round(value)}°F`;
     else if (state.layer === "wind") text = `${Math.round(value)} mph`;
     else if (state.layer === "cloud") text = `${Math.round(value)}%`;
-    else if (state.layer === "precip-accum") text = `${value.toFixed(2)} in`;
+    else if (state.layer === "precip-accum" || state.layer === "precip-24h") text = `${value.toFixed(2)} in`;
     else text = `${value.toFixed(1)}`;
   }
   popup.setHTML(`<div class="readout"><b>${title}</b><div class="v">${text}</div><small>${lat.toFixed(3)}, ${lng.toFixed(3)}</small></div>`);

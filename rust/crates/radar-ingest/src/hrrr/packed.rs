@@ -54,6 +54,7 @@ pub fn layout(layer: &str) -> Option<PackedLayout> {
         categorical: false,
         scale: q.scale,
         offset: q.offset,
+        types: None,
     })
 }
 

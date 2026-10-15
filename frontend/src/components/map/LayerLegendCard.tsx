@@ -10,7 +10,8 @@ import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { MapChromeSurface } from "../ui/MapChromeSurface";
 import { useServerPalettes } from "../../hooks/useServerPalettes";
-import { serverLegend } from "../../lib/serverPalettes";
+import { precipTypeRamps, serverLegend } from "../../lib/serverPalettes";
+import { useManifestQuery } from "../../hooks/useManifest";
 
 // Plain-English tag at the top of the legend telling the user whether
 // they're looking at "Now" (live radar), "Soon" (next hour, pysteps
@@ -29,6 +30,7 @@ const LAYER_SOURCE: Record<LayerType, SourceTag> = {
   "precip-type": "Later",
   cape: "Later",
   "precip-accum": "Later",
+  "precip-24h": "Now",
   cloud: "Later",
   "air-quality": "Now",
   ozone: "Now",
@@ -58,6 +60,17 @@ const PRECIP_STOPS: LegendStop[] = [
   { label: "Heavy",    color: "#ff4040" }, // 35–45
   { label: "Moderate", color: "#ff9f2e" }, // 25–35
   { label: "Light",    color: "#3bc77a" }, // < 25
+];
+
+// Inches; the HRRR rain total and the MRMS 24-hour total share the `precip_accum` palette.
+const RAIN_TOTAL_STOPS: LegendStop[] = [
+  { label: "8+", color: "#50146b" },
+  { label: "4", color: "#b01f96" },
+  { label: "2", color: "#e63c3c" },
+  { label: "1", color: "#ff8c3c" },
+  { label: "0.5", color: "#f0dc46" },
+  { label: "0.1", color: "#4696ff" },
+  { label: "0", color: "#8cc8ff" },
 ];
 
 const LEGENDS: Record<LayerType, LegendSpec> = {
@@ -132,15 +145,11 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
   },
   "precip-accum": {
     title: "Rain Total",
-    stops: [
-      { label: "8+", color: "#50146b" },
-      { label: "4", color: "#b01f96" },
-      { label: "2", color: "#e63c3c" },
-      { label: "1", color: "#ff8c3c" },
-      { label: "0.5", color: "#f0dc46" },
-      { label: "0.1", color: "#4696ff" },
-      { label: "0", color: "#8cc8ff" },
-    ],
+    stops: RAIN_TOTAL_STOPS,
+  },
+  "precip-24h": {
+    title: "Past 24 Hr",
+    stops: RAIN_TOTAL_STOPS,
   },
   cloud: {
     title: "Clouds",
@@ -181,6 +190,9 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   const palette = useWeatherStore((s) => s.activePalette);
   const { data: palettes } = useServerPalettes();
   const legend = serverLegend(palettes, palette, activeLayer) ?? LEGENDS[activeLayer] ?? LEGENDS.radar;
+  // The server colors observed radar by precipitation type when the layer says so.
+  const typedLayer = useManifestQuery().data?.layers[activeLayer]?.precip_type === true;
+  const typeRamps = typedLayer ? precipTypeRamps(palettes, palette) : null;
   const chrome = useMapChromeInsets();
   const timelineMode = useWeatherStore((s) => s.timelineMode);
   // Scalars, not the frame array: the card re-renders only when the tag can
@@ -230,6 +242,23 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
             ))}
           </View>
         </View>
+        {typeRamps && (
+          <View style={styles.types}>
+            {typeRamps.map((r) => (
+              <View key={r.label} style={styles.typeRow}>
+                <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.typeLabel}>
+                  {r.label}
+                </Text>
+                <LinearGradient
+                  colors={r.colors as [string, string, ...string[]]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.typeBar}
+                />
+              </View>
+            ))}
+          </View>
+        )}
       </MapChromeSurface>
     </View>
   );
@@ -303,5 +332,25 @@ const styles = StyleSheet.create({
     color: "#3a4258",
     fontVariant: ["tabular-nums"],
     fontWeight: "500",
+  },
+  types: {
+    marginTop: 8,
+    gap: 4,
+  },
+  typeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  typeLabel: {
+    width: 28,
+    fontSize: 9,
+    color: "#3a4258",
+    fontWeight: "600",
+  },
+  typeBar: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
   },
 });
