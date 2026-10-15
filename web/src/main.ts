@@ -31,6 +31,8 @@ import {
   type Place,
 } from "./weather";
 import { WindLayer } from "./wind";
+import { SatelliteLayer } from "./satellite";
+import { satelliteFrames } from "./shared/satellite";
 import { PackedRadarLayer, type PackedFrameRef } from "./packed/layer";
 import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast";
 import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition } from "./shared/conditions";
@@ -130,6 +132,7 @@ const state = {
   speed: stored<number>("rng.speed", 1),
   overlays: new Set<OverlayId>(stored<OverlayId[]>("rng.overlays", ["warnings", "storms", "tropical"])),
   wind: stored<boolean>("rng.wind", false),
+  satellite: stored<boolean>("rng.satellite", false),
   ai: stored<boolean>("rng.ai", true),
   zoom: "1h" as Zoom,
   manifest: null as Manifest | null,
@@ -182,6 +185,9 @@ const overlays = new Overlays(map, state.overlays);
 const wind = new WindLayer(map);
 /** Packed data tiles (docs/packed-tiles.md); `?raster=1` turns them off. */
 const packed = new URLSearchParams(location.search).get("raster") === "1" ? null : new PackedRadarLayer(state.palette, state.opacity);
+
+/** GOES imagery goes under the lowest radar layer (raster frame or packed), else under the labels. */
+const satellite = new SatelliteLayer(map, state.satellite, () => map.getStyle().layers?.find((l) => l.id.startsWith("wx-") || l.id === packed?.id)?.id ?? radarBeforeId());
 
 /** True between a style's "style.load" and the next setStyle; overlays can be added only then. */
 let styleReady = false;
@@ -298,11 +304,21 @@ function showCurrentFrame() {
   }
   shownKey = key;
   evict(keep);
+  syncSatellite();
   if (wind.enabled) void syncWind();
+}
+
+/** The satellite frame for the playhead, with the next PREFETCH_AHEAD timeline frames preloading. */
+function syncSatellite() {
+  const frame = currentFrame();
+  if (!styleReady || !frame || !satellite.enabled) return;
+  const ahead = Array.from({ length: PREFETCH_AHEAD }, (_, k) => state.frames[state.seq[(state.pos + k + 1) % state.seq.length]]?.time ?? frame.time);
+  satellite.show(frame.time, ahead);
 }
 
 function nextFrameReady(): boolean {
   const f = state.frames[state.seq[(state.pos + 1) % state.seq.length]];
+  if (f && !satellite.isReady(f.time)) return false;
   const ref = f && packedRef(f);
   if (ref) return packed!.isFrameReady(ref);
   const id = f && cached.get(frameKey(f));
@@ -322,6 +338,7 @@ async function applyMapStyle(id: MapStyleId) {
     return;
   }
   clearFrames();
+  satellite.clear();
   styleReady = false;
   // The persistent "style.load" handler re-adds the frames on the new style.
   map.setStyle(style);
@@ -387,6 +404,7 @@ async function refreshManifest() {
     const chipsBefore = availabilityKey();
     state.manifest = await fetchManifest();
     state.manifestFailed = false;
+    satellite.setFrames(satelliteFrames(state.manifest));
     // renderChips also rebuilds the open settings sheet, so skip it unless availability changed.
     if (!hadManifest || availabilityKey() !== chipsBefore) renderChips();
     if (!LAYERS.some((l) => l.id === state.layer && layerAvailable(l.needs))) state.layer = "radar";
@@ -396,6 +414,7 @@ async function refreshManifest() {
     if (hadManifest && sameFrames(state.frames, frames) && seq.length === state.seq.length && seq.every((v, i) => v === state.seq[i])) {
       // Packed bucket versions change while the frame list stays the same.
       syncPacked();
+      syncSatellite();
       renderAxis();
     } else rebuildFrames(keepTime);
   } catch (err) {
@@ -437,7 +456,7 @@ function renderRadarStatus() {
 
 /** The layers and products the chips and sheet offer. */
 function availabilityKey(): string {
-  return [...LAYERS.map((l) => l.needs), "radar-composite"].filter(layerAvailable).join();
+  return [...LAYERS.map((l) => l.needs), "radar-composite", "satellite"].filter(layerAvailable).join();
 }
 
 function layerAvailable(key: string) {
@@ -591,6 +610,7 @@ function renderSheet() {
   const composite = layerAvailable("radar-composite");
   const toggles = [
     ...OVERLAYS.map((o) => ({ id: o.id, name: o.name, hint: o.hint, on: state.overlays.has(o.id) })),
+    ...(layerAvailable("satellite") ? [{ id: "satellite", name: "Satellite clouds", hint: "GOES imagery under the radar, every 10 minutes", on: state.satellite }] : []),
     { id: "wind", name: "Wind flow", hint: "Animated HRRR surface wind", on: state.wind },
     { id: "ai", name: "AI narration", hint: "Local-LLM summaries; hides itself if the model is down", on: state.ai },
   ];
@@ -1032,9 +1052,14 @@ $("sheet-body").addEventListener("input", (e) => {
   if (id) map.setPaintProperty(id, "raster-opacity", state.opacity);
 });
 
-function setOverlay(id: OverlayId | "wind" | "ai", on: boolean) {
+function setOverlay(id: OverlayId | "wind" | "ai" | "satellite", on: boolean) {
   track("overlay_toggled", { overlay: id, on });
-  if (id === "ai") {
+  if (id === "satellite") {
+    state.satellite = on;
+    store("rng.satellite", on);
+    satellite.setEnabled(on);
+    syncSatellite();
+  } else if (id === "ai") {
     state.ai = on;
     store("rng.ai", on);
     void renderBriefing();
@@ -1068,7 +1093,7 @@ $("sheet-body").addEventListener("change", (e) => {
     // "input" fires on every drag tick; persist once on release.
     store("rng.opacity", state.opacity);
   }
-  if (el.dataset.overlay) setOverlay(el.dataset.overlay as OverlayId | "wind" | "ai", el.checked);
+  if (el.dataset.overlay) setOverlay(el.dataset.overlay as OverlayId | "wind" | "ai" | "satellite", el.checked);
 });
 
 function locate() {

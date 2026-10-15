@@ -54,6 +54,8 @@ interface WeatherState {
   // Power-user overlays — off by default. Lightning + storm-cell dots
   // overwhelm the radar view for casual users; opt-in via this flag.
   extrasVisible: boolean;
+  /** GOES satellite imagery under the radar (manifest `satellite` layer). */
+  satelliteVisible: boolean;
   /** Optional local-LLM briefing card; the card hides itself whenever the model is unavailable. */
   aiNarration: boolean;
   /** "Rain starts in N min" local notifications planned on this phone from the radar nowcast. */
@@ -86,6 +88,7 @@ interface WeatherState {
   setActivePalette: (palette: Palette) => void;
   setTimelineMode: (mode: TimelineMode) => void;
   toggleExtras: () => void;
+  setSatelliteVisible: (on: boolean) => void;
   setAiNarration: (on: boolean) => void;
   setRainAlertsEnabled: (on: boolean) => void;
   setRainAlertLeadMinutes: (minutes: RainAlertLeadMinutes) => void;
@@ -172,6 +175,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   // as one merged stream out of the box. Less UI to flip, less to explain.
   timelineMode: parseTimelineMode(getString("timelineMode", "forecast")),
   extrasVisible: getString("extrasVisible", "0") === "1",
+  satelliteVisible: getString("satelliteVisible", "0") === "1",
   aiNarration: getString("aiNarration", "1") === "1",
   rainAlertsEnabled: getString("rainAlertsEnabled", "0") === "1",
   rainAlertLeadMinutes: parseRainAlertLead(getString("rainAlertLeadMinutes", ""), DEFAULT_RAIN_ALERT_LEAD),
@@ -303,6 +307,10 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     setString("extrasVisible", next ? "1" : "0");
     return { extrasVisible: next };
   }),
+  setSatelliteVisible: (on) => {
+    setString("satelliteVisible", on ? "1" : "0");
+    set({ satelliteVisible: on });
+  },
   setAiNarration: (on) => {
     setString("aiNarration", on ? "1" : "0");
     set({ aiNarration: on });
