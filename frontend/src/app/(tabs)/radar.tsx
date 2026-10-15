@@ -32,6 +32,7 @@ import { WarningsOverlay, type WarningDetails } from "../../components/map/Warni
 import { StormCellSheet, WarningSheet } from "../../components/map/FeatureSheets";
 import type { StormCellInfo } from "../../lib/stormTracks";
 import { WindParticlesOverlay, useSharedCamera } from "../../components/map/WindParticlesOverlay";
+import { PackedRadarOverlay } from "../../components/map/PackedRadarOverlay";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { LayerLegendCard } from "../../components/map/LayerLegendCard";
 import { LayerLocationMarker } from "../../components/map/LayerLocationMarker";
@@ -45,6 +46,7 @@ import { useManifest } from "../../hooks/useManifest";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useRadarStatus } from "../../hooks/useRadarStatus";
+import { usePackedFrames } from "../../hooks/usePackedFrames";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 
 export default function RadarScreen() {
@@ -68,7 +70,14 @@ export default function RadarScreen() {
   const [selectedWarning, setSelectedWarning] = useState<WarningDetails | null>(null);
   const [mapOptionsOpen, setMapOptionsOpen] = useState(false);
 
-  const camera = useSharedCamera(DEFAULTS.LONGITUDE, DEFAULTS.LATITUDE, DEFAULTS.ZOOM);
+  // Same start as WeatherMap's initial view, so overlays line up before the first region event.
+  const camera = useSharedCamera(
+    useWeatherStore.getState().longitude ?? DEFAULTS.LONGITUDE,
+    useWeatherStore.getState().latitude ?? DEFAULTS.LATITUDE,
+    DEFAULTS.ZOOM,
+  );
+  // Radar frames with packed tiles draw on the GPU canvas; the rest stay MapLibre rasters.
+  const packed = usePackedFrames();
   // Particles also run over the air-quality heatmap (the IQAir Earth look):
   // the wind field is what carries the smoke plume, so seeing it flow over
   // the PM2.5 wash explains where the plume is headed.
@@ -84,14 +93,16 @@ export default function RadarScreen() {
           setIsPlaying(false);
           setPinned({ lat, lon });
         }}
-        trackCameraContinuously={windParticlesOn}
+        trackCameraContinuously={windParticlesOn || packed != null}
+        allowPitch={packed == null}
         onCameraChanged={(c) => {
           camera.lon.set(c.lon);
           camera.lat.set(c.lat);
           camera.zoom.set(c.zoom);
+          camera.bearing.set(c.bearing);
         }}
       >
-        {(activeLayer === "radar" || activeLayer === "radar-hrrr") && <RadarOverlay />}
+        {(activeLayer === "radar" || activeLayer === "radar-hrrr") && <RadarOverlay isPacked={packed?.isPacked} />}
         {activeLayer === "temperature" && <WeatherLayerOverlay layerId="temperature" opacity={radarOpacity} />}
         {activeLayer === "precip-type" && <WeatherLayerOverlay layerId="precip-type" opacity={radarOpacity} />}
         {activeLayer === "wind" && <WeatherLayerOverlay layerId="wind" opacity={0.6} />}
@@ -110,6 +121,7 @@ export default function RadarScreen() {
         <LayerLocationMarker inspecting={pinned != null} />
         <EyedropperPin pinned={pinned} readout={inspect.readout} />
       </WeatherMap>
+      {packed ? <PackedRadarOverlay packed={packed} camera={camera} /> : null}
 
       {/* The tab bar is hidden on this full-screen route, so this is the way back. */}
       <MapChromeSurface

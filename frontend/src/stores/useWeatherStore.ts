@@ -43,6 +43,8 @@ interface WeatherState {
   /** One-shot request for the radar map to frame these bounds [west, south, east, north]. */
   focusBounds: [number, number, number, number] | null;
   radarOpacity: number;
+  /** Draw radar frames that have packed tiles on the GPU (PackedRadarOverlay); off = PNG rasters. */
+  fastRadar: boolean;
   activeLayer: LayerType;
   temperatureUnit: TemperatureUnit;
   mapStyle: MapStyle;
@@ -77,6 +79,7 @@ interface WeatherState {
   requestRecenter: () => void;
   setFocusBounds: (bounds: [number, number, number, number] | null) => void;
   setRadarOpacity: (opacity: number) => void;
+  setFastRadar: (on: boolean) => void;
   setTemperatureUnit: (unit: TemperatureUnit) => void;
   setMapStyle: (style: MapStyle) => void;
   setMapProjection: (projection: MapProjection) => void;
@@ -157,6 +160,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   recenterNonce: 0,
   focusBounds: null,
   radarOpacity: parseOpacity(getString("radarOpacity", String(RADAR.DEFAULT_OPACITY)), RADAR.DEFAULT_OPACITY),
+  fastRadar: getString("fastRadar", "1") === "1",
   activeLayer: "radar" as LayerType,
   temperatureUnit: getString("temperatureUnit", "fahrenheit") === "celsius" ? "celsius" : "fahrenheit",
   // Persisted strings are parsed, not cast: a stale/garbage value would otherwise
@@ -269,6 +273,10 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setRadarOpacity: (opacity) => {
     setString("radarOpacity", String(opacity));
     set({ radarOpacity: opacity });
+  },
+  setFastRadar: (on) => {
+    setString("fastRadar", on ? "1" : "0");
+    set({ fastRadar: on });
   },
   setTemperatureUnit: (unit) => {
     setString("temperatureUnit", unit);

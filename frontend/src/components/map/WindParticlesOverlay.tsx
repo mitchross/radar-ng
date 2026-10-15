@@ -55,6 +55,8 @@ export interface SharedCamera {
   lon: SharedValue<number>;
   lat: SharedValue<number>;
   zoom: SharedValue<number>;
+  /** Degrees clockwise; the packed radar overlay rotates with it, the particles ignore it. */
+  bearing: SharedValue<number>;
 }
 
 export function useSharedCamera(
@@ -65,7 +67,8 @@ export function useSharedCamera(
   const lon = useSharedValue(initLon);
   const lat = useSharedValue(initLat);
   const zoom = useSharedValue(initZoom);
-  return useMemo(() => ({ lon, lat, zoom }), [lon, lat, zoom]);
+  const bearing = useSharedValue(0);
+  return useMemo(() => ({ lon, lat, zoom, bearing }), [lon, lat, zoom, bearing]);
 }
 
 interface ParticleBuffer {
