@@ -104,6 +104,8 @@ export const LAYERS: LayerConfig[] = [
   { id: "radar", label: "Radar", icon: "R", isFillLayer: true, defaultVisible: true, minZoom: 4, maxZoom: 12 },
   { id: "wind", label: "Wind", icon: "W", isFillLayer: false, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "temperature", label: "Temp", icon: "T", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  { id: "feels-like", label: "Feels", icon: "F", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  { id: "dewpoint", label: "Dew Pt", icon: "D", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "precip-type", label: "Precip", icon: "P", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "precip-accum", label: "Rain 1h", icon: "A", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "cloud", label: "Clouds", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },

@@ -126,6 +126,7 @@ pub fn layer_vars(layer: &str) -> Vec<HrrrVar> {
     match layer {
         "radar-hrrr" => vec![HrrrVar::Refc],
         "temperature" => vec![HrrrVar::T2m],
+        "feels-like" => vec![HrrrVar::T2m, HrrrVar::Rh2m, HrrrVar::U10, HrrrVar::V10],
         "dewpoint" => vec![HrrrVar::Dpt2m],
         "humidity" => vec![HrrrVar::Rh2m],
         "wind" => vec![HrrrVar::U10, HrrrVar::V10],
@@ -146,7 +147,7 @@ pub fn layer_vars(layer: &str) -> Vec<HrrrVar> {
 pub fn layer_color_key(layer: &str) -> Option<&'static str> {
     Some(match layer {
         "radar-hrrr" => "reflectivity",
-        "temperature" => "temperature",
+        "temperature" | "feels-like" => "temperature",
         "dewpoint" => "dewpoint",
         "humidity" => "humidity",
         "wind" => "wind_speed",

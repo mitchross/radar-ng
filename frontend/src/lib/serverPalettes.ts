@@ -18,6 +18,8 @@ export type ServerPalettes = Partial<Record<Palette, Record<string, ColorTable>>
 /** Layer to palette key, as the server's HRRR `layer_color_key` maps them. */
 const LAYER_TABLES: Partial<Record<LayerType, { key: string; title: string; unit: string }>> = {
   temperature: { key: "temperature", title: "Temperature", unit: "°F" },
+  "feels-like": { key: "temperature", title: "Feels Like", unit: "°F" },
+  dewpoint: { key: "dewpoint", title: "Dew Point", unit: "°F" },
   wind: { key: "wind_speed", title: "Wind", unit: "mph" },
   "precip-accum": { key: "precip_accum", title: "Rain Total", unit: "in" },
   cloud: { key: "cloud_cover", title: "Clouds", unit: "%" },

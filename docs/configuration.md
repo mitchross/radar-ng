@@ -128,7 +128,7 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `STORM_PREFETCH_MAX_DISTANCE_KM` | `500` | Do not prefetch when the nearest storm is farther from the user. |
 | `FORECAST_HOURS` | `18` | HRRR forecast hours rendered per model run. |
 | `EXTENDED_FORECAST_HOURS` | `48` | Extended sub-hourly HRRR hours. |
-| `HRRR_ENABLED_LAYERS` | `radar-hrrr` (compose: all layers) | Comma-separated HRRR layers. Reflectivity-only is the production-safe default. |
+| `HRRR_ENABLED_LAYERS` | `radar-hrrr` (compose: all layers) | Comma-separated HRRR layers: `radar-hrrr`, `temperature`, `feels-like`, `dewpoint`, `humidity`, `wind`, `cape`, `precip-type`, `precip-accum`, `cloud`. `feels-like` is the NWS heat index or wind chill. |
 
 ### Nowcast (Lucas-Kanade motion + S-PROG)
 | Var | Default | Notes |

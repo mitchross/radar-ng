@@ -11,6 +11,8 @@ export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" |
 export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] = [
   { id: "radar", name: "Radar", icon: "rain" },
   { id: "temperature", name: "Temperature", icon: "thermo" },
+  { id: "feels-like", name: "Feels Like", icon: "thermo" },
+  { id: "dewpoint", name: "Dew Point", icon: "drop" },
   { id: "wind", name: "Wind", icon: "wind" },
   { id: "precip-accum", name: "Rain Total", icon: "drop" },
   { id: "cloud", name: "Clouds", icon: "cloud" },
