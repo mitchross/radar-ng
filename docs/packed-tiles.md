@@ -46,8 +46,13 @@ A bucket is one directory of packed tiles: up to `max_slots` frames of one layer
   start, e.g. `2026-10-15T18:30:00Z`. Each new MRMS frame takes the next slot of its window's
   bucket. The current bucket is rewritten on every frame; older buckets are final.
 - **Runs** (`nowcast`, HRRR layers): one bucket per run, split into parts of `max_slots` frames.
-  The id is `<run>` or `<run>.p<k>`.
-- Slots are in time order. A bucket's slot list only grows.
+  The id of part 0 is `<run>`; part `k` (k >= 1) is `<run>.p<k>`. For the nowcast, `<run>` is the
+  anchor timestamp as it appears in the frame paths, e.g. `2026-10-15T18:30:38+00:00`.
+- A bucket's slot list only grows, and a slot never moves. Slots are normally in time order. An
+  MRMS backlog is processed newest first, so a late frame can take a later slot than a newer frame.
+  Clients look slots up by timestamp, never by position.
+- A frame that is packed again (an activity retry) keeps its slot. A bucket that is full skips the
+  frame, which then uses the raster path.
 
 Layout on disk, under `TILE_DIR`:
 
@@ -61,13 +66,18 @@ rewritten after all of that update's tiles are in place.
 
 ## Serving
 
-`GET /packed/<layer>/<bucket>/<z>/<x>/<y>.png?v=<n>`
+`GET /tiles/packed/<layer>/<bucket>/<z>/<x>/<y>.png?v=<n>`
+
+Packed tiles use the existing `/tiles` lane, because the public HTTPRoute sends only `/api`, `/tiles`
+and `/basemap` to the tile server. The `/tiles` file server already maps this URL to the disk layout.
 
 - The file, with `Cache-Control: public, max-age=86400, immutable` and `ACAO: *`. `v` is the bucket
   version from the manifest. The server ignores it, but it makes every bucket update a new URL for
   the CDN and the browser. A tile fetched with an older `v` can hold newer slots, which is harmless.
 - A missing tile in a bucket that has `.packed-bucket-v1.json` returns `204` with the same headers.
+  The bucket file is one of the `/tiles` completion markers, checked at the path minus `z/x/y.png`.
 - Anything else returns the static lane's `no-store` 404.
+- Bucket ids contain `:` and `+`. Clients may percent-encode them; the server decodes the path.
 
 ## Manifest
 
@@ -85,7 +95,7 @@ Each packed layer gets `layers.<layer>.packed`:
   "categorical": false,
   "scale": 0.5,
   "offset": -32.0,
-  "url_template": "/packed/{layer}/{bucket}/{z}/{x}/{y}.png?v={v}",
+  "url_template": "/tiles/packed/{layer}/{bucket}/{z}/{x}/{y}.png?v={v}",
   "buckets": [
     {"id": "2026-10-15T18:30:00Z", "v": 7, "slots": ["2026-10-15T18:30:38+00:00", "..."]}
   ]
@@ -98,6 +108,9 @@ Each packed layer gets `layers.<layer>.packed`:
   layers use 3 to 5. Clients overzoom past `max_zoom`.
 - The manifest is updated under `manifest.lock` after the bucket file. Buckets drop out of the
   manifest before their directories are deleted, as frames already do.
+- Retention: an MRMS bucket goes when its whole window is older than the MRMS retention (4 h). The
+  nowcast lists only the current run's buckets; other run buckets are deleted after 60 minutes.
+- `PACKED_TILES=0` stops writing buckets (`docs/configuration.md`).
 
 ## Coloring (clients)
 

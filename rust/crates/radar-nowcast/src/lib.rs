@@ -18,6 +18,7 @@ pub mod error;
 pub mod field;
 pub mod inputs;
 pub mod motion;
+pub mod packed;
 pub mod probmatch;
 pub mod render;
 pub mod run;

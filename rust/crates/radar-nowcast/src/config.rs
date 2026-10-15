@@ -56,6 +56,8 @@ pub struct NowcastConfig {
     pub skill_match_tolerance_s: f64,
     /// Interval of the heartbeat callback (30 s in production, spec 2.1).
     pub heartbeat_every: Duration,
+    /// `PACKED_TILES` (default on): write a packed data tile bucket per run.
+    pub packed_tiles: bool,
 }
 
 impl NowcastConfig {
@@ -101,6 +103,7 @@ impl NowcastConfig {
             skill: SkillConfig::from_env()?,
             skill_match_tolerance_s: env::float_var("NOWCAST_SKILL_MATCH_TOLERANCE_S", 150.0)?,
             heartbeat_every: Duration::from_secs(30),
+            packed_tiles: env::bool_var("PACKED_TILES", true)?,
         })
     }
 
@@ -127,6 +130,7 @@ impl NowcastConfig {
             skill: SkillConfig::default(),
             skill_match_tolerance_s: 150.0,
             heartbeat_every: Duration::from_secs(30),
+            packed_tiles: true,
         }
     }
 

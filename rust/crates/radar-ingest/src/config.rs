@@ -67,6 +67,8 @@ pub struct IngestConfig {
     pub grid: GridConfig,
     /// Storm thresholds (`STORM_*`).
     pub storms: StormConfig,
+    /// `PACKED_TILES` (default on): write packed data tile buckets for the MRMS layers.
+    pub packed_tiles: bool,
 }
 
 impl IngestConfig {
@@ -113,6 +115,7 @@ impl IngestConfig {
             palettes,
             grid: GridConfig::from_env()?,
             storms: StormConfig::from_env()?,
+            packed_tiles: env::bool_var("PACKED_TILES", true)?,
             paths,
         })
     }
@@ -138,6 +141,7 @@ impl IngestConfig {
             hrrr_enabled_layers: vec!["radar-hrrr".into()],
             hrrr_grid_dump_step_deg: 0.03,
             palettes: vec!["classic".into()],
+            packed_tiles: true,
             paths,
         })
     }
