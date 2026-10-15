@@ -89,7 +89,15 @@ pub async fn process_forecast_hour(
         let (check_cfg, check_palettes) = (cfg.clone(), palettes.clone());
         let (check_run, check_valid) = (run_id.to_string(), valid.clone());
         common::offload(move || {
-            existing_rendered_layers(&check_cfg, &check_palettes, &check_run, &check_valid)
+            let mut layers =
+                existing_rendered_layers(&check_cfg, &check_palettes, &check_run, &check_valid);
+            // A layer rendered before its packed slot was written is rendered (and packed) again.
+            if check_cfg.packed_tiles {
+                layers.retain(|l| {
+                    super::packed::has_slot(&check_cfg.paths, l, &check_run, &check_valid)
+                });
+            }
+            layers
         })
         .await?
     };
@@ -199,7 +207,15 @@ pub async fn publish_run(
     tokio::task::spawn_blocking(move || {
         let palettes = load_hrrr_palettes(&cfg.palettes);
         let horizon = horizon_for(&run, cfg.forecast_hours, cfg.extended_forecast_hours)?;
-        super::publish::publish_run(&cfg.paths.state_dir, &run, &results, &palettes, horizon)
+        let packed = cfg.packed_tiles.then_some(&cfg.paths);
+        super::publish::publish_run(
+            &cfg.paths.state_dir,
+            packed,
+            &run,
+            &results,
+            &palettes,
+            horizon,
+        )
     })
     .await?
 }
@@ -226,6 +242,8 @@ pub async fn cleanup(ctx: &IngestCtx, retention_hours: i64) -> anyhow::Result<Hr
         let mut tile_dirs_removed = 0u64;
         for layer in crate::config::HRRR_TILE_LAYERS {
             let live = super::state::referenced_runs(manifest.layers.get(layer));
+            tile_dirs_removed +=
+                super::packed::cleanup_run_buckets(&cfg.paths, layer, &live, cutoff)?;
             let layer_dir = cfg.paths.tile_layer_dir(layer);
             if !layer_dir.exists() {
                 continue;

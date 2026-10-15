@@ -1,5 +1,6 @@
 /**
- * GPU radar: draws packed data tiles (docs/packed-tiles.md) on a Skia canvas over the map.
+ * GPU radar: draws packed data tiles (docs/packed-tiles.md) on a Skia canvas over the map, for
+ * radar and for the HRRR and AQM layers.
  *
  * Each visible tile is one rect whose SkSL shader reads the frame's slot from the RGB atlas
  * (nearest) and colors it through a 256 x 1 lookup table. A playback tick changes only uniforms;
@@ -195,18 +196,25 @@ function readyFor(url: string | undefined, y0: number) {
   return entry;
 }
 
-export function PackedRadarOverlay({ packed, camera }: { packed: PackedFrames; camera: SharedCamera }) {
+interface Props {
+  packed: PackedFrames;
+  camera: SharedCamera;
+  /** The active layer's raster opacity; defaults to the radar opacity setting. */
+  opacity?: number;
+}
+
+export function PackedRadarOverlay(props: Props) {
   const active = useAppActive();
   const focused = useIsFocused();
   if (!active || !focused) return null;
-  return <ActivePackedRadar packed={packed} camera={camera} />;
+  return <ActivePackedRadar {...props} />;
 }
 
-function ActivePackedRadar({ packed, camera }: { packed: PackedFrames; camera: SharedCamera }) {
+function ActivePackedRadar({ packed, camera, opacity: layerOpacity }: Props) {
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const playbackWindow = useWeatherStore((s) => s.playbackWindow);
-  const radarOpacity = useWeatherStore((s) => s.radarOpacity);
+  const radarOpacity = useWeatherStore((s) => layerOpacity ?? s.radarOpacity);
 
   const size = useSharedValue<SkSize>({ width: 0, height: 0 });
   const opacity = useSharedValue(radarOpacity);

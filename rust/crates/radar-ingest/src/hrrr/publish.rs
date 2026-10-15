@@ -2,6 +2,8 @@
 
 use std::path::Path;
 
+use radar_core::env::Paths;
+use radar_core::manifest::packed::{PACKED_KEY, packed_metadata, remove_packed_buckets};
 use radar_core::manifest::{FrameSpec, ReplaceOptions, read_manifest, replace_layer};
 use radar_tiler::palettes::Palette;
 use radar_types::payloads::hrrr::ForecastHourResult;
@@ -13,9 +15,11 @@ use super::{run_init, run_issued_at, valid_time};
 ///
 /// `palettes` are the loaded HRRR palettes; each layer lists the palettes that carry its color key.
 /// `horizon` is the run's horizon (so the caller decides `complete`). Writes only manifest data; tile
-/// trees must already be rendered.
+/// trees must already be rendered. With `packed` (the paths, when `PACKED_TILES` is on), each layer
+/// also lists the packed buckets of its frames' runs, in the same manifest write.
 pub fn publish_run(
     state_dir: &Path,
+    packed: Option<&Paths>,
     run_id: &str,
     results: &[ForecastHourResult],
     palettes: &[Palette],
@@ -81,20 +85,53 @@ pub fn publish_run(
         } else {
             format!("HRRR {layer}")
         };
-        let metadata = serde_json::json!({
-            "title": title,
-            "kind": "model_guidance",
-            "run_id": run_id,
-            "complete": complete,
-        });
+        let mut metadata = serde_json::Map::new();
+        metadata.insert("title".into(), title.into());
+        metadata.insert("kind".into(), "model_guidance".into());
+        metadata.insert("run_id".into(), run_id.into());
+        metadata.insert("complete".into(), complete.into());
+        match packed.and_then(|paths| packed_value(paths, &layer, &frames)) {
+            Some(value) => {
+                metadata.insert(PACKED_KEY.into(), value);
+            }
+            // No buckets: drop stale ones first, so the new frames never map to another run's slots.
+            None if manifest
+                .layers
+                .get(&layer)
+                .is_some_and(|l| l.extra.contains_key(PACKED_KEY)) =>
+            {
+                remove_packed_buckets(state_dir, &layer, |_| true)?;
+            }
+            None => {}
+        }
         let options = ReplaceOptions {
             palettes: palette_names,
             frames,
-            layer_metadata: metadata.as_object().cloned(),
+            layer_metadata: Some(metadata),
         };
         replace_layer(state_dir, &layer, &timestamps, &options)?;
         let _ = init;
         published.push(layer);
     }
     Ok(published)
+}
+
+/// The layer's `packed` object for these frames, or `None` (not packed, no buckets, or an error,
+/// which is logged: the frames then use their PNG tiles).
+fn packed_value(paths: &Paths, layer: &str, frames: &[FrameSpec]) -> Option<serde_json::Value> {
+    let layout = super::packed::layout(layer)?;
+    let shown: Vec<(String, String)> = frames
+        .iter()
+        .filter_map(|f| {
+            let run = f.extra.get("run_id")?.as_str()?;
+            Some((f.timestamp.clone(), run.to_string()))
+        })
+        .collect();
+    match super::packed::run_buckets(paths, layer, &shown) {
+        Ok(buckets) => packed_metadata(&layout, buckets),
+        Err(err) => {
+            tracing::warn!(layer, err = %format!("{err:#}"), "packed_manifest_failed");
+            None
+        }
+    }
 }

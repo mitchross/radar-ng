@@ -51,6 +51,30 @@ import { useAlerts } from "../../hooks/useAlerts";
 import { useRadarStatus } from "../../hooks/useRadarStatus";
 import { usePackedFrames } from "../../hooks/usePackedFrames";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import type { LayerType } from "../../types/weather";
+
+/** Model layers drawn by WeatherLayerOverlay (rasters) or PackedRadarOverlay (packed frames). */
+const WEATHER_LAYERS: readonly LayerType[] = [
+  "temperature",
+  "feels-like",
+  "dewpoint",
+  "precip-type",
+  "wind",
+  "cape",
+  "precip-accum",
+  "precip-24h",
+  "cloud",
+  "air-quality",
+  "ozone",
+];
+/** Layers with a fixed opacity; the rest follow the radar opacity setting. */
+const FIXED_LAYER_OPACITY: Partial<Record<LayerType, number>> = {
+  wind: 0.6,
+  cape: 0.5,
+  cloud: 0.65,
+  "air-quality": 0.75,
+  ozone: 0.75,
+};
 
 export default function RadarScreen() {
   useManifest();
@@ -81,6 +105,7 @@ export default function RadarScreen() {
   );
   // Radar frames with packed tiles draw on the GPU canvas; the rest stay MapLibre rasters.
   const packed = usePackedFrames();
+  const layerOpacity = FIXED_LAYER_OPACITY[activeLayer] ?? radarOpacity;
   // Particles also run over the air-quality heatmap (the IQAir Earth look):
   // the wind field is what carries the smoke plume, so seeing it flow over
   // the PM2.5 wash explains where the plume is headed.
@@ -108,17 +133,9 @@ export default function RadarScreen() {
         {/* First child: its anchor layer must sit below every weather layer. */}
         <SatelliteOverlay />
         {(activeLayer === "radar" || activeLayer === "radar-hrrr") && <RadarOverlay isPacked={packed?.isPacked} />}
-        {activeLayer === "temperature" && <WeatherLayerOverlay layerId="temperature" opacity={radarOpacity} />}
-        {activeLayer === "feels-like" && <WeatherLayerOverlay layerId="feels-like" opacity={radarOpacity} />}
-        {activeLayer === "dewpoint" && <WeatherLayerOverlay layerId="dewpoint" opacity={radarOpacity} />}
-        {activeLayer === "precip-type" && <WeatherLayerOverlay layerId="precip-type" opacity={radarOpacity} />}
-        {activeLayer === "wind" && <WeatherLayerOverlay layerId="wind" opacity={0.6} />}
-        {activeLayer === "cape" && <WeatherLayerOverlay layerId="cape" opacity={0.5} />}
-        {activeLayer === "precip-accum" && <WeatherLayerOverlay layerId="precip-accum" opacity={radarOpacity} />}
-        {activeLayer === "precip-24h" && <WeatherLayerOverlay layerId="precip-24h" opacity={radarOpacity} />}
-        {activeLayer === "cloud" && <WeatherLayerOverlay layerId="cloud" opacity={0.65} />}
-        {activeLayer === "air-quality" && <WeatherLayerOverlay layerId="air-quality" opacity={0.75} />}
-        {activeLayer === "ozone" && <WeatherLayerOverlay layerId="ozone" opacity={0.75} />}
+        {WEATHER_LAYERS.includes(activeLayer) && (
+          <WeatherLayerOverlay key={activeLayer} layerId={activeLayer} opacity={layerOpacity} isPacked={packed?.isPacked} />
+        )}
         {/* Always mounted: each overlay renders an empty collection / hidden pin when
             it has nothing to show, so the map's native child count never churns. */}
         <OutlookOverlay />
@@ -130,7 +147,7 @@ export default function RadarScreen() {
         <LayerLocationMarker inspecting={pinned != null} />
         <EyedropperPin pinned={pinned} readout={inspect.readout} />
       </WeatherMap>
-      {packed ? <PackedRadarOverlay packed={packed} camera={camera} /> : null}
+      {packed ? <PackedRadarOverlay packed={packed} camera={camera} opacity={layerOpacity} /> : null}
 
       {/* The tab bar is hidden on this full-screen route, so this is the way back. */}
       <MapChromeSurface
