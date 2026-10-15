@@ -8,7 +8,7 @@ const palettes: ServerPalettes = { classic: table("classic"), vivid: table("vivi
 
 describe("layerLegend", () => {
   it("draws every renderer band in value order for the HRRR layers", () => {
-    for (const layer of ["temperature", "wind", "precip-accum", "cloud"]) {
+    for (const layer of ["temperature", "feels-like", "dewpoint", "wind", "precip-accum", "cloud"]) {
       const legend = layerLegend(palettes, "classic", layer);
       expect(legend, layer).not.toBeNull();
       expect(legend!.gradient.startsWith("linear-gradient(90deg,")).toBe(true);
