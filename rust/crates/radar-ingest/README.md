@@ -62,6 +62,11 @@ A packing failure is logged (`packed_failed`) and never fails the frame.
 become NaN), renders the `precip_accum` palettes at z4 to z7, dumps the grid in `in` and adds the frame. No
 packed bucket. `list_unprocessed_keys` returns no keys for the layer unless `MRMS_QPE_24H_ENABLED` is on.
 
+With `PRECIP_TYPE` on (default), `process_frame` also fetches the MRMS PrecipFlag file nearest the
+frame (at most 5 minutes away, in parallel with the reflectivity download) and colors the tiles by
+precipitation type (`precip_type.rs`). A missing, late or bad PrecipFlag file is logged
+(`precip_flag_missing`, `precip_flag_failed`); the frame then renders with the rain ramp only.
+
 `hrrr` activities:
 
 - `find_latest_run(ctx, now) -> FindRunResult`

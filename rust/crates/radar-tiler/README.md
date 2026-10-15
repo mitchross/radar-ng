@@ -33,9 +33,10 @@ pyramids; see Deviations.
 - `render_frame_palettes(grid, kind, palettes, output_dirs, zoom_levels, options)` returns
   `Result<MultiPaletteRenderResult>`. This is the production entry point.
 - `FrameKind::{Continuous { nodata_value, min_valid_weight }, Categorical { category_map }}`
-- `FrameOptions { tile_size, source_id, publication_lock_root, overview, png_compress_level }`
+- `FrameOptions { tile_size, source_id, publication_lock_root, overview, png_compress_level, types }`
   (`Default`: tile 256, source `unspecified-frame`, overview off, level from
-  `TILE_PNG_COMPRESS_LEVEL`). `Overview::Max` is the only mode.
+  `TILE_PNG_COMPRESS_LEVEL`, no types). `Overview::Max` is the only mode. `types` is a per-cell
+  `TypePlane` (rain, snow, mix) that picks each pixel's ramp from the palette's `types` (`typed.rs`).
 - `PublishStatus::{Created, ExistingValid, ExistingForeign, Empty}`, `PalettePublishOutcome`,
   `MultiPaletteRenderResult` (`counts`, `rendered_palettes`, `outcome`).
 - `build_class_model`, `build_categorical_class_model`, `ClassModel`, `PaletteLut`.

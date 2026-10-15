@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { join } from "path";
-import { serverLegend, type ServerPalettes } from "../../src/lib/serverPalettes";
+import { precipTypeRamps, serverLegend, type ServerPalettes } from "../../src/lib/serverPalettes";
 
 const table = (id: string) =>
   JSON.parse(readFileSync(join(__dirname, "../../../rust/crates/radar-tiler/assets", `${id}.json`), "utf8"));
@@ -23,6 +23,17 @@ describe("serverLegend", () => {
     expect(observed.title).toBe("Past 24 Hr (in)");
     expect(observed.stops).toEqual(serverLegend(palettes, "classic", "precip-accum")!.stops);
     expect(observed.stops[0].label).toBe("8+");
+  });
+
+  it("builds rain, snow and mix ramps from the reflectivity table", () => {
+    const ramps = precipTypeRamps(palettes, "classic")!;
+    expect(ramps.map((r) => r.label)).toEqual(["Rain", "Snow", "Mix"]);
+    expect(ramps[0].colors[0]).toBe("#6eb9e1");
+    expect(ramps[1].colors[0]).toBe("#aadcff");
+    expect(ramps[2].colors).toHaveLength(7);
+    const rainOnly: ServerPalettes = { classic: { reflectivity: { ranges: palettes.classic!.reflectivity.ranges } } };
+    expect(precipTypeRamps(rainOnly, "classic")).toBeNull();
+    expect(precipTypeRamps(null, "classic")).toBeNull();
   });
 
   it("falls back to null without tables or for layers it does not map", () => {

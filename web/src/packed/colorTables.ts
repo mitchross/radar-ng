@@ -3,7 +3,7 @@
  * Until (or unless) that answers, reflectivity falls back to the bands in palettes.ts.
  */
 import type { ServerPalettes } from "../layerLegends";
-import { PALETTES, type PaletteId } from "../palettes";
+import { PALETTES, type Band, type PaletteId } from "../palettes";
 import type { ColorTable } from "./format";
 
 export type { ServerPalettes };
@@ -14,12 +14,14 @@ const REFLECTIVITY_NO_DATA_BELOW = 5;
 
 export function fallbackTable(palette: PaletteId, colorKey: string): ColorTable | undefined {
   if (colorKey !== "reflectivity") return undefined;
-  const bands = PALETTES[palette]?.bands;
-  if (!bands) return undefined;
+  const p = PALETTES[palette];
+  if (!p) return undefined;
+  const ranges = (bands: Band[]) => bands.map((b, i) => ({ min: b.min, max: bands[i + 1]?.min ?? REFLECTIVITY_TOP, rgba: b.rgba }));
   return {
     unit: "dBZ",
-    ranges: bands.map((b, i) => ({ min: b.min, max: bands[i + 1]?.min ?? REFLECTIVITY_TOP, rgba: b.rgba })),
+    ranges: ranges(p.bands),
     no_data_below: REFLECTIVITY_NO_DATA_BELOW,
+    types: { snow: { ranges: ranges(p.snow) }, mix: { ranges: ranges(p.mix) } },
   };
 }
 

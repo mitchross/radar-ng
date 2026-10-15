@@ -278,6 +278,39 @@ pub fn reduce_row_ranges(cols: &[f32], t: usize, ranges: &[(usize, usize)]) -> V
     out
 }
 
+/// [`reduce_column_ranges`] for class planes: the largest class per range, 0 for an empty range.
+pub fn reduce_column_ranges_u8(
+    values: &[u8],
+    h: usize,
+    w: usize,
+    ranges: &[(usize, usize)],
+) -> Vec<u8> {
+    let mut out = vec![0u8; h * ranges.len()];
+    for r in 0..h {
+        let row = &values[r * w..(r + 1) * w];
+        for (j, &(start, stop)) in ranges.iter().enumerate() {
+            if stop > start {
+                out[r * ranges.len() + j] = row[start..stop].iter().copied().max().unwrap_or(0);
+            }
+        }
+    }
+    out
+}
+
+/// [`reduce_row_ranges`] for class planes: the largest class per range, 0 for an empty range.
+pub fn reduce_row_ranges_u8(cols: &[u8], t: usize, ranges: &[(usize, usize)]) -> Vec<u8> {
+    let mut out = vec![0u8; ranges.len() * t];
+    for (i, &(start, stop)) in ranges.iter().enumerate() {
+        let dst = &mut out[i * t..(i + 1) * t];
+        for r in start..stop {
+            for (d, &v) in dst.iter_mut().zip(&cols[r * t..(r + 1) * t]) {
+                *d = (*d).max(v);
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
