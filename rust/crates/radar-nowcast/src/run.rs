@@ -30,7 +30,6 @@ use radar_core::pycompat::float_repr;
 use radar_core::time::round_digits;
 use radar_tiler::{ColorTable, load_palette};
 use radar_types::payloads::nowcast::NowcastResult;
-use rayon::prelude::*;
 use serde_json::{Map, Value};
 
 use crate::config::{MIN_INPUT_FRAMES, NowcastConfig};
@@ -459,7 +458,7 @@ fn load_reflectivity(name: &str) -> anyhow::Result<Option<ColorTable>> {
     }
 }
 
-/// Render every lead (spec 8). Leads run in parallel on a pool of `render_workers` threads.
+/// Render leads in order, with `render_workers` threads parallelizing each lead's tiles.
 #[allow(clippy::too_many_arguments)]
 fn render_all(
     cfg: &NowcastConfig,
@@ -492,8 +491,8 @@ fn render_all(
         .build()
         .context("building the render pool")?;
     pool.install(|| {
+        // Nested lead tasks can block on publication locks held by suspended tile tasks in this pool.
         (0..fields.len())
-            .into_par_iter()
             .map(|i| render_lead(&ctx, i, &fields[i]))
             .collect::<anyhow::Result<Vec<_>>>()
     })
@@ -698,5 +697,30 @@ mod tests {
         let cfg = cfg_in(dir.path());
         assert!(cfg.retention_runs >= 2);
         assert_eq!(ZOOM_LEVELS.len(), 3);
+    }
+
+    #[test]
+    fn render_many_leads_with_shared_publication_lock_stripes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = cfg_in(dir.path());
+        cfg.render_workers = 4;
+        cfg.step_min = 1;
+        let fields = vec![Field2::filled(32, 32, 30.0); 72];
+        let lats = inputs::linspace(45.0, 40.0, 32);
+        let lons = inputs::linspace(-90.0, -80.0, 32);
+        let anchor = "2026-10-15T02:00:00+00:00";
+        let leads = render_all(
+            &cfg,
+            anchor,
+            inputs::stem_time(anchor).unwrap(),
+            &lats,
+            &lons,
+            METHOD_SPROG,
+            5.0,
+            &fields,
+        )
+        .unwrap();
+        assert_eq!(leads.len(), fields.len());
+        assert!(leads.iter().all(Option::is_some));
     }
 }

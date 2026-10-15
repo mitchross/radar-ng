@@ -126,6 +126,16 @@ pub async fn get_health(State(state): State<AppState>) -> Response {
         None => json!({ "status": "unknown", "reason": "no_status" }),
     };
 
+    if snap
+        .value
+        .get("layers")
+        .and_then(|layers| layers.get("nowcast"))
+        .is_some_and(|layer| crate::nowcast::run_expired(layer, now))
+    {
+        status = "degraded";
+        reasons.push("nowcast_expired".into());
+    }
+
     let tile_dir = state.config.tile_dir.clone();
     let disk = tokio::task::spawn_blocking(move || tiles_disk(&tile_dir))
         .await

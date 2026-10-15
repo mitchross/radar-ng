@@ -1,5 +1,10 @@
 # Agent Instructions
 
+## Git changes
+
+You may run `git add`/`commit`/`push` without further permission only on a new feature branch and when opening a PR.
+Otherwise, require an explicit instruction. Never push directly to the default or deploy branch.
+
 ## Backend is Rust (since 2026-10-14)
 
 The backend is the Rust workspace in `rust/` (one binary, `radar`); the old Python backend was removed.

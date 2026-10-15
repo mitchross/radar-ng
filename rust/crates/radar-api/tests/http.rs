@@ -933,6 +933,57 @@ async fn nowcast_point_reports_the_status_file_when_no_frames_exist() {
     assert_eq!(range_body, json!({"detail": "lat/lon out of range"}));
 }
 
+#[tokio::test]
+async fn expired_nowcast_is_unavailable_even_when_its_point_is_cached() {
+    let env = Env::new();
+    let run = "2020-01-01T00:00:00+00:00";
+    let valid = "2020-01-01T01:00:00+00:00";
+    write_json(
+        &env.path("state/manifest.json"),
+        &manifest(Some(&now_iso()), Some((run, valid))),
+    );
+    write_json(
+        &env.path("state/nowcast-status.json"),
+        &json!({"status": "ok", "updated_at": run}),
+    );
+    let state = AppState::new(env.config(|_| {})).unwrap();
+    state.nowcast_cache.insert(
+        (run.into(), "42.9".into(), "-85.6".into()),
+        Arc::new(json!({"status": "ok", "points": [{"precipitation_mm_h": 0.0}]})),
+    );
+    let app = router(state);
+    let (status, _, body) = get_json(&app, "/api/nowcast/42.9/-85.6").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "unavailable");
+    assert_eq!(body["reason"], "nowcast_expired");
+    assert_eq!(body["points"], json!([]));
+    let (status, _, body) = get_json(&app, "/api/health").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(body["reasons"], json!(["nowcast_expired"]));
+}
+
+#[tokio::test]
+async fn unexpired_nowcast_keeps_its_cached_point_and_healthy_status() {
+    let env = Env::new();
+    let run = now_iso();
+    let valid = (Utc::now() + chrono::Duration::minutes(30)).to_rfc3339();
+    write_json(
+        &env.path("state/manifest.json"),
+        &manifest(Some(&run), Some((&run, &valid))),
+    );
+    let state = AppState::new(env.config(|_| {})).unwrap();
+    state.nowcast_cache.insert(
+        (run, "42.9".into(), "-85.6".into()),
+        Arc::new(json!({"status": "ok", "points": [{"precipitation_mm_h": 1.0}]})),
+    );
+    let app = router(state);
+    let (_, _, body) = get_json(&app, "/api/nowcast/42.9/-85.6").await;
+    assert_eq!(body["status"], "ok");
+    assert_eq!(body["points"][0]["precipitation_mm_h"], 1.0);
+    let (status, _, _) = get_json(&app, "/api/health").await;
+    assert_eq!(status, StatusCode::OK);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Workflow routes
 // ---------------------------------------------------------------------------------------------

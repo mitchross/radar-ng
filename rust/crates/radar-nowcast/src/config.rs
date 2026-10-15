@@ -44,7 +44,7 @@ pub struct NowcastConfig {
     pub point_grid_max_cells: usize,
     /// `NOWCAST_POINT_GRID_RETENTION_RUNS`, at least 2.
     pub retention_runs: u64,
-    /// `NOWCAST_RENDER_WORKERS`: threads that render leads in parallel.
+    /// `NOWCAST_RENDER_WORKERS`: threads that render tiles within each lead in parallel.
     pub render_workers: usize,
     /// `PALETTES`: palette names, in order.
     pub palettes: Vec<String>,

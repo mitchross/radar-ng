@@ -274,7 +274,8 @@ sampler (the bilinear weights are the same across the window) is the next step t
     loads for scoring skip the fill rewrite, and the loop stops at the first load failure.
 17. **Heartbeat**: the callback is `Fn()`, so it carries no phase details. It fires every 30 s while the
     blocking work runs, through `radar_core::heartbeat`.
-18. **Leads in parallel**: rendering uses a rayon pool of `render_workers` threads, one lead per task.
+18. **Rendering**: leads render in order. A Rayon pool of `render_workers` threads renders each lead's tiles in parallel.
+    Nested parallel leads can deadlock when publication lock stripes collide while tile tasks remain suspended.
 19. **Pysteps-unavailable path** (spec 13, item 17) does not apply: there is no pysteps in the Rust
     build. Spec 13 items 28 and 29 belong to radar-api.
 20. **Selection**: the gap check in `select_input_grids` is `secs_between(candidate, last_chosen) < min_gap`.
