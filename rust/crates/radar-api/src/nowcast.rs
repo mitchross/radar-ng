@@ -11,10 +11,10 @@ use std::time::{Duration, Instant};
 use axum::extract::{Path as AxPath, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use radar_core::nowcast_skill;
 use radar_core::pycompat::{float_repr, is_falsy, py_str};
-use radar_core::time::round_digits;
+use radar_core::time::{parse_iso_as_utc, round_digits};
 use serde_json::{Map, Value, json};
 
 use crate::grid;
@@ -25,6 +25,21 @@ use crate::state::AppState;
 
 /// TTL of the skill snapshot (`_MANIFEST_TTL_S`).
 pub const SKILL_TTL: Duration = Duration::from_secs(15);
+
+/// A published run is expired when none of its frames remains valid in the future.
+pub(crate) fn run_expired(layer: &Value, now: DateTime<Utc>) -> bool {
+    let Some(frames) = layer.get("frames").and_then(Value::as_array) else {
+        return false;
+    };
+    !frames.is_empty()
+        && !frames.iter().any(|frame| {
+            frame
+                .get("timestamp")
+                .and_then(Value::as_str)
+                .and_then(parse_iso_as_utc)
+                .is_some_and(|valid| valid > now)
+        })
+}
 
 /// Marshall-Palmer Z-R estimate in mm/h (spec 5.4): `0` below 5 dBZ, clamped to `[0, 300]`.
 #[must_use]
@@ -127,6 +142,14 @@ pub async fn nowcast_point(state: &AppState, lat: f64, lon: f64) -> Result<Point
             max_age: 15,
         });
     };
+
+    // Check before the cache: a cached run can expire without a manifest update.
+    if run_expired(layer, Utc::now()) {
+        return Ok(PointResult {
+            body: json!({"status": "unavailable", "reason": "nowcast_expired", "points": []}),
+            max_age: 15,
+        });
+    }
 
     let run_id = {
         let raw = layer
