@@ -1,9 +1,10 @@
 //! HRRR activities (spec §11.2, §11.3, §12.2): find run, horizon, process one forecast hour, publish a
-//! run coherently, mark processed, cleanup. Split into `state` (pure rules), `publish`, `dump`, `render`
-//! and `activities`.
+//! run coherently, mark processed, cleanup. Split into `state` (pure rules), `publish`, `dump`, `render`,
+//! `packed` and `activities`.
 
 pub mod activities;
 pub mod dump;
+pub mod packed;
 pub mod publish;
 pub mod render;
 pub mod state;

@@ -92,6 +92,48 @@ fn packed_value(layout: &PackedLayout, buckets: &[PackedBucket]) -> Value {
     })
 }
 
+/// The `packed` object for these buckets (sorted by id), or `None` when there are none. Run layers
+/// put it in `replace_layer`'s metadata, so frames and buckets change in one manifest write.
+pub fn packed_metadata(layout: &PackedLayout, mut buckets: Vec<PackedBucket>) -> Option<Value> {
+    if buckets.is_empty() {
+        return None;
+    }
+    buckets.sort_by(|a, b| a.id.cmp(&b.id));
+    Some(packed_value(layout, &buckets))
+}
+
+/// Run buckets as a run layer lists them. A slot keeps its timestamp only when the layer shows
+/// that frame from the bucket's run (`frames` are `(timestamp, run)`); any other slot becomes `""`
+/// in place, so slots keep their positions and each frame is in at most one bucket. Buckets with
+/// no shown slot are dropped.
+pub fn run_layer_buckets<'a>(
+    mut buckets: Vec<PackedBucket>,
+    frames: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Vec<PackedBucket> {
+    let mut shown: std::collections::BTreeSet<(String, String)> = frames
+        .into_iter()
+        .map(|(ts, run)| (canonical_or_raw(ts), run.to_string()))
+        .collect();
+    buckets.sort_by(|a, b| a.id.cmp(&b.id));
+    buckets
+        .into_iter()
+        .filter_map(|mut bucket| {
+            let run = run_of_bucket(&bucket.id).to_string();
+            for slot in &mut bucket.slots {
+                // Taking the key out blanks any later copy of the same frame.
+                if !shown.remove(&(canonical_or_raw(slot), run.clone())) {
+                    slot.clear();
+                }
+            }
+            bucket.slots.iter().any(|s| !s.is_empty()).then_some(bucket)
+        })
+        .collect()
+}
+
+fn canonical_or_raw(timestamp: &str) -> String {
+    super::canonical_timestamp(timestamp).unwrap_or_else(|_| timestamp.to_string())
+}
+
 /// The buckets listed under `layers.<layer>.packed`. Malformed entries are skipped.
 pub fn packed_buckets(manifest: &Manifest, layer: &str) -> Vec<PackedBucket> {
     manifest
@@ -300,6 +342,53 @@ mod tests {
         assert_eq!(run_bucket_id(run, 2), format!("{run}.p2"));
         assert_eq!(run_of_bucket(&run_bucket_id(run, 2)), run);
         assert_eq!(run_of_bucket(run), run);
+    }
+
+    #[test]
+    fn run_layer_buckets_blank_frames_from_other_runs_and_publish_with_the_frames() {
+        let (a, b, c) = (
+            "2026-10-15T13:00:00+00:00",
+            "2026-10-15T14:00:00+00:00",
+            "2026-10-15T15:00:00+00:00",
+        );
+        let old = "20261015_12";
+        let new = "20261015_13";
+        let buckets = vec![
+            bucket(old, 3, &[a, b, c]),
+            bucket(&run_bucket_id(old, 1), 1, &[a]),
+            bucket(new, 2, &[c, b]),
+        ];
+        // The new run shows 14z and 15z; 13z is the old run's (the spelling may differ).
+        let frames = [("2026-10-15T13:00:00Z", old), (b, new), (c, new)];
+        let listed = run_layer_buckets(buckets, frames);
+        assert_eq!(
+            listed,
+            vec![bucket(old, 3, &[a, "", ""]), bucket(new, 2, &[c, b])],
+            "a copy in a later part and a bucket with nothing shown are dropped"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path();
+        assert_eq!(packed_metadata(&layout(), Vec::new()), None);
+        let mut metadata = Map::new();
+        metadata.insert(
+            PACKED_KEY.into(),
+            packed_metadata(&layout(), listed.clone()).unwrap(),
+        );
+        let options = super::super::ReplaceOptions {
+            palettes: vec!["classic".into()],
+            frames: Vec::new(),
+            layer_metadata: Some(metadata),
+        };
+        let m = super::super::replace_layer(
+            state,
+            "temperature",
+            &[a.to_string(), b.to_string(), c.to_string()],
+            &options,
+        )
+        .unwrap();
+        assert_eq!(packed_buckets(&m, "temperature"), listed);
+        assert_eq!(m.layers["temperature"].frames.len(), 3);
     }
 
     #[test]

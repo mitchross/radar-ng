@@ -65,6 +65,12 @@ A packing failure is logged (`packed_failed`) and never fails the frame.
 - `mark_processed(ctx, run_id)`
 - `cleanup(ctx, retention_hours) -> HrrrCleanupResult`
 
+With `PACKED_TILES` on, each rendered layer of an hour (not `precip-type`) is also packed into its run
+bucket (`hrrr/packed.rs`): hours 1 to 24 in `<run>`, 25 to 48 in `<run>.p1`. An hour whose PNG tiles
+exist but whose slot is missing is rendered again. `publish_run` lists the buckets of every run the
+layer's frames come from (the extended tail included) in the same manifest write as the frames.
+`cleanup` deletes buckets of unreferenced runs past the retention, as it does run directories.
+
 Payload types come from `radar-types`. Each activity returns `anyhow::Result`.
 
 ## Deviations from the Python

@@ -86,21 +86,91 @@ fn quantization_edges() {
     assert_eq!(REFL.quantize(5000.0), 255);
     let cloud = Quantizer::for_color_key("cloud_cover").unwrap();
     assert_eq!(cloud.quantize(9.9), 0);
-    assert_eq!(cloud.quantize(10.0), 25);
-    for key in [
-        "reflectivity",
-        "temperature",
-        "wind_speed",
-        "precip_accum",
-        "cloud_cover",
-    ] {
-        assert!(Quantizer::for_color_key(key).is_some(), "{key}");
-    }
+    assert_eq!(cloud.quantize(10.0), 2);
+    // A floor below `offset + scale` lifts the values in between to code 1.
+    let accum = Quantizer::for_color_key("precip_accum").unwrap();
+    assert_eq!(accum.quantize(0.009), 0);
+    assert_eq!(accum.quantize(0.011), 1);
+    assert_eq!(accum.quantize(0.07), 1);
+    assert_eq!(accum.quantize(0.1), 2);
+    let wind = Quantizer::for_color_key("wind_speed").unwrap();
+    assert_eq!(wind.quantize(0.0), 1);
+    assert_eq!(wind.quantize(-0.1), 0);
     assert_eq!(Quantizer::for_color_key("reflectivity"), Some(REFL));
     assert_eq!(Quantizer::for_color_key("precip_type"), None);
     let temp = Quantizer::for_color_key("temperature").unwrap();
     assert_eq!(temp.quantize(-79.0), 1);
     assert_eq!(temp.quantize(175.0), 255);
+}
+
+/// Every palette band edge, as `(color key, edge)`, where a decoded value can land in another band
+/// than the raw value (docs/packed-tiles.md, "Quantization per palette key").
+const INEXACT_EDGES: [(&str, f64); 11] = [
+    ("humidity", 100.01),
+    ("cloud_cover", 101.0),
+    ("precip_accum", 20.0),
+    ("pm25", 9.1),
+    ("pm25", 20.0),
+    ("pm25", 45.0),
+    ("pm25", 90.0),
+    ("pm25", 175.0),
+    ("pm25", 500.0),
+    ("pm25", 20000.0),
+    ("ozone", 600.0),
+];
+
+/// The renderer's rule: below `no_data_below` is transparent, else the last range holding `v`.
+fn band(table: &crate::palettes::ColorTable, v: f64) -> Option<[u8; 4]> {
+    if v.is_nan() || v < table.no_data_below() {
+        return None;
+    }
+    let ranges = table.ranges().unwrap_or_default();
+    ranges
+        .iter()
+        .rev()
+        .find(|r| v >= r.min && v < r.max)
+        .map(|r| r.rgba)
+}
+
+#[test]
+fn every_range_key_decodes_into_the_raw_band_except_the_listed_edges() {
+    let mut checked = 0;
+    for name in ["classic", "muted", "vivid"] {
+        let palette = crate::load_palette(name).unwrap();
+        for key in palette.color_keys() {
+            let table = palette.color_table(key).unwrap();
+            let Some(ranges) = table.ranges() else {
+                assert_eq!(Quantizer::for_color_key(key), None, "{key} is categorical");
+                continue;
+            };
+            let quant = Quantizer::for_color_key(key)
+                .unwrap_or_else(|| panic!("{name}.{key} has ranges but no quantizer"));
+            let mut edges: Vec<f64> = ranges.iter().flat_map(|r| [r.min, r.max]).collect();
+            edges.sort_by(f64::total_cmp);
+            let (lo, hi) = (edges[0] - 2.0 * quant.scale, edges[edges.len() - 1] * 1.01);
+            let step = quant.scale.min(1.0) / 7.0;
+            let mut inexact = std::collections::BTreeSet::new();
+            let mut v = lo;
+            while v <= hi {
+                let raw = v as f32;
+                let q = quant.quantize(raw);
+                let decoded = (q != 0).then(|| quant.value(q));
+                if band(&table, f64::from(raw)) != decoded.and_then(|d| band(&table, d)) {
+                    let edge = edges.iter().rev().find(|&&e| e <= f64::from(raw)).copied();
+                    inexact.insert(format!("{:?}", edge.unwrap_or(f64::NEG_INFINITY)));
+                }
+                v += step;
+            }
+            let expected: std::collections::BTreeSet<String> = INEXACT_EDGES
+                .iter()
+                .filter(|(k, _)| *k == key)
+                .map(|(_, e)| format!("{e:?}"))
+                .collect();
+            assert_eq!(inexact, expected, "{name}.{key}");
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 30, "10 range keys in 3 palettes");
 }
 
 #[test]

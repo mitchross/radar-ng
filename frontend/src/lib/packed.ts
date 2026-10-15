@@ -82,7 +82,8 @@ export function buildLut(table: PackedColorTable | null | undefined, scale: numb
   if (!ranges || ranges.length === 0) return lut;
   const noDataBelow = finite(table.no_data_below) ? table.no_data_below : DEFAULT_NO_DATA_BELOW;
   for (let q = 1; q < 256; q++) {
-    const value = offset + q * scale;
+    // Round off float noise (0.05 * 20 = 1.0000000000000002) so band edges compare exactly.
+    const value = Math.round((offset + q * scale) * 1e6) / 1e6;
     if (value < noDataBelow) continue;
     let rgba: PackedColorRange["rgba"] | null = null;
     for (const r of ranges) {
@@ -134,6 +135,61 @@ export function locateFrame(meta: Pick<PackedMeta, "buckets" | "max_slots"> | nu
     }
   }
   return byEpoch;
+}
+
+export interface PackedFrameLocation extends PackedLocation {
+  layer: string;
+  meta: PackedMeta;
+  /** Key into PackedFrames.luts. */
+  lutKey: string;
+  channel: number;
+  x0: number;
+  y0: number;
+}
+
+export interface PackedFrames {
+  /** Per frame index: where the frame lives in packed tiles, or null (raster path). */
+  locations: (PackedFrameLocation | null)[];
+  isPacked: boolean[];
+  /** 256 x 1 RGBA tables (unpremultiplied) by lutKey; a palette change swaps only these. */
+  luts: Record<string, Uint8Array>;
+}
+
+const lutKeyOf = (meta: PackedMeta) => `${meta.color_key}|${meta.scale}|${meta.offset}`;
+
+/**
+ * Where each frame lives in packed tiles. A frame's layer is its `source` (the merged radar
+ * stream), else `fallbackLayer`. Null when no frame has a slot and a palette table to color it.
+ */
+export function buildPackedFrames(
+  frames: readonly { timestamp: string; source?: string }[],
+  layers: Record<string, { packed?: unknown } | undefined>,
+  tables: Record<string, unknown> | undefined,
+  fallbackLayer: string,
+): PackedFrames | null {
+  const metas = new Map<string, PackedMeta | null>();
+  const luts: Record<string, Uint8Array> = {};
+  const metaFor = (layer: string): PackedMeta | null => {
+    if (!metas.has(layer)) {
+      const meta = parsePackedMeta(layers[layer]?.packed);
+      const table = meta ? (tables?.[meta.color_key] as PackedColorTable | undefined) : undefined;
+      // No table for the key: leave the layer on rasters rather than draw it blank.
+      const usable = meta && table?.ranges?.length ? meta : null;
+      if (usable && table) luts[lutKeyOf(usable)] ??= buildLut(table, usable.scale, usable.offset);
+      metas.set(layer, usable);
+    }
+    return metas.get(layer) ?? null;
+  };
+  const locations = frames.map((frame): PackedFrameLocation | null => {
+    const layer = frame.source ?? fallbackLayer;
+    const meta = metaFor(layer);
+    const loc = locateFrame(meta, frame.timestamp);
+    if (!meta || !loc) return null;
+    const { channel, x0, y0 } = slotAddress(loc.slot, meta.cols, meta.tile_size);
+    return { ...loc, layer, meta, lutKey: lutKeyOf(meta), channel, x0, y0 };
+  });
+  if (!locations.some(Boolean)) return null;
+  return { locations, isPacked: locations.map(Boolean), luts };
 }
 
 export interface TileId {

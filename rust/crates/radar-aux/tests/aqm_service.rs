@@ -420,6 +420,42 @@ async fn full_layer_publishes_72_frames_with_first_and_last_invariants() {
         !m.layers.contains_key("ozone"),
         "no ozone key when ozone was not rendered"
     );
+
+    // One packed bucket per chunk; every frame has exactly one slot.
+    let packed = &layer.extra["packed"];
+    assert_eq!(packed["color_key"], "pm25");
+    assert_eq!(
+        (packed["scale"].as_f64(), packed["offset"].as_f64()),
+        (Some(1.0), Some(0.5))
+    );
+    assert_eq!(
+        (packed["min_zoom"].as_u64(), packed["max_zoom"].as_u64()),
+        (Some(3), Some(5))
+    );
+    let buckets = radar_core::manifest::packed::packed_buckets(&m, "air-quality");
+    let ids: Vec<&str> = buckets.iter().map(|b| b.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        [RUN.to_string(), format!("{RUN}.p1"), format!("{RUN}.p2")]
+    );
+    for ts in &layer.timestamps {
+        let hits = buckets.iter().filter(|b| b.slots.contains(ts)).count();
+        assert_eq!(hits, 1, "{ts}");
+    }
+    assert!(
+        e.tile
+            .join("packed/air-quality")
+            .join(RUN)
+            .join(".packed-bucket-v1.json")
+            .is_file()
+    );
+
+    // Packing off: the next publish drops the buckets from the manifest.
+    let mut off = e.cfg.clone();
+    off.packed_tiles = false;
+    aqm::aqm_publish_run(&off, RUN, &results).await.unwrap();
+    let m = read_manifest(&e.state).unwrap();
+    assert!(!m.layers["air-quality"].extra.contains_key("packed"));
 }
 
 #[tokio::test]

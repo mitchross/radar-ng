@@ -12,7 +12,7 @@ use radar_tiler::{FrameKind, FrameOptions, render_frame_palettes};
 use tracing::warn;
 
 use super::grib::{split_messages, valid_time};
-use super::{AqmError, LayerSpec, ZOOM_LEVELS};
+use super::{AqmError, LayerSpec, ZOOM_LEVELS, packed};
 
 /// Everything one chunk needs, owned, so it can move onto the blocking pool.
 pub(crate) struct ChunkJob {
@@ -32,6 +32,8 @@ pub(crate) struct ChunkJob {
     pub tile_dir: PathBuf,
     /// Grid dump settings.
     pub grid: GridConfig,
+    /// Also pack the recorded frames (`PACKED_TILES`).
+    pub packed: bool,
 }
 
 /// Renders messages `start..end` and returns the timestamps of the frames that were recorded, in order.
@@ -48,6 +50,7 @@ pub(crate) fn render_chunk_blocking(job: &ChunkJob) -> Result<Vec<String>, AqmEr
         });
     }
     let mut rendered = Vec::new();
+    let mut packer = Packer::new(job);
     for index in job.start..job.end {
         let msg = &bytes[messages[index].clone()];
         let valid = valid_time(msg).map_err(|e| match e {
@@ -56,16 +59,63 @@ pub(crate) fn render_chunk_blocking(job: &ChunkJob) -> Result<Vec<String>, AqmEr
         })?;
         let ts = isoformat_utc(&valid);
         let grid = radar_grib::decode_first_message(msg)?.grid;
-        if render_frame(job, &ts, &grid)?.is_empty() {
+        // The renderer wants north-first (Python `_write_palette_tiles`). Flip a copy only when needed.
+        let flipped = orientation_copy(&grid);
+        if render_frame(job, &ts, flipped.as_ref().unwrap_or(&grid))?.is_empty() {
             continue;
         }
         rendered.push(ts.clone());
         dump_grid(job, &ts, &grid);
+        packer.push(ts, flipped.unwrap_or(grid));
     }
+    packer.flush();
     Ok(rendered)
 }
 
-/// Renders one frame into every palette. Returns the palettes rendered, or nothing unless all rendered.
+/// Packs a chunk's recorded frames in passes of [`packed::FRAMES_PER_PASS`]. The first failure is
+/// logged and stops packing for the chunk; the frames keep their PNG tiles.
+struct Packer<'a> {
+    job: &'a ChunkJob,
+    pending: Vec<(String, Grid)>,
+    on: bool,
+}
+
+impl<'a> Packer<'a> {
+    fn new(job: &'a ChunkJob) -> Self {
+        Self {
+            job,
+            pending: Vec::new(),
+            on: job.packed,
+        }
+    }
+
+    fn push(&mut self, ts: String, grid: Grid) {
+        if !self.on {
+            return;
+        }
+        self.pending.push((ts, grid));
+        if self.pending.len() == packed::FRAMES_PER_PASS {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        if !self.on || self.pending.is_empty() {
+            return;
+        }
+        let job = self.job;
+        let frames = std::mem::take(&mut self.pending);
+        if let Err(err) =
+            packed::pack_frames_of_chunk(&job.tile_dir, job.layer, &job.run_id, job.start, &frames)
+        {
+            warn!(layer = job.layer.name, run_id = %job.run_id, start = job.start, error = %err, "packed_failed");
+            self.on = false;
+        }
+    }
+}
+
+/// Renders one north-first frame into every palette. Returns the palettes rendered, or nothing unless
+/// all rendered.
 fn render_frame(job: &ChunkJob, ts: &str, grid: &Grid) -> Result<Vec<String>, AqmError> {
     if job.tables.is_empty() {
         return Ok(Vec::new());
@@ -77,9 +127,6 @@ fn render_frame(job: &ChunkJob, ts: &str, grid: &Grid) -> Result<Vec<String>, Aq
         .iter()
         .map(|(name, _)| (name.clone(), layer_dir.join(name).join(&tile_path)))
         .collect();
-    // The renderer wants north-first (Python `_write_palette_tiles`). Flip a copy only when needed.
-    let flipped = orientation_copy(grid);
-    let render_grid = flipped.as_ref().unwrap_or(grid);
     let options = FrameOptions {
         source_id: format!("aqm:{}:{}", job.layer.name, tile_path),
         publication_lock_root: Some(layer_dir),
@@ -89,14 +136,8 @@ fn render_frame(job: &ChunkJob, ts: &str, grid: &Grid) -> Result<Vec<String>, Aq
         nodata_value: None,
         min_valid_weight: 1.0,
     };
-    let result = render_frame_palettes(
-        render_grid,
-        &kind,
-        &job.tables,
-        &out_dirs,
-        &ZOOM_LEVELS,
-        &options,
-    )?;
+    let result =
+        render_frame_palettes(grid, &kind, &job.tables, &out_dirs, &ZOOM_LEVELS, &options)?;
     let rendered: Vec<String> = result
         .rendered_palettes()
         .into_iter()

@@ -68,7 +68,7 @@ pub struct IngestConfig {
     pub grid: GridConfig,
     /// Storm thresholds (`STORM_*`).
     pub storms: StormConfig,
-    /// `PACKED_TILES` (default on): write packed data tile buckets for the MRMS layers.
+    /// `PACKED_TILES` (default on): write packed data tile buckets for the MRMS and HRRR layers.
     pub packed_tiles: bool,
 }
 

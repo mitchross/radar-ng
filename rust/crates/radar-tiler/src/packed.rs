@@ -1,7 +1,7 @@
 //! Packed data tiles v1 (`docs/packed-tiles.md`): quantized physical values, several frames per tile.
 //!
 //! A packed tile is an 8-bit RGB PNG atlas. Each channel of each 512-px block holds one frame (slot)
-//! as `q = round((value - offset) / scale)` in `1..=255`, with 0 for missing. Blocks of 3 slots are
+//! as `q = floor((value - offset) / scale)` in `1..=255`, with 0 for missing. Blocks of 3 slots are
 //! laid out row-major, [`PACKED_COLS`] blocks wide. A bucket directory holds the tiles of up to
 //! [`PACKED_MAX_SLOTS`] frames and a `.packed-bucket-v1.json` file `{"v": n, "slots": [...]}` that is
 //! rewritten last.
@@ -46,7 +46,8 @@ pub struct Quantizer {
     /// Value at code 0 (code 0 itself means missing).
     pub offset: f64,
     /// Values below this are stored as 0: every palette leaves them transparent, and keeping the
-    /// sub-threshold noise made real MRMS tiles several times larger.
+    /// sub-threshold noise made real MRMS tiles several times larger. A floor below
+    /// `offset + scale` stores the values between the two as code 1.
     pub floor: f64,
 }
 
@@ -55,10 +56,15 @@ impl Quantizer {
     pub fn for_color_key(color_key: &str) -> Option<Quantizer> {
         let (scale, offset, floor) = match color_key {
             "reflectivity" => (2.5, 0.0, 5.0),
-            "temperature" => (1.0, -80.0, f64::NEG_INFINITY),
-            "wind_speed" => (0.5, 0.0, f64::NEG_INFINITY),
+            "temperature" => (1.0, -80.0, -79.0),
+            "dewpoint" => (5.0, -80.0, -75.0),
+            "wind_speed" => (5.0, -5.0, 0.0),
+            "humidity" => (10.0, -10.0, 0.0),
+            "cape" => (500.0, 0.0, 500.0),
             "precip_accum" => (0.05, 0.0, 0.01),
-            "cloud_cover" => (0.4, 0.0, 10.0),
+            "cloud_cover" => (5.0, 0.0, 10.0),
+            "pm25" => (1.0, 0.5, 0.0),
+            "ozone" => (1.0, 0.0, 0.0),
             _ => return None,
         };
         Some(Quantizer {
@@ -68,22 +74,22 @@ impl Quantizer {
         })
     }
 
-    /// `q = clamp(floor((value - offset) / scale), 1, 255)`; NaN, a value below `floor`, or `q < 1`
-    /// before the clamp is 0. Truncating keeps every value in its palette band when the band edges
-    /// are multiples of `scale` from `offset`.
+    /// NaN or a value below `floor` is 0; otherwise `q = clamp(floor((value - offset) / scale), 1,
+    /// 255)`. Truncating keeps every value in its palette band when the band edges are multiples of
+    /// `scale` from `offset`.
     #[inline]
     pub fn quantize(&self, value: f32) -> u8 {
-        if f64::from(value) < self.floor {
+        let v = f64::from(value);
+        if v.is_nan() || v < self.floor {
             return 0;
         }
-        let q = ((f64::from(value) - self.offset) / self.scale).floor();
+        let q = ((v - self.offset) / self.scale).floor();
         if q >= 255.0 {
             255
         } else if q >= 1.0 {
             q as u8
         } else {
-            // Also NaN: every comparison above is false.
-            0
+            1
         }
     }
 
@@ -245,6 +251,31 @@ pub fn read_bucket(dir: &Path) -> Result<Option<BucketState>> {
         })
         .collect::<Result<Vec<_>>>()?;
     Ok(Some(BucketState { v, slots }))
+}
+
+/// Every bucket under `layer_dir` that has a bucket file, as `(id, state)` sorted by id. A missing
+/// `layer_dir` has none.
+pub fn list_buckets(layer_dir: &Path) -> Result<Vec<(String, BucketState)>> {
+    let entries = match fs::read_dir(layer_dir) {
+        Ok(e) => e,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
+    };
+    let mut out = Vec::new();
+    for entry in entries {
+        let path = entry?.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if name.starts_with('.') || !path.is_dir() {
+            continue;
+        }
+        if let Some(state) = read_bucket(&path)? {
+            out.push((name.to_string(), state));
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
 }
 
 /// One frame to pack: its slot timestamp and its sampled values.

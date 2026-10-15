@@ -28,21 +28,44 @@ back to PNG rasters otherwise.
 
 ## Quantization per palette key
 
-| `color_key` | scale | offset | floor | coded range |
-|---|---|---|---|---|
-| `reflectivity` (radar, radar-composite, nowcast, radar-hrrr) | 2.5 | 0.0 | 5 dBZ | 5 to 637.5 dBZ |
-| `temperature` | 1.0 | -80.0 | none | -79 to 175 °F |
-| `wind_speed` | 0.5 | 0.0 | none | 0.5 to 127.5 mph |
-| `precip_accum` | 0.05 | 0.0 | 0.01 in | 0.05 to 12.75 in |
-| `cloud_cover` | 0.4 | 0.0 | 10 % | 10 to 102 % |
+| `color_key` (layers) | scale | offset | floor | coded range | palette edges not hit |
+|---|---|---|---|---|---|
+| `reflectivity` (radar, radar-composite, nowcast, radar-hrrr) | 2.5 | 0 | 5 dBZ | 5 to 637.5 dBZ | none |
+| `temperature` (temperature, feels-like) | 1 | -80 | -79 °F | -79 to 175 °F | none |
+| `dewpoint` (dewpoint) | 5 | -80 | -75 °F | -75 to 1195 °F | none |
+| `wind_speed` (wind) | 5 | -5 | 0 mph | 0 to 1270 mph | none |
+| `humidity` (humidity) | 10 | -10 | 0 % | 0 to 2540 % | 100.01 |
+| `cape` (cape) | 500 | 0 | 500 J/kg | 500 to 127500 J/kg | none |
+| `precip_accum` (precip-accum) | 0.05 | 0 | 0.01 in | 0.05 to 12.75 in | 20 |
+| `cloud_cover` (cloud) | 5 | 0 | 10 % | 10 to 1275 % | 101 |
+| `pm25` (air-quality) | 1 | 0.5 | 0 µg/m³ | 1.5 to 255.5 µg/m³ | 9.1, 20, 45, 90, 175, 500, 20000 |
+| `ozone` (ozone) | 1 | 0 | 0 ppb | 1 to 255 ppb | 600 |
 
-`q = clamp(floor((value - offset) / scale), 1, 255)`. NaN, a value below `floor`, or `q < 1` before
-the clamp stores 0. The client decodes `value = offset + q * scale`, the bottom of the code's bin.
+NaN or a value below `floor` stores 0. Otherwise `q = clamp(floor((value - offset) / scale), 1, 255)`.
+The client decodes `value = offset + q * scale`, the bottom of the code's bin. A floor below
+`offset + scale` stores the values in between as code 1: `precip_accum` 0.01 to 0.05 in is code 1
+(0.05 in), which is in the same band. The manifest carries `scale` and `offset`; `floor` is
+server-only.
 
 - **Floor:** the lowest value any palette draws. Values below it are transparent anyway. On a real
   MRMS frame, clear-air noise below 5 dBZ made the tiles 15% larger.
 - **Truncation, not rounding:** palette edges are multiples of `scale` from `offset`, so every value
   lands in the same color band as on the server's PNG tiles.
+- **Coarsest exact step for model layers:** the palettes are stepped, and readouts use
+  `/api/inspect`, not packed values. So each HRRR key uses the largest step that hits every band
+  edge: the packed colors equal the PNG colors with the fewest bytes. Offsets are chosen so the
+  lowest band starts at code 1. On a real HRRR run (20261015_22, f01 to f04), steps of 0.5 instead
+  of 5 or 10 made the wind bucket 3.4x and the humidity bucket 4.6x larger. A smoother palette needs
+  a finer step; clients read `scale` and `offset` from the manifest, so only the server changes.
+- **Edges not hit:** a value at or above such an edge can decode into the band below it (or, past
+  the coded range, into the top coded band). Each is listed in the table and checked by the tiler,
+  web and app tests. They are out of physical range (humidity above 100.01 %, cloud above 100 %,
+  more than 20 in of rain, ozone of 600 ppb or more) except `pm25`: its edges have a 0.1 µg/m³
+  grid that 8 bits cannot cover up to 500. The step of 1 hits the AQI category edges 35.5, 55.5,
+  125.5 and 225.5 exactly; the sub-band edges are off by up to 0.5 µg/m³, and 9.1 by 0.4.
+- **Categorical layers** (`precip-type`) are not packed. Category ids 1 to 4 would fit in one
+  code with nearest sampling, but the palette keys colors by name and v1 clients skip
+  `categorical: true`. A later version can add the id-to-name map to the manifest.
 - **2.5 dBZ step:** on a real full-CONUS MRMS frame (2026-10-15), one packed slot is 1.26 MB.
   0.5 dBZ steps give 2.09 MB, and 5 dBZ steps 1.05 MB. Packing takes about 100 ms with `png`
   `Compression::Balanced`; `High` saves 2% for twice the time.
@@ -54,9 +77,22 @@ A bucket is one directory of packed tiles: up to `max_slots` frames of one layer
 - **Observations** (`radar`, `radar-composite`): fixed 30-minute UTC windows. The id is the window
   start, e.g. `2026-10-15T18:30:00Z`. Each new MRMS frame takes the next slot of its window's
   bucket. The current bucket is rewritten on every frame; older buckets are final.
-- **Runs** (`nowcast`, HRRR layers): one bucket per run, split into parts of `max_slots` frames.
-  The id of part 0 is `<run>`; part `k` (k >= 1) is `<run>.p<k>`. For the nowcast, `<run>` is the
-  anchor timestamp as it appears in the frame paths, e.g. `2026-10-15T18:30:38+00:00`.
+- **Runs** (`nowcast`, HRRR and AQM layers): one bucket per run, split into parts of `max_slots`
+  frames. The id of part 0 is `<run>`; part `k` (k >= 1) is `<run>.p<k>`. For the nowcast, `<run>`
+  is the anchor timestamp as it appears in the frame paths, e.g. `2026-10-15T18:30:38+00:00`. For
+  HRRR and AQM it is the run id, e.g. `20261015_12`.
+- **HRRR:** forecast hour `fhr` goes to part `(fhr - 1) / 24`: an 18 h run has one bucket, a 48 h
+  run two. Hours render in parallel, so slots fill in completion order. Each layer of an hour is
+  packed after its PNG render. An hour whose PNG tiles exist but whose slot is missing renders
+  again.
+- **AQM:** chunk `k` (messages `24k` to `24k + 23`) is part `k`: three buckets per 72-hour run.
+- **Cost (2026-10-15, one machine, `tests/hrrr_packed_live.rs` and `tests/aqm_packed_live.rs`):**
+  HRRR run 20261015_22, 18 hours, 9 packed layers: render 151 s, render and pack 208 s. Packing
+  one hour takes about 0.5 s at slot 1 and 3 to 5 s near slot 18, because each new slot re-encodes
+  the bucket's tiles. An 18-slot bucket is 1.7 MB (cape) to 22 MB (feels-like) over zooms 3 to 5;
+  a z5 tile of temperature is about 420 kB. AQM run 20261015_12, 72 frames: pm25 20 s to 36 s,
+  ozone 22 s to 42 s; buckets 27 MB (pm25) and 80 MB (ozone) per run, z5 tiles 110 kB and 330 kB.
+  Smooth fields at 1-unit steps compress worse than palette PNGs: the win is requests, not bytes.
 - A bucket's slot list only grows, and a slot never moves. Slots are normally in time order. An
   MRMS backlog is processed newest first, so a late frame can take a later slot than a newer frame.
   Clients look slots up by timestamp, never by position.
@@ -119,6 +155,14 @@ Each packed layer gets `layers.<layer>.packed`:
   manifest before their directories are deleted, as frames already do.
 - Retention: an MRMS bucket goes when its whole window is older than the MRMS retention (4 h). The
   nowcast lists only the current run's buckets; other run buckets are deleted after 60 minutes.
+  HRRR and AQM delete the buckets of runs the manifest no longer references, with the same
+  retention as their PNG run directories.
+- **Run layers (HRRR, AQM):** the publish writes the frames and `packed` in one manifest write. A
+  layer lists the buckets of every run its frames come from; an HRRR layer can show the extended
+  tail of an older 48 h run. A slot whose frame the layer does not show from that run (a newer run
+  replaced it, or the hour is not published yet) is listed as `""` in place, so slot positions
+  stay and each frame timestamp is in at most one bucket. A bucket with no shown slot is not
+  listed. When packing is off, the publish removes `packed` before it writes the new frames.
 - `PACKED_TILES=0` stops writing buckets (`docs/configuration.md`).
 
 ## Coloring (clients)
@@ -130,7 +174,9 @@ The client builds a 256 x 1 RGBA lookup table per (palette, `color_key`) from `/
 - Ranges are half-open `[min, max)`, and a later overlapping range wins.
 - A value in no range: transparent.
 
-`q` = 0 is always transparent. Categorical layers (precip type) are not packed in v1.
+`q` = 0 is always transparent. Categorical layers (precip type) are not packed in v1. Clients
+color every layer through the table of its `color_key`; the built-in fallback covers only
+`reflectivity`, so other layers use rasters until `/api/palettes` answers.
 
 The shader reads the slot's channel with `texelFetch` (nearest), maps it through the table, and
 multiplies by the layer opacity. A later version may crossfade two slots.
@@ -150,4 +196,4 @@ multiplies by the layer opacity. A later version may crossfade two slots.
    `/packed`; manifest metadata. PNG pyramids unchanged.
 2. Web and app: packed renderer behind the manifest check, raster fallback. Off switch in the URL
    for web (`?raster=1`) and in settings for the app.
-3. HRRR and AQM layers, then the new layers.
+3. HRRR layers (not `precip-type`) and AQM layers: done. Then the new layers.
