@@ -66,6 +66,7 @@ const LAYERS: { id: string; name: string; needs: string }[] = [
   { id: "dewpoint", name: "Dew point", needs: "dewpoint" },
   { id: "wind", name: "Wind", needs: "wind" },
   { id: "precip-accum", name: "Rain total", needs: "precip-accum" },
+  { id: "precip-24h", name: "Past 24 hr precip", needs: "precip-24h" },
   { id: "cloud", name: "Clouds", needs: "cloud" },
   { id: "air-quality", name: "Air quality", needs: "air-quality" },
   { id: "ozone", name: "Ozone", needs: "ozone" },
@@ -1167,7 +1168,7 @@ map.on("click", async (e) => {
     else if (["temperature", "feels-like", "dewpoint"].includes(state.layer)) text = `${Math.round(value)}°F`;
     else if (state.layer === "wind") text = `${Math.round(value)} mph`;
     else if (state.layer === "cloud") text = `${Math.round(value)}%`;
-    else if (state.layer === "precip-accum") text = `${value.toFixed(2)} in`;
+    else if (state.layer === "precip-accum" || state.layer === "precip-24h") text = `${value.toFixed(2)} in`;
     else text = `${value.toFixed(1)}`;
   }
   popup.setHTML(`<div class="readout"><b>${title}</b><div class="v">${text}</div><small>${lat.toFixed(3)}, ${lng.toFixed(3)}</small></div>`);

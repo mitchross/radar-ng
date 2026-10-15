@@ -179,6 +179,7 @@ export type LayerType =
   | "cape"
   | "precip-type"
   | "precip-accum"
+  | "precip-24h"
   | "cloud"
   | "air-quality"
   | "ozone";

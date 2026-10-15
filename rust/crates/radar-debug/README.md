@@ -175,7 +175,7 @@ Each is deliberate. Where a Python defect is fixed, it is marked as such.
    (defaulting to its timestamp) and still accepts `{timestamp}`.
 2. **Schedule set from `radar-types` (defect fixed).** The Python fell back to a hard-coded list of 10 when
    the repo was not on `sys.path`, and that list had already drifted (it lacked `ingest-airquality` and
-   `open-meteo-sync-gfs025`). The Rust reads the 12 schedules of `radar_types::schedules::all_schedules()`,
+   `open-meteo-sync-gfs025`). The Rust reads the 13 schedules of `radar_types::schedules::all_schedules()`,
    the same table the seeder uses.
 3. **Disk palettes.** The per-layer palette set is the stored `palettes` key (radar-core keeps it verbatim,
    as the Python reader does). If that key is absent, the frames' palettes are used, then `classic`. The

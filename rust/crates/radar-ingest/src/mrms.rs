@@ -71,6 +71,9 @@ pub async fn list_unprocessed_keys(
     ctx: &IngestCtx,
     args: &radar_types::payloads::mrms::IngestMrmsArgs,
 ) -> anyhow::Result<ListKeysResult> {
+    if !crate::mrms_qpe::layer_enabled(&ctx.cfg, &args.layer_name) {
+        return Ok(ListKeysResult::default());
+    }
     let now = Utc::now();
     let keys = gmrms::list_recent_keys(&ctx.mrms_s3, &args.mrms_prefix, now).await?;
     let state_file = format!("ingest-mrms-{}.json", args.layer_name);
@@ -108,6 +111,9 @@ pub async fn process_frame(
     input: &ProcessFrameInput,
     hb: &Heartbeat,
 ) -> anyhow::Result<ProcessFrameResult> {
+    if crate::mrms_qpe::is_qpe_layer(&input.layer_name) {
+        return crate::mrms_qpe::process_frame(ctx, input, hb).await;
+    }
     let started = Instant::now();
     let cfg = ctx.cfg.clone();
     let layer = input.layer_name.clone();

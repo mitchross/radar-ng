@@ -11,6 +11,7 @@ Source of truth: `docs/rust-migration/specs/spec-ingest-mrms-hrrr.md`. Defect de
 | Area | Tests | Result |
 |---|---|---|
 | MRMS end to end (fixture GRIB, fake S3, render, manifest, ProcessedSet, cleanup) | `tests/mrms_end_to_end.rs` (11) | 11 pass |
+| MRMS 24-hour QPE layer (toggle, render, grid unit, manifest, cleanup) | `tests/mrms_qpe.rs` (2) | 2 pass |
 | HRRR pure logic (run selection, publishable prefix, extended tail, resampling, wind rotation H24) | `tests/hrrr_pure.rs` (10) | 10 pass |
 | HRRR publication coherence (H5, H6, H7, H21) | `tests/hrrr_publish.rs` (4) | 4 pass |
 | HRRR activities against fake S3 and the Lambert fixture (H1, H2, H10, H11, H12, H13, H15 to H19, D3, D5) | `tests/hrrr_activities.rs` (12) | 12 pass |
@@ -55,6 +56,11 @@ Crate root:
 With `PACKED_TILES` on (default), `process_frame` also packs the frame into its 30-minute observation
 bucket (`packed.rs`, `docs/packed-tiles.md`) and lists it in `layers.<layer>.packed` after the frame.
 A packing failure is logged (`packed_failed`) and never fails the frame.
+
+`mrms_qpe` (layer `precip-24h`, schedule `ingest-mrms-qpe-24h`): `mrms::process_frame` hands this layer to
+`mrms_qpe::process_frame`. It converts MultiSensor QPE 24H Pass 1 from mm to inches (negative missing codes
+become NaN), renders the `precip_accum` palettes at z4 to z7, dumps the grid in `in` and adds the frame. No
+packed bucket. `list_unprocessed_keys` returns no keys for the layer unless `MRMS_QPE_24H_ENABLED` is on.
 
 With `PRECIP_TYPE` on (default), `process_frame` also fetches the MRMS PrecipFlag file nearest the
 frame (at most 5 minutes away, in parallel with the reflectivity download) and colors the tiles by
