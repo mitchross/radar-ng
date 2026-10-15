@@ -82,6 +82,12 @@ Read this first if you're an engineer or an LLM picking up radar-ng after the Py
   `mime.types` first. When that was missed, radar.vanillax.me downloaded as a `.dms` file. `ghcr-web.yml` now
   smoke-tests `Content-Type` before publishing.
 
+- **Publication locks and Rayon.** `radar_tiler::render_frame_palettes` holds a file lock while it
+  renders tiles in parallel. Calling it from parallel tasks on one Rayon pool deadlocks: nowcast did this
+  until radar-ng #97. Call it from a plain thread, or one frame at a time.
+- **Timeouts don't stop blocking work.** When a Temporal activity times out, its `spawn_blocking` render keeps
+  running, which can hold memory across retries (`REVIEW-2026-10-14.md`).
+
 ## Known follow-ups
 
 - `frontend` CI: `expo-doctor` fails on master, independent of this work (a label-only PR failed the same

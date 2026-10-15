@@ -86,6 +86,11 @@ impl Default for FrameOptions {
 /// Palettes whose final already holds a complete pyramid are not re-rendered. A complete
 /// pyramid with a different identity is reported as [`crate::PublishStatus::ExistingForeign`]
 /// and left untouched.
+///
+/// Holds the publication `flock` while it renders tiles on the current Rayon pool. Never call it
+/// from several parallel tasks of one Rayon pool: a worker blocked in the lock can be the one a
+/// lock holder needs to finish its tiles, and both wait forever (the 2026-10-14 nowcast deadlock).
+/// Call it from a plain thread, or one frame at a time inside a pool.
 pub fn render_frame_palettes(
     grid: &Grid,
     kind: &FrameKind,
