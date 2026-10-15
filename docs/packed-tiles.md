@@ -1,4 +1,4 @@
-# Packed data tiles (v1)
+# Packed data tiles (v1, v2)
 
 Radar animation is slow because the client fetches one colored PNG per tile per frame: about 1,100
 requests for one loop, each a ~140 ms tunnel round trip (measured 2026-10-15). Packed tiles carry
@@ -46,6 +46,44 @@ the clamp stores 0. The client decodes `value = offset + q * scale`, the bottom 
 - **2.5 dBZ step:** on a real full-CONUS MRMS frame (2026-10-15), one packed slot is 1.26 MB.
   0.5 dBZ steps give 2.09 MB, and 5 dBZ steps 1.05 MB. Packing takes about 100 ms with `png`
   `Compression::Balanced`; `High` saves 2% for twice the time.
+
+## Typed codes (v2)
+
+The MRMS layers color reflectivity by precipitation type when `PRECIP_TYPE` is on (default). Their
+slots then hold typed codes, and the manifest says `"version": 2` with a `types` object:
+
+```json
+"types": {"stride": 32, "classes": ["rain", "snow", "mix"]}
+```
+
+- `code = class * stride + min(q, stride - 1)`, where `q` is the reflectivity code above. Code 0 is
+  still missing. With `stride` 32, `q` <= 31 covers 5 to 77.5 dBZ, past the top palette band (75).
+- A client decodes `class = code / stride` and `q = code % stride`, then colors `q` with that class's
+  ramp. `no_data_below` applies to the rain ramp only, as on the server.
+- **Compatibility:** v1 clients accept only `version` 1, so they draw a v2 layer from the PNG rasters,
+  which are typed too. A v2 client accepts version 1 without `types` and version 2 with them.
+- One bucket holds one code space. Its `.packed-bucket-v1.json` has `"types": 32` when it is typed.
+  A frame whose encoding differs from its bucket's is not packed (raster path). When a layer's layout
+  changes, the manifest drops the buckets of the old layout.
+- A frame without a PrecipFlag file is packed as all rain.
+
+### Precipitation type source
+
+MRMS `PrecipFlag_00.00` (2-minute, same 0.01 degree CONUS grid). The worker takes the file nearest
+the frame time, at most 5 minutes away. It lands about 20 s after the reflectivity file of the same
+minute, so a fresh frame often takes the previous file. Flags (NSSL `UserTable_MRMS_PrecipFlags.csv`):
+
+| Flag | Meaning | Class |
+|---|---|---|
+| 3 | snow | snow |
+| 10 | cold stratiform rain (surface <= 5 °C) | mix within 25 km (25 cells) of snow, else rain |
+| 1, 6, 91, 96 | warm stratiform, convective, tropical rain | rain |
+| 7 | rain mixed with hail | rain: a warm-season liquid type; the reflectivity ramp shows hail cores |
+| 0, -1, -3, other | none, missing, no coverage | rain (reflectivity decides what draws) |
+
+PrecipFlag has no freezing-rain or sleet code, so mix is the rain-snow transition zone, not observed
+ice. The rasters sample the class with the nearest cell at native zooms and the largest class of the
+pixel's footprint at overview zooms (mix > snow > rain), the same as the packed slots.
 
 ## Buckets
 
@@ -130,7 +168,9 @@ The client builds a 256 x 1 RGBA lookup table per (palette, `color_key`) from `/
 - Ranges are half-open `[min, max)`, and a later overlapping range wins.
 - A value in no range: transparent.
 
-`q` = 0 is always transparent. Categorical layers (precip type) are not packed in v1.
+`q` = 0 is always transparent. Categorical layers (HRRR precip type) are not packed. For typed
+codes (v2), build the table per code: class `code / stride` picks `ranges` (rain) or
+`types.<class>.ranges` of the palette key, and `q = code % stride` gives the value.
 
 The shader reads the slot's channel with `texelFetch` (nearest), maps it through the table, and
 multiplies by the layer opacity. A later version may crossfade two slots.

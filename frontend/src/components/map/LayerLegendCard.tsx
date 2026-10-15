@@ -10,7 +10,8 @@ import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { MapChromeSurface } from "../ui/MapChromeSurface";
 import { useServerPalettes } from "../../hooks/useServerPalettes";
-import { serverLegend } from "../../lib/serverPalettes";
+import { precipTypeRamps, serverLegend } from "../../lib/serverPalettes";
+import { useManifestQuery } from "../../hooks/useManifest";
 
 // Plain-English tag at the top of the legend telling the user whether
 // they're looking at "Now" (live radar), "Soon" (next hour, pysteps
@@ -181,6 +182,9 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   const palette = useWeatherStore((s) => s.activePalette);
   const { data: palettes } = useServerPalettes();
   const legend = serverLegend(palettes, palette, activeLayer) ?? LEGENDS[activeLayer] ?? LEGENDS.radar;
+  // The server colors observed radar by precipitation type when the layer says so.
+  const typedLayer = useManifestQuery().data?.layers[activeLayer]?.precip_type === true;
+  const typeRamps = typedLayer ? precipTypeRamps(palettes, palette) : null;
   const chrome = useMapChromeInsets();
   const timelineMode = useWeatherStore((s) => s.timelineMode);
   // Scalars, not the frame array: the card re-renders only when the tag can
@@ -230,6 +234,23 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
             ))}
           </View>
         </View>
+        {typeRamps && (
+          <View style={styles.types}>
+            {typeRamps.map((r) => (
+              <View key={r.label} style={styles.typeRow}>
+                <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.typeLabel}>
+                  {r.label}
+                </Text>
+                <LinearGradient
+                  colors={r.colors as [string, string, ...string[]]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.typeBar}
+                />
+              </View>
+            ))}
+          </View>
+        )}
       </MapChromeSurface>
     </View>
   );
@@ -303,5 +324,25 @@ const styles = StyleSheet.create({
     color: "#3a4258",
     fontVariant: ["tabular-nums"],
     fontWeight: "500",
+  },
+  types: {
+    marginTop: 8,
+    gap: 4,
+  },
+  typeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  typeLabel: {
+    width: 28,
+    fontSize: 9,
+    color: "#3a4258",
+    fontWeight: "600",
+  },
+  typeBar: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
   },
 });

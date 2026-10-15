@@ -70,6 +70,10 @@ pub struct IngestConfig {
     pub storms: StormConfig,
     /// `PACKED_TILES` (default on): write packed data tile buckets for the MRMS layers.
     pub packed_tiles: bool,
+    /// `PRECIP_TYPE` (default on): color MRMS frames by precipitation type from PrecipFlag.
+    pub precip_type: bool,
+    /// `PRECIP_FLAG_PREFIX` (default `CONUS/PrecipFlag_00.00`).
+    pub precip_flag_prefix: String,
 }
 
 impl IngestConfig {
@@ -117,6 +121,9 @@ impl IngestConfig {
             grid: GridConfig::from_env()?,
             storms: StormConfig::from_env()?,
             packed_tiles: env::bool_var("PACKED_TILES", true)?,
+            precip_type: env::bool_var("PRECIP_TYPE", true)?,
+            precip_flag_prefix: env::var("PRECIP_FLAG_PREFIX")
+                .unwrap_or_else(|| crate::precip_type::PRECIP_FLAG_PREFIX.into()),
             paths,
         })
     }
@@ -143,6 +150,8 @@ impl IngestConfig {
             hrrr_grid_dump_step_deg: 0.03,
             palettes: vec!["classic".into()],
             packed_tiles: true,
+            precip_type: false,
+            precip_flag_prefix: crate::precip_type::PRECIP_FLAG_PREFIX.into(),
             paths,
         })
     }

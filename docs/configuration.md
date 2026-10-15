@@ -130,6 +130,8 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `EXTENDED_FORECAST_HOURS` | `48` | Extended sub-hourly HRRR hours. |
 | `HRRR_ENABLED_LAYERS` | `radar-hrrr` (compose: all layers) | Comma-separated HRRR layers: `radar-hrrr`, `temperature`, `feels-like`, `dewpoint`, `humidity`, `wind`, `cape`, `precip-type`, `precip-accum`, `cloud`. `feels-like` is the NWS heat index or wind chill. |
 | `PACKED_TILES` | `1` | Write packed data tile buckets (`docs/packed-tiles.md`) for `radar`, `radar-composite` and `nowcast`. `0` stops new buckets; the PNG pyramids are unchanged. Read by the MRMS and nowcast workers. |
+| `PRECIP_TYPE` | `1` | Color `radar` and `radar-composite` by precipitation type (rain, snow, mix) from MRMS PrecipFlag. Packed buckets become v2 typed codes. `0` gives rain-only frames and v1 buckets. Read by the MRMS worker. |
+| `PRECIP_FLAG_PREFIX` | `CONUS/PrecipFlag_00.00` | MRMS PrecipFlag product prefix in `noaa-mrms-pds`. |
 
 ### Nowcast (Lucas-Kanade motion + S-PROG)
 | Var | Default | Notes |

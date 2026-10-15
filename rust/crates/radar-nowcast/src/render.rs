@@ -114,6 +114,7 @@ pub fn render_lead(
         publication_lock_root: Some(nowcast_root.clone()),
         overview: Some(Overview::Max),
         png_compress_level: cfg.png_compress_level,
+        types: None,
     };
     let kind = FrameKind::Continuous {
         nodata_value: Some(f64::from(NODATA)),

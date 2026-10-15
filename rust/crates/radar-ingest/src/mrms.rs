@@ -33,6 +33,8 @@ pub const MRMS_ZOOMS: [u32; 4] = [4, 5, 6, 7];
 pub const RADAR_LAYER: &str = "radar";
 /// Nowcast input layer name (spec §7.4).
 pub const NOWCAST_INPUT_LAYER: &str = "radar-nowcast-input";
+/// Budget for listing and downloading the PrecipFlag file of a frame.
+pub const FLAG_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// Palette tables for MRMS (spec §6.1 `_load_palette_tables`): the `reflectivity` key of each name in
 /// `PALETTES`, skipping missing names with a `palette_missing` warning. Falls back to `classic` when
@@ -131,13 +133,16 @@ pub async fn process_frame(
 
     hb(serde_json::json!({"phase": "download", "key": key}));
     // Fetch and parse the key first (D21): a malformed key fails before any download.
-    let (ts_fetch, gz) = heartbeat::during(
-        DOWNLOAD_BEAT,
-        hb,
-        serde_json::json!({"phase": "download", "key": key}),
-        gmrms::fetch_gz(&ctx.mrms_s3, &key),
-    )
-    .await?;
+    let (fetched, flag) = tokio::join!(
+        heartbeat::during(
+            DOWNLOAD_BEAT,
+            hb,
+            serde_json::json!({"phase": "download", "key": key}),
+            gmrms::fetch_gz(&ctx.mrms_s3, &key),
+        ),
+        fetch_precip_flag(ctx, &key),
+    );
+    let (ts_fetch, gz) = fetched?;
     let gz_path: PathBuf = scratch.path().join("mrms.grib2.gz");
     let decode_path = gz_path.clone();
     let decoded: Decoded = heartbeat::blocking(
@@ -154,6 +159,25 @@ pub async fn process_frame(
     let mut grid = decoded.grid;
     gmrms::ensure_south_up(&mut grid);
     let timestamp = ts_fetch;
+    let (grid, types) = match flag {
+        Some((flag_key, flag_gz)) => {
+            heartbeat::blocking(
+                DOWNLOAD_BEAT,
+                hb,
+                serde_json::json!({"phase": "precip_type", "key": flag_key}),
+                move || {
+                    let types = crate::precip_type::type_plane(&flag_gz, &grid)
+                        .inspect_err(|err| {
+                            tracing::warn!(flag_key = %flag_key, err = %format!("{err:#}"), "precip_flag_failed");
+                        })
+                        .ok();
+                    (grid, types)
+                },
+            )
+            .await
+        }
+        None => (grid, None),
+    };
 
     hb(
         serde_json::json!({"phase": "render", "timestamp": timestamp, "palettes": tables.iter().map(|(n, _)| n).collect::<Vec<_>>()}),
@@ -167,6 +191,7 @@ pub async fn process_frame(
     let render_tables = tables.clone();
     let render_dirs = output_dirs.clone();
     let render_tile_layer = tile_layer.clone();
+    let render_types = types.clone();
     let (grid, rendered) = heartbeat::blocking(
         RENDER_BEAT,
         hb,
@@ -180,6 +205,7 @@ pub async fn process_frame(
                 source_id,
                 publication_lock_root: Some(render_tile_layer),
                 overview: Some(Overview::Max),
+                types: render_types,
                 ..FrameOptions::default()
             };
             let res = radar_tiler::render_frame_palettes(
@@ -225,12 +251,14 @@ pub async fn process_frame(
         let paths = cfg.paths.clone();
         let layer = layer.clone();
         let timestamp = timestamp.clone();
+        let typed = cfg.precip_type;
+        let types = types.clone();
         heartbeat::blocking(
             RENDER_BEAT,
             hb,
             serde_json::json!({"phase": "packed", "timestamp": timestamp}),
             move || {
-                let packed = crate::packed::pack_observation(&paths, &layer, &timestamp, &grid)
+                let packed = crate::packed::pack_observation(&paths, &layer, &timestamp, &grid, typed, types)
                     .unwrap_or_else(|err| {
                         tracing::warn!(layer = %layer, timestamp = %timestamp, err = %format!("{err:#}"), "packed_failed");
                         None
@@ -319,6 +347,7 @@ pub async fn process_frame(
             "lead_minutes": 0,
             "spatial_resolution_km": 1.0,
             "max_zoom": 7,
+            "precip_type": types.is_some(),
         })
         .as_object()
         .cloned()
@@ -327,10 +356,13 @@ pub async fn process_frame(
     let options = AddOptions {
         palettes: rendered.clone(),
         frame: Some(frame),
-        layer_metadata:
-            serde_json::json!({"title": "MRMS observed reflectivity", "kind": "observation"})
-                .as_object()
-                .cloned(),
+        layer_metadata: serde_json::json!({
+            "title": "MRMS observed reflectivity",
+            "kind": "observation",
+            "precip_type": cfg.precip_type,
+        })
+        .as_object()
+        .cloned(),
     };
     // The manifest lock is an flock wait, so the write runs on the blocking pool with heartbeats (F5).
     heartbeat::blocking(
@@ -349,6 +381,7 @@ pub async fn process_frame(
         // After the frame and the bucket file, so the manifest never lists a slot it cannot serve.
         let state_dir = cfg.paths.state_dir.clone();
         let layer_name = layer.clone();
+        let typed = cfg.precip_type;
         let written = heartbeat::blocking(
             RENDER_BEAT,
             hb,
@@ -357,7 +390,7 @@ pub async fn process_frame(
                 radar_core::manifest::packed::upsert_packed_bucket(
                     &state_dir,
                     &layer_name,
-                    &crate::packed::mrms_layout(),
+                    &crate::packed::mrms_layout(typed),
                     &bucket,
                 )
             },
@@ -376,6 +409,25 @@ pub async fn process_frame(
         palettes: rendered,
         duration_s,
     })
+}
+
+/// The PrecipFlag file nearest the frame `key`, or `None` (with a warning) when precipitation type
+/// is off, missing, or slow. Never fails the frame.
+async fn fetch_precip_flag(ctx: &IngestCtx, key: &str) -> Option<(String, Vec<u8>)> {
+    if !ctx.cfg.precip_type {
+        return None;
+    }
+    let valid_time = gmrms::key_time(key).ok()?;
+    let fetch =
+        crate::precip_type::fetch_flag(&ctx.mrms_s3, &ctx.cfg.precip_flag_prefix, valid_time);
+    let err = match tokio::time::timeout(FLAG_FETCH_TIMEOUT, fetch).await {
+        Ok(Ok(Some(found))) => return Some(found),
+        Ok(Ok(None)) => "no file within 5 minutes".to_string(),
+        Ok(Err(err)) => format!("{err:#}"),
+        Err(_) => "timed out".to_string(),
+    };
+    tracing::warn!(key = %key, err = %err, "precip_flag_missing");
+    None
 }
 
 /// `mrms_mark_processed` (spec §12.1).

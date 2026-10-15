@@ -15,6 +15,8 @@ use crate::time::parse_iso_as_utc;
 pub const PACKED_KEY: &str = "packed";
 /// Packed format version in the manifest object.
 pub const PACKED_VERSION: i64 = 1;
+/// Version of a layer with typed codes. v1 clients check the version and fall back to rasters.
+pub const PACKED_TYPED_VERSION: i64 = 2;
 /// Tile URL template of packed buckets.
 pub const PACKED_URL_TEMPLATE: &str = "/tiles/packed/{layer}/{bucket}/{z}/{x}/{y}.png?v={v}";
 /// Length of an observation bucket window.
@@ -43,6 +45,17 @@ pub struct PackedLayout {
     pub scale: f64,
     /// Value at code 0.
     pub offset: f64,
+    /// Typed codes (`class * stride + q`), or `None` for plain `q` codes.
+    pub types: Option<PackedTypes>,
+}
+
+/// `packed.types`: the code space of a layer colored by precipitation type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackedTypes {
+    /// Codes per class.
+    pub stride: u32,
+    /// Class names in class-index order.
+    pub classes: Vec<String>,
 }
 
 /// One entry of `packed.buckets`.
@@ -76,8 +89,13 @@ impl PackedBucket {
 }
 
 fn packed_value(layout: &PackedLayout, buckets: &[PackedBucket]) -> Value {
-    json!({
-        "version": PACKED_VERSION,
+    let version = if layout.types.is_some() {
+        PACKED_TYPED_VERSION
+    } else {
+        PACKED_VERSION
+    };
+    let mut value = json!({
+        "version": version,
         "tile_size": layout.tile_size,
         "min_zoom": layout.min_zoom,
         "max_zoom": layout.max_zoom,
@@ -89,7 +107,11 @@ fn packed_value(layout: &PackedLayout, buckets: &[PackedBucket]) -> Value {
         "offset": layout.offset,
         "url_template": PACKED_URL_TEMPLATE,
         "buckets": buckets.iter().map(PackedBucket::to_value).collect::<Vec<_>>(),
-    })
+    });
+    if let Some(types) = &layout.types {
+        value["types"] = json!({"stride": types.stride, "classes": types.classes});
+    }
+    value
 }
 
 /// The buckets listed under `layers.<layer>.packed`. Malformed entries are skipped.
@@ -134,11 +156,24 @@ fn stored_layout(extra: &Map<String, Value>) -> Option<PackedLayout> {
         categorical: p.get("categorical")?.as_bool()?,
         scale: p.get("scale")?.as_f64()?,
         offset: p.get("offset")?.as_f64()?,
+        types: p.get("types").and_then(|t| {
+            Some(PackedTypes {
+                stride: t.get("stride")?.as_u64()? as u32,
+                classes: t
+                    .get("classes")?
+                    .as_array()?
+                    .iter()
+                    .map(|c| c.as_str().map(str::to_string))
+                    .collect::<Option<Vec<_>>>()?,
+            })
+        }),
     })
 }
 
 /// Add or update one bucket of `layer`. An existing entry with a higher `v` is kept (a late,
-/// older writer never rolls a bucket back). No-op when the layer is not in the manifest.
+/// older writer never rolls a bucket back). When `layout` differs from the stored one, the other
+/// buckets are dropped: their codes belong to the old layout. No-op when the layer is not in the
+/// manifest.
 pub fn upsert_packed_bucket(
     state_dir: &Path,
     layer: &str,
@@ -150,6 +185,9 @@ pub fn upsert_packed_bucket(
             return Ok(());
         };
         let mut buckets = buckets_of(&entry.extra);
+        if stored_layout(&entry.extra).is_some_and(|stored| stored != *layout) {
+            buckets.retain(|b| b.id == bucket.id);
+        }
         match buckets.iter_mut().find(|b| b.id == bucket.id) {
             Some(existing) if existing.v > bucket.v => {}
             Some(existing) => *existing = bucket.clone(),
@@ -256,6 +294,7 @@ mod tests {
             categorical: false,
             scale: 0.5,
             offset: -32.0,
+            types: None,
         }
     }
 
@@ -367,5 +406,33 @@ mod tests {
         remove_frame(state, "radar", T0).unwrap();
         let m = remove_frame(state, "radar", T1).unwrap();
         assert!(!m.layers.contains_key("radar"));
+    }
+    #[test]
+    fn typed_layout_is_version_2_and_drops_buckets_of_the_old_layout() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path();
+        add_frame(state, "radar", T0, &AddOptions::default()).unwrap();
+        let old = "2026-10-15T18:00:00Z";
+        let cur = "2026-10-15T18:30:00Z";
+        upsert_packed_bucket(state, "radar", &layout(), &bucket(old, 3, &["x"])).unwrap();
+        let typed = PackedLayout {
+            types: Some(PackedTypes {
+                stride: 32,
+                classes: vec!["rain".into(), "snow".into(), "mix".into()],
+            }),
+            ..layout()
+        };
+        let m = upsert_packed_bucket(state, "radar", &typed, &bucket(cur, 1, &[T0])).unwrap();
+        assert_eq!(packed_buckets(&m, "radar"), vec![bucket(cur, 1, &[T0])]);
+        let packed = &m.layers["radar"].extra[PACKED_KEY];
+        assert_eq!(packed["version"], 2);
+        assert_eq!(
+            packed["types"],
+            json!({"stride": 32, "classes": ["rain", "snow", "mix"]})
+        );
+        assert_eq!(stored_layout(&m.layers["radar"].extra), Some(typed.clone()));
+        // The same layout keeps its buckets.
+        let m = upsert_packed_bucket(state, "radar", &typed, &bucket(old, 1, &[T0])).unwrap();
+        assert_eq!(packed_buckets(&m, "radar").len(), 2);
     }
 }

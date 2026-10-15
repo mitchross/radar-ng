@@ -81,6 +81,7 @@ fn main() -> Result<()> {
             publication_lock_root: Some(iter_root.clone()),
             overview: Some(Overview::Max),
             png_compress_level: 6,
+            types: None,
         };
         let res = render_frame_palettes(&grid, &kind, &palettes, &outdirs, &ZOOMS, &opts)?;
         let (tiles, bytes) = count_pngs(&iter_root)?;
