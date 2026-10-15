@@ -13,8 +13,8 @@
 //!
 //! The function takes no Temporal types. The worker wraps it as an activity.
 
-use std::collections::BTreeSet;
-use std::sync::Arc;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
@@ -486,16 +486,30 @@ fn render_all(
         input_interval_min: interval_min,
         resolution_km: resolution_km(lats),
     };
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(cfg.render_workers)
-        .build()
-        .context("building the render pool")?;
-    pool.install(|| {
+    render_pool(cfg.render_workers)?.install(|| {
         // Nested lead tasks can block on publication locks held by suspended tile tasks in this pool.
         (0..fields.len())
             .map(|i| render_lead(&ctx, i, &fields[i]))
             .collect::<anyhow::Result<Vec<_>>>()
     })
+}
+
+/// One render pool per thread count, kept for the life of the process instead of new threads every run.
+fn render_pool(threads: usize) -> anyhow::Result<Arc<rayon::ThreadPool>> {
+    static POOLS: Mutex<BTreeMap<usize, Arc<rayon::ThreadPool>>> = Mutex::new(BTreeMap::new());
+    let mut pools = POOLS.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(pool) = pools.get(&threads) {
+        return Ok(Arc::clone(pool));
+    }
+    let pool = Arc::new(
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .thread_name(|i| format!("nowcast-render-{i}"))
+            .build()
+            .context("building the render pool")?,
+    );
+    pools.insert(threads, Arc::clone(&pool));
+    Ok(pool)
 }
 
 /// Inputs to [`commit_run`]. `leads` must hold every lead for a non-dry run.
