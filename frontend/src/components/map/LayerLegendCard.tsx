@@ -9,6 +9,8 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { MapChromeSurface } from "../ui/MapChromeSurface";
+import { useServerPalettes } from "../../hooks/useServerPalettes";
+import { serverLegend } from "../../lib/serverPalettes";
 
 // Plain-English tag at the top of the legend telling the user whether
 // they're looking at "Now" (live radar), "Soon" (next hour, pysteps
@@ -152,7 +154,9 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
 };
 
 export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
-  const legend = LEGENDS[activeLayer] ?? LEGENDS.radar;
+  const palette = useWeatherStore((s) => s.activePalette);
+  const { data: palettes } = useServerPalettes();
+  const legend = serverLegend(palettes, palette, activeLayer) ?? LEGENDS[activeLayer] ?? LEGENDS.radar;
   const chrome = useMapChromeInsets();
   const timelineMode = useWeatherStore((s) => s.timelineMode);
   // Scalars, not the frame array: the card re-renders only when the tag can

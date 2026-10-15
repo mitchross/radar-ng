@@ -9,6 +9,7 @@ import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabl
 import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
 import { css, LEGEND_TICKS, PALETTES, type PaletteId } from "./palettes";
+import { fetchServerPalettes, layerLegend, type ServerPalettes } from "./layerLegends";
 import {
   aqiLabel,
   conditionOf,
@@ -30,7 +31,6 @@ import {
   type Place,
 } from "./weather";
 import { WindLayer } from "./wind";
-import { fetchServerPalettes } from "./packed/colorTables";
 import { PackedRadarLayer, type PackedFrameRef } from "./packed/layer";
 import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast";
 import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition } from "./shared/conditions";
@@ -49,6 +49,12 @@ const IOS_BROWSER = /iPhone|iPad|iPod/.test(navigator.userAgent) && !matchMedia(
 maplibregl.setWorkerUrl(workerUrl);
 // Default is 16. Tiles share one HTTP/3 connection, and each costs a ~140 ms tunnel round trip.
 maplibregl.setMaxParallelImageRequests(48);
+let serverPalettes: ServerPalettes | null = null;
+const serverPalettesReady = fetchServerPalettes();
+void serverPalettesReady.then((p) => {
+  serverPalettes = p;
+  renderLegend();
+});
 void initAnalytics();
 
 // ---------- configuration ----------
@@ -530,6 +536,15 @@ function renderLegend() {
       `<div class="legend-title"><span>Precipitation</span><span class="legend-tag">${PALETTES[state.palette].name}</span></div>` +
       `<div class="legend-bar" style="background:linear-gradient(90deg,${bands.map((b, i) => `${css(b.rgba)} ${pos(b.min)} ${pos(bands[i + 1]?.min ?? hi)}`).join(",")})"></div>` +
       `<div class="legend-ticks">${LEGEND_TICKS.map(([dbz, name]) => `<span style="left:${pos(dbz)}">${name}</span>`).join("")}</div>`;
+    return;
+  }
+  const table = layerLegend(serverPalettes, state.palette, state.layer);
+  if (table) {
+    el.hidden = false;
+    el.innerHTML =
+      `<div class="legend-title">${table.title}</div>` +
+      `<div class="legend-bar" style="background:${table.gradient}"></div>` +
+      `<div class="legend-labels">${table.labels.map((l) => `<span>${l}</span>`).join("")}</div>`;
     return;
   }
   const spec = LEGENDS[state.layer];
@@ -1183,7 +1198,7 @@ async function boot() {
     renderRadarStatus();
     return;
   }
-  if (packed) void fetchServerPalettes().then((p) => p && packed.setServerPalettes(p));
+  if (packed) void serverPalettesReady.then((p) => p && packed.setServerPalettes(p));
   await refreshManifest();
   overlays.start();
   if (rainAlerts.enabled) void rainAlerts.connect();
