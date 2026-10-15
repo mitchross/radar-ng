@@ -21,6 +21,7 @@ mod health;
 mod manifest;
 mod metrics;
 mod nowcast;
+mod palettes;
 mod params;
 mod places;
 mod prefetch;

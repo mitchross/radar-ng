@@ -9,6 +9,7 @@ import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabl
 import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
 import { css, LEGEND_TICKS, PALETTES, type PaletteId } from "./palettes";
+import { fetchServerPalettes, layerLegend, type ServerPalettes } from "./layerLegends";
 import {
   aqiLabel,
   conditionOf,
@@ -45,6 +46,11 @@ const rainAlerts = new BrowserRainAlerts();
 const IOS_BROWSER = /iPhone|iPad|iPod/.test(navigator.userAgent) && !matchMedia("(display-mode: standalone)").matches;
 
 maplibregl.setWorkerUrl(workerUrl);
+let serverPalettes: ServerPalettes | null = null;
+void fetchServerPalettes().then((p) => {
+  serverPalettes = p;
+  renderLegend();
+});
 void initAnalytics();
 
 // ---------- configuration ----------
@@ -500,6 +506,15 @@ function renderLegend() {
       `<div class="legend-title"><span>Precipitation</span><span class="legend-tag">${PALETTES[state.palette].name}</span></div>` +
       `<div class="legend-bar" style="background:linear-gradient(90deg,${bands.map((b, i) => `${css(b.rgba)} ${pos(b.min)} ${pos(bands[i + 1]?.min ?? hi)}`).join(",")})"></div>` +
       `<div class="legend-ticks">${LEGEND_TICKS.map(([dbz, name]) => `<span style="left:${pos(dbz)}">${name}</span>`).join("")}</div>`;
+    return;
+  }
+  const table = layerLegend(serverPalettes, state.palette, state.layer);
+  if (table) {
+    el.hidden = false;
+    el.innerHTML =
+      `<div class="legend-title">${table.title}</div>` +
+      `<div class="legend-bar" style="background:${table.gradient}"></div>` +
+      `<div class="legend-labels">${table.labels.map((l) => `<span>${l}</span>`).join("")}</div>`;
     return;
   }
   const spec = LEGENDS[state.layer];
