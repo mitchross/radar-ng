@@ -115,7 +115,8 @@ jobs:
         run: |
           set -euo pipefail
           for t in api:$API worker:$WORKER open-meteo:$OM; do
-            docker buildx build --load -f deploy/Dockerfile --target "${t%%:*}" -t "${t#*:}" \
+            # lint-test already runs the replay gate.
+            docker buildx build --load -f deploy/Dockerfile --target "${t%%:*}" -t "${t#*:}" --build-arg REPLAY_GATE=0 \
               --cache-from type=gha,scope=ci-rust --cache-to type=gha,mode=max,scope=ci-rust .
           done
       - name: Image users and replay-gate label
