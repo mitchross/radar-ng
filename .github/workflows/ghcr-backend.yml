@@ -47,11 +47,13 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates curl git zstd gcc libc6-dev make pkg-config protobuf-compiler libprotobuf-dev
-          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@v7
+      # Default toolchain, not just the rust/ override: rust-cache runs `rustc -vV` from the repo root.
       - name: Rust toolchain (rust/rust-toolchain.toml)
-        run: rustup show active-toolchain || rustup toolchain install
+        run: |
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal \
+            --default-toolchain "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
