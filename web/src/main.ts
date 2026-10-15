@@ -30,6 +30,8 @@ import {
   type Place,
 } from "./weather";
 import { WindLayer } from "./wind";
+import { fetchServerPalettes } from "./packed/colorTables";
+import { PackedRadarLayer, type PackedFrameRef } from "./packed/layer";
 import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast";
 import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition } from "./shared/conditions";
 import { describeNowcastSkill } from "./shared/nowcastSkill";
@@ -167,6 +169,8 @@ map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom
 
 const overlays = new Overlays(map, state.overlays);
 const wind = new WindLayer(map);
+/** Packed data tiles (docs/packed-tiles.md); `?raster=1` turns them off. */
+const packed = new URLSearchParams(location.search).get("raster") === "1" ? null : new PackedRadarLayer(state.palette, state.opacity);
 
 /** True between a style's "style.load" and the next setStyle; overlays can be added only then. */
 let styleReady = false;
@@ -182,6 +186,22 @@ function frameKey(f: Frame) {
 /** Radar sits under the basemap labels and every vector overlay. */
 function radarBeforeId(): string | undefined {
   return map.getStyle().layers?.find((l) => l.type === "symbol" || l.id.startsWith("ov-"))?.id;
+}
+
+/** The packed slot reference for a frame, or null when the frame uses raster tiles. */
+function packedRef(f: Frame): PackedFrameRef | null {
+  return packed?.covers(f.source, f.timestamp) ? { layer: f.source, timestamp: f.timestamp } : null;
+}
+
+function ensurePackedLayer() {
+  if (packed && !packed.failed && !map.getLayer(packed.id)) map.addLayer(packed, radarBeforeId());
+}
+
+/** Hands the manifest and the playback order to the packed layer. */
+function syncPacked() {
+  if (!packed) return;
+  packed.setManifest(state.manifest);
+  packed.setSequence(state.seq.flatMap((i) => packedRef(state.frames[i]) ?? []));
 }
 
 function ensureFrame(f: Frame): string {
@@ -248,17 +268,19 @@ function showCurrentFrame() {
   if (!styleReady || state.seq.length === 0) return;
   const frame = currentFrame();
   if (!frame) return;
+  ensurePackedLayer();
   const keep = new Set<string>();
   for (let k = 0; k <= PREFETCH_AHEAD; k++) {
     const f = state.frames[state.seq[(state.pos + k) % state.seq.length]];
-    if (f) {
+    if (f && !packedRef(f)) {
       ensureFrame(f);
       keep.add(frameKey(f));
     }
   }
-  const key = frameKey(frame);
-  const id = cached.get(key)!;
-  map.setPaintProperty(id, "raster-opacity", state.opacity);
+  const ref = packedRef(frame);
+  packed?.setFrame(ref);
+  const key = ref ? null : frameKey(frame);
+  if (key) map.setPaintProperty(cached.get(key)!, "raster-opacity", state.opacity);
   if (shownKey && shownKey !== key) {
     const prev = cached.get(shownKey);
     if (prev && map.getLayer(prev)) map.setPaintProperty(prev, "raster-opacity", 0);
@@ -270,6 +292,8 @@ function showCurrentFrame() {
 
 function nextFrameReady(): boolean {
   const f = state.frames[state.seq[(state.pos + 1) % state.seq.length]];
+  const ref = f && packedRef(f);
+  if (ref) return packed!.isFrameReady(ref);
   const id = f && cached.get(frameKey(f));
   return !id || map.isSourceLoaded(id);
 }
@@ -314,6 +338,7 @@ function rebuildFrames(keepTime?: number) {
     if (Math.abs(state.frames[idx].time - (target ?? now)) < Math.abs(state.frames[state.seq[best]].time - (target ?? now))) best = p;
   });
   state.pos = best;
+  syncPacked();
   const slider = $<HTMLInputElement>("slider");
   slider.max = String(Math.max(0, state.seq.length - 1));
   renderLegend();
@@ -357,8 +382,11 @@ async function refreshManifest() {
     const now = nowSec();
     const frames = buildFrames(state.manifest, state.layer, now, state.product);
     const seq = playbackSequence(frames, state.zoom, now);
-    if (hadManifest && sameFrames(state.frames, frames) && seq.length === state.seq.length && seq.every((v, i) => v === state.seq[i])) renderAxis();
-    else rebuildFrames(keepTime);
+    if (hadManifest && sameFrames(state.frames, frames) && seq.length === state.seq.length && seq.every((v, i) => v === state.seq[i])) {
+      // Packed bucket versions change while the frame list stays the same.
+      syncPacked();
+      renderAxis();
+    } else rebuildFrames(keepTime);
   } catch (err) {
     state.manifestFailed = true;
     console.error(err);
@@ -958,6 +986,7 @@ $("sheet-body").addEventListener("click", (e) => {
   } else if (group === "palette" && value !== state.palette) {
     state.palette = value as PaletteId;
     store("rng.palette", value);
+    packed?.setPalette(state.palette);
     track("palette_changed", { palette: value });
     clearFrames();
     rebuildFrames(currentFrame()?.time);
@@ -969,6 +998,7 @@ $("sheet-body").addEventListener("input", (e) => {
   const el = e.target as HTMLInputElement;
   if (el.id !== "opacity") return;
   state.opacity = Number(el.value);
+  packed?.setOpacity(state.opacity);
   const id = shownKey && cached.get(shownKey);
   if (id) map.setPaintProperty(id, "raster-opacity", state.opacity);
 });
@@ -1151,6 +1181,7 @@ async function boot() {
     renderRadarStatus();
     return;
   }
+  if (packed) void fetchServerPalettes().then((p) => p && packed.setServerPalettes(p));
   await refreshManifest();
   overlays.start();
   if (rainAlerts.enabled) void rainAlerts.connect();

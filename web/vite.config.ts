@@ -1,13 +1,13 @@
 import { defineConfig } from "vite";
 
 // Same-origin in the browser: the tile-server API sends no CORS headers, so
-// dev proxies /api, /tiles and /basemap to it and production serves this site
+// dev proxies /api, /tiles, /packed and /basemap to it and production serves this site
 // from the same host (radar api). RADAR_API overrides the upstream.
 const upstream = process.env.RADAR_API ?? "https://radar-ng-api.vanillax.me";
 // Cloudflare hotlink protection rejects image requests whose Referer isn't a
 // vanillax.me page, so the dev proxy drops it (production is same-host).
 const proxy = Object.fromEntries(
-  ["/api", "/tiles", "/basemap"].map((p) => [
+  ["/api", "/tiles", "/packed", "/basemap"].map((p) => [
     p,
     {
       target: upstream,
