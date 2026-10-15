@@ -148,7 +148,7 @@ pub async fn get_health(State(state): State<AppState>) -> Response {
         "mrms_age_s": mrms_age,
         "mrms_max_age_s": state.config.mrms_max_age_s,
         "nowcast": nowcast,
-        "nowcast_skill": skill_block(&skill),
+        "nowcast_skill": skill_block(&skill.value),
         "reasons": reasons,
         "tiles_disk": disk,
         "upstream_forecast": state.config.open_meteo_base,
@@ -182,27 +182,12 @@ pub async fn get_metrics(State(state): State<AppState>) -> Response {
             tile_timestamps.push((name.clone(), count));
         }
     }
-    // F5: the skill log read is file I/O, so it runs on the blocking pool.
-    let summary = {
-        let st = state.clone();
-        tokio::task::spawn_blocking(move || {
-            let log = nowcast_skill::read_log(&st.config.state_dir, &st.skill_cfg);
-            nowcast_skill::summarize(&log, now, None, &st.skill_cfg)
-        })
-        .await
-        .unwrap_or_else(|_| {
-            nowcast_skill::summarize(
-                &radar_core::nowcast_skill::SkillLog::empty(&state.skill_cfg),
-                now,
-                None,
-                &state.skill_cfg,
-            )
-        })
-    };
+    // The shared skill snapshot: the 4.9 MB log is parsed only when it changes.
+    let skill = skill_summary(&state).await;
     let text = state.metrics.render(&Snapshot {
         tile_timestamps,
         mrms_age_s: radar_age_seconds(&snap, now),
-        skill_lines: nowcast_skill::prometheus_lines(&summary),
+        skill_lines: nowcast_skill::prometheus_lines(&skill.summary),
     });
     (
         StatusCode::OK,

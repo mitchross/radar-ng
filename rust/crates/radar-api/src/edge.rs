@@ -24,6 +24,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 
+use crate::alerts;
 use crate::basemap;
 use crate::briefing;
 use crate::client_ip;
@@ -95,8 +96,8 @@ pub fn api_router() -> Router<AppState> {
         .route("/api/health", get(health::get_health))
         .route("/api/metrics", get(health::get_metrics))
         .route("/api/basemap/style/{name}", get(basemap::get_basemap_style))
-        .route("/api/alerts", get(places::get_alerts))
-        .route("/api/alerts/map", get(places::get_alerts_map))
+        .route("/api/alerts", get(alerts::get_alerts))
+        .route("/api/alerts/map", get(alerts::get_alerts_map))
         .route("/api/outlooks", get(outlooks::get_outlooks))
         .route("/api/alerts/explain", get(briefing::explain_alert))
         .route("/api/geocode", get(places::get_geocode))
