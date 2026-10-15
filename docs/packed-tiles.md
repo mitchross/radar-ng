@@ -28,15 +28,24 @@ back to PNG rasters otherwise.
 
 ## Quantization per palette key
 
-| `color_key` | scale | offset | range |
-|---|---|---|---|
-| `reflectivity` (radar, radar-composite, nowcast, radar-hrrr) | 0.5 | -32.0 | -31.5 to 95.5 dBZ |
-| `temperature` | 1.0 | -80.0 | -79 to 175 °F |
-| `wind_speed` | 0.5 | 0.0 | 0.5 to 127.5 mph |
-| `precip_accum` | 0.05 | 0.0 | 0.05 to 12.75 in |
-| `cloud_cover` | 0.4 | 0.0 | 0.4 to 102 % |
+| `color_key` | scale | offset | floor | coded range |
+|---|---|---|---|---|
+| `reflectivity` (radar, radar-composite, nowcast, radar-hrrr) | 2.5 | 0.0 | 5 dBZ | 5 to 637.5 dBZ |
+| `temperature` | 1.0 | -80.0 | none | -79 to 175 °F |
+| `wind_speed` | 0.5 | 0.0 | none | 0.5 to 127.5 mph |
+| `precip_accum` | 0.05 | 0.0 | 0.01 in | 0.05 to 12.75 in |
+| `cloud_cover` | 0.4 | 0.0 | 10 % | 10 to 102 % |
 
-`q = clamp(round((value - offset) / scale), 1, 255)`; NaN or `q < 1` before the clamp stores 0.
+`q = clamp(floor((value - offset) / scale), 1, 255)`. NaN, a value below `floor`, or `q < 1` before
+the clamp stores 0. The client decodes `value = offset + q * scale`, the bottom of the code's bin.
+
+- **Floor:** the lowest value any palette draws. Values below it are transparent anyway. On a real
+  MRMS frame, clear-air noise below 5 dBZ made the tiles 15% larger.
+- **Truncation, not rounding:** palette edges are multiples of `scale` from `offset`, so every value
+  lands in the same color band as on the server's PNG tiles.
+- **2.5 dBZ step:** on a real full-CONUS MRMS frame (2026-10-15), one packed slot is 1.26 MB.
+  0.5 dBZ steps give 2.09 MB, and 5 dBZ steps 1.05 MB. Packing takes about 100 ms with `png`
+  `Compression::Balanced`; `High` saves 2% for twice the time.
 
 ## Buckets
 

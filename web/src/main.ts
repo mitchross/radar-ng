@@ -511,7 +511,7 @@ function renderAxis() {
   $("axis").innerHTML = n
     ? [0, 0.25, 0.5, 0.75, 1]
         .map((f) => {
-          const l = offsetLabel(state.frames[state.seq[Math.round(f * last)]].time, now);
+          const l = offsetLabel(state.frames[state.seq[Math.round(f * (n - 1))]].time, now);
           return `<span class="${l === "Now" ? "now-label" : ""}">${l}</span>`;
         })
         .join("")

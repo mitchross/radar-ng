@@ -32,7 +32,7 @@ const meta = (over: Partial<PackedMeta> = {}): PackedMeta => ({
   categorical: false,
   scale: 0.5,
   offset: -32,
-  url_template: "/packed/{layer}/{bucket}/{z}/{x}/{y}.png?v={v}",
+  url_template: "/tiles/packed/{layer}/{bucket}/{z}/{x}/{y}.png?v={v}",
   buckets: [
     { id: "2026-10-15T18:00:00Z", v: 3, slots: ["2026-10-15T18:00:38+00:00", "2026-10-15T18:02:38+00:00"] },
     { id: "2026-10-15T18:30:00Z", v: 7, slots: ["2026-10-15T18:30:38+00:00", "2026-10-15T18:32:38+00:00", "2026-10-15T18:34:38+00:00"] },
@@ -96,11 +96,20 @@ describe("buildLut", () => {
 });
 
 describe("quantize", () => {
-  it("matches the spec's rounding and clamping", () => {
-    expect(quantize(Number.NaN, 0.5, -32)).toBe(0);
-    expect(quantize(-32, 0.5, -32)).toBe(0);
-    expect(quantize(-31.5, 0.5, -32)).toBe(1);
-    expect(quantize(500, 0.5, -32)).toBe(255);
+  it("matches the spec's truncation, floor and clamping", () => {
+    expect(quantize(Number.NaN, 2.5, 0, 5)).toBe(0);
+    expect(quantize(4.9, 2.5, 0, 5)).toBe(0);
+    expect(quantize(44.9, 2.5, 0, 5)).toBe(17);
+    expect(quantize(5000, 2.5, 0, 5)).toBe(255);
+  });
+
+  it("decodes production reflectivity codes into the server's color band", () => {
+    const lut = buildLut(palette("classic").reflectivity, 2.5, 0);
+    // 40.0 and 44.9 dBZ (codes 16, 17) are the 40-45 band; 45.0 (code 18) is the next one.
+    expect([...lut.slice(16 * 4, 16 * 4 + 4)]).toEqual([255, 170, 0, 230]);
+    expect([...lut.slice(17 * 4, 17 * 4 + 4)]).toEqual([255, 170, 0, 230]);
+    expect([...lut.slice(18 * 4, 18 * 4 + 4)]).not.toEqual([255, 170, 0, 230]);
+    expect([...lut.slice(1 * 4, 1 * 4 + 4)]).toEqual([0, 0, 0, 0]);
   });
 });
 
@@ -171,9 +180,9 @@ describe("tileCover", () => {
 describe("packedTileUrl", () => {
   it("fills the template and encodes the bucket id", () => {
     expect(packedTileUrl(meta().url_template, "radar", "2026-10-15T18:30:00Z", { z: 5, x: 8, y: 11 }, 7)).toBe(
-      "/packed/radar/2026-10-15T18%3A30%3A00Z/5/8/11.png?v=7",
+      "/tiles/packed/radar/2026-10-15T18%3A30%3A00Z/5/8/11.png?v=7",
     );
-    expect(packedTileUrl(meta().url_template, "nowcast", "20261015T1830.p1", { z: 3, x: 2, y: 2 }, 1)).toBe("/packed/nowcast/20261015T1830.p1/3/2/2.png?v=1");
+    expect(packedTileUrl(meta().url_template, "nowcast", "20261015T1830.p1", { z: 3, x: 2, y: 2 }, 1)).toBe("/tiles/packed/nowcast/20261015T1830.p1/3/2/2.png?v=1");
   });
 });
 

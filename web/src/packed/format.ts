@@ -60,9 +60,9 @@ export function buildLut(table: ColorTable | undefined, scale: number, offset: n
 }
 
 /** Inverse of the server's quantization; 0 means no data. */
-export function quantize(value: number, scale: number, offset: number): number {
-  if (Number.isNaN(value)) return 0;
-  const q = Math.round((value - offset) / scale);
+export function quantize(value: number, scale: number, offset: number, floor = -Infinity): number {
+  if (Number.isNaN(value) || value < floor) return 0;
+  const q = Math.floor((value - offset) / scale);
   return q < 1 ? 0 : Math.min(q, 255);
 }
 

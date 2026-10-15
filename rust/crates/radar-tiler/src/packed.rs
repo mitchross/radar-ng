@@ -45,26 +45,38 @@ pub struct Quantizer {
     pub scale: f64,
     /// Value at code 0 (code 0 itself means missing).
     pub offset: f64,
+    /// Values below this are stored as 0: every palette leaves them transparent, and keeping the
+    /// sub-threshold noise made real MRMS tiles several times larger.
+    pub floor: f64,
 }
 
 impl Quantizer {
     /// The table entry for a palette `color_key`, or `None` for keys that are not packed in v1.
     pub fn for_color_key(color_key: &str) -> Option<Quantizer> {
-        let (scale, offset) = match color_key {
-            "reflectivity" => (0.5, -32.0),
-            "temperature" => (1.0, -80.0),
-            "wind_speed" => (0.5, 0.0),
-            "precip_accum" => (0.05, 0.0),
-            "cloud_cover" => (0.4, 0.0),
+        let (scale, offset, floor) = match color_key {
+            "reflectivity" => (2.5, 0.0, 5.0),
+            "temperature" => (1.0, -80.0, f64::NEG_INFINITY),
+            "wind_speed" => (0.5, 0.0, f64::NEG_INFINITY),
+            "precip_accum" => (0.05, 0.0, 0.01),
+            "cloud_cover" => (0.4, 0.0, 10.0),
             _ => return None,
         };
-        Some(Quantizer { scale, offset })
+        Some(Quantizer {
+            scale,
+            offset,
+            floor,
+        })
     }
 
-    /// `q = clamp(round((value - offset) / scale), 1, 255)`; NaN, or `q < 1` before the clamp, is 0.
+    /// `q = clamp(floor((value - offset) / scale), 1, 255)`; NaN, a value below `floor`, or `q < 1`
+    /// before the clamp is 0. Truncating keeps every value in its palette band when the band edges
+    /// are multiples of `scale` from `offset`.
     #[inline]
     pub fn quantize(&self, value: f32) -> u8 {
-        let q = ((f64::from(value) - self.offset) / self.scale).round();
+        if f64::from(value) < self.floor {
+            return 0;
+        }
+        let q = ((f64::from(value) - self.offset) / self.scale).floor();
         if q >= 255.0 {
             255
         } else if q >= 1.0 {

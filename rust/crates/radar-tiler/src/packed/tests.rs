@@ -5,8 +5,9 @@ use crate::png::iter_chunks;
 use radar_geo::GridGeo;
 
 const REFL: Quantizer = Quantizer {
-    scale: 0.5,
-    offset: -32.0,
+    scale: 2.5,
+    offset: 0.0,
+    floor: 5.0,
 };
 
 /// A regular grid over lon -100..-90, lat 30..40 (0.1 degree), south-up, filled with `value`.
@@ -73,16 +74,19 @@ fn quantization_edges() {
     assert_eq!(REFL.quantize(f32::NEG_INFINITY), 0);
     assert_eq!(REFL.quantize(f32::INFINITY), 255);
     assert_eq!(REFL.quantize(-999.0), 0);
-    // offset itself is q = 0 (missing); half a step above rounds up to 1.
-    assert_eq!(REFL.quantize(-32.0), 0);
-    assert_eq!(REFL.quantize(-31.76), 0);
-    assert_eq!(REFL.quantize(-31.75), 1);
-    assert_eq!(REFL.quantize(-31.5), 1);
-    assert_eq!(REFL.quantize(40.0), 144);
-    assert_eq!(REFL.quantize(95.5), 255);
-    assert_eq!(REFL.quantize(500.0), 255);
-    assert_eq!(REFL.value(1), -31.5);
-    assert_eq!(REFL.value(255), 95.5);
+    // Below the floor (5 dBZ, the lowest drawn band) is 0, whatever the code would be.
+    assert_eq!(REFL.quantize(4.99), 0);
+    assert_eq!(REFL.quantize(-20.0), 0);
+    // Truncation keeps values in their 5 dBZ palette band: 44.9 stays in 40-45.
+    assert_eq!(REFL.quantize(5.0), 2);
+    assert_eq!(REFL.quantize(40.0), 16);
+    assert_eq!(REFL.quantize(44.9), 17);
+    assert_eq!(REFL.value(17), 42.5);
+    assert_eq!(REFL.quantize(45.0), 18);
+    assert_eq!(REFL.quantize(5000.0), 255);
+    let cloud = Quantizer::for_color_key("cloud_cover").unwrap();
+    assert_eq!(cloud.quantize(9.9), 0);
+    assert_eq!(cloud.quantize(10.0), 25);
     for key in [
         "reflectivity",
         "temperature",
@@ -180,8 +184,8 @@ fn golden_slot_four_is_block_one_green() {
     let (px, py) = inside_pixel();
     assert_eq!(
         texel(&atlas, w, 512 + px, py, 1),
-        144,
-        "slot 4 = block 1, G"
+        16,
+        "slot 4 = block 1, G (40 dBZ at 2.5 dBZ per code)"
     );
     assert_eq!(texel(&atlas, w, 512 + px, py, 0), 0, "slot 3 is empty");
     assert_eq!(texel(&atlas, w, 512 + px, py, 2), 0, "slot 5 is unused");

@@ -61,6 +61,14 @@ describe("buildLut", () => {
     expect(rgbaAt(lut, 144)).toEqual([255, 170, 0, 230]);
   });
 
+  it("decodes production reflectivity codes (2.5 dBZ, offset 0) into the server's band", () => {
+    const prod = buildLut(classic.reflectivity, 2.5, 0);
+    expect(rgbaAt(prod, 16)).toEqual([255, 170, 0, 230]);
+    expect(rgbaAt(prod, 17)).toEqual([255, 170, 0, 230]);
+    expect(rgbaAt(prod, 18)).not.toEqual([255, 170, 0, 230]);
+    expect(rgbaAt(prod, 1)).toEqual([0, 0, 0, 0]);
+  });
+
   it("keeps q=0 transparent", () => {
     expect(rgbaAt(lut, 0)).toEqual([0, 0, 0, 0]);
   });
