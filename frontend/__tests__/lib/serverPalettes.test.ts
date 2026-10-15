@@ -18,6 +18,15 @@ describe("serverLegend", () => {
     }
   });
 
+  it("labels the UV legend with whole WHO index values", () => {
+    for (const palette of ["classic", "muted", "vivid"] as const) {
+      const uv = serverLegend(palettes, palette, "uv")!;
+      expect(uv.title).toBe("UV Index (WHO)");
+      expect(uv.stops.map((s) => s.label)).toEqual(["11+", "8", "6", "3", "1"]);
+    }
+    expect(serverLegend(palettes, "classic", "uv")!.stops[4].color).toBe("#289500");
+  });
+
   it("falls back to null without tables or for layers it does not map", () => {
     expect(serverLegend(undefined, "classic", "temperature")).toBeNull();
     expect(serverLegend(palettes, "classic", "radar")).toBeNull();

@@ -169,6 +169,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .track-segments .past { background: rgba(80, 75, 65, 0.55); }
 .track-segments .nowcast { background: var(--accent); }
 .track-segments .model { background: repeating-linear-gradient(90deg, rgba(139,124,255,0.6) 0 10px, transparent 10px 16px); }
+.track-segments .model.long { background: repeating-linear-gradient(90deg, rgba(139,124,255,0.35) 0 4px, transparent 4px 10px); }
 .track-segments .now-marker { width: 2px; top: -5px; bottom: -5px; background: var(--ink); }
 #slider { position: absolute; inset: 0; width: 100%; margin: 0; background: transparent; appearance: none; -webkit-appearance: none; }
 #slider::-webkit-slider-runnable-track { height: 24px; background: transparent; }

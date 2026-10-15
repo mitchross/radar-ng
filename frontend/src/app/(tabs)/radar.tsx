@@ -112,6 +112,7 @@ export default function RadarScreen() {
         {activeLayer === "cape" && <WeatherLayerOverlay layerId="cape" opacity={0.5} />}
         {activeLayer === "precip-accum" && <WeatherLayerOverlay layerId="precip-accum" opacity={radarOpacity} />}
         {activeLayer === "cloud" && <WeatherLayerOverlay layerId="cloud" opacity={0.65} />}
+        {activeLayer === "uv" && <WeatherLayerOverlay layerId="uv" opacity={0.6} />}
         {activeLayer === "air-quality" && <WeatherLayerOverlay layerId="air-quality" opacity={0.75} />}
         {activeLayer === "ozone" && <WeatherLayerOverlay layerId="ozone" opacity={0.75} />}
         {/* Always mounted: each overlay renders an empty collection / hidden pin when

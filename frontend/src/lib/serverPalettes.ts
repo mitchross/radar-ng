@@ -16,13 +16,15 @@ export interface ColorTable {
 export type ServerPalettes = Partial<Record<Palette, Record<string, ColorTable>>>;
 
 /** Layer to palette key, as the server's HRRR `layer_color_key` maps them. */
-const LAYER_TABLES: Partial<Record<LayerType, { key: string; title: string; unit: string }>> = {
+const LAYER_TABLES: Partial<Record<LayerType, { key: string; title: string; unit: string; whole?: boolean }>> = {
   temperature: { key: "temperature", title: "Temperature", unit: "°F" },
   "feels-like": { key: "temperature", title: "Feels Like", unit: "°F" },
   dewpoint: { key: "dewpoint", title: "Dew Point", unit: "°F" },
   wind: { key: "wind_speed", title: "Wind", unit: "mph" },
   "precip-accum": { key: "precip_accum", title: "Rain Total", unit: "in" },
   cloud: { key: "cloud_cover", title: "Clouds", unit: "%" },
+  // Band edges sit halfway between whole index values (0.5, 2.5, ...); label the whole values.
+  uv: { key: "uv_index", title: "UV Index", unit: "WHO", whole: true },
 };
 
 export interface ServerLegend {
@@ -47,6 +49,7 @@ export function serverLegend(
   // Every band when it fits; otherwise an even sample that keeps the first and last band.
   const n = Math.min(maxStops, ranges.length);
   const picked = Array.from({ length: n }, (_, i) => ranges[Math.round((i * (ranges.length - 1)) / (n - 1))]);
-  const stops = picked.map((r, i) => ({ label: fmt(r.min) + (i === n - 1 ? "+" : ""), color: hex(r.rgba) }));
+  const label = (v: number) => fmt(spec.whole ? Math.ceil(v) : v);
+  const stops = picked.map((r, i) => ({ label: label(r.min) + (i === n - 1 ? "+" : ""), color: hex(r.rgba) }));
   return { title: `${spec.title} (${spec.unit})`, stops: stops.reverse() };
 }

@@ -24,7 +24,10 @@ interface InspectOptions {
   signal?: AbortSignal;
 }
 
-export async function inspectPoint(opts: InspectOptions): Promise<InspectReading> {
+/** `layer` may also be the GFS grids behind long-range radar frames. */
+export async function inspectPoint(
+  opts: Omit<InspectOptions, "layer"> & { layer: LayerType | "radar-gfs" },
+): Promise<InspectReading> {
   return trace(
     "api.inspectPoint",
     async (span) => {
@@ -65,10 +68,14 @@ const RADAR_FAMILY = new Set<LayerType>(["radar", "radar-composite", "radar-hrrr
  * Where a frame's value lives. The radar timeline mixes observed MRMS,
  * nowcast and HRRR frames under one layer; each has its own grids.
  */
-export function inspectSourceFor(layer: LayerType, frameSource: string | null | undefined): "nowcast" | LayerType {
+export function inspectSourceFor(
+  layer: LayerType,
+  frameSource: string | null | undefined,
+): "nowcast" | "radar-gfs" | LayerType {
   if (!RADAR_FAMILY.has(layer)) return layer;
   if (frameSource === "nowcast") return "nowcast";
   if (frameSource === "radar-hrrr") return "radar-hrrr";
+  if (frameSource === "radar-gfs") return "radar-gfs";
   return layer;
 }
 
@@ -107,9 +114,20 @@ export function formatReading(layer: LayerType, r: InspectReading): string {
   if (layer === "precip-type") return "Active";
   if (layer === "precip-accum") return v < 0.01 ? "—" : `${v.toFixed(2)} in`;
   if (layer === "cloud") return `${Math.round(v)}%`;
+  if (layer === "uv") return `UV ${Math.round(v)} · ${describeUV(v)}`;
   if (layer === "air-quality") return `${Math.round(v)} µg/m³ · ${describePm25(v)}`;
   if (layer === "ozone") return `${Math.round(v)} ppb · ${describeOzone(v)}`;
   return `${v.toFixed(1)} ${r.unit}`.trim();
+}
+
+// WHO UV Index categories, on the rounded index as forecasts report it.
+function describeUV(uv: number): string {
+  const i = Math.round(uv);
+  if (i <= 2) return "Low";
+  if (i <= 5) return "Moderate";
+  if (i <= 7) return "High";
+  if (i <= 10) return "Very High";
+  return "Extreme";
 }
 
 // EPA 2024 PM2.5 breakpoints (µg/m³) → AQI category.

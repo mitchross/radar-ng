@@ -7,9 +7,9 @@ export interface RadarFrame {
   /**
    * Optional source layer — only set on merged radar timelines so the
    * overlay knows which subtree to pull from (past=radar, nowcast=nowcast,
-   * future=radar-hrrr). Omitted on single-source timelines.
+   * future=radar-hrrr, then radar-gfs to 72 h). Omitted on single-source timelines.
    */
-  source?: "radar" | "nowcast" | "radar-hrrr";
+  source?: "radar" | "nowcast" | "radar-hrrr" | "radar-gfs";
   kind?: "observation" | "nowcast" | "model_guidance";
   issuedAt?: string;
   leadMinutes?: number;
@@ -178,6 +178,7 @@ export type LayerType =
   | "precip-type"
   | "precip-accum"
   | "cloud"
+  | "uv"
   | "air-quality"
   | "ozone";
 

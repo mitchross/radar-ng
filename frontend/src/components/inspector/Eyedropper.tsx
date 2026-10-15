@@ -25,6 +25,7 @@ const LAYER_LABEL: Record<LayerType, string> = {
   "precip-type": "PRECIP TYPE",
   "precip-accum": "RAINFALL 1H",
   cloud: "CLOUD COVER",
+  uv: "UV INDEX",
   cape: "CAPE",
   "air-quality": "PM2.5",
   ozone: "OZONE",
@@ -34,6 +35,7 @@ const LAYER_LABEL: Record<LayerType, string> = {
 const FRAME_LABEL: Partial<Record<string, string>> = {
   nowcast: "NOWCAST",
   "radar-hrrr": "HRRR FORECAST",
+  "radar-gfs": "GFS FORECAST",
 };
 
 // One /api/inspect per playback tick was a fetch storm.

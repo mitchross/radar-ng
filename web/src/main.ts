@@ -6,10 +6,10 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabled, track } from "./analytics";
-import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
+import { buildFrames, isForecastSource, longZoomLabel, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
 import { css, LEGEND_TICKS, PALETTES, type PaletteId } from "./palettes";
-import { fetchServerPalettes, layerLegend, type ServerPalettes } from "./layerLegends";
+import { fetchServerPalettes, layerLegend, uvCategory, type ServerPalettes } from "./layerLegends";
 import {
   aqiLabel,
   conditionOf,
@@ -67,6 +67,7 @@ const LAYERS: { id: string; name: string; needs: string }[] = [
   { id: "wind", name: "Wind", needs: "wind" },
   { id: "precip-accum", name: "Rain total", needs: "precip-accum" },
   { id: "cloud", name: "Clouds", needs: "cloud" },
+  { id: "uv", name: "UV index", needs: "uv" },
   { id: "air-quality", name: "Air quality", needs: "air-quality" },
   { id: "ozone", name: "Ozone", needs: "ozone" },
 ];
@@ -472,11 +473,23 @@ async function syncWind() {
 // ---------- rendering: timeline, legend, chips, sheet ----------
 
 const TIME_FMT = new Intl.DateTimeFormat(undefined, { weekday: "long", hour: "numeric", minute: "2-digit" });
+const SOURCE_SUFFIX: Record<string, string> = {
+  nowcast: " · nowcast",
+  "radar-hrrr": " · HRRR model",
+  "radar-gfs": " · GFS model",
+  "radar-composite": " · composite",
+};
+const SOURCE_TITLE: Record<string, string> = {
+  nowcast: "NOWCAST",
+  "radar-hrrr": "HRRR FORECAST",
+  "radar-gfs": "GFS FORECAST",
+  "radar-composite": "COMPOSITE",
+};
 
 function latestObserved(): Frame | undefined {
   for (let i = state.frames.length - 1; i >= 0; i--) {
     const f = state.frames[i];
-    if (f.source !== "nowcast" && f.source !== "radar-hrrr" && f.time <= nowSec()) return f;
+    if (!isForecastSource(f.source) && f.time <= nowSec()) return f;
   }
   return undefined;
 }
@@ -491,7 +504,7 @@ function renderTimeline() {
   }
   const label = offsetLabel(frame.time, nowSec());
   const mode = label === "Now" ? "Now" : `${frame.time > nowSec() ? "Forecast" : "Past"} ${label}`;
-  const source = frame.source === "nowcast" ? " · nowcast" : frame.source === "radar-hrrr" ? " · HRRR model" : frame.source === "radar-composite" ? " · composite" : "";
+  const source = SOURCE_SUFFIX[frame.source] ?? "";
   const layerName = LAYERS.find((l) => l.id === state.layer)?.name ?? "Radar";
   $("frame-title").textContent = `${layerName} · ${mode}`;
   $("frame-time").textContent = `${TIME_FMT.format(new Date(frame.time * 1000))}${source}`;
@@ -510,12 +523,17 @@ function renderAxis() {
   };
   const nowP = Math.max(0, lastAtOrBefore(now));
   const ncP = Math.max(nowP, lastAtOrBefore(now + 3600));
+  const gfsAt = state.seq.findIndex((i) => state.frames[i].source === "radar-gfs");
+  const longP = gfsAt < 0 ? last : Math.max(ncP, gfsAt - 1);
   $("track-segments").innerHTML = n
     ? `<span class="past" style="left:0;width:${pct(nowP)}"></span>` +
       `<span class="nowcast" style="left:${pct(nowP)};width:calc(${pct(ncP)} - ${pct(nowP)})"></span>` +
-      `<span class="model" style="left:${pct(ncP)};right:0"></span>` +
+      `<span class="model" style="left:${pct(ncP)};width:calc(${pct(longP)} - ${pct(ncP)})"></span>` +
+      (gfsAt < 0 ? "" : `<span class="model long" style="left:${pct(longP)};right:0"></span>`) +
       `<span class="now-marker" style="left:${pct(nowP)}"></span>`
     : "";
+  const long = document.querySelector<HTMLButtonElement>('#zoom button[data-zoom="48h"]');
+  if (long) long.textContent = longZoomLabel(state.frames, now);
   $("axis").innerHTML = n
     ? [0, 0.25, 0.5, 0.75, 1]
         .map((f) => {
@@ -1149,7 +1167,7 @@ map.on("click", async (e) => {
   popup.setLngLat(e.lngLat).setHTML('<div class="readout"><small>Reading…</small></div>').addTo(map);
   const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng).catch(() => null);
   track("point_inspected", { layer: state.layer, source: frame.source, has_value: value != null });
-  const title = frame.source === "nowcast" ? "NOWCAST" : frame.source === "radar-hrrr" ? "HRRR FORECAST" : frame.source === "radar-composite" ? "COMPOSITE" : (LAYERS.find((l) => l.id === state.layer)?.name ?? "").toUpperCase();
+  const title = SOURCE_TITLE[frame.source] ?? (LAYERS.find((l) => l.id === state.layer)?.name ?? "").toUpperCase();
   let text = "No data here";
   if (value != null) {
     if (state.layer === "radar") text = `${describeDbz(value)} <small>${Math.round(value)} dBZ</small>`;
@@ -1159,6 +1177,7 @@ map.on("click", async (e) => {
     else if (state.layer === "wind") text = `${Math.round(value)} mph`;
     else if (state.layer === "cloud") text = `${Math.round(value)}%`;
     else if (state.layer === "precip-accum") text = `${value.toFixed(2)} in`;
+    else if (state.layer === "uv") text = `UV ${Math.round(value)} · ${uvCategory(value)}`;
     else text = `${value.toFixed(1)}`;
   }
   popup.setHTML(`<div class="readout"><b>${title}</b><div class="v">${text}</div><small>${lat.toFixed(3)}, ${lng.toFixed(3)}</small></div>`);

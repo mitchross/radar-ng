@@ -1,4 +1,11 @@
-import { offsetLabel, playbackSequence, positionOf } from "../../src/lib/playbackSequence";
+import {
+  RADAR_HORIZON_S,
+  longRangeFrames,
+  longZoomLabel,
+  offsetLabel,
+  playbackSequence,
+  positionOf,
+} from "../../src/lib/playbackSequence";
 
 const NOW = 1_800_000_000;
 // 4h of MRMS every 2 min, nowcast every 5 min to +60, HRRR hourly +2h..+17h.
@@ -34,6 +41,23 @@ describe("playbackSequence", () => {
   it("falls back to the nearest frame when nothing is within an hour", () => {
     expect(playbackSequence([{ time: NOW - 9000 }, { time: NOW - 8000 }], "1h", NOW)).toEqual([1]);
     expect(playbackSequence([], "48h", NOW)).toEqual([]);
+  });
+});
+
+describe("longRangeFrames", () => {
+  const gfs = Array.from({ length: 61 }, (_, i) => ({ time: NOW + (i + 24) * 3600 }));
+
+  it("starts after HRRR's last frame and stops at +72h", () => {
+    const hrrr = Array.from({ length: 47 }, (_, i) => ({ time: NOW + (i + 2) * 3600 }));
+    const out = longRangeFrames(gfs, hrrr, NOW);
+    expect(out[0].time).toBe(NOW + 49 * 3600);
+    expect(out[out.length - 1].time).toBe(NOW + RADAR_HORIZON_S);
+    expect(longZoomLabel([...hrrr, ...out], NOW)).toBe("72h");
+    expect(longZoomLabel(hrrr, NOW)).toBe("48h");
+  });
+
+  it("fills from +1h when there is no HRRR", () => {
+    expect(longRangeFrames(gfs, [], NOW)[0].time).toBe(NOW + 24 * 3600);
   });
 });
 

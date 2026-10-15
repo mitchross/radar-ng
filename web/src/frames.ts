@@ -15,7 +15,14 @@ export interface Manifest {
   layers: Record<string, { frames?: ManifestFrame[]; timestamps?: string[]; packed?: PackedMeta }>;
 }
 
-export type FrameSource = "radar" | "nowcast" | "radar-hrrr" | string;
+export type FrameSource = "radar" | "nowcast" | "radar-hrrr" | "radar-gfs" | string;
+
+/** Model and nowcast series: future guesses, never the "latest observed" frame. */
+const FORECAST_SOURCES = new Set(["nowcast", "radar-hrrr", "radar-gfs"]);
+export const isForecastSource = (source: string) => FORECAST_SOURCES.has(source);
+
+/** Future radar ends here: GFS fills from the last HRRR frame out to 72 h. */
+export const RADAR_HORIZON_S = 72 * 3600;
 
 export interface Frame {
   /** Epoch seconds. */
@@ -27,7 +34,7 @@ export interface Frame {
   maxZoom: number;
 }
 
-const DEFAULT_MAX_ZOOM: Record<string, number> = { radar: 7, "radar-composite": 7, nowcast: 6, "radar-hrrr": 6 };
+const DEFAULT_MAX_ZOOM: Record<string, number> = { radar: 7, "radar-composite": 7, nowcast: 6, "radar-hrrr": 6, "radar-gfs": 6 };
 
 function layerFrames(manifest: Manifest, key: string): Frame[] {
   const entry = manifest.layers[key];
@@ -43,7 +50,8 @@ function layerFrames(manifest: Manifest, key: string): Frame[] {
 }
 
 /**
- * Radar merges observed MRMS, the 0–60 min nowcast and HRRR beyond; other layers are their own series.
+ * Radar merges observed MRMS, the 0–60 min nowcast, HRRR beyond, and GFS from HRRR's last frame to 72 h;
+ * other layers are their own series.
  * `observed` picks the MRMS product for the past frames (base or composite reflectivity).
  */
 export function buildFrames(manifest: Manifest, layer: string, nowSec: number, observed = "radar"): Frame[] {
@@ -52,8 +60,10 @@ export function buildFrames(manifest: Manifest, layer: string, nowSec: number, o
   const past = layerFrames(manifest, source).filter((f) => f.time <= nowSec);
   const nowcast = layerFrames(manifest, "nowcast").filter((f) => f.time > nowSec && f.time <= nowSec + 3600);
   const hrrr = layerFrames(manifest, "radar-hrrr").filter((f) => f.time > nowSec + 3600);
+  const hrrrEnd = hrrr.reduce((t, f) => Math.max(t, f.time), nowSec + 3600);
+  const gfs = layerFrames(manifest, "radar-gfs").filter((f) => f.time > hrrrEnd && f.time <= nowSec + RADAR_HORIZON_S);
   const seen = new Set<number>();
-  return [...past, ...nowcast, ...hrrr]
+  return [...past, ...nowcast, ...hrrr, ...gfs]
     .sort((a, b) => a.time - b.time)
     .filter((f) => (seen.has(f.time) ? false : (seen.add(f.time), true)));
 }
@@ -72,6 +82,12 @@ export function sameFrames(a: readonly Frame[], b: readonly Frame[]): boolean {
 }
 
 export type Zoom = "1h" | "48h";
+
+/** Label of the long zoom (key "48h"): "72h" once GFS frames reach past two days. */
+export function longZoomLabel(frames: readonly Frame[], nowSec: number): string {
+  const last = frames.length ? frames[frames.length - 1].time : nowSec;
+  return last - nowSec > 54 * 3600 ? "72h" : "48h";
+}
 const HOUR = 3600;
 const PAST_STEP_48H = 15 * 60;
 
@@ -107,7 +123,7 @@ export function nearestIndex(frames: readonly Frame[], sec: number): number {
 /** The latest observed frame at or before now, else the frame nearest now. */
 export function nowIndex(frames: readonly Frame[], nowSec: number): number {
   for (let i = frames.length - 1; i >= 0; i--) {
-    if (frames[i].source !== "nowcast" && frames[i].source !== "radar-hrrr" && frames[i].time <= nowSec) return i;
+    if (!isForecastSource(frames[i].source) && frames[i].time <= nowSec) return i;
   }
   return nearestIndex(frames, nowSec);
 }

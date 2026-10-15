@@ -129,6 +129,10 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `FORECAST_HOURS` | `18` | HRRR forecast hours rendered per model run. |
 | `EXTENDED_FORECAST_HOURS` | `48` | Extended sub-hourly HRRR hours. |
 | `HRRR_ENABLED_LAYERS` | `radar-hrrr` (compose: all layers) | Comma-separated HRRR layers: `radar-hrrr`, `temperature`, `feels-like`, `dewpoint`, `humidity`, `wind`, `cape`, `precip-type`, `precip-accum`, `cloud`. `feels-like` is the NWS heat index or wind chill. |
+| `GFS_RADAR_ENABLED` | `1` | Render GFS 0.25° simulated composite reflectivity as `radar-gfs`. Clients play it after the last HRRR frame, to 72 h. One run every 6 h: about 26 CPU-seconds, 55 MB of byte-range downloads and 150 MB of tiles (3 palettes). Read by the hrrr worker. |
+| `GFS_RADAR_FIRST_HOUR` / `GFS_RADAR_LAST_HOUR` | `24` / `84` | GFS forecast hours rendered. The run is used once its last hour is posted (about 5 h after init). |
+| `UV_ENABLED` | `1` | Render the NOAA/CPC UV Index forecast (TUV model on the 12z GFS, from NOMADS) as `uv`. One run a day, posted about 18:30 UTC: about 35 CPU-seconds and 30 MB. Requests are paced to one a second, under the NOMADS limit of 120 a minute. Read by the hrrr worker. |
+| `UV_LAST_HOUR` | `96` | Last UV forecast hour rendered (from f01). 96 keeps 72 h ahead until the next run lands. |
 | `PACKED_TILES` | `1` | Write packed data tile buckets (`docs/packed-tiles.md`) for `radar`, `radar-composite` and `nowcast`. `0` stops new buckets; the PNG pyramids are unchanged. Read by the MRMS and nowcast workers. |
 
 ### Nowcast (Lucas-Kanade motion + S-PROG)

@@ -65,6 +65,18 @@ A packing failure is logged (`packed_failed`) and never fails the frame.
 - `mark_processed(ctx, run_id)`
 - `cleanup(ctx, retention_hours) -> HrrrCleanupResult`
 
+`global_model` activities (Rust-only, `IngestGlobalModelWorkflow`; `Product` is `radar-gfs` or `uv`):
+
+- `find_latest_run(ctx, product, now) -> GlobalModelFindResult` (run id and the hours to process)
+- `process_hour(ctx, product, run_id, fhr, hb) -> ForecastHourResult`
+- `publish_run(ctx, product, run_id, results) -> i64` (frames published)
+- `mark_processed(ctx, product, run_id)`
+- `cleanup(ctx, product) -> HrrrCleanupResult`
+
+Both products are global 0.25 degree regular grids (GFS `REFC` by `.idx` range, CPC UV Index whole files from
+NOMADS), cropped to `CONUS_BBOX` before rendering. A frame with no tiles (UV at night) is published as a
+complete empty pyramid. Tests: `src/global_model/state.rs` and `tests/global_model.rs` (synthetic GRIB2).
+
 Payload types come from `radar-types`. Each activity returns `anyhow::Result`.
 
 ## Deviations from the Python
