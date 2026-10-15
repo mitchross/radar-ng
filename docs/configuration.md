@@ -181,6 +181,8 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `TEMPORAL_ALERTS_TASK_QUEUE` | `radar-ng-alerts` | Queue the api starts `WatchStormWorkflow` on; compose sets `radar-ng` for the legacy worker. |
 | `GEOCODER_URL` / `PHOTON_URL` | unset | Geocoder behind `/api/geocode` and `/api/reverse-geocode`; neither set means 503. |
 | `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` | unset | Optional OpenAI-compatible endpoint for `/api/briefing`; unset hides the briefing. |
+| `GIBS_WMTS_BASE` | `https://gibs.earthdata.nasa.gov/wmts/epsg3857/nrt` | NASA GIBS WMTS root for the GOES satellite layer (`/tiles/satellite/*` and the manifest `satellite` layer). Empty turns the layer off. |
+| `SATELLITE_CACHE_MAX_BYTES` | `134217728` (128 MiB) | In-process cache for satellite tiles. Count it in the api memory limit. `0` turns the cache off. |
 
 ---
 

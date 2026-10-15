@@ -56,6 +56,28 @@ describe("raster overlays share the carousel", () => {
   });
 });
 
+describe("satellite overlay", () => {
+  const source = read("components/map/SatelliteOverlay.tsx");
+
+  it("renders through the carousel under a permanent anchor layer", () => {
+    expect(source).toContain("<RasterFrameCarousel");
+    expect(source).not.toContain("<RasterSource");
+    expect(source).toContain("beforeId={SATELLITE_ANCHOR_ID}");
+    expect(source).toContain("return [anchor]");
+  });
+
+  it("is the first map child, so its anchor sits below every weather layer", () => {
+    const radar = read("app/(tabs)/radar.tsx");
+    const sat = radar.indexOf("<SatelliteOverlay />");
+    expect(sat).toBeGreaterThan(radar.indexOf("<WeatherMap"));
+    expect(sat).toBeLessThan(radar.indexOf("<RadarOverlay"));
+  });
+
+  it("passes beforeId to every carousel slot", () => {
+    expect(read("components/map/RasterFrameCarousel.tsx")).toContain("beforeId={beforeId}");
+  });
+});
+
 describe("map overlays keep a constant native child count", () => {
   it.each([
     "components/map/AlertPolygon.tsx",

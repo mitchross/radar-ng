@@ -106,6 +106,11 @@ pub struct Config {
     pub basemap_tiles_upstream: String,
     /// `IMAGERY_CACHE_MAX_BYTES` (new, moka). Default 128 MiB. Zero disables the cache.
     pub imagery_cache_max_bytes: u64,
+    /// `GIBS_WMTS_BASE`: NASA GIBS WMTS root for the satellite layer (tiles and DescribeDomains).
+    /// Default `https://gibs.earthdata.nasa.gov/wmts/epsg3857/nrt`. Empty turns the satellite layer off.
+    pub gibs_wmts_base: String,
+    /// `SATELLITE_CACHE_MAX_BYTES`: moka cache for satellite tiles. Default 128 MiB. Zero disables it.
+    pub satellite_cache_max_bytes: u64,
     /// `TRUSTED_PROXIES` (new): extra comma-separated IPs or CIDRs trusted for `X-Forwarded-For`,
     /// in addition to the private ranges and loopback.
     pub trusted_proxies_extra: String,
@@ -186,6 +191,13 @@ impl Config {
                 .trim_end_matches('/')
                 .to_string(),
             imagery_cache_max_bytes: pos_u64("IMAGERY_CACHE_MAX_BYTES", 128 * 1024 * 1024)?,
+            gibs_wmts_base: str_var(
+                "GIBS_WMTS_BASE",
+                "https://gibs.earthdata.nasa.gov/wmts/epsg3857/nrt",
+            )
+            .trim_end_matches('/')
+            .to_string(),
+            satellite_cache_max_bytes: pos_u64("SATELLITE_CACHE_MAX_BYTES", 128 * 1024 * 1024)?,
             trusted_proxies_extra: str_var("TRUSTED_PROXIES", ""),
         })
     }
@@ -238,6 +250,8 @@ impl Config {
             usgs_imagery_base: "https://basemap.nationalmap.gov".into(),
             basemap_tiles_upstream: String::new(),
             imagery_cache_max_bytes: 0,
+            gibs_wmts_base: String::new(),
+            satellite_cache_max_bytes: 0,
             trusted_proxies_extra: String::new(),
         }
     }

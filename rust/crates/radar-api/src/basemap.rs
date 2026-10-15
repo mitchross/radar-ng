@@ -3,6 +3,7 @@
 //! - `/tiles/*` radar tiles, from `TILE_DIR` (`ServeDir`, gzip precompressed, `immutable`). A tile
 //!   missing from a complete pyramid is a cacheable empty 204, because empty tiles are never written.
 //!   Packed buckets (`/tiles/packed/<layer>/<bucket>/...`) count as complete once their bucket file exists.
+//! - `/tiles/satellite/{time}/{z}/{x}/{y}.png`: GOES imagery proxied from NASA GIBS (`satellite`).
 //! - `/basemap/styles/*`, `/basemap/fonts/*`: static files under `BASEMAP_ROOT`.
 //! - `/basemap/imagery/{z}/{x}/{y}.jpg`: USGS imagery proxy with a moka cache (Caddy did not cache).
 //! - `/basemap/tiles/{z}/{x}/{y}.mvt`: vector tiles read straight from the `.pmtiles` archive.
@@ -168,6 +169,10 @@ pub fn static_router(tile_dir: PathBuf, basemap_root: PathBuf) -> Router<AppStat
         .nest_service("/basemap/fonts", fonts)
         // Paths that do not fit this pattern fall through to `edge::unmatched`, which returns the
         // same bare 404 for the `/basemap/imagery/` prefix (axum rejects a catch-all here).
+        .route(
+            "/tiles/satellite/{time}/{z}/{x}/{ypng}",
+            get(crate::satellite::get_tile),
+        )
         .route("/basemap/imagery/{z}/{x}/{yjpg}", get(get_imagery))
         .route("/basemap/tiles/{z}/{x}/{ymvt}", get(get_vector_tile))
 }
