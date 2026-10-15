@@ -7,19 +7,56 @@
 //! Fix (D18): a failing beat never affects the result. The beat runs on its own task. Panics inside the beat
 //! are caught and logged. The beat task is aborted when the work completes. The work's own panic is
 //! propagated to the caller, as an exception would be.
+//!
+//! A worker can call [`exit_when_abandoned_after`] so that work which outlives its dropped caller (a cancelled
+//! or timed-out activity) ends the process. The thread cannot be stopped, and it keeps its flocks and memory.
 
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::time::{Instant, MissedTickBehavior, interval_at};
+
+static ABANDONED_EXIT_AFTER: OnceLock<Duration> = OnceLock::new();
+
+/// Exit the process when blocking work is still running `grace` after its caller dropped the future.
+///
+/// Call once at worker startup. Without it, abandoned work keeps running until it returns.
+pub fn exit_when_abandoned_after(grace: Duration) {
+    let _ = ABANDONED_EXIT_AFTER.set(grace);
+}
+
+fn exit_abandoned(grace: Duration) {
+    tracing::error!(
+        grace_s = grace.as_secs(),
+        "blocking work is still running after its caller was cancelled; exiting to release its locks and memory"
+    );
+    std::process::exit(1);
+}
 
 /// Run `f` on the blocking pool, calling `beat` about once every `interval` until it returns.
 ///
 /// Returns `f`'s result. Panics in `f` propagate. Panics in `beat` are caught and logged, and never mask the
 /// result. Dropping the returned future aborts the beat, but the blocking thread keeps running (threads are
-/// not cancellable), as in Python.
+/// not cancellable), as in Python, unless [`exit_when_abandoned_after`] is set.
 pub async fn run_blocking_with_heartbeat<T, F, B>(f: F, interval: Duration, beat: B) -> T
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+    B: Fn() + Send + Sync + 'static,
+{
+    let abandon = ABANDONED_EXIT_AFTER
+        .get()
+        .map(|&grace| (grace, exit_abandoned as fn(Duration)));
+    run_blocking_inner(f, interval, beat, abandon).await
+}
+
+async fn run_blocking_inner<T, F, B>(
+    f: F,
+    interval: Duration,
+    beat: B,
+    abandon: Option<(Duration, fn(Duration))>,
+) -> T
 where
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static,
@@ -50,14 +87,62 @@ where
 
     let done_for_work = Arc::clone(&done);
     let work = tokio::task::spawn_blocking(move || {
-        let out = f();
-        done_for_work.store(true, Ordering::Release);
-        out
+        // Set on unwind too, so a panicking job never counts as abandoned.
+        let _done = SetOnDrop(done_for_work);
+        f()
     });
+    let _watch = AbandonWatch {
+        done: Arc::clone(&done),
+        abandon,
+    };
     match work.await {
         Ok(value) => value,
         Err(join_error) if join_error.is_panic() => resume_unwind(join_error.into_panic()),
         Err(join_error) => panic!("blocking heartbeat work was cancelled: {join_error}"),
+    }
+}
+
+struct SetOnDrop(Arc<AtomicBool>);
+
+impl Drop for SetOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+/// When the caller drops the future before the work finishes, waits up to the grace period on a plain
+/// thread, then calls the handler if the work is still running.
+struct AbandonWatch {
+    done: Arc<AtomicBool>,
+    abandon: Option<(Duration, fn(Duration))>,
+}
+
+impl Drop for AbandonWatch {
+    fn drop(&mut self) {
+        let Some((grace, on_stuck)) = self.abandon else {
+            return;
+        };
+        if self.done.load(Ordering::Acquire) {
+            return;
+        }
+        let done = Arc::clone(&self.done);
+        let spawned = std::thread::Builder::new()
+            .name("abandoned-work".into())
+            .spawn(move || {
+                let deadline = std::time::Instant::now() + grace;
+                while std::time::Instant::now() < deadline {
+                    if done.load(Ordering::Acquire) {
+                        return;
+                    }
+                    std::thread::sleep(grace.min(Duration::from_secs(1)));
+                }
+                if !done.load(Ordering::Acquire) {
+                    on_stuck(grace);
+                }
+            });
+        if let Err(err) = spawned {
+            tracing::warn!(error = %err, "could not watch abandoned blocking work");
+        }
     }
 }
 
@@ -145,5 +230,72 @@ mod tests {
         ));
         let err = handle.await.unwrap_err();
         assert!(err.is_panic());
+    }
+
+    static STUCK_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static FINISHED_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    #[tokio::test]
+    async fn abandoned_work_that_outlives_the_grace_calls_the_handler() {
+        let release = Arc::new(AtomicBool::new(false));
+        let r = Arc::clone(&release);
+        let fut = run_blocking_inner(
+            move || {
+                while !r.load(Ordering::Acquire) {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            },
+            Duration::from_secs(60),
+            || {},
+            Some((Duration::from_millis(30), |_| {
+                STUCK_CALLS.fetch_add(1, Ordering::SeqCst);
+            })),
+        );
+        // Start the work, then drop the future as an activity cancellation would.
+        let _ = tokio::time::timeout(Duration::from_millis(20), fut).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        release.store(true, Ordering::Release);
+        assert_eq!(STUCK_CALLS.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn abandoned_work_that_finishes_within_the_grace_is_left_alone() {
+        let fut = run_blocking_inner(
+            || std::thread::sleep(Duration::from_millis(40)),
+            Duration::from_secs(60),
+            || {},
+            Some((Duration::from_millis(500), |_| {
+                FINISHED_CALLS.fetch_add(1, Ordering::SeqCst);
+            })),
+        );
+        let _ = tokio::time::timeout(Duration::from_millis(10), fut).await;
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        assert_eq!(FINISHED_CALLS.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn completed_and_panicked_work_never_counts_as_abandoned() {
+        static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let on_stuck: fn(Duration) = |_| {
+            CALLS.fetch_add(1, Ordering::SeqCst);
+        };
+        let ok = run_blocking_inner(
+            || 7,
+            Duration::from_secs(60),
+            || {},
+            Some((Duration::from_millis(10), on_stuck)),
+        )
+        .await;
+        assert_eq!(ok, 7);
+        let panicked = tokio::spawn(run_blocking_inner(
+            || -> i32 { panic!("work failed") },
+            Duration::from_secs(60),
+            || {},
+            Some((Duration::from_millis(10), on_stuck)),
+        ))
+        .await;
+        assert!(panicked.unwrap_err().is_panic());
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(CALLS.load(Ordering::SeqCst), 0);
     }
 }

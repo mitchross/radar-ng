@@ -66,6 +66,10 @@ use crate::workflows::watch_storm::WatchStormWorkflow;
 /// no background work.
 pub const POLLER_START_GRACE: Duration = Duration::from_millis(250);
 
+/// How long a cancelled or timed-out activity's blocking work may keep running before the worker exits.
+/// The restart releases the flocks and memory that work holds.
+pub const ABANDONED_WORK_GRACE: Duration = Duration::from_secs(60);
+
 /// Grace period for the open-meteo pool, which the Python worker hard-codes to 25 s.
 pub const OPEN_METEO_GRACEFUL_SHUTDOWN: Duration = Duration::from_secs(25);
 /// Local-activity and Nexus slot counts. The Python worker does not set them (spec 3.3), so 100 is an assumed
@@ -418,6 +422,7 @@ async fn wait_for_termination() {
 /// only after [`POLLER_START_GRACE`] and are aborted when the worker returns. A reconciliation failure is
 /// logged and never stops the worker. SIGTERM or SIGINT drains in-flight work for `TEMPORAL_GRACEFUL_SHUTDOWN_S`.
 pub async fn run_worker(cfg: WorkerConfig) -> anyhow::Result<()> {
+    radar_core::heartbeat::exit_when_abandoned_after(ABANDONED_WORK_GRACE);
     if cfg.role == WorkerRole::OpenMeteo {
         return run_open_meteo_pool(cfg).await;
     }

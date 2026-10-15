@@ -70,6 +70,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    name: publish (${{ matrix.image }})
     needs: binary
     runs-on: ubuntu-latest
     timeout-minutes: 30
