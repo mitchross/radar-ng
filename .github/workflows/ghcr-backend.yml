@@ -1,0 +1,178 @@
+name: ghcr · backend
+
+# Public GHCR images of the Rust backend, all three from one `radar` binary (deploy/Dockerfile):
+#   radar-ng-tile-server         target `api`
+#   radar-ng-temporal-worker     target `worker` (WORKER_ROLE picks the pool)
+#   radar-ng-open-meteo-worker   target `open-meteo`
+# The binary is compiled once, with a cargo cache, and copied into each image.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'rust/**'
+      - 'deploy/Dockerfile'
+      - 'deploy/Dockerfile.dockerignore'
+      - '.github/workflows/ghcr-backend.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional explicit version tag to publish for all three images (e.g. v1.2.3)'
+        required: false
+        default: ''
+
+# Version allocation reads the registry before publishing. Serialize this
+# workflow so two runs cannot choose and push the same patch tag.
+concurrency:
+  group: ghcr-backend-release
+  cancel-in-progress: false
+
+jobs:
+  binary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Bookworm glibc (2.36) matches the distroless runtime; the Ubuntu runner's glibc is newer.
+    container: debian:bookworm-slim
+    permissions:
+      contents: read
+    env:
+      CARGO_TERM_COLOR: never
+      CARGO_INCREMENTAL: '0'
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Build tools
+        working-directory: /
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git zstd gcc libc6-dev make pkg-config protobuf-compiler libprotobuf-dev
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: actions/checkout@v7
+      - name: Rust toolchain (rust/rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      # Every recorded Python history must replay on the Rust workflows before any tag is pushed.
+      - name: Replay gate
+        run: cargo test --release --locked -p radar-worker --test replay
+      - name: Build radar
+        run: |
+          cargo build --release --locked -p radar
+          install -D -m 0755 target/release/radar ../dist/radar
+      - uses: actions/upload-artifact@v7
+        with:
+          name: radar
+          path: dist/radar
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    needs: binary
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: radar-ng-tile-server
+            target: api
+          - image: radar-ng-temporal-worker
+            target: worker
+          - image: radar-ng-open-meteo-worker
+            target: open-meteo
+            labels: |
+              org.opencontainers.image.licenses=MIT AND AGPL-3.0-only
+              org.opencontainers.image.base.name=ghcr.io/open-meteo/open-meteo:1.6.0
+              org.opencontainers.image.base.digest=sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: radar
+          path: dist
+
+      - name: Compute next semver from registry
+        id: ver
+        env:
+          IMAGE: ${{ matrix.image }}
+          EXPLICIT: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          # The Rust rewrite starts the v2 line. Never publish below it.
+          FLOOR="v2.0.0"
+          if [ -n "$EXPLICIT" ]; then
+            NEXT="$EXPLICIT"
+          else
+            TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${{ github.repository_owner }}/${IMAGE}:pull" | jq -r .token)
+            LATEST=$(curl -s -H "Authorization: Bearer $TOKEN" "https://ghcr.io/v2/${{ github.repository_owner }}/${IMAGE}/tags/list" \
+              | jq -r '.tags[]?' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -1 \
+              || true)
+            if [ -z "${LATEST:-}" ]; then
+              NEXT="$FLOOR"
+            else
+              STRIPPED=${LATEST#v}
+              MAJOR=${STRIPPED%%.*}
+              REST=${STRIPPED#*.}
+              MINOR=${REST%%.*}
+              PATCH=${REST#*.}
+              NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+            fi
+          fi
+          if [ "$(printf '%s\n%s\n' "$NEXT" "$FLOOR" | sort -V | head -1)" != "$FLOOR" ]; then
+            NEXT="$FLOOR"
+          fi
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Calculated version: $NEXT"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=raw,value=${{ steps.ver.outputs.version }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          provenance: false
+          context: .
+          file: deploy/Dockerfile
+          target: ${{ matrix.target }}
+          build-args: RADAR_FROM=prebuilt
+          build-contexts: radar-bin=dist
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            ${{ matrix.labels }}
+          cache-from: type=gha,scope=ghcr-${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=ghcr-${{ matrix.target }}
+
+      - name: Published reference
+        run: |
+          ref="ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.ver.outputs.version }}@${{ steps.build.outputs.digest }}"
+          echo "::notice title=published::$ref"
+          echo "Published \`$ref\`" >> "$GITHUB_STEP_SUMMARY"
