@@ -3,6 +3,8 @@
  * the app (frontend/src/hooks/useManifest.ts, lib/playbackSequence.ts) so the
  * web and app loops visit the same frames.
  */
+import type { PackedMeta } from "./packed/format";
+
 export interface ManifestFrame {
   timestamp: string;
   path: string;
@@ -10,7 +12,7 @@ export interface ManifestFrame {
 }
 
 export interface Manifest {
-  layers: Record<string, { frames?: ManifestFrame[]; timestamps?: string[] }>;
+  layers: Record<string, { frames?: ManifestFrame[]; timestamps?: string[]; packed?: PackedMeta }>;
 }
 
 export type FrameSource = "radar" | "nowcast" | "radar-hrrr" | string;

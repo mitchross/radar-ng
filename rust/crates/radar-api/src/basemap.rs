@@ -2,6 +2,7 @@
 //!
 //! - `/tiles/*` radar tiles, from `TILE_DIR` (`ServeDir`, gzip precompressed, `immutable`). A tile
 //!   missing from a complete pyramid is a cacheable empty 204, because empty tiles are never written.
+//!   Packed buckets (`/tiles/packed/<layer>/<bucket>/...`) count as complete once their bucket file exists.
 //! - `/basemap/styles/*`, `/basemap/fonts/*`: static files under `BASEMAP_ROOT`.
 //! - `/basemap/imagery/{z}/{x}/{y}.jpg`: USGS imagery proxy with a moka cache (Caddy did not cache).
 //! - `/basemap/tiles/{z}/{x}/{y}.mvt`: vector tiles read straight from the `.pmtiles` archive.
@@ -51,8 +52,13 @@ const FORWARDED_UPSTREAM_HEADERS: [&str; 3] = ["content-type", "etag", "last-mod
 const IMAGERY_CC: &str = "public, max-age=604800";
 const TILE_CC: &str = "public, max-age=86400, immutable";
 
-/// Completion markers that `radar_tiler::marker` writes at a pyramid's root once every tile is in place.
-const PYRAMID_COMPLETE_FILES: [&str; 2] = [".render-complete-v2.json", ".render-complete.json"];
+/// Files at a pyramid's root that say every tile is in place: the `radar_tiler::marker` completion
+/// markers, and the bucket file of a packed bucket (`radar_tiler::packed::BUCKET_FILE`).
+const PYRAMID_COMPLETE_FILES: [&str; 3] = [
+    ".render-complete-v2.json",
+    ".render-complete.json",
+    ".packed-bucket-v1.json",
+];
 const USGS_TILE_PATH: &str = "/arcgis/rest/services/USGSImageryOnly/MapServer/tile";
 
 /// A 404 with an empty body and no headers (Caddy's `respond 404` in C5).

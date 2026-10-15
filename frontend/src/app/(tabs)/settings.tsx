@@ -81,6 +81,8 @@ export default function SettingsScreen() {
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
   const setRadarOpacity = useWeatherStore((s) => s.setRadarOpacity);
   const playbackSpeed = useWeatherStore((s) => s.playbackSpeed);
+  const fastRadar = useWeatherStore((s) => s.fastRadar);
+  const setFastRadar = useWeatherStore((s) => s.setFastRadar);
   const setPlaybackSpeed = useWeatherStore((s) => s.setPlaybackSpeed);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const setServerUrl = useWeatherStore((s) => s.setServerUrl);
@@ -500,6 +502,13 @@ export default function SettingsScreen() {
                 style={{ marginTop: 4 }}
               />
             </View>
+            <Sep />
+            <ToggleRow
+              label="Fast radar (GPU)"
+              sub="Colors radar on the GPU with no download per frame; turn off if radar looks wrong"
+              value={fastRadar}
+              onChange={setFastRadar}
+            />
           </View>
 
           {/* Advanced Mode: About details */}

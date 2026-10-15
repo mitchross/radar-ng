@@ -49,8 +49,12 @@ Crate root:
 - `list_unprocessed_keys(ctx, &IngestMrmsArgs) -> ListKeysResult`
 - `process_frame(ctx, info, &ProcessFrameInput, hb) -> ProcessFrameResult` (parses the key before any download, D21)
 - `mark_processed(ctx, &MarkProcessedInput)`
-- `cleanup(ctx, &CleanupInput) -> CleanupResult`
+- `cleanup(ctx, &CleanupInput) -> CleanupResult` (also drops expired packed buckets, manifest first)
 - `load_mrms_palettes(names)`
+
+With `PACKED_TILES` on (default), `process_frame` also packs the frame into its 30-minute observation
+bucket (`packed.rs`, `docs/packed-tiles.md`) and lists it in `layers.<layer>.packed` after the frame.
+A packing failure is logged (`packed_failed`) and never fails the frame.
 
 `hrrr` activities:
 

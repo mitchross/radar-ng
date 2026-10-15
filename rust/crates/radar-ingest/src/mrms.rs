@@ -220,6 +220,29 @@ pub async fn process_frame(
         });
     }
 
+    // Packed buckets are best effort: a failure leaves the frame on the PNG path only.
+    let (grid, packed) = if cfg.packed_tiles {
+        let paths = cfg.paths.clone();
+        let layer = layer.clone();
+        let timestamp = timestamp.clone();
+        heartbeat::blocking(
+            RENDER_BEAT,
+            hb,
+            serde_json::json!({"phase": "packed", "timestamp": timestamp}),
+            move || {
+                let packed = crate::packed::pack_observation(&paths, &layer, &timestamp, &grid)
+                    .unwrap_or_else(|err| {
+                        tracing::warn!(layer = %layer, timestamp = %timestamp, err = %format!("{err:#}"), "packed_failed");
+                        None
+                    });
+                (grid, packed)
+            },
+        )
+        .await
+    } else {
+        (grid, None)
+    };
+
     hb(serde_json::json!({"phase": "grid", "timestamp": timestamp}));
     let state_dir = cfg.paths.state_dir.clone();
     let storms_cfg = cfg.storms.clone();
@@ -322,6 +345,28 @@ pub async fn process_frame(
         },
     )
     .await?;
+    if let Some(bucket) = packed {
+        // After the frame and the bucket file, so the manifest never lists a slot it cannot serve.
+        let state_dir = cfg.paths.state_dir.clone();
+        let layer_name = layer.clone();
+        let written = heartbeat::blocking(
+            RENDER_BEAT,
+            hb,
+            serde_json::json!({"phase": "manifest", "timestamp": timestamp}),
+            move || {
+                radar_core::manifest::packed::upsert_packed_bucket(
+                    &state_dir,
+                    &layer_name,
+                    &crate::packed::mrms_layout(),
+                    &bucket,
+                )
+            },
+        )
+        .await;
+        if let Err(err) = written {
+            tracing::warn!(layer = %layer, timestamp = %timestamp, err = %err, "packed_manifest_failed");
+        }
+    }
     let duration_s = elapsed_s(started);
     tracing::info!(layer = %layer, timestamp = %timestamp, duration_s, "frame_done");
     Ok(ProcessFrameResult {
@@ -347,7 +392,7 @@ pub async fn mark_processed(ctx: &IngestCtx, input: &MarkProcessedInput) -> anyh
 }
 
 /// `mrms_cleanup` (spec §12.1). Removes timestamp directories older than the retention window, with
-/// their manifest frames, then sweeps grids.
+/// their manifest frames, then expired packed buckets (manifest first), then sweeps grids.
 pub async fn cleanup(ctx: &IngestCtx, input: &CleanupInput) -> anyhow::Result<CleanupResult> {
     let cfg = ctx.cfg.clone();
     let layer = input.layer_name.clone();
@@ -378,6 +423,15 @@ pub async fn cleanup(ctx: &IngestCtx, input: &CleanupInput) -> anyhow::Result<Cl
                 tile_dirs_removed +=
                     remove_timestamp_dir(&cfg.paths.state_dir, &layer, &dir, &name, cutoff)?;
             }
+        }
+        let packed_removed = crate::packed::cleanup_observation_buckets(
+            &cfg.paths.state_dir,
+            &cfg.paths,
+            &layer,
+            cutoff,
+        )?;
+        if packed_removed > 0 {
+            tracing::info!(layer = %layer, packed_removed, "packed_buckets_removed");
         }
         let grid_files_removed = common::cleanup_grids(&cfg)?;
         Ok(CleanupResult {

@@ -126,6 +126,10 @@ Follows `docs/rust-migration/specs/spec-nowcast.md` sections 2 to 5, 8 to 11 and
    (palettes, frames, layer metadata), `prune_grid_generations` keeping whole runs, processed-anchor add.
    An incomplete render fails the commit (`nowcast incomplete: rendered n/N leadtimes`) before the
    manifest is touched. The status file is written only after the commit succeeds.
+   With `PACKED_TILES` on (default), the leads are also packed into one bucket per run
+   (`packed.rs`, `docs/packed-tiles.md`) after the render, and the commit lists only that run's
+   buckets in `layers.nowcast.packed`, then deletes run buckets older than 60 minutes. Packing is best
+   effort.
 6. **Post-commit**: previous runs are scored against the observation (150 s match tolerance, persistence
    baseline from `runs/<anchor>/observed`, each observation matched once), appended to the skill log, and
    summarised as Prometheus text. Scoring failures are logged, not fatal.

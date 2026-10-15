@@ -9,6 +9,7 @@ pub mod ctx;
 pub mod heartbeat;
 pub mod hrrr;
 pub mod mrms;
+pub mod packed;
 pub mod scratch;
 
 pub use config::IngestConfig;
