@@ -1,6 +1,7 @@
 //! Basemap and static lanes that Caddy served before the port (spec 2.1 C1 to C6, 3.4, 3.5, 5.13).
 //!
-//! - `/tiles/*` radar tiles, from `TILE_DIR` (`ServeDir`, gzip precompressed, `immutable`).
+//! - `/tiles/*` radar tiles, from `TILE_DIR` (`ServeDir`, gzip precompressed, `immutable`). A tile
+//!   missing from a complete pyramid is a cacheable empty 204, because empty tiles are never written.
 //! - `/basemap/styles/*`, `/basemap/fonts/*`: static files under `BASEMAP_ROOT`.
 //! - `/basemap/imagery/{z}/{x}/{y}.jpg`: USGS imagery proxy with a moka cache (Caddy did not cache).
 //! - `/basemap/tiles/{z}/{x}/{y}.mvt`: vector tiles read straight from the `.pmtiles` archive.
@@ -12,6 +13,7 @@
 //! body `"{code} {reason}"`. The imagery `respond 404` is not an error in Caddy, so it is marked
 //! to skip the rewrite.
 
+use std::convert::Infallible;
 use std::future::Future;
 use std::io;
 use std::path::{Path as FsPath, PathBuf};
@@ -27,7 +29,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use pmtiles::{AsyncBackend, AsyncPmTilesReader, BackendResponse, PmtError, PmtResult, TileCoord};
 use serde_json::{Value, json};
-use tower::ServiceBuilder;
+use tower::{ServiceBuilder, ServiceExt};
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
@@ -47,6 +49,10 @@ const DROPPED_UPSTREAM_HEADERS: [&str; 4] = ["cache-control", "set-cookie", "x-c
 const FORWARDED_UPSTREAM_HEADERS: [&str; 3] = ["content-type", "etag", "last-modified"];
 
 const IMAGERY_CC: &str = "public, max-age=604800";
+const TILE_CC: &str = "public, max-age=86400, immutable";
+
+/// Completion markers that `radar_tiler::marker` writes at a pyramid's root once every tile is in place.
+const PYRAMID_COMPLETE_FILES: [&str; 2] = [".render-complete-v2.json", ".render-complete.json"];
 const USGS_TILE_PATH: &str = "/arcgis/rest/services/USGSImageryOnly/MapServer/tile";
 
 /// A 404 with an empty body and no headers (Caddy's `respond 404` in C5).
@@ -69,6 +75,56 @@ pub async fn static_error_override(req: Request, next: Next) -> Response {
     resp
 }
 
+/// An empty tile: 204 with the tile cache headers, so the CDN and browsers keep it like any tile.
+fn empty_tile() -> Response {
+    (
+        StatusCode::NO_CONTENT,
+        [
+            (header::CACHE_CONTROL, TILE_CC),
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        ],
+    )
+        .into_response()
+}
+
+/// The pyramid root of a `/{pyramid...}/{z}/{x}/{y}.png` tile path (relative to `TILE_DIR`, percent-
+/// decoded), or `None` for any other shape or an unsafe segment.
+fn pyramid_root(rel: &str) -> Option<PathBuf> {
+    let decoded = percent_encoding::percent_decode_str(rel)
+        .decode_utf8()
+        .ok()?;
+    let segments: Vec<&str> = decoded.trim_start_matches('/').split('/').collect();
+    let [pyramid @ .., z, x, y] = segments.as_slice() else {
+        return None;
+    };
+    let numeric = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    let y = y.strip_suffix(".png")?;
+    if pyramid.is_empty() || ![*z, *x, y].into_iter().all(numeric) {
+        return None;
+    }
+    let unsafe_segment =
+        |s: &&str| s.is_empty() || *s == "." || *s == ".." || s.contains(['\\', '\0']);
+    if pyramid.iter().any(unsafe_segment) {
+        return None;
+    }
+    Some(pyramid.iter().collect())
+}
+
+async fn in_complete_pyramid(root: &FsPath, rel: &str) -> bool {
+    let Some(pyramid) = pyramid_root(rel) else {
+        return false;
+    };
+    for marker in PYRAMID_COMPLETE_FILES {
+        if tokio::fs::try_exists(root.join(&pyramid).join(marker))
+            .await
+            .unwrap_or(false)
+        {
+            return true;
+        }
+    }
+    false
+}
+
 /// The static lane router: radar tiles, basemap styles and fonts, imagery, and vector tiles.
 pub fn static_router(tile_dir: PathBuf, basemap_root: PathBuf) -> Router<AppState> {
     let with_headers = |cc: &'static str| {
@@ -82,8 +138,20 @@ pub fn static_router(tile_dir: PathBuf, basemap_root: PathBuf) -> Router<AppStat
                 HeaderValue::from_static("*"),
             ))
     };
-    let tiles = with_headers("public, max-age=86400, immutable")
-        .service(ServeDir::new(tile_dir).precompressed_gzip());
+    let serve_tiles = with_headers(TILE_CC).service(ServeDir::new(&tile_dir).precompressed_gzip());
+    let tile_root = Arc::new(tile_dir);
+    let tiles = tower::service_fn(move |req: Request| {
+        let serve = serve_tiles.clone();
+        let root = Arc::clone(&tile_root);
+        async move {
+            let rel = req.uri().path().to_owned();
+            let resp = serve.oneshot(req).await?.into_response();
+            if resp.status() == StatusCode::NOT_FOUND && in_complete_pyramid(&root, &rel).await {
+                return Ok::<_, Infallible>(empty_tile());
+            }
+            Ok(resp)
+        }
+    });
     let styles = with_headers("public, max-age=3600")
         .service(ServeDir::new(basemap_root.join("styles")).precompressed_gzip());
     let fonts = with_headers("public, max-age=604800")
