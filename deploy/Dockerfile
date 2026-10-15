@@ -33,6 +33,9 @@ ARG OPEN_METEO_IMAGE=ghcr.io/open-meteo/open-meteo:1.6.0@sha256:e1517a01a061fd96
 # workflows) before the binary is built, like the Python image's RUN replay gate. CI sets it to 0
 # only where the same gate already ran in an earlier step.
 ARG REPLAY_GATE=1
+# `build` compiles radar here. The publish workflow compiles it once on the runner (with a cargo
+# cache) and passes RADAR_FROM=prebuilt plus `--build-context radar-bin=<dir holding radar>`.
+ARG RADAR_FROM=build
 
 # Static busybox for probes and healthchecks; distroless has no shell. The cluster's worker probes
 # exec `sh -c "test $(find /tmp/worker-alive -mmin -3)"`, so sh, find and test are on PATH.
@@ -79,10 +82,16 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     && cargo build --release --locked -p radar \
     && install -D -m 0755 target/release/radar /out/radar
 
+# Only reached with RADAR_FROM=prebuilt, so a normal build never needs the radar-bin context.
+FROM scratch AS prebuilt
+COPY --from=radar-bin --chmod=0755 radar /out/radar
+
+FROM ${RADAR_FROM} AS radar
+
 FROM ${RUNTIME_IMAGE} AS runtime
 
 COPY --from=busybox /out/ /usr/local/bin/
-COPY --from=build /out/radar /usr/local/bin/radar
+COPY --from=radar /out/radar /usr/local/bin/radar
 
 # Bundled styles and fonts, read by the api (STYLE_DIR / BASEMAP_ROOT). Root-owned and
 # world-readable, so the non-root user only reads them.
@@ -119,7 +128,7 @@ LABEL org.opencontainers.image.licenses="MIT AND AGPL-3.0-only" \
       org.opencontainers.image.source="https://github.com/mitchross/radar-ng" \
       io.radar-ng.replay-gate="rust-offline-replay"
 COPY --from=busybox /out/busybox /usr/local/bin/busybox
-COPY --from=build /out/radar /usr/local/bin/radar
+COPY --from=radar /out/radar /usr/local/bin/radar
 ENV OPENMETEO_BIN=/app/openmeteo-api \
     OPENMETEO_DATA_DIR=/app/data \
     LOG_LEVEL=info

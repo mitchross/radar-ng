@@ -19,17 +19,18 @@ merge a tested PR into mitchross/radar-ng:master
 
 There is no release commit or git tag. Each image workflow reads its existing GHCR semver tags and
 allocates the next patch version; the three backend images never go below `v2.0.0`, where the Rust
-backend starts. The workflows are serialized per image so two builds cannot choose the same version. `workflow_dispatch` accepts an
+backend starts. Each workflow is serialized so two builds cannot choose the same version. `workflow_dispatch` accepts an
 explicit version for a deliberate rebuild.
 
 The workflow `on.push.paths` blocks decide which change builds which image. A change under `rust/`
-rebuilds all three backend images:
+rebuilds all three backend images. `ghcr-backend.yml` compiles `radar` once, with a cargo cache, and
+copies it into each image (`RADAR_FROM=prebuilt`):
 
 | Image | Workflow | `deploy/Dockerfile` target |
 |---|---|---|
-| `ghcr.io/mitchross/radar-ng-temporal-worker` | `ghcr-temporal-worker.yml` | `worker` |
-| `ghcr.io/mitchross/radar-ng-tile-server` | `ghcr-tile-server.yml` | `api` |
-| `ghcr.io/mitchross/radar-ng-open-meteo-worker` | `ghcr-open-meteo-worker.yml` | `open-meteo` |
+| `ghcr.io/mitchross/radar-ng-temporal-worker` | `ghcr-backend.yml` | `worker` |
+| `ghcr.io/mitchross/radar-ng-tile-server` | `ghcr-backend.yml` | `api` |
+| `ghcr.io/mitchross/radar-ng-open-meteo-worker` | `ghcr-backend.yml` | `open-meteo` |
 | `ghcr.io/mitchross/radar-ng-web` | `ghcr-web.yml` | `web/Dockerfile` |
 
 Never deploy `latest`. GitOps pins `vX.Y.Z@sha256:…`.
@@ -55,9 +56,10 @@ predict the tag.
 
 ## Temporal worker replay gate
 
-`deploy/Dockerfile` runs `cargo test -p radar-worker --test replay` before building the binary
-(`REPLAY_GATE=1`), so no worker image exists unless its workflow code replays every retained history
-under `rust/crates/radar-worker/testdata/replay_fixtures/`. CI's `lint-test` job runs the same test. The
+`ghcr-backend.yml` runs `cargo test --release -p radar-worker --test replay` before it builds the
+binary, so no image exists unless its workflow code replays every retained history under
+`rust/crates/radar-worker/testdata/replay_fixtures/`. A local `deploy/Dockerfile` build runs the same
+gate (`REPLAY_GATE=1`). CI's `lint-test` job runs the same test. The
 images carry the label `io.radar-ng.replay-gate=rust-offline-replay`, which CI checks.
 
 ## GitOps rollout
