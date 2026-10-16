@@ -3,6 +3,7 @@ import { join } from "path";
 import {
   bucketsInPlaybackOrder,
   buildLut,
+  buildPackedFrames,
   locateFrame,
   packedTileUrl,
   packedTileZoom,
@@ -152,6 +153,35 @@ describe("parsePackedMeta", () => {
     expect(parsePackedMeta({ ...META, scale: 0 })).toBeNull();
     expect(parsePackedMeta({ ...META, buckets: [{ id: "x", v: 1, slots: new Array(25).fill("t") }] })).toBeNull();
   });
+
+  it("accepts typed codes only as v2 with a valid types object", () => {
+    const types = { stride: 32, classes: ["rain", "snow", "mix"] };
+    expect(parsePackedMeta({ ...META, version: 2, types })?.types).toEqual(types);
+    expect(parsePackedMeta({ ...META, version: 2 })).toBeNull();
+    expect(parsePackedMeta({ ...META, version: 1, types })).toBeNull();
+    expect(parsePackedMeta({ ...META, version: 2, types: { stride: 0, classes: ["rain"] } })).toBeNull();
+    expect(parsePackedMeta({ ...META, version: 2, types: { stride: 32, classes: [1] } })).toBeNull();
+    expect(parsePackedMeta(META)?.types).toBeUndefined();
+  });
+});
+
+describe("buildLut with typed codes", () => {
+  const table = classic.reflectivity;
+  const types = { stride: 32, classes: ["rain", "snow", "mix"] };
+  const lut = buildLut(table, 2.5, 0, types);
+
+  it("colors class * 32 + q with the class ramp", () => {
+    expect(rgbaAt(lut, 12)).toEqual([0, 140, 0, 220]); // rain 30 dBZ
+    expect(rgbaAt(lut, 32 + 12)).toEqual(table.types!.snow!.ranges![5].rgba);
+    expect(rgbaAt(lut, 64 + 12)).toEqual(table.types!.mix!.ranges![5].rgba);
+    expect(rgbaAt(lut, 64)).toEqual([0, 0, 0, 0]);
+    expect(rgbaAt(lut, 96 + 1)).toEqual([0, 0, 0, 0]);
+  });
+
+  it("keeps rain codes identical to the untyped table", () => {
+    const plain = buildLut(table, 2.5, 0);
+    for (let q = 1; q < 32; q++) expect(rgbaAt(lut, q)).toEqual(rgbaAt(plain, q));
+  });
 });
 
 describe("tileCover", () => {
@@ -264,5 +294,81 @@ describe("playback helpers", () => {
     const n = { layer: "nowcast", bucket: "r", v: 3 };
     const locs = [a, a, b, b, n, null];
     expect(bucketsInPlaybackOrder(locs, [0, 1, 2, 3, 4, 5], 3)).toEqual([b, n, a]);
+  });
+});
+
+describe("model layers (HRRR, AQM)", () => {
+  const palette = (id: string) =>
+    JSON.parse(readFileSync(join(__dirname, `../../../rust/crates/radar-tiler/assets/${id}.json`), "utf8")) as Record<
+      string,
+      Required<PackedColorTable>
+    >;
+  // The server's table (docs/packed-tiles.md): [scale, offset, floor] and the band edges it cannot hit.
+  const TABLE: Record<string, [number, number, number, number[]]> = {
+    temperature: [1, -80, -79, []],
+    dewpoint: [5, -80, -75, []],
+    wind_speed: [5, -5, 0, []],
+    humidity: [10, -10, 0, [100.01]],
+    cape: [500, 0, 500, []],
+    precip_accum: [0.05, 0, 0.01, [20]],
+    cloud_cover: [5, 0, 10, [101]],
+    pm25: [1, 0.5, 0, [9.1, 20, 45, 90, 175, 500, 20000]],
+    ozone: [1, 0, 0, [600]],
+  };
+  const quantize = (v: number, scale: number, offset: number, floor: number) =>
+    Number.isNaN(v) || v < floor ? 0 : Math.max(1, Math.min(255, Math.floor((v - offset) / scale)));
+
+  it.each(Object.keys(TABLE))("colors %s like the PNG tiles, except the listed edges", (key) => {
+    const [scale, offset, floor, inexact] = TABLE[key];
+    for (const id of ["classic", "muted", "vivid"]) {
+      const table = palette(id)[key];
+      const lut = buildLut(table, scale, offset);
+      const band = (v: number) => {
+        if (v < (table.no_data_below ?? -999)) return "0,0,0,0";
+        let hit = [0, 0, 0, 0];
+        for (const r of table.ranges) if (v >= r.min && v < r.max) hit = r.rgba;
+        return hit.join();
+      };
+      const edges = table.ranges.flatMap((r) => [r.min, r.max]).sort((a, b) => a - b);
+      const misses = new Set<number>();
+      for (let v = edges[0] - 2 * scale; v <= edges[edges.length - 1] * 1.01; v += Math.min(scale, 1) / 7) {
+        const raw = Math.fround(v);
+        if (rgbaAt(lut, quantize(raw, scale, offset, floor)).join() !== band(raw)) {
+          misses.add([...edges].reverse().find((e) => e <= raw) ?? -Infinity);
+        }
+      }
+      expect([...misses].sort((a, b) => a - b)).toEqual(inexact);
+    }
+  });
+
+  const temperatureMeta = {
+    ...META,
+    max_zoom: 5,
+    color_key: "temperature",
+    scale: 1,
+    offset: -80,
+    buckets: [
+      { id: "20261015_12", v: 4, slots: ["2026-10-15T13:00:00+00:00", ""] },
+      { id: "20261015_13", v: 2, slots: ["2026-10-15T15:00:00+00:00", "2026-10-15T14:00:00+00:00"] },
+    ],
+  };
+  const frames = ["2026-10-15T13:00:00+00:00", "2026-10-15T14:00:00+00:00", "2026-10-15T16:00:00+00:00"].map((timestamp) => ({
+    timestamp,
+  }));
+
+  it("locates a model layer's frames by the active layer and colors them with its key", () => {
+    const packed = buildPackedFrames(frames, { temperature: { packed: temperatureMeta } }, classic, "temperature");
+    expect(packed?.isPacked).toEqual([true, true, false]);
+    expect(packed?.locations[1]).toMatchObject({ layer: "temperature", bucket: "20261015_13", slot: 1, lutKey: "temperature|1|-80" });
+    // 60 F is q 140 with offset -80: the classic 55-65 band.
+    const lut = packed!.luts["temperature|1|-80"];
+    const band = classic.temperature.ranges!.find((r) => 60 >= r.min && 60 < r.max)!;
+    expect(rgbaAt(lut, 140)).toEqual(band.rgba);
+  });
+
+  it("keeps rasters without a table or for categorical layers", () => {
+    expect(buildPackedFrames(frames, { temperature: { packed: temperatureMeta } }, {}, "temperature")).toBeNull();
+    const categorical = { ...temperatureMeta, color_key: "precip_type", categorical: true };
+    expect(buildPackedFrames(frames, { "precip-type": { packed: categorical } }, classic, "precip-type")).toBeNull();
   });
 });

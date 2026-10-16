@@ -49,6 +49,7 @@ import type { SelectedPlace } from "../../types/location";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import { readingColumnStyle } from "../../lib/tabletLayout";
+import { SATELLITE_OVERLAY } from "../../components/map/radarLayers";
 
 type SourceKey = "radar" | "satellite" | "forecast" | "airquality" | "basemap" | "alerts";
 type SourceStatus = "healthy" | "stale" | "error" | "disabled";
@@ -83,6 +84,8 @@ export default function SettingsScreen() {
   const playbackSpeed = useWeatherStore((s) => s.playbackSpeed);
   const fastRadar = useWeatherStore((s) => s.fastRadar);
   const setFastRadar = useWeatherStore((s) => s.setFastRadar);
+  const satelliteVisible = useWeatherStore((s) => s.satelliteVisible);
+  const setSatelliteVisible = useWeatherStore((s) => s.setSatelliteVisible);
   const setPlaybackSpeed = useWeatherStore((s) => s.setPlaybackSpeed);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const setServerUrl = useWeatherStore((s) => s.setServerUrl);
@@ -508,6 +511,13 @@ export default function SettingsScreen() {
               sub="Colors radar on the GPU with no download per frame; turn off if radar looks wrong"
               value={fastRadar}
               onChange={setFastRadar}
+            />
+            <Sep />
+            <ToggleRow
+              label={SATELLITE_OVERLAY.name}
+              sub={SATELLITE_OVERLAY.detail}
+              value={satelliteVisible}
+              onChange={setSatelliteVisible}
             />
           </View>
 
@@ -1010,6 +1020,7 @@ function buildStackActivity(
     temperature: "Temperature layer published",
     wind: "Wind layer published",
     "precip-accum": "Rain-total layer published",
+    "precip-24h": "Past-24-hour precip published",
     "precip-type": "Precip-type layer published",
     cloud: "Cloud layer published",
     "air-quality": "Air-quality run published",

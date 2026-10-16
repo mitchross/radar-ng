@@ -108,6 +108,8 @@ export const LAYERS: LayerConfig[] = [
   { id: "dewpoint", label: "Dew Pt", icon: "D", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "precip-type", label: "Precip", icon: "P", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "precip-accum", label: "Rain 1h", icon: "A", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  // MRMS multi-sensor QPE: observed 24-hour total, one frame per hour (z4-z7).
+  { id: "precip-24h", label: "Rain 24h", icon: "H", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 7 },
   { id: "cloud", label: "Clouds", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "uv", label: "UV", icon: "U", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "cape", label: "CAPE", icon: "S", isFillLayer: false, defaultVisible: false, minZoom: 4, maxZoom: 9 },

@@ -19,16 +19,18 @@ use crate::classify::{ClassModel, PaletteLut};
 use crate::error::{Result, TilerError};
 use crate::geometry::{AxisMap, MAX_ZOOM, Sampling, SourceGeometry, TileGeometry};
 use crate::identity::{
-    FrameKind, GridIdentity, array_digest_f32, frame_contract, frame_identities, frame_model,
-    grid_spec_digest,
+    FrameKind, GridIdentity, array_digest_f32, array_digest_u8, frame_contract, frame_identities,
+    frame_model, grid_spec_digest, sha256_hex,
 };
 use crate::palettes::{ColorTable, validate_palette_name};
 use crate::png::{IndexedTileEncoder, append_palette_chunks, bit_depth_for_entries, header_bytes};
 use crate::publish::{MultiPaletteRenderResult, publish_palette_set_with};
 use crate::sample::{
-    footprint_edges, max_block_factors, reduce_column_ranges, reduce_row_ranges,
-    region_transparent, sample_bilinear_into, sample_nearest_into,
+    footprint_edges, max_block_factors, reduce_column_ranges, reduce_column_ranges_u8,
+    reduce_row_ranges, reduce_row_ranges_u8, region_transparent, sample_bilinear_into,
+    sample_nearest_into,
 };
+use crate::typed::{TypePlane, apply_types, typed_color_table};
 
 /// Overview modes (spec 4.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +63,9 @@ pub struct FrameOptions {
     pub png_compress_level: u32,
     /// Publish a frame with no tiles as a complete empty pyramid (default off: nothing is published).
     pub keep_empty: bool,
+    /// Precipitation type per cell (continuous frames only). Colors each pixel with the rain, snow
+    /// or mix ramp of its palette ([`crate::typed`]).
+    pub types: Option<TypePlane>,
 }
 
 impl Default for FrameOptions {
@@ -72,6 +77,7 @@ impl Default for FrameOptions {
             overview: None,
             png_compress_level: crate::env::png_compress_level(),
             keep_empty: false,
+            types: None,
         }
     }
 }
@@ -122,6 +128,21 @@ pub fn render_frame_palettes(
         })?;
         tables.push((name.clone(), table.clone()));
     }
+    if let Some(types) = &options.types {
+        if !matches!(kind, FrameKind::Continuous { .. }) {
+            return Err(TilerError::Invalid(
+                "type planes need a continuous frame".into(),
+            ));
+        }
+        if types.len() != grid.values.len() {
+            return Err(TilerError::Invalid(
+                "type plane must have one class per grid cell".into(),
+            ));
+        }
+        for (_, table) in &mut tables {
+            *table = typed_color_table(table)?;
+        }
+    }
     let model = frame_model(kind, &tables)?;
     if options.overview.is_some() {
         if matches!(kind, FrameKind::Categorical { .. }) {
@@ -139,7 +160,11 @@ pub fn render_frame_palettes(
     let src = SourceGeometry::from_grid(grid)?;
     let contract = frame_contract(kind, &model, options.png_compress_level, overview);
     // Categorical frames hash their f32 storage here, not the caller's integer dtype (README).
-    let source_digest = array_digest_f32(&grid.values, &[grid.height, grid.width]);
+    let mut source_digest = array_digest_f32(&grid.values, &[grid.height, grid.width]);
+    if let Some(types) = &options.types {
+        let types_digest = array_digest_u8(types.classes(), &[grid.height, grid.width]);
+        source_digest = sha256_hex(format!("{source_digest}:{types_digest}").as_bytes());
+    }
     let grid_digest = grid_spec_digest(src.identity());
     let identities = frame_identities(
         &options.source_id,
@@ -314,6 +339,11 @@ impl<'a> Sampler<'a> {
         self.tile
     }
 
+    /// Cells in the source grid.
+    pub(crate) fn cell_count(&self) -> usize {
+        self.grid.values.len()
+    }
+
     /// `(z, x, y)` of every planned tile, in spec order.
     pub(crate) fn tile_coords(&self) -> impl Iterator<Item = (u32, u32, u32)> + '_ {
         self.tiles.iter().map(|j| (j.z, j.tx, j.ty))
@@ -376,8 +406,50 @@ impl<'a> Sampler<'a> {
         }
     }
 
-    /// Max-pooled footprint values of a tile (spec 4.4). `false` when no source row is covered.
-    fn footprint_values(&self, pool: &PoolCtx, job: TileJob, out: &mut Vec<f32>) -> Result<bool> {
+    /// Class of each pixel of `job` from the per-cell `classes` into `out` (`tile * tile`): the
+    /// nearest cell where values are bilinear, the largest class of the footprint where they are
+    /// max-pooled. Pixels without coverage get 0.
+    fn types_into(&self, job: TileJob, classes: &[u8], out: &mut Vec<u8>) -> Result<()> {
+        let t = self.tile;
+        out.clear();
+        out.resize(t * t, 0);
+        match job.route {
+            Route::Nearest => Err(TilerError::Invalid(
+                "categorical tiles have no type plane".into(),
+            )),
+            Route::Bilinear => {
+                if let Some(geom) = self.geometry(Sampling::Nearest, job)? {
+                    sample_nearest_into(&geom, classes, self.grid.width, t, out)?;
+                }
+                Ok(())
+            }
+            Route::Footprint => {
+                let pool = self.pool.as_ref().ok_or_else(|| {
+                    TilerError::Corrupt("footprint route without overview state".into())
+                })?;
+                if let Some(fp) = self.footprint(pool, job) {
+                    let w = self.grid.width;
+                    let rows = &classes[fp.rmin * w..fp.rmax * w];
+                    let cols = reduce_column_ranges_u8(rows, fp.rmax - fp.rmin, w, &fp.cols);
+                    *out = reduce_row_ranges_u8(&cols, fp.cols.len(), &fp.rows);
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// [`Self::types_into`] for planned tile `index`.
+    pub(crate) fn types_at(&self, index: usize, classes: &[u8], out: &mut Vec<u8>) -> Result<()> {
+        let job = *self
+            .tiles
+            .get(index)
+            .ok_or_else(|| TilerError::Invalid(format!("tile index {index} out of range")))?;
+        self.types_into(job, classes, out)
+    }
+
+    /// Source row and column ranges of every pixel of a pooled tile. `None` when no source row is
+    /// covered.
+    fn footprint(&self, pool: &PoolCtx, job: TileJob) -> Option<Footprint> {
         let t = self.tile;
         let tf = t as f64;
         let n = f64::from(1u32 << job.z);
@@ -401,20 +473,41 @@ impl<'a> Sampler<'a> {
             }
         }
         if rmin == usize::MAX {
-            return Ok(false);
+            return None;
         }
-        let w = self.grid.width;
-        let values = pool.nan_values.as_deref().unwrap_or(&self.grid.values);
         // Only source rows inside the union of row footprints feed the tile.
-        let rows = &values[rmin * w..rmax * w];
-        let shifted: Vec<(usize, usize)> = row_ranges
+        let rows = row_ranges
             .iter()
             .map(|&(a, b)| if b > a { (a - rmin, b - rmin) } else { (0, 0) })
             .collect();
-        let cols = reduce_column_ranges(rows, rmax - rmin, w, &col_ranges);
-        *out = reduce_row_ranges(&cols, col_ranges.len(), &shifted);
+        Some(Footprint {
+            rmin,
+            rmax,
+            rows,
+            cols: col_ranges,
+        })
+    }
+
+    /// Max-pooled footprint values of a tile (spec 4.4). `false` when no source row is covered.
+    fn footprint_values(&self, pool: &PoolCtx, job: TileJob, out: &mut Vec<f32>) -> Result<bool> {
+        let Some(fp) = self.footprint(pool, job) else {
+            return Ok(false);
+        };
+        let w = self.grid.width;
+        let values = pool.nan_values.as_deref().unwrap_or(&self.grid.values);
+        let rows = &values[fp.rmin * w..fp.rmax * w];
+        let cols = reduce_column_ranges(rows, fp.rmax - fp.rmin, w, &fp.cols);
+        *out = reduce_row_ranges(&cols, fp.cols.len(), &fp.rows);
         Ok(true)
     }
+}
+
+/// Source footprint of a pooled tile: rows `rmin..rmax` feed it; `rows` are relative to `rmin`.
+struct Footprint {
+    rmin: usize,
+    rmax: usize,
+    rows: Vec<(usize, usize)>,
+    cols: Vec<(usize, usize)>,
 }
 
 /// Per-frame state shared by every tile worker. Read-only after construction.
@@ -425,12 +518,14 @@ struct FrameJob<'a> {
     depth: u8,
     /// Whole-grid class index for categorical frames; empty otherwise.
     class_index: Vec<u8>,
+    types: Option<TypePlane>,
 }
 
 /// Per-worker buffers, reused across tiles.
 struct Scratch {
     values: Vec<f32>,
     classes: Vec<u8>,
+    types: Vec<u8>,
     encoder: IndexedTileEncoder,
     tail: Vec<u8>,
     file: Vec<u8>,
@@ -441,6 +536,7 @@ impl Scratch {
         Self {
             values: vec![0.0; tile * tile],
             classes: vec![0; tile * tile],
+            types: Vec::new(),
             encoder: IndexedTileEncoder::new(level),
             tail: Vec::new(),
             file: Vec::new(),
@@ -485,6 +581,7 @@ impl<'a> FrameJob<'a> {
             level: options.png_compress_level,
             depth: bit_depth_for_entries(model.n_classes()),
             class_index,
+            types: options.types.clone(),
         })
     }
 
@@ -533,6 +630,10 @@ impl<'a> FrameJob<'a> {
             Route::Bilinear | Route::Footprint => {
                 if !sampler.values_into(job, &mut s.values)? {
                     return Ok(0);
+                }
+                if let Some(types) = &self.types {
+                    sampler.types_into(job, types.classes(), &mut s.types)?;
+                    apply_types(&mut s.values, &s.types);
                 }
                 self.model.classify_f32_into(&s.values, &mut s.classes)?;
             }

@@ -1,5 +1,5 @@
 /**
- * Packed data tiles v1 (docs/packed-tiles.md): manifest types and the pure math the
+ * Packed data tiles v1 and v2 (docs/packed-tiles.md): manifest types and the pure math the
  * WebGL layer needs. Nothing here touches the DOM or GL, so all of it is unit-tested.
  */
 
@@ -24,6 +24,13 @@ export interface PackedMeta {
   offset: number;
   url_template: string;
   buckets: PackedBucket[];
+  /** v2 only: code = class * stride + q, with classes such as ["rain", "snow", "mix"]. */
+  types?: PackedTypes;
+}
+
+export interface PackedTypes {
+  stride: number;
+  classes: string[];
 }
 
 export interface ColorRange {
@@ -36,34 +43,56 @@ export interface ColorTable {
   unit?: string;
   ranges: ColorRange[];
   no_data_below?: number;
+  /** Ramps of the other precipitation classes (reflectivity); `ranges` is rain. */
+  types?: Record<string, { ranges: ColorRange[] }>;
 }
 
-/** True when the client can draw this metadata (v1, continuous values). */
+const validTypes = (t: PackedTypes | undefined) => Boolean(t && t.stride > 0 && t.stride <= 256 && Array.isArray(t.classes) && t.classes.length > 0);
+
+/** True when the client can draw this metadata: v1, or v2 with typed codes; continuous values. */
 export function usablePacked(meta: PackedMeta | undefined): meta is PackedMeta {
-  return Boolean(meta && meta.version === 1 && !meta.categorical && meta.tile_size > 0 && meta.cols > 0 && Array.isArray(meta.buckets));
+  if (!meta || meta.categorical || !(meta.tile_size > 0) || !(meta.cols > 0) || !Array.isArray(meta.buckets)) return false;
+  return meta.version === 1 ? !meta.types : meta.version === 2 && validTypes(meta.types);
 }
 
-/** 256 x 1 RGBA table, straight (not premultiplied) alpha: entry q colors `offset + q * scale`. */
-export function buildLut(table: ColorTable | undefined, scale: number, offset: number): Uint8Array {
+/** The ranges a precipitation class draws with: `ranges` for the first class (rain), else its ramp. */
+export function classRanges(table: ColorTable, types: PackedTypes | undefined, cls: number): ColorRange[] {
+  if (!types || cls === 0) return table.ranges;
+  return table.types?.[types.classes[cls]]?.ranges ?? table.ranges;
+}
+
+/**
+ * 256 x 1 RGBA table, straight (not premultiplied) alpha. Entry q colors `offset + q * scale`;
+ * with `types`, entry `class * stride + q` colors q with that class's ramp.
+ */
+export function buildLut(table: ColorTable | undefined, scale: number, offset: number, types?: PackedTypes): Uint8Array {
   const lut = new Uint8Array(256 * 4);
   if (!table) return lut;
   const noDataBelow = table.no_data_below ?? -999;
-  for (let q = 1; q < 256; q++) {
+  const stride = types ? types.stride : 256;
+  for (let code = 1; code < 256; code++) {
+    const cls = Math.floor(code / stride);
+    const q = code % stride;
+    if (q === 0 || (types && cls >= types.classes.length)) continue;
     // Round off float noise (0.05 * 20 = 1.0000000000000002) so band edges compare exactly.
     const value = Math.round((offset + q * scale) * 1e6) / 1e6;
-    if (value < noDataBelow) continue;
+    // The server applies no_data_below to the rain ramp only.
+    if (cls === 0 && value < noDataBelow) continue;
     let hit: ColorRange | undefined;
-    for (const r of table.ranges) if (value >= r.min && value < r.max) hit = r;
-    if (hit) lut.set(hit.rgba, q * 4);
+    for (const r of classRanges(table, types, cls)) if (value >= r.min && value < r.max) hit = r;
+    if (hit) lut.set(hit.rgba, code * 4);
   }
   return lut;
 }
 
-/** Inverse of the server's quantization; 0 means no data. */
-export function quantize(value: number, scale: number, offset: number, floor = -Infinity): number {
+/**
+ * The server's quantization; 0 means no data. A `floor` below `offset + scale` stores the values
+ * in between as code 1 (spec "Quantization per palette key").
+ */
+export function quantize(value: number, scale: number, offset: number, floor = offset + scale): number {
   if (Number.isNaN(value) || value < floor) return 0;
   const q = Math.floor((value - offset) / scale);
-  return q < 1 ? 0 : Math.min(q, 255);
+  return Math.max(1, Math.min(q, 255));
 }
 
 export interface SlotAddress {

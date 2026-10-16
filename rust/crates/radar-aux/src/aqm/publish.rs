@@ -4,23 +4,27 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use radar_core::manifest::{FrameSpec, ReplaceOptions, replace_layer};
+use radar_core::manifest::packed::{PACKED_KEY, packed_metadata, remove_packed_buckets};
+use radar_core::manifest::{FrameSpec, ReplaceOptions, read_manifest, replace_layer};
 use radar_core::time::parse_iso_as_utc;
 use radar_types::payloads::airquality::AqmChunkResult;
 use serde_json::{Map, Value, json};
 
 use super::{
-    AQM_LAYER_SPECS, AqmError, FORECAST_MESSAGES, MAX_ZOOM, PaletteKeys, SPATIAL_RESOLUTION_KM,
-    frame_path, parse_run_id,
+    AQM_LAYER_SPECS, AqmError, FORECAST_MESSAGES, LayerSpec, MAX_ZOOM, PaletteKeys,
+    SPATIAL_RESOLUTION_KM, frame_path, parse_run_id,
 };
 use radar_core::time::isoformat_utc;
 
 /// Publishes every complete layer (Python `_publish_run_sync`). Returns the published layer names.
 ///
 /// A layer needs exactly 72 distinct rendered timestamps and at least one palette that carries its color
-/// key. Otherwise it is skipped and the manifest keeps the previous run for that layer.
+/// key. Otherwise it is skipped and the manifest keeps the previous run for that layer. With
+/// `packed` (`TILE_DIR`, when `PACKED_TILES` is on), the layer also lists the run's packed buckets
+/// in the same manifest write.
 pub(crate) fn publish_run(
     state_dir: &Path,
+    packed: Option<&Path>,
     run_id: &str,
     results: &[AqmChunkResult],
     palettes: &[PaletteKeys],
@@ -71,6 +75,20 @@ pub(crate) fn publish_run(
         metadata.insert("complete".into(), json!(true));
 
         let timestamp_list: Vec<String> = timestamps.iter().cloned().collect();
+        match packed.and_then(|tile_dir| packed_value(tile_dir, spec, run_id, &timestamp_list)) {
+            Some(value) => {
+                metadata.insert(PACKED_KEY.into(), value);
+            }
+            // No buckets: drop stale ones first, so the new frames never map to another run's slots.
+            None if read_manifest(state_dir)?
+                .layers
+                .get(spec.name)
+                .is_some_and(|l| l.extra.contains_key(PACKED_KEY)) =>
+            {
+                remove_packed_buckets(state_dir, spec.name, |_| true)?;
+            }
+            None => {}
+        }
         replace_layer(
             state_dir,
             spec.name,
@@ -84,6 +102,27 @@ pub(crate) fn publish_run(
         published.push(spec.name.to_string());
     }
     Ok(published)
+}
+
+/// The layer's `packed` object, or `None` (no buckets, or an error, which is logged: the frames then
+/// use their PNG tiles).
+fn packed_value(
+    tile_dir: &Path,
+    spec: &LayerSpec,
+    run_id: &str,
+    timestamps: &[String],
+) -> Option<Value> {
+    let listed = super::packed::layout(spec).and_then(|layout| {
+        let buckets = super::packed::run_buckets(tile_dir, spec.name, run_id, timestamps)?;
+        Ok(packed_metadata(&layout, buckets))
+    });
+    match listed {
+        Ok(value) => value,
+        Err(err) => {
+            tracing::warn!(layer = spec.name, error = %err, "packed_manifest_failed");
+            None
+        }
+    }
 }
 
 /// `lead_minutes = int((ts - run_dt).total_seconds() // 60)`: floor division, so negative leads floor down.
@@ -141,7 +180,7 @@ mod tests {
             keys("muted", &["ozone"]),
         ];
         let results = [hourly("air-quality", 72)];
-        let published = publish_run(dir.path(), "20260716_12", &results, &palettes).unwrap();
+        let published = publish_run(dir.path(), None, "20260716_12", &results, &palettes).unwrap();
         assert_eq!(published, vec!["air-quality".to_string()]);
         let layer = &read_manifest(dir.path()).unwrap().layers["air-quality"];
         assert_eq!(
@@ -156,6 +195,7 @@ mod tests {
         let palettes = [keys("classic", &["ozone"])];
         let published = publish_run(
             dir.path(),
+            None,
             "20260716_12",
             &[hourly("air-quality", 72)],
             &palettes,
@@ -172,7 +212,7 @@ mod tests {
         // Results arrive out of order; the manifest must still be sorted.
         let mut reversed = hourly("air-quality", 72);
         reversed.rendered_timestamps.reverse();
-        publish_run(dir.path(), "20260716_12", &[reversed], &palettes).unwrap();
+        publish_run(dir.path(), None, "20260716_12", &[reversed], &palettes).unwrap();
         let layer = &read_manifest(dir.path()).unwrap().layers["air-quality"];
         assert_eq!(layer.timestamps.len(), 72);
         assert!(

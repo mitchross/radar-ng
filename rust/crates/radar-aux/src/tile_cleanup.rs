@@ -19,12 +19,13 @@ use radar_core::time::parse_iso_as_utc;
 use radar_types::payloads::cleanup::TileCleanupResult;
 use tracing::info;
 
-/// Per-layer retention in minutes (`LAYER_RETENTION_MIN`, verbatim, plus the two global-model layers,
-/// whose run directories `global_model_cleanup` owns). `air-quality` and `ozone` are not here:
-/// `aqm_cleanup` owns them.
-pub const LAYER_RETENTION_MIN: [(&str, i64); 14] = [
+/// Per-layer retention in minutes (`LAYER_RETENTION_MIN`, verbatim, plus `precip-24h` and the two
+/// global-model layers, whose run directories `global_model_cleanup` owns). `air-quality` and `ozone`
+/// are not here: `aqm_cleanup` owns them.
+pub const LAYER_RETENTION_MIN: [(&str, i64); 15] = [
     ("radar", 240),
     ("radar-composite", 240),
+    ("precip-24h", 240),
     ("nowcast", 60),
     ("radar-hrrr", 720),
     ("temperature", 720),
@@ -279,8 +280,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn retention_table_has_fourteen_layers_and_no_aqm() {
-        assert_eq!(LAYER_RETENTION_MIN.len(), 14);
+    fn retention_table_has_fifteen_layers_and_no_aqm() {
+        assert_eq!(LAYER_RETENTION_MIN.len(), 15);
         assert!(
             LAYER_RETENTION_MIN
                 .iter()

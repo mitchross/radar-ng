@@ -112,7 +112,7 @@ export function formatReading(layer: LayerType, r: InspectReading): string {
   if (layer === "wind") return `${Math.round(v)} ${r.unit || "mph"}`;
   if (layer === "cape") return `${Math.round(v)} ${r.unit || "J/kg"}`;
   if (layer === "precip-type") return "Active";
-  if (layer === "precip-accum") return v < 0.01 ? "—" : `${v.toFixed(2)} in`;
+  if (layer === "precip-accum" || layer === "precip-24h") return v < 0.01 ? "—" : `${v.toFixed(2)} in`;
   if (layer === "cloud") return `${Math.round(v)}%`;
   if (layer === "uv") return `UV ${Math.round(v)} · ${describeUV(v)}`;
   if (layer === "air-quality") return `${Math.round(v)} µg/m³ · ${describePm25(v)}`;

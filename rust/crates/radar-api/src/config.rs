@@ -11,6 +11,8 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use radar_core::env;
 
+const MIB: i64 = 1024 * 1024;
+
 /// Every setting the API reads. Fields are public so tests and the `radar` binary can override them.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -39,12 +41,12 @@ pub struct Config {
     pub mrms_max_age_s: i64,
     /// `FORECAST_TTL_S`. Default 900 (code), not the 300 in the docs.
     pub forecast_ttl_s: u64,
-    /// `FORECAST_CACHE_MAX_ENTRIES`. Default 512.
-    pub forecast_cache_max_entries: u64,
-    /// `WIND_CACHE_MAX_ENTRIES`. Default 48.
-    pub wind_cache_max_entries: u64,
-    /// `NOWCAST_POINT_CACHE_MAX_ENTRIES`. Default 1024.
-    pub nowcast_point_cache_max_entries: u64,
+    /// `FORECAST_CACHE_MAX_BYTES` (new; replaces `FORECAST_CACHE_MAX_ENTRIES`). Default 64 MiB.
+    pub forecast_cache_max_bytes: u64,
+    /// `WIND_CACHE_MAX_BYTES` (new; replaces `WIND_CACHE_MAX_ENTRIES`). Default 32 MiB.
+    pub wind_cache_max_bytes: u64,
+    /// `NOWCAST_POINT_CACHE_MAX_BYTES` (new; replaces `NOWCAST_POINT_CACHE_MAX_ENTRIES`). Default 16 MiB.
+    pub nowcast_point_cache_max_bytes: u64,
     /// `API_RATE_LIMIT_RPS`. Default 20.
     pub rate_limit_rps: f64,
     /// `API_RATE_LIMIT_BURST`. Default 60.
@@ -85,16 +87,20 @@ pub struct Config {
     pub spc_outlook_base: String,
     /// `ALERTS_TTL_S`. Default 60.
     pub alerts_ttl_s: u64,
-    /// `ALERTS_CACHE_MAX_ENTRIES`. Default 1024.
-    pub alerts_cache_max_entries: u64,
+    /// `ALERTS_CACHE_MAX_BYTES` (new; replaces `ALERTS_CACHE_MAX_ENTRIES`). Budget for the point
+    /// fallback bodies and, separately, for the point-to-zone lookups. Default 16 MiB.
+    pub alerts_cache_max_bytes: u64,
+    /// `NWS_POINTS_URL` (new). Default `https://api.weather.gov/points`.
+    pub nws_points_url: String,
     /// `GEOCODER_URL`, wins over Photon when set.
     pub geocoder_url: String,
     /// `PHOTON_URL`.
     pub photon_url: String,
     /// `GEOCODE_TTL_S`. Default 86400.
     pub geocode_ttl_s: u64,
-    /// `GEOCODE_CACHE_MAX_ENTRIES`. Default 1024.
-    pub geocode_cache_max_entries: u64,
+    /// `GEOCODE_CACHE_MAX_BYTES` (new; replaces `GEOCODE_CACHE_MAX_ENTRIES`). Default 8 MiB each for
+    /// the forward and reverse caches.
+    pub geocode_cache_max_bytes: u64,
     /// `PLACES_UPSTREAM_TIMEOUT_S`. Default 6.
     pub places_timeout_s: f64,
     /// `USGS_IMAGERY_BASE` (new). Default `https://basemap.nationalmap.gov`.
@@ -106,6 +112,11 @@ pub struct Config {
     pub basemap_tiles_upstream: String,
     /// `IMAGERY_CACHE_MAX_BYTES` (new, moka). Default 128 MiB. Zero disables the cache.
     pub imagery_cache_max_bytes: u64,
+    /// `GIBS_WMTS_BASE`: NASA GIBS WMTS root for the satellite layer (tiles and DescribeDomains).
+    /// Default `https://gibs.earthdata.nasa.gov/wmts/epsg3857/nrt`. Empty turns the satellite layer off.
+    pub gibs_wmts_base: String,
+    /// `SATELLITE_CACHE_MAX_BYTES`: moka cache for satellite tiles. Default 128 MiB. Zero disables it.
+    pub satellite_cache_max_bytes: u64,
     /// `TRUSTED_PROXIES` (new): extra comma-separated IPs or CIDRs trusted for `X-Forwarded-For`,
     /// in addition to the private ranges and loopback.
     pub trusted_proxies_extra: String,
@@ -137,9 +148,9 @@ impl Config {
             open_meteo_base: str_var("OPEN_METEO_BASE", "https://api.open-meteo.com/v1/forecast"),
             mrms_max_age_s: env::int_var("MRMS_MAX_AGE_S", 600, 0, i64::MAX)?,
             forecast_ttl_s: pos_u64("FORECAST_TTL_S", 900)?,
-            forecast_cache_max_entries: pos_u64("FORECAST_CACHE_MAX_ENTRIES", 512)?,
-            wind_cache_max_entries: pos_u64("WIND_CACHE_MAX_ENTRIES", 48)?,
-            nowcast_point_cache_max_entries: pos_u64("NOWCAST_POINT_CACHE_MAX_ENTRIES", 1024)?,
+            forecast_cache_max_bytes: pos_u64("FORECAST_CACHE_MAX_BYTES", 64 * MIB)?,
+            wind_cache_max_bytes: pos_u64("WIND_CACHE_MAX_BYTES", 32 * MIB)?,
+            nowcast_point_cache_max_bytes: pos_u64("NOWCAST_POINT_CACHE_MAX_BYTES", 16 * MIB)?,
             rate_limit_rps: env::float_var("API_RATE_LIMIT_RPS", 20.0)?,
             rate_limit_burst: env::float_var("API_RATE_LIMIT_BURST", 60.0)?,
             workflow_routes_enabled: std::env::var("DISABLE_WORKFLOW_ROUTES").as_deref() != Ok("1"),
@@ -171,13 +182,14 @@ impl Config {
             ),
             nws_user_agent: str_var("NWS_USER_AGENT", "(radar-ng, admin@example.com)"),
             alerts_ttl_s: pos_u64("ALERTS_TTL_S", 60)?,
-            alerts_cache_max_entries: pos_u64("ALERTS_CACHE_MAX_ENTRIES", 1024)?,
+            alerts_cache_max_bytes: pos_u64("ALERTS_CACHE_MAX_BYTES", 16 * MIB)?,
+            nws_points_url: str_var("NWS_POINTS_URL", "https://api.weather.gov/points"),
             geocoder_url: str_var("GEOCODER_URL", "")
                 .trim_end_matches('/')
                 .to_string(),
             photon_url: str_var("PHOTON_URL", "").trim_end_matches('/').to_string(),
             geocode_ttl_s: pos_u64("GEOCODE_TTL_S", 86_400)?,
-            geocode_cache_max_entries: pos_u64("GEOCODE_CACHE_MAX_ENTRIES", 1024)?,
+            geocode_cache_max_bytes: pos_u64("GEOCODE_CACHE_MAX_BYTES", 8 * MIB)?,
             places_timeout_s: env::float_var("PLACES_UPSTREAM_TIMEOUT_S", 6.0)?,
             usgs_imagery_base: str_var("USGS_IMAGERY_BASE", "https://basemap.nationalmap.gov")
                 .trim_end_matches('/')
@@ -185,7 +197,14 @@ impl Config {
             basemap_tiles_upstream: str_var("BASEMAP_TILES_UPSTREAM", "http://basemap:8081")
                 .trim_end_matches('/')
                 .to_string(),
-            imagery_cache_max_bytes: pos_u64("IMAGERY_CACHE_MAX_BYTES", 128 * 1024 * 1024)?,
+            imagery_cache_max_bytes: pos_u64("IMAGERY_CACHE_MAX_BYTES", 128 * MIB)?,
+            gibs_wmts_base: str_var(
+                "GIBS_WMTS_BASE",
+                "https://gibs.earthdata.nasa.gov/wmts/epsg3857/nrt",
+            )
+            .trim_end_matches('/')
+            .to_string(),
+            satellite_cache_max_bytes: pos_u64("SATELLITE_CACHE_MAX_BYTES", 128 * MIB)?,
             trusted_proxies_extra: str_var("TRUSTED_PROXIES", ""),
         })
     }
@@ -206,9 +225,9 @@ impl Config {
             open_meteo_base: "https://api.open-meteo.com/v1/forecast".into(),
             mrms_max_age_s: 600,
             forecast_ttl_s: 900,
-            forecast_cache_max_entries: 512,
-            wind_cache_max_entries: 48,
-            nowcast_point_cache_max_entries: 1024,
+            forecast_cache_max_bytes: 64 << 20,
+            wind_cache_max_bytes: 32 << 20,
+            nowcast_point_cache_max_bytes: 16 << 20,
             rate_limit_rps: 20.0,
             rate_limit_burst: 60.0,
             workflow_routes_enabled: true,
@@ -229,15 +248,18 @@ impl Config {
             nws_alert_detail_base: "https://api.weather.gov/alerts".into(),
             nws_user_agent: "(radar-ng, admin@example.com)".into(),
             alerts_ttl_s: 60,
-            alerts_cache_max_entries: 1024,
+            alerts_cache_max_bytes: 16 << 20,
+            nws_points_url: "https://api.weather.gov/points".into(),
             geocoder_url: String::new(),
             photon_url: String::new(),
             geocode_ttl_s: 86_400,
-            geocode_cache_max_entries: 1024,
+            geocode_cache_max_bytes: 8 << 20,
             places_timeout_s: 6.0,
             usgs_imagery_base: "https://basemap.nationalmap.gov".into(),
             basemap_tiles_upstream: String::new(),
             imagery_cache_max_bytes: 0,
+            gibs_wmts_base: String::new(),
+            satellite_cache_max_bytes: 0,
             trusted_proxies_extra: String::new(),
         }
     }

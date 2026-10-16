@@ -135,6 +135,8 @@ export interface SelfHostedManifest {
     complete?: boolean;
     /** Packed data tiles (docs/packed-tiles.md); read through lib/packed parsePackedMeta. */
     packed?: unknown;
+    /** MRMS layers: frames are colored by precipitation type (rain, snow, mix). */
+    precip_type?: boolean;
   }>;
   tile_url_template: string;
   updated_at: string;
@@ -177,6 +179,7 @@ export type LayerType =
   | "cape"
   | "precip-type"
   | "precip-accum"
+  | "precip-24h"
   | "cloud"
   | "uv"
   | "air-quality"

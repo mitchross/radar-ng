@@ -49,7 +49,7 @@ Encoding and decoding rules, applied to every struct:
 - Non-finite floats fail to encode (see deviations).
 
 ### `schedules`
-- `all_schedules() -> Vec<ScheduleDef>`: the 12 schedules, in `seed.py` order. Fields:
+- `all_schedules() -> Vec<ScheduleDef>`: the 13 schedules (`seed.py` order plus `ingest-mrms-qpe-24h`). Fields:
   `id`, `workflow_type`, `interval_s`, `jitter_s: Option<u64>`, `catchup_window_s`,
   `execution_timeout_s`, `args: Vec<serde_json::Value>`, `task_queue` (declared), `overlap`
   (`OverlapPolicy::Skip`) and `pause_on_failure` (always `false`).
@@ -115,7 +115,7 @@ the push code, not in this crate.
 - `tests/payload_defaults.rs` (15): missing defaulted keys, required keys still required, unknown
   keys ignored, integers accepted for floats, `null` geometry, handoff schema check, and non-finite
   floats rejected on encode.
-- `tests/schedules.rs` (8): all 12 schedules against the spec-temporal section 6.2 table (ID order,
+- `tests/schedules.rs` (8): all 13 schedules against the spec-temporal section 6.2 table (ID order,
   interval, jitter, catch-up, execution timeout, queue, args), plus the section 11 invariants and the
   seed gate matrix.
 - `tests/wire.rs` (12): names, unique counts, queue routing, role parsing and defaults.

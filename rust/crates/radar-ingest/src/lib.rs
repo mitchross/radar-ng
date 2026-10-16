@@ -10,7 +10,9 @@ pub mod global_model;
 pub mod heartbeat;
 pub mod hrrr;
 pub mod mrms;
+pub mod mrms_qpe;
 pub mod packed;
+pub mod precip_type;
 pub mod scratch;
 
 pub use config::IngestConfig;

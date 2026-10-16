@@ -43,6 +43,16 @@ fn expected_table() -> Vec<Row> {
             json!([{"mrms_prefix": "CONUS/MergedReflectivityComposite_00.50", "layer_name": "radar-composite"}]),
         ),
         (
+            "ingest-mrms-qpe-24h",
+            "IngestMrmsWorkflow",
+            300,
+            None,
+            3600,
+            360,
+            "radar-ng-mrms",
+            json!([{"mrms_prefix": "CONUS/MultiSensor_QPE_24H_Pass1_00.00", "layer_name": "precip-24h"}]),
+        ),
+        (
             "ingest-hrrr",
             "IngestHrrrWorkflow",
             900,
@@ -169,7 +179,7 @@ fn expected_table() -> Vec<Row> {
 fn all_schedules_matches_spec_table_in_order() {
     let defs = all_schedules();
     let expected = expected_table();
-    assert_eq!(defs.len(), 14);
+    assert_eq!(defs.len(), 15);
     assert_eq!(defs.len(), expected.len());
     for (def, row) in defs.iter().zip(expected.iter()) {
         let (id, wf, interval, jitter, catchup, timeout, queue, args) = row;

@@ -68,7 +68,7 @@ pub struct IngestConfig {
     pub grid: GridConfig,
     /// Storm thresholds (`STORM_*`).
     pub storms: StormConfig,
-    /// `PACKED_TILES` (default on): write packed data tile buckets for the MRMS layers.
+    /// `PACKED_TILES` (default on): write packed data tile buckets for the MRMS and HRRR layers.
     pub packed_tiles: bool,
     /// `GFS_RADAR_ENABLED` (default on): render GFS composite reflectivity as `radar-gfs`.
     pub gfs_radar_enabled: bool,
@@ -84,6 +84,12 @@ pub struct IngestConfig {
     pub uv_last_hour: u32,
     /// Base URL of the UV Index product.
     pub uv_base_url: String,
+    /// `MRMS_QPE_24H_ENABLED` (default off): render the `precip-24h` layer from MRMS 24-hour QPE.
+    pub mrms_qpe_24h: bool,
+    /// `PRECIP_TYPE` (default on): color MRMS frames by precipitation type from PrecipFlag.
+    pub precip_type: bool,
+    /// `PRECIP_FLAG_PREFIX` (default `CONUS/PrecipFlag_00.00`).
+    pub precip_flag_prefix: String,
 }
 
 impl IngestConfig {
@@ -138,6 +144,10 @@ impl IngestConfig {
             uv_enabled: env::bool_var("UV_ENABLED", true)?,
             uv_last_hour: env::int_var_clamped("UV_LAST_HOUR", 96, 1, 120)? as u32,
             uv_base_url: radar_grib::uvi::BASE_URL.to_string(),
+            mrms_qpe_24h: env::bool_var("MRMS_QPE_24H_ENABLED", false)?,
+            precip_type: env::bool_var("PRECIP_TYPE", true)?,
+            precip_flag_prefix: env::var("PRECIP_FLAG_PREFIX")
+                .unwrap_or_else(|| crate::precip_type::PRECIP_FLAG_PREFIX.into()),
             paths,
         })
     }
@@ -171,6 +181,9 @@ impl IngestConfig {
             uv_enabled: true,
             uv_last_hour: 96,
             uv_base_url: radar_grib::uvi::BASE_URL.to_string(),
+            mrms_qpe_24h: false,
+            precip_type: false,
+            precip_flag_prefix: crate::precip_type::PRECIP_FLAG_PREFIX.into(),
             paths,
         })
     }

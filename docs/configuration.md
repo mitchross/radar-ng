@@ -129,11 +129,14 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `FORECAST_HOURS` | `18` | HRRR forecast hours rendered per model run. |
 | `EXTENDED_FORECAST_HOURS` | `48` | Extended sub-hourly HRRR hours. |
 | `HRRR_ENABLED_LAYERS` | `radar-hrrr` (compose: all layers) | Comma-separated HRRR layers: `radar-hrrr`, `temperature`, `feels-like`, `dewpoint`, `humidity`, `wind`, `cape`, `precip-type`, `precip-accum`, `cloud`. `feels-like` is the NWS heat index or wind chill. |
-| `GFS_RADAR_ENABLED` | `1` | Render GFS 0.25° simulated composite reflectivity as `radar-gfs`. Clients play it after the last HRRR frame, to 72 h. One run every 6 h: about 26 CPU-seconds, 55 MB of byte-range downloads and 150 MB of tiles (3 palettes). Read by the hrrr worker. |
+| `MRMS_QPE_24H_ENABLED` | `0` (compose: `1`) | Render the `precip-24h` layer: MRMS MultiSensor QPE Pass 1, past 24 hours, in inches, colored with `precip_accum`. Hourly; each file lands about 16 minutes after the hour. Read by the MRMS worker. The `ingest-mrms-qpe-24h` schedule is always seeded; with `0` it lists nothing and its cleanup removes old frames. |
+| `PACKED_TILES` | `1` | Write packed data tile buckets (`docs/packed-tiles.md`) for `radar`, `radar-composite`, `nowcast`, the HRRR layers (not `precip-type`) and the AQM layers. `0` stops new buckets; HRRR and AQM publishes then drop their buckets from the manifest. The PNG pyramids are unchanged. Read by the MRMS, nowcast, HRRR and AQM workers. |
+| `PRECIP_TYPE` | `1` | Color `radar` and `radar-composite` by precipitation type (rain, snow, mix) from MRMS PrecipFlag. Packed buckets become v2 typed codes. `0` gives rain-only frames and v1 buckets. Read by the MRMS worker. |
+| `PRECIP_FLAG_PREFIX` | `CONUS/PrecipFlag_00.00` | MRMS PrecipFlag product prefix in `noaa-mrms-pds`. |
+| `GFS_RADAR_ENABLED` | `1` | Render GFS 0.25° simulated composite reflectivity as `radar-gfs`. Clients play it after the last HRRR frame, to 72 h. One run every 6 h: about 26 CPU-seconds, 55 MB of byte-range downloads and 150 MB of tiles (3 palettes). Raster tiles only (no packed buckets). Read by the hrrr worker. |
 | `GFS_RADAR_FIRST_HOUR` / `GFS_RADAR_LAST_HOUR` | `24` / `84` | GFS forecast hours rendered. The run is used once its last hour is posted (about 5 h after init). |
-| `UV_ENABLED` | `1` | Render the NOAA/CPC UV Index forecast (TUV model on the 12z GFS, from NOMADS) as `uv`. One run a day, posted about 18:30 UTC: about 35 CPU-seconds and 30 MB. Requests are paced to one a second, under the NOMADS limit of 120 a minute. Read by the hrrr worker. |
+| `UV_ENABLED` | `1` | Render the NOAA/CPC UV Index forecast (TUV model on the 12z GFS, from NOMADS) as `uv`. One run a day, posted about 18:30 UTC: about 35 CPU-seconds and 30 MB. Requests are paced to one a second, under the NOMADS limit of 120 a minute. Raster tiles only (no packed buckets). Read by the hrrr worker. |
 | `UV_LAST_HOUR` | `96` | Last UV forecast hour rendered (from f01). 96 keeps 72 h ahead until the next run lands. |
-| `PACKED_TILES` | `1` | Write packed data tile buckets (`docs/packed-tiles.md`) for `radar`, `radar-composite` and `nowcast`. `0` stops new buckets; the PNG pyramids are unchanged. Read by the MRMS and nowcast workers. |
 
 ### Nowcast (Lucas-Kanade motion + S-PROG)
 | Var | Default | Notes |
@@ -176,8 +179,12 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `OPEN_METEO_BASE` | `http://open-meteo:8080/v1/forecast` | Forecast upstream; default is the bundled self-hosted Open-Meteo. |
 | `MRMS_MAX_AGE_S` | `600` | Radar age (s) past which `/api/health` reports `degraded`. |
 | `FORECAST_TTL_S` | `900` | In-process forecast response cache TTL (s); the cluster sets 300. |
-| `FORECAST_CACHE_MAX_ENTRIES` | `512` | Bound for the in-process point-forecast cache. |
-| `WIND_CACHE_MAX_ENTRIES` | `48` | Bound for decoded wind-grid cache entries. |
+| `FORECAST_CACHE_MAX_BYTES` | `67108864` (64 MiB) | Byte budget for cached forecast bodies (replaces `FORECAST_CACHE_MAX_ENTRIES`). |
+| `WIND_CACHE_MAX_BYTES` | `33554432` (32 MiB) | Byte budget for cached wind-field bodies (replaces `WIND_CACHE_MAX_ENTRIES`). |
+| `NOWCAST_POINT_CACHE_MAX_BYTES` | `16777216` (16 MiB) | Byte budget for cached nowcast point bodies. |
+| `ALERTS_CACHE_MAX_BYTES` | `16777216` (16 MiB) | Byte budget for point-to-zone lookups and direct point alert bodies. |
+| `GEOCODE_CACHE_MAX_BYTES` | `8388608` (8 MiB) | Byte budget for each geocode cache (forward, reverse). |
+| `NWS_POINTS_URL` | `https://api.weather.gov/points` | NWS point-to-zone lookup used to match zone alerts. |
 | `API_RATE_LIMIT_RPS` | `20` | Per-client token refill rate for API routes. |
 | `API_RATE_LIMIT_BURST` | `60` | Per-client API token bucket capacity. |
 | `DISABLE_WORKFLOW_ROUTES` | `0` | Disable watch/push mutation routes until an identity issuer and signing key are configured. |
@@ -185,6 +192,8 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `TEMPORAL_ALERTS_TASK_QUEUE` | `radar-ng-alerts` | Queue the api starts `WatchStormWorkflow` on; compose sets `radar-ng` for the legacy worker. |
 | `GEOCODER_URL` / `PHOTON_URL` | unset | Geocoder behind `/api/geocode` and `/api/reverse-geocode`; neither set means 503. |
 | `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` | unset | Optional OpenAI-compatible endpoint for `/api/briefing`; unset hides the briefing. |
+| `GIBS_WMTS_BASE` | `https://gibs.earthdata.nasa.gov/wmts/epsg3857/nrt` | NASA GIBS WMTS root for the GOES satellite layer (`/tiles/satellite/*` and the manifest `satellite` layer). Empty turns the layer off. |
+| `SATELLITE_CACHE_MAX_BYTES` | `134217728` (128 MiB) | In-process cache for satellite tiles. Count it in the api memory limit. `0` turns the cache off. |
 
 ---
 

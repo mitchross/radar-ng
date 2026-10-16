@@ -6,7 +6,7 @@
 use std::io::Read;
 
 use bytes::Bytes;
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use chrono::{DateTime, Duration, DurationRound, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use radar_geo::Grid;
 
 use crate::decode::decode_message;
@@ -53,6 +53,11 @@ pub fn timestamp_hint(key: &str) -> &str {
 /// The basename minus `.grib2.gz` is split on `_`; the last token is read as `%Y%m%d-%H%M%S` UTC.
 /// The result is `datetime.isoformat()` of that instant, e.g. `2026-09-30T00:00:00+00:00`.
 pub fn extract_timestamp(key: &str) -> Result<String> {
+    key_time(key).map(format_valid_time)
+}
+
+/// The valid time of an MRMS object key, as [`extract_timestamp`] parses it.
+pub fn key_time(key: &str) -> Result<DateTime<Utc>> {
     let hint = timestamp_hint(key);
     let token = hint.rsplit('_').next().unwrap_or(hint);
     let bad = |detail: &str| GribError::KeyTimestamp {
@@ -75,8 +80,7 @@ pub fn extract_timestamp(key: &str) -> Result<String> {
         .ok_or_else(|| bad("invalid date"))?;
     let time = NaiveTime::from_hms_opt(num(9..11)?, num(11..13)?, num(13..15)?)
         .ok_or_else(|| bad("invalid time"))?;
-    let dt: DateTime<Utc> = NaiveDateTime::new(date, time).and_utc();
-    Ok(format_valid_time(dt))
+    Ok(NaiveDateTime::new(date, time).and_utc())
 }
 
 /// Formats a UTC instant as Python's `datetime.isoformat()` does for an aware UTC datetime
@@ -130,6 +134,43 @@ pub async fn fetch_gz(s3: &S3Client, key: &str) -> Result<(String, Bytes)> {
     Ok((valid_time, bytes))
 }
 
+/// The key whose valid time is nearest `target`, at most `max_delta` away. A tie goes to the earlier
+/// key. Keys without a valid time are skipped.
+pub fn nearest_key(keys: &[String], target: DateTime<Utc>, max_delta: Duration) -> Option<&str> {
+    keys.iter()
+        .filter_map(|k| {
+            let t = key_time(k).ok()?;
+            let delta = (t - target).abs();
+            (delta <= max_delta).then_some((delta, t, k.as_str()))
+        })
+        .min_by_key(|&(delta, t, _)| (delta, t))
+        .map(|(_, _, k)| k)
+}
+
+/// Lists the `.grib2.gz` keys of product `prefix` (e.g. `CONUS/PrecipFlag_00.00`) whose valid time
+/// falls in the UTC hours from `from` to `to`, one listing per hour, sorted by key.
+pub async fn list_keys_between(
+    s3: &S3Client,
+    prefix: &str,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+) -> Result<Vec<String>> {
+    let product = prefix.rsplit('/').next().unwrap_or(prefix);
+    let mut keys = Vec::new();
+    let mut hour = from.duration_trunc(Duration::hours(1)).unwrap_or(from);
+    while hour <= to {
+        let day = hour.format("%Y%m%d");
+        let hh = hour.format("%Y%m%d-%H");
+        let listing = s3
+            .list_all(&format!("{prefix}/{day}/MRMS_{product}_{hh}"), LIST_TIMEOUT)
+            .await?;
+        keys.extend(filter_grib(listing));
+        hour += Duration::hours(1);
+    }
+    keys.sort();
+    Ok(keys)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,6 +183,39 @@ mod tests {
             extract_timestamp("x/MRMS_A_20261001-235958.grib2.gz").unwrap(),
             "2026-10-01T23:59:58+00:00"
         );
+    }
+
+    #[test]
+    fn nearest_key_picks_the_closest_time_within_the_limit() {
+        let keys: Vec<String> = ["224800", "225000", "225200", "bad"]
+            .iter()
+            .map(|t| format!("p/20261015/MRMS_PrecipFlag_00.00_20261015-{t}.grib2.gz"))
+            .collect();
+        let at = |hms: &str| key_time(&format!("x/MRMS_A_20261015-{hms}.grib2.gz")).unwrap();
+        let limit = Duration::minutes(5);
+        assert!(
+            nearest_key(&keys, at("225209"), limit)
+                .unwrap()
+                .ends_with("225200.grib2.gz")
+        );
+        assert!(
+            nearest_key(&keys, at("224920"), limit)
+                .unwrap()
+                .ends_with("225000.grib2.gz")
+        );
+        // A tie goes to the earlier file.
+        assert!(
+            nearest_key(&keys, at("224900"), limit)
+                .unwrap()
+                .ends_with("224800.grib2.gz")
+        );
+        assert!(
+            nearest_key(&keys, at("225700"), limit)
+                .unwrap()
+                .ends_with("225200.grib2.gz")
+        );
+        assert_eq!(nearest_key(&keys, at("225701"), limit), None);
+        assert_eq!(nearest_key(&[], at("225000"), limit), None);
     }
 
     #[test]

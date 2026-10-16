@@ -1,8 +1,13 @@
 //! Atomic multi-palette publish (spec-tiler sections 12, 13).
 //!
 //! The protocol: canonicalize and check finals, take the striped `flock` locks, classify
-//! finals, render unresolved palettes into hidden staging siblings, validate and mark each
-//! staged tree, decide every action, then rename into place with the required fsync order.
+//! finals, render unresolved palettes into hidden staging siblings, validate every staged tree,
+//! make them durable, mark each one, decide every action, then rename into place with the
+//! required fsync order.
+//!
+//! Durability of the staged tiles (spec 13.4): on Linux one `syncfs(2)` per filesystem replaces
+//! one `fsync` per tile and directory. On ext4 (Longhorn) each `fsync` is a journal commit and a
+//! device flush, so a 630-tile frame paid 630 of them. Elsewhere every file is synced in turn.
 //!
 //! Deliberate deviations from the Python publisher (see README):
 //! * a final that already holds a complete marker of *any* identity is reported as
@@ -197,6 +202,16 @@ pub fn durable_mkdir(path: &Path) -> Result<()> {
     }
     fs::create_dir_all(&path)?;
     fsync_directory_chain(&path, &ancestor)
+}
+
+/// Flush the whole filesystem that holds `handle` with `syncfs(2)`.
+///
+/// `handle` must be opened before the data it covers is written: Linux 5.8+ then reports any
+/// writeback error since that open, as `fsync` would for the file itself.
+#[cfg(target_os = "linux")]
+pub fn sync_filesystem(handle: &File) -> Result<()> {
+    rustix::fs::syncfs(handle).map_err(std::io::Error::from)?;
+    Ok(())
 }
 
 /// Sync every tile, then every directory from the deepest up, including `dir` (spec 13.4).
@@ -437,6 +452,12 @@ where
         }
     }
     let staging = StagingSet(staged_targets.iter().map(|(_, p)| p.clone()).collect());
+    // Opened before the render so `syncfs` reports writeback errors from the render itself.
+    #[cfg(target_os = "linux")]
+    let fs_handles: Vec<File> = unresolved
+        .iter()
+        .map(|&i| File::open(finals[i].1.parent().unwrap_or(Path::new("/"))))
+        .collect::<std::io::Result<_>>()?;
     let counts = render(&staged_targets)?;
     if counts.len() != staged_targets.len() {
         return Err(TilerError::Corrupt(
@@ -444,12 +465,12 @@ where
         ));
     }
 
-    // Validate and mark every staged tree before touching any final.
-    let mut staged: Vec<Option<PyramidInspection>> = Vec::with_capacity(unresolved.len());
+    // Validate, sync and mark every staged tree before touching any final. A marker is written
+    // only after every staged tile is durable.
+    let mut staged_paths: Vec<BTreeSet<String>> = Vec::with_capacity(unresolved.len());
     for (k, &i) in unresolved.iter().enumerate() {
-        let (name, staged_dir) = &staged_targets[k];
+        let staged_dir = &staged_targets[k].1;
         let final_path = &finals[i].1;
-        let identity = identity_for(name).expect("checked above");
         let count = counts[k];
         let paths = if staged_dir.exists() {
             list_tile_paths(staged_dir)?
@@ -464,20 +485,43 @@ where
             )));
         }
         if count == 0 && keep_empty {
+            // An empty pyramid has no tiles to sync; its directory is made durable here.
             durable_mkdir(staged_dir)?;
+        } else if count == 0 && final_path.exists() {
+            return Err(TilerError::Conflict(format!(
+                "existing pyramid conflicts with an empty render: {}",
+                final_path.display()
+            )));
         }
-        if count == 0 && !keep_empty {
-            if final_path.exists() {
-                return Err(TilerError::Conflict(format!(
-                    "existing pyramid conflicts with an empty render: {}",
-                    final_path.display()
-                )));
+        staged_paths.push(paths);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let mut synced = BTreeSet::new();
+        for (k, handle) in fs_handles.iter().enumerate() {
+            let dev = rustix::fs::fstat(handle)
+                .map_err(std::io::Error::from)?
+                .st_dev;
+            if counts[k] > 0 && synced.insert(dev) {
+                sync_filesystem(handle)?;
             }
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    for (k, paths) in staged_paths.iter().enumerate() {
+        if counts[k] > 0 {
+            fsync_pyramid(&staged_targets[k].1, paths)?;
+        }
+    }
+    let mut staged: Vec<Option<PyramidInspection>> = Vec::with_capacity(unresolved.len());
+    for (k, paths) in staged_paths.iter().enumerate() {
+        let (name, staged_dir) = &staged_targets[k];
+        if counts[k] == 0 && !keep_empty {
             staged.push(None);
             continue;
         }
-        fsync_pyramid(staged_dir, &paths)?;
-        write_completion_marker(staged_dir, &paths, identity)?;
+        let identity = identity_for(name).expect("checked above");
+        write_completion_marker(staged_dir, paths, identity)?;
         staged.push(Some(inspect_complete_pyramid(staged_dir, Some(identity))?));
     }
 
@@ -597,6 +641,15 @@ mod tests {
         let deep = tmp.path().join("a/b/c");
         fs::create_dir_all(&deep).unwrap();
         fsync_directory_chain(&deep, tmp.path()).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn sync_filesystem_flushes_through_a_directory_handle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let handle = File::open(tmp.path()).unwrap();
+        fs::write(tmp.path().join("t.png"), b"png").unwrap();
+        sync_filesystem(&handle).unwrap();
     }
 
     #[test]

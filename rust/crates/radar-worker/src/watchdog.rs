@@ -298,6 +298,6 @@ mod tests {
 
     #[test]
     fn watched_set_is_the_full_schedule_list() {
-        assert_eq!(watched_schedules().len(), 14);
+        assert_eq!(watched_schedules().len(), 15);
     }
 }

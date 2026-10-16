@@ -43,6 +43,7 @@ const LAYER_TITLE: Record<LayerType, string> = {
   wind: "Wind",
   "precip-type": "Radar",
   "precip-accum": "Rain Total",
+  "precip-24h": "Past 24 Hr Precip",
   cloud: "Clouds",
   uv: "UV Index",
   cape: "Storm Energy",

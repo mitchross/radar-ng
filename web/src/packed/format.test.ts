@@ -40,6 +40,42 @@ const meta = (over: Partial<PackedMeta> = {}): PackedMeta => ({
   ...over,
 });
 
+describe("typed codes (v2)", () => {
+  const classic = palette("classic").reflectivity;
+  const types = { stride: 32, classes: ["rain", "snow", "mix"] };
+  const lut = buildLut(classic, 2.5, 0, types);
+
+  it("colors class * 32 + q with that class's ramp", () => {
+    expect(rgba(lut, 12)).toEqual([0, 140, 0, 220]); // rain 30 dBZ
+    expect(rgba(lut, 32 + 12)).toEqual(classic.types!.snow.ranges[5].rgba); // snow 30-35
+    expect(rgba(lut, 64 + 12)).toEqual(classic.types!.mix.ranges[5].rgba); // mix 30-35
+    expect(rgba(lut, 32 + 2)).toEqual(classic.types!.snow.ranges[0].rgba); // snow 5 dBZ
+    expect(rgba(lut, 32)).toEqual([0, 0, 0, 0]); // q = 0 in any class
+    expect(rgba(lut, 96 + 12)).toEqual([0, 0, 0, 0]); // no fourth class
+  });
+
+  it("matches the untyped table for rain codes", () => {
+    const plain = buildLut(classic, 2.5, 0);
+    for (let q = 1; q < 32; q++) expect(rgba(lut, q)).toEqual(rgba(plain, q));
+  });
+
+  it("falls back to the rain ramp without type ramps", () => {
+    const rainOnly = buildLut({ ranges: classic.ranges, no_data_below: 5 }, 2.5, 0, types);
+    expect(rgba(rainOnly, 32 + 12)).toEqual(rgba(rainOnly, 12));
+  });
+
+  it("accepts v2 only with types, and v1 only without", () => {
+    expect(usablePacked(meta({ version: 2, types }))).toBe(true);
+    expect(usablePacked(meta({ version: 2 }))).toBe(false);
+    expect(usablePacked(meta({ version: 1, types }))).toBe(false);
+    expect(usablePacked(meta({ version: 2, types: { stride: 0, classes: [] } }))).toBe(false);
+  });
+
+  it("gives the reflectivity fallback table snow and mix ramps", () => {
+    expect(fallbackTable("vivid", "reflectivity")?.types?.snow.ranges).toEqual(palette("vivid").reflectivity.types!.snow.ranges);
+  });
+});
+
 describe("buildLut", () => {
   const classic = palette("classic").reflectivity;
   const lut = buildLut(classic, 0.5, -32);
@@ -101,6 +137,50 @@ describe("quantize", () => {
     expect(quantize(4.9, 2.5, 0, 5)).toBe(0);
     expect(quantize(44.9, 2.5, 0, 5)).toBe(17);
     expect(quantize(5000, 2.5, 0, 5)).toBe(255);
+  });
+
+  it("lifts values between a low floor and the first code to code 1", () => {
+    expect(quantize(0.02, 0.05, 0, 0.01)).toBe(1);
+    expect(quantize(0.005, 0.05, 0, 0.01)).toBe(0);
+    expect(quantize(-79, 1, -80)).toBe(1);
+    expect(quantize(-79.5, 1, -80)).toBe(0);
+  });
+
+  // The server's table (docs/packed-tiles.md): [scale, offset, floor] and the band edges it cannot hit.
+  const TABLE: Record<string, [number, number, number, number[]]> = {
+    reflectivity: [2.5, 0, 5, []],
+    temperature: [1, -80, -79, []],
+    dewpoint: [5, -80, -75, []],
+    wind_speed: [5, -5, 0, []],
+    humidity: [10, -10, 0, [100.01]],
+    cape: [500, 0, 500, []],
+    precip_accum: [0.05, 0, 0.01, [20]],
+    cloud_cover: [5, 0, 10, [101]],
+    pm25: [1, 0.5, 0, [9.1, 20, 45, 90, 175, 500, 20000]],
+    ozone: [1, 0, 0, [600]],
+  };
+
+  it.each(Object.keys(TABLE))("colors %s through the table like the PNG tiles, except the listed edges", (key) => {
+    const [scale, offset, floor, inexact] = TABLE[key];
+    for (const id of ["classic", "muted", "vivid"] as PaletteId[]) {
+      const table = palette(id)[key];
+      const lut = buildLut(table, scale, offset);
+      const band = (v: number) => {
+        if (v < (table.no_data_below ?? -999)) return [0, 0, 0, 0];
+        let hit = [0, 0, 0, 0];
+        for (const r of table.ranges) if (v >= r.min && v < r.max) hit = r.rgba;
+        return hit;
+      };
+      const edges = table.ranges.flatMap((r) => [r.min, r.max]).sort((a, b) => a - b);
+      const misses = new Set<number>();
+      for (let v = edges[0] - 2 * scale; v <= edges[edges.length - 1] * 1.01; v += Math.min(scale, 1) / 7) {
+        const raw = Math.fround(v);
+        if (rgba(lut, quantize(raw, scale, offset, floor)).join() !== band(raw).join()) {
+          misses.add([...edges].reverse().find((e) => e <= raw) ?? -Infinity);
+        }
+      }
+      expect([...misses].sort((a, b) => a - b), `${id}.${key}`).toEqual(inexact);
+    }
   });
 
   it("decodes production reflectivity codes into the server's color band", () => {

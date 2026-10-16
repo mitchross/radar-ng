@@ -57,6 +57,11 @@ mod tests {
                 "precip_accum",
                 "cloud_cover",
                 "wind_speed",
+                "dewpoint",
+                "humidity",
+                "cape",
+                "pm25",
+                "ozone",
                 "uv_index",
             ] {
                 let ranges = table[key]["ranges"].as_array().unwrap();

@@ -15,13 +15,14 @@ export interface ColorTable {
 }
 export type ServerPalettes = Partial<Record<PaletteId, Record<string, ColorTable>>>;
 
-/** Map layer id to palette key, as the server's HRRR `layer_color_key` maps them. */
+/** Map layer id to palette key, as the server's HRRR `layer_color_key` and MRMS QPE map them. */
 const LAYER_TABLES: Record<string, { key: string; title: string; unit: string; whole?: boolean }> = {
   temperature: { key: "temperature", title: "Temperature", unit: "°F" },
   "feels-like": { key: "temperature", title: "Feels like", unit: "°F" },
   dewpoint: { key: "dewpoint", title: "Dew point", unit: "°F" },
   wind: { key: "wind_speed", title: "Wind", unit: "mph" },
   "precip-accum": { key: "precip_accum", title: "Rain total", unit: "in" },
+  "precip-24h": { key: "precip_accum", title: "Past 24 hr precip", unit: "in" },
   cloud: { key: "cloud_cover", title: "Clouds", unit: "%" },
   // Band edges sit halfway between whole index values (0.5, 2.5, ...); label the whole values.
   uv: { key: "uv_index", title: "UV index", unit: "WHO", whole: true },

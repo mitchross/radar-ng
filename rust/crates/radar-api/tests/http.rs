@@ -19,6 +19,7 @@ use axum::routing::get;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{SecondsFormat, Utc};
+use futures::future::join_all;
 use hmac::{Hmac, Mac};
 use http_body_util::BodyExt;
 use pmtiles::{Compression, PmTilesWriter, TileCoord, TileType};
@@ -237,6 +238,46 @@ async fn metrics_text_has_the_counter_block_and_route_labels() {
         "radar_ng_http_requests_total{method=\"GET\",path=\"/api/livez\",status=\"200\"} 1"
     ));
     assert!(text.ends_with('\n'));
+}
+
+fn write_skill_log(env: &Env, anchors: usize) {
+    let scored = now_iso();
+    let entries: Vec<Value> = (0..anchors)
+        .map(|i| {
+            json!({"anchor": format!("a{i}"), "lead_minutes": 30, "scored_at": scored,
+                        "thresholds": {"rain": {"hits": 1, "misses": 0, "false_alarms": 0}}})
+        })
+        .collect();
+    write_json(
+        &env.path("state/nowcast-skill.json"),
+        &json!({"updated_at": scored, "window_hours": 24, "entries": entries}),
+    );
+}
+
+#[tokio::test]
+async fn metrics_reuse_the_skill_snapshot_until_the_log_changes() {
+    let env = Env::new();
+    write_skill_log(&env, 2);
+    let app = env.app(|_| {});
+    let runs = |text: &str| {
+        text.lines()
+            .find_map(|l| l.strip_prefix("radar_ng_nowcast_skill_runs "))
+            .map(str::to_string)
+    };
+    let (_, _, body) = send(&app, get_req("/api/metrics")).await;
+    assert_eq!(
+        runs(&String::from_utf8(body).expect("utf8")).as_deref(),
+        Some("2")
+    );
+    // A rewrite (new size and inode) is picked up on the next scrape, with no TTL wait.
+    write_skill_log(&env, 3);
+    let (_, _, body) = send(&app, get_req("/api/metrics")).await;
+    assert_eq!(
+        runs(&String::from_utf8(body).expect("utf8")).as_deref(),
+        Some("3")
+    );
+    let (_, _, skill) = get_json(&app, "/api/nowcast/skill").await;
+    assert_eq!(skill["runs_scored"], json!(3));
 }
 
 #[tokio::test]
@@ -701,32 +742,238 @@ async fn forecast_is_cached_per_cell_and_upstream_failures_are_502_without_cache
 }
 
 #[tokio::test]
-async fn alerts_pass_through_with_the_three_decimal_key_and_fail_closed() {
+async fn concurrent_forecast_misses_for_one_cell_make_one_upstream_call() {
+    let calls = counter();
+    let om_calls = calls.clone();
+    let open_meteo = Router::new().route(
+        "/v1/forecast",
+        get(move || {
+            let calls = om_calls.clone();
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                Json(open_meteo_body())
+            }
+        }),
+    );
+    let base = mock(open_meteo).await;
+    let env = Env::new();
+    let app = env.app(|c| c.open_meteo_base = format!("{base}/v1/forecast"));
+    // 42.96 and 42.99 round to the same cell.
+    let requests = (0..32).map(|i| {
+        let uri = if i % 2 == 0 {
+            "/api/forecast/42.96/-85.67"
+        } else {
+            "/api/forecast/42.99/-85.72"
+        };
+        get_json(&app, uri)
+    });
+    let responses = join_all(requests).await;
+    assert!(
+        responses
+            .iter()
+            .all(|(s, _, b)| *s == StatusCode::OK && *b == open_meteo_body())
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let (_, _, metrics) = send(&app, get_req("/api/metrics")).await;
+    let text = String::from_utf8(metrics).expect("utf8");
+    assert!(
+        text.contains("radar_ng_forecast_cache_hits_total 31\n"),
+        "{text}"
+    );
+}
+
+fn get_with_encoding(uri: &str, accept: &str) -> Request<Body> {
+    Request::builder()
+        .uri(uri)
+        .header(header::ACCEPT_ENCODING, accept)
+        .body(Body::empty())
+        .expect("request")
+}
+
+#[tokio::test]
+async fn api_json_is_compressed_per_accept_encoding_and_identical_once_decoded() {
+    let big = json!({"hourly": {"temperature_2m": vec![61.5; 2000]}});
+    let body = big.clone();
+    let open_meteo = Router::new().route(
+        "/v1/forecast",
+        get(move || {
+            let body = body.clone();
+            async move { Json(body) }
+        }),
+    );
+    let base = mock(open_meteo).await;
+    let env = Env::new();
+    let app = env.app(|c| c.open_meteo_base = format!("{base}/v1/forecast"));
+    let uri = "/api/forecast/42.96/-85.67";
+
+    let (_, plain_headers, plain) = send(&app, get_req(uri)).await;
+    assert!(plain_headers.get(header::CONTENT_ENCODING).is_none());
+    assert_eq!(serde_json::from_slice::<Value>(&plain).expect("json"), big);
+
+    let (status, headers, gz) = send(&app, get_with_encoding(uri, "gzip")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(header_str(&headers, "content-encoding"), "gzip");
+    assert_eq!(header_str(&headers, "vary"), "accept-encoding");
+    assert_eq!(header_str(&headers, "cache-control"), "public, max-age=900");
+    assert!(gz.len() < plain.len() / 10);
+    let mut decoded = Vec::new();
+    std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(&gz[..]), &mut decoded)
+        .expect("gunzip");
+    assert_eq!(decoded, plain, "byte-identical once decoded");
+
+    let (_, br_headers, _) = send(&app, get_with_encoding(uri, "br;q=1.0, gzip;q=0.5")).await;
+    assert_eq!(header_str(&br_headers, "content-encoding"), "br");
+
+    // Small bodies are not worth compressing.
+    let (_, small_headers, _) = send(&app, get_with_encoding("/api/livez", "gzip, br")).await;
+    assert!(small_headers.get(header::CONTENT_ENCODING).is_none());
+    assert!(small_headers.get(header::VARY).is_none());
+}
+
+#[tokio::test]
+async fn tiles_are_never_recompressed() {
+    let env = Env::new();
+    let dir = env.path("tiles/radar/classic/2026-10-13T12:00:00+00:00/6/16");
+    std::fs::create_dir_all(&dir).expect("dirs");
+    let png = vec![7u8; 4096];
+    std::fs::write(dir.join("23.png"), &png).expect("tile");
+    let mvt = vec![9u8; 4096];
+    std::fs::write(dir.join("24.mvt"), &mvt).expect("tile");
+    std::fs::write(dir.join("24.mvt.gz"), b"precompressed").expect("gz tile");
+    let app = env.app(|_| {});
+    let base = "/tiles/radar/classic/2026-10-13T12:00:00+00:00/6/16";
+
+    let (status, headers, body) = send(
+        &app,
+        get_with_encoding(&format!("{base}/23.png"), "gzip, br"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(headers.get(header::CONTENT_ENCODING).is_none());
+    assert!(headers.get(header::VARY).is_none());
+    assert_eq!(body, png);
+
+    // ServeDir's own precompressed .gz is passed through once, not compressed again.
+    let (_, gz_headers, gz_body) = send(
+        &app,
+        get_with_encoding(&format!("{base}/24.mvt"), "gzip, br"),
+    )
+    .await;
+    assert_eq!(header_str(&gz_headers, "content-encoding"), "gzip");
+    assert_eq!(gz_body, b"precompressed");
+    let (_, raw_headers, raw_body) =
+        send(&app, get_with_encoding(&format!("{base}/24.mvt"), "br")).await;
+    assert!(raw_headers.get(header::CONTENT_ENCODING).is_none());
+    assert_eq!(raw_body, mvt);
+}
+
+/// An NWS mock: the national feed, `?point=` answers that echo the point, and `/points` that maps
+/// one point to zones. Counts feed, point and `/points` calls.
+async fn nws_mock(delay: Duration) -> (String, [Arc<AtomicUsize>; 3]) {
+    let calls = [counter(), counter(), counter()];
+    let (feed_calls, point_calls, zone_calls) =
+        (calls[0].clone(), calls[1].clone(), calls[2].clone());
     let nws = Router::new()
         .route(
             "/alerts/active",
-            get(|Query(q): Query<HashMap<String, String>>| async move {
-                if q.get("status").map(String::as_str) == Some("actual") {
-                    return Json(json!({"features": [
-                        {"geometry": {"type": "Polygon", "coordinates": []},
-                         "properties": {"id": "urn:1", "event": "Severe Thunderstorm Warning", "description": "long"}},
-                        {"geometry": null, "properties": {"id": "urn:zone"}},
-                    ]}))
-                    .into_response_boxed();
+            get(move |Query(q): Query<HashMap<String, String>>| {
+                let (feed_calls, point_calls) = (feed_calls.clone(), point_calls.clone());
+                async move {
+                    tokio::time::sleep(delay).await;
+                    if let Some(point) = q.get("point") {
+                        point_calls.fetch_add(1, Ordering::SeqCst);
+                        return Json(json!({"type": "FeatureCollection", "features": [], "echo": point}));
+                    }
+                    feed_calls.fetch_add(1, Ordering::SeqCst);
+                    Json(json!({
+                        "@context": ["ctx"], "type": "FeatureCollection",
+                        "features": [
+                            {"id": "poly", "type": "Feature",
+                             "geometry": {"type": "Polygon", "coordinates": [[[-86.0, 42.0], [-85.0, 42.0], [-85.0, 43.0], [-86.0, 43.0], [-86.0, 42.0]]]},
+                             "properties": {"id": "poly", "status": "Actual", "event": "Severe Thunderstorm Warning",
+                                            "description": "long", "affectedZones": ["zones/county/MIC081"]}},
+                            {"id": "zone", "type": "Feature", "geometry": null,
+                             "properties": {"id": "zone", "status": "Actual", "affectedZones": ["zones/forecast/MIZ057"]}},
+                            {"id": "elsewhere", "type": "Feature", "geometry": null,
+                             "properties": {"id": "elsewhere", "status": "Actual", "affectedZones": ["zones/forecast/ILZ078"]}},
+                        ],
+                        "title": "Current watches, warnings, and advisories", "updated": "2026-10-15T22:00:00+00:00",
+                    }))
                 }
-                Json(json!({"features": [], "echo": q.get("point").cloned().unwrap_or_default()})).into_response_boxed()
+            }),
+        )
+        .route(
+            "/points/{point}",
+            get(move |AxPath(point): AxPath<String>| {
+                let zone_calls = zone_calls.clone();
+                async move {
+                    zone_calls.fetch_add(1, Ordering::SeqCst);
+                    if point.starts_with("42.") || point.starts_with("43.") {
+                        return Json(json!({"properties": {
+                            "county": "zones/county/MIC081", "forecastZone": "zones/forecast/MIZ057",
+                            "fireWeatherZone": "zones/fire/MIZ057"}}))
+                        .into_response_boxed();
+                    }
+                    (StatusCode::NOT_FOUND, "Data Unavailable For Requested Point").into_response_boxed()
+                }
             }),
         )
         .route("/broken/alerts/active", get(|| async { StatusCode::INTERNAL_SERVER_ERROR }));
-    let base = mock(nws).await;
-    let env = Env::new();
-    let app = env.app(|c| c.nws_point_alerts_url = format!("{base}/alerts/active"));
+    (mock(nws).await, calls)
+}
 
+fn feature_ids(body: &Value) -> Vec<&str> {
+    body["features"]
+        .as_array()
+        .expect("features")
+        .iter()
+        .map(|f| f["id"].as_str().expect("id"))
+        .collect()
+}
+
+#[tokio::test]
+async fn alerts_match_points_from_one_shared_feed_and_fail_closed() {
+    let (base, [feed_calls, point_calls, zone_calls]) = nws_mock(Duration::ZERO).await;
+    let env = Env::new();
+    let app = env.app(|c| {
+        c.nws_point_alerts_url = format!("{base}/alerts/active");
+        c.nws_points_url = format!("{base}/points");
+    });
+
+    // Inside the polygon and in the zone.
     let (status, headers, body) = get_json(&app, "/api/alerts?lat=42.9631&lon=-85.6684").await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["echo"], json!("42.963,-85.668"));
+    assert_eq!(feature_ids(&body), vec!["poly", "zone"]);
+    assert_eq!(body["@context"], json!(["ctx"]));
+    assert_eq!(
+        body["title"],
+        json!("Current watches, warnings, and advisories for 42.963 N, 85.668 W")
+    );
     assert_eq!(header_str(&headers, "cache-control"), "public, max-age=60");
+    // Same zones, outside the polygon: the polygon warning is left out, as NWS's ?point= does.
+    let (_, _, outside) = get_json(&app, "/api/alerts?lat=43.5&lon=-85.5").await;
+    assert_eq!(feature_ids(&outside), vec!["zone"]);
+    assert_eq!(
+        feed_calls.load(Ordering::SeqCst),
+        1,
+        "one feed for every point"
+    );
+    assert_eq!(
+        zone_calls.load(Ordering::SeqCst),
+        2,
+        "one zone lookup per point"
+    );
+    let _ = get_json(&app, "/api/alerts?lat=42.9631&lon=-85.6684").await;
+    assert_eq!(zone_calls.load(Ordering::SeqCst), 2, "zones are cached");
 
+    // No zones here (/points 404): NWS's own ?point= answer, with the 3-dp key.
+    let (status, _, body) = get_json(&app, "/api/alerts?lat=25.0&lon=-80.1234").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["echo"], json!("25.0,-80.123"));
+    assert_eq!(point_calls.load(Ordering::SeqCst), 1);
+
+    // The map comes from the same feed: polygons only, nine properties.
     let (map, _, map_body) = get_json(&app, "/api/alerts/map").await;
     assert_eq!(map, StatusCode::OK);
     let features = map_body["features"].as_array().expect("features");
@@ -734,12 +981,33 @@ async fn alerts_pass_through_with_the_three_decimal_key_and_fail_closed() {
     let props = features[0]["properties"].as_object().expect("props");
     assert_eq!(props.len(), 9);
     assert!(!props.contains_key("description"));
+    assert_eq!(feed_calls.load(Ordering::SeqCst), 1);
 
-    let broken_app = env.app(|c| c.nws_point_alerts_url = format!("{base}/broken/alerts/active"));
+    let broken_app = env.app(|c| {
+        c.nws_point_alerts_url = format!("{base}/broken/alerts/active");
+        c.nws_points_url = format!("{base}/points");
+    });
     let (bad, bad_headers, bad_body) = get_json(&broken_app, "/api/alerts?lat=42&lon=-85").await;
     assert_eq!(bad, StatusCode::BAD_GATEWAY);
     assert_eq!(header_str(&bad_headers, "cache-control"), "no-store");
     assert_eq!(bad_body, json!({"error": "upstream_unavailable"}));
+}
+
+#[tokio::test]
+async fn concurrent_alert_misses_make_one_upstream_call_per_key() {
+    let (base, [feed_calls, point_calls, zone_calls]) = nws_mock(Duration::from_millis(200)).await;
+    let env = Env::new();
+    let app = env.app(|c| {
+        c.nws_point_alerts_url = format!("{base}/alerts/active");
+        c.nws_points_url = format!("{base}/points");
+    });
+    let covered = (0..16).map(|_| get_json(&app, "/api/alerts?lat=42.5&lon=-85.5"));
+    let uncovered = (0..16).map(|_| get_json(&app, "/api/alerts?lat=25&lon=-80"));
+    let (a, b) = tokio::join!(join_all(covered), join_all(uncovered));
+    assert!(a.iter().chain(&b).all(|(s, _, _)| *s == StatusCode::OK));
+    assert_eq!(feed_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(zone_calls.load(Ordering::SeqCst), 2);
+    assert_eq!(point_calls.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -1082,7 +1350,9 @@ async fn expired_nowcast_is_unavailable_even_when_its_point_is_cached() {
     let state = AppState::new(env.config(|_| {})).unwrap();
     state.nowcast_cache.insert(
         (run.into(), "42.9".into(), "-85.6".into()),
-        Arc::new(json!({"status": "ok", "points": [{"precipitation_mm_h": 0.0}]})),
+        serde_json::to_vec(&json!({"status": "ok", "points": [{"precipitation_mm_h": 0.0}]}))
+            .expect("json")
+            .into(),
     );
     let app = router(state);
     let (status, _, body) = get_json(&app, "/api/nowcast/42.9/-85.6").await;
@@ -1107,7 +1377,9 @@ async fn unexpired_nowcast_keeps_its_cached_point_and_healthy_status() {
     let state = AppState::new(env.config(|_| {})).unwrap();
     state.nowcast_cache.insert(
         (run, "42.9".into(), "-85.6".into()),
-        Arc::new(json!({"status": "ok", "points": [{"precipitation_mm_h": 1.0}]})),
+        serde_json::to_vec(&json!({"status": "ok", "points": [{"precipitation_mm_h": 1.0}]}))
+            .expect("json")
+            .into(),
     );
     let app = router(state);
     let (_, _, body) = get_json(&app, "/api/nowcast/42.9/-85.6").await;
@@ -1681,4 +1953,190 @@ async fn basemap_tiles_proxy_to_go_pmtiles_when_no_local_archive() {
     });
     let (status, _, _) = send(&app, get_req("/basemap/tiles/4/3/5.mvt")).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Satellite (NASA GIBS)
+// ---------------------------------------------------------------------------------------------
+
+/// A 256 px PNG of one RGBA color, like a GIBS GeoColor tile.
+fn solid_tile(rgba: [u8; 4]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut encoder = png::Encoder::new(&mut out, 256, 256);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().expect("header");
+    let px: Vec<u8> = std::iter::repeat_n(rgba, 256 * 256).flatten().collect();
+    writer.write_image_data(&px).expect("data");
+    writer.finish().expect("finish");
+    out
+}
+
+fn decode_tile(bytes: &[u8]) -> Vec<u8> {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .expect("png");
+    let mut buf = vec![0; reader.output_buffer_size().expect("size")];
+    let info = reader.next_frame(&mut buf).expect("frame");
+    buf.truncate(info.buffer_size());
+    buf
+}
+
+/// The 10-minute GIBS step `back` steps before now, in the tile path form.
+fn gibs_step(back: i64) -> String {
+    let floored = Utc::now().timestamp() / 600 * 600 - back * 600;
+    chrono::DateTime::from_timestamp(floored, 0)
+        .expect("time")
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
+}
+
+type Seen = Arc<std::sync::Mutex<Vec<String>>>;
+
+/// A mock GIBS. DescribeDomains lists `times` for East and `times[1..]` for West. Tiles are solid red
+/// (East) or blue (West), except `missing`, which is a 404. Tile requests are recorded in `seen`.
+async fn mock_gibs(times: Vec<String>, missing: String, seen: Seen) -> String {
+    let domain = move |layer: &str| {
+        let list = if layer.starts_with("GOES-East") {
+            times.join(",")
+        } else {
+            times[1..].join(",")
+        };
+        format!("<Domains><DimensionDomain><Domain>{list}</Domain></DimensionDomain></Domains>")
+    };
+    type TilePath = (String, String, String, String, String, String);
+    let gibs = Router::new()
+        .route(
+            "/1.0.0/{layer}/default/{set}/all/{range}",
+            get(
+                move |AxPath((layer, _, _)): AxPath<(String, String, String)>| {
+                    let body = domain(&layer);
+                    async move { ([(header::CONTENT_TYPE, "text/xml")], body) }
+                },
+            ),
+        )
+        .route(
+            "/{layer}/default/{time}/{set}/{z}/{row}/{colpng}",
+            get(
+                move |AxPath((layer, time, set, z, row, col)): AxPath<TilePath>| {
+                    seen.lock()
+                        .expect("seen")
+                        .push(format!("{layer}/{time}/{set}/{z}/{row}/{col}"));
+                    let missing = time == missing;
+                    async move {
+                        if missing {
+                            return (StatusCode::NOT_FOUND, "no such time").into_response_boxed();
+                        }
+                        let color = if layer.starts_with("GOES-East") {
+                            [255, 0, 0, 255]
+                        } else {
+                            [0, 0, 255, 255]
+                        };
+                        ([(header::CONTENT_TYPE, "image/png")], solid_tile(color))
+                            .into_response_boxed()
+                    }
+                },
+            ),
+        );
+    mock(gibs).await
+}
+
+/// The manifest lists the frames both GIBS layers have. Tiles go out in WMTS row/col order with
+/// immutable caching, seam tiles are spliced, and invalid paths never reach GIBS.
+#[tokio::test]
+async fn satellite_layer_lists_shared_frames_and_proxies_tiles() {
+    let times = vec![gibs_step(3), gibs_step(2), gibs_step(1)];
+    let missing = gibs_step(5);
+    let seen: Seen = Arc::default();
+    let base = mock_gibs(times.clone(), missing.clone(), seen.clone()).await;
+    let env = Env::new();
+    write_json(&env.path("state/manifest.json"), &manifest(None, None));
+    let app = env.app(|c| {
+        c.gibs_wmts_base = base.clone();
+        c.satellite_cache_max_bytes = 4 * 1024 * 1024;
+    });
+    let fetches = || seen.lock().expect("seen").len();
+
+    let (status, _, body) = get_json(&app, "/api/manifest.json").await;
+    assert_eq!(status, StatusCode::OK);
+    let layer = &body["layers"]["satellite"];
+    let paths: Vec<&str> = layer["frames"]
+        .as_array()
+        .expect("frames")
+        .iter()
+        .map(|f| f["path"].as_str().expect("path"))
+        .collect();
+    assert_eq!(paths, [times[1].as_str(), times[2].as_str()], "East ∩ West");
+    assert_eq!(layer["timestamps"].as_array().map(Vec::len), Some(2));
+    assert_eq!(layer["frames"][0]["max_zoom"], json!(7));
+
+    // Grand Rapids at z6 is GOES-East only. WMTS wants the row (y) before the column (x).
+    let uri = format!("/tiles/satellite/{}/6/16/23.png", times[2]);
+    let (status, headers, body) = send(&app, get_req(&uri)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(header_str(&headers, "content-type"), "image/png");
+    assert_eq!(
+        header_str(&headers, "cache-control"),
+        "public, max-age=86400, immutable"
+    );
+    assert_eq!(header_str(&headers, "access-control-allow-origin"), "*");
+    assert_eq!(&decode_tile(&body)[..4], [255, 0, 0, 255]);
+    assert_eq!(
+        seen.lock().expect("seen").last().cloned(),
+        Some(format!(
+            "GOES-East_ABI_GeoColor_v0_NRT/{}/GoogleMapsCompatible_Level7/6/23/16.png",
+            times[2]
+        ))
+    );
+    let (again, _, _) = send(&app, get_req(&uri)).await;
+    assert_eq!(again, StatusCode::OK);
+    assert_eq!(fetches(), 1, "the second request is a cache hit");
+
+    // z0 crosses both seams: West, East from 106.1° W to 73.9° E, then West again.
+    let world = format!("/tiles/satellite/{}/0/0/0.png", times[2]);
+    let (status, _, body) = send(&app, get_req(&world)).await;
+    assert_eq!(status, StatusCode::OK);
+    let rgba = decode_tile(&body);
+    let px = |c: usize| rgba[c * 4..c * 4 + 4].to_vec();
+    let (east, west) = (vec![255, 0, 0, 255], vec![0, 0, 255, 255]);
+    assert_eq!(
+        [px(52), px(53), px(180), px(181)],
+        [west.clone(), east.clone(), east, west]
+    );
+
+    // A time GIBS does not have is a no-store 404.
+    let (status, headers, _) = send(
+        &app,
+        get_req(&format!("/tiles/satellite/{missing}/3/2/3.png")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(header_str(&headers, "cache-control"), "no-store");
+
+    let before = fetches();
+    let future = gibs_step(-2);
+    let stale = gibs_step(40);
+    for bad in [
+        format!("/tiles/satellite/{}/8/1/1.png", times[2]),
+        format!("/tiles/satellite/{}/3/8/1.png", times[2]),
+        format!("/tiles/satellite/{}/3/01/1.png", times[2]),
+        format!("/tiles/satellite/{}/3/1/1.jpg", times[2]),
+        format!("/tiles/satellite/{future}/3/1/1.png"),
+        format!("/tiles/satellite/{stale}/3/1/1.png"),
+        "/tiles/satellite/2026-10-15T22:13:00Z/3/1/1.png".into(),
+        "/tiles/satellite/2026-10-15/3/1/1.png".into(),
+        "/tiles/satellite/x/3/1".into(),
+    ] {
+        let (status, headers, _) = send(&app, get_req(&bad)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{bad}");
+        assert_eq!(header_str(&headers, "cache-control"), "no-store", "{bad}");
+    }
+    assert_eq!(fetches(), before, "invalid paths never reach GIBS");
+
+    // `GIBS_WMTS_BASE` empty: no layer and no proxy.
+    let off = env.app(|c| c.gibs_wmts_base = String::new());
+    let (_, _, body) = get_json(&off, "/api/manifest.json").await;
+    assert!(body["layers"].get("satellite").is_none());
+    let (status, _, _) = send(&off, get_req(&uri)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

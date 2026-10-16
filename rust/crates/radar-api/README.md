@@ -72,6 +72,7 @@ Static lane (not under `/api`):
 | `/basemap/styles/*` | `ServeDir` on `BASEMAP_ROOT/styles` | `public, max-age=3600` |
 | `/basemap/fonts/*` | `ServeDir` on `BASEMAP_ROOT/fonts` | `public, max-age=604800` |
 | `/basemap/imagery/{z}/{x}/{y}.jpg` | USGS proxy with moka cache | `public, max-age=604800` on hits and misses |
+| `/tiles/satellite/{time}/{z}/{x}/{y}.png` | NASA GIBS GOES GeoColor proxy (`satellite.rs`): GOES-East east of 106.1° W, GOES-West west of it, seam tiles spliced. `time` is a 10-minute step in the last 6 h; `z` is 0 to 7. Moka cache (`SATELLITE_CACHE_MAX_BYTES`) | `public, max-age=86400, immutable` |
 | `/basemap/tiles/{z}/{x}/{y}.mvt` | `pmtiles` crate reading `BASEMAP_PMTILES` through a positioned-read backend (F6); proxied to `BASEMAP_TILES_UPSTREAM` (default `http://basemap:8081`) when no local archive exists | `public, max-age=86400` |
 
 ACAO `*` is set on the static lane. Errors on the static lane are overridden to
@@ -123,7 +124,7 @@ reproduce the Python bug. "Kept" means the port matches Python on purpose.
 | D23 | Kept | `Retry-After` is always `1`. |
 | D25 | Kept | The style origin trusts `X-Forwarded-Host` and `X-Forwarded-Proto` without validation. |
 | D26 | Kept | Forecast cache hits send the full TTL as `max-age`. |
-| D28 | Kept | The alert and place caches are shared across a 3-dp cell. |
+| D28 | Changed | Place caches are shared across a 3-dp cell. Alerts come from one cached national feed, matched per 3-dp point (see below). |
 
 Other differences:
 
@@ -133,6 +134,18 @@ Other differences:
   rejected. A non-finite `exp` is rejected. Python accepted both (vector cases mark these).
 - Imagery misses use `image/jpeg` as the content type.
 - The imagery cache is on by default at 128 MiB (`IMAGERY_CACHE_MAX_BYTES`). Size the memory limit with that in mind, and set the variable to 0 to turn it off. Caddy did not cache imagery at all.
+- **Alerts.** `/api/alerts` and `/api/alerts/map` share one national feed (`NWS_POINT_ALERTS_URL`, no query),
+  fetched at most once per `ALERTS_TTL_S`. A point gets what NWS's `?point=` returns: polygon alerts by
+  containment, zone alerts by the point's county, forecast zone and fire zone (`NWS_POINTS_URL`, cached a day).
+  A point with no zones (`/points` 404) or a failed lookup uses the direct `?point=` query. The `title` names the
+  point as NWS does. Checked against live NWS: 49 points, identical features and order.
+- **Response caches** hold encoded bodies and are bounded by bytes (`*_CACHE_MAX_BYTES`). Upstream-filled caches
+  (forecast, alerts) are single-flight: concurrent misses for one key make one request.
+- **Compression.** `/api/*` and `/v1/*` JSON and text bodies over 1 KiB are gzip or br encoded per
+  `Accept-Encoding`, with `Vary: Accept-Encoding`. Static lanes (tiles, styles, fonts, imagery, vector tiles) are
+  never compressed by the server.
+- **Skill snapshot.** `/api/metrics`, `/api/health` and the nowcast routes share one skill summary. It is re-read
+  only when `nowcast-skill.json` changes (size, mtime, inode) or its oldest counted entry leaves the window.
 - `radar-geo` is not used. The whole-grid sampler is not used. Point sampling reads four cells.
 - The `/basemap/imagery` catch-all cannot be a separate route (axum rejects the overlap with the
   `{yjpg}` route). Non-matching paths fall through to the top-level fallback.
@@ -172,12 +185,13 @@ Other differences:
 Environment variables (see `src/config.rs`): `LISTEN_ADDR`, `TILE_DIR`, `GRID_DIR`, `STATE_DIR`,
 `STYLE_DIR`, `BASEMAP_ROOT`, `BASEMAP_PMTILES`, `BASEMAP_PMTILES_RECHECK_S`, `BASEMAP_TILES_UPSTREAM`,
 `OPEN_METEO_BASE`, `MRMS_MAX_AGE_S`,
-`FORECAST_TTL_S`, `FORECAST_CACHE_MAX_ENTRIES`, `NOWCAST_POINT_CACHE_MAX_ENTRIES`,
-`WIND_CACHE_MAX_ENTRIES`, `ALERTS_TTL_S`, `ALERTS_CACHE_MAX_ENTRIES`, `GEOCODER_URL`,
-`PHOTON_URL`, `GEOCODE_TTL_S`, `GEOCODE_CACHE_MAX_ENTRIES`, `PLACES_UPSTREAM_TIMEOUT_S`,
+`FORECAST_TTL_S`, `FORECAST_CACHE_MAX_BYTES` (64 MiB), `NOWCAST_POINT_CACHE_MAX_BYTES` (16 MiB),
+`WIND_CACHE_MAX_BYTES` (32 MiB), `ALERTS_TTL_S`, `ALERTS_CACHE_MAX_BYTES` (16 MiB), `NWS_POINTS_URL`,
+`GEOCODER_URL`, `PHOTON_URL`, `GEOCODE_TTL_S`, `GEOCODE_CACHE_MAX_BYTES` (8 MiB), `PLACES_UPSTREAM_TIMEOUT_S`,
 `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_S`, `LLM_MAX_CONCURRENCY`,
 `LLM_BREAKER_FAILURES`, `LLM_BREAKER_COOLDOWN_S`, `BRIEFING_TTL_S`, `NWS_POINT_ALERTS_URL`,
 `NWS_ALERT_DETAIL_BASE`, `NWS_USER_AGENT`, `USGS_IMAGERY_BASE`, `IMAGERY_CACHE_MAX_BYTES`,
+`GIBS_WMTS_BASE`, `SATELLITE_CACHE_MAX_BYTES`,
 `API_RATE_LIMIT_RPS`, `API_RATE_LIMIT_BURST`, `TRUSTED_PROXIES`, `DISABLE_WORKFLOW_ROUTES`,
 `WORKFLOW_API_SIGNING_KEY` (or `WORKFLOW_AUTH_SIGNING_KEY`), `TEMPORAL_ADDRESS`,
-`TEMPORAL_NAMESPACE`, `TEMPORAL_ALERTS_TASK_QUEUE`.
+`TEMPORAL_NAMESPACE`, `TEMPORAL_ALERTS_TASK_QUEUE`. The old `*_CACHE_MAX_ENTRIES` variables are ignored.

@@ -15,6 +15,7 @@ export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] =
   { id: "dewpoint", name: "Dew Point", icon: "drop" },
   { id: "wind", name: "Wind", icon: "wind" },
   { id: "precip-accum", name: "Rain Total", icon: "drop" },
+  { id: "precip-24h", name: "Past 24 Hr Precip", icon: "drop" },
   { id: "cloud", name: "Clouds", icon: "cloud" },
   { id: "uv", name: "UV Index", icon: "sun" },
   { id: "air-quality", name: "Air Quality", icon: "dust" },
@@ -30,6 +31,13 @@ export const LAYER_SYMBOLS: Record<LayerIcon, SymbolViewProps["name"]> = {
   cloud: { ios: "cloud.fill", android: "cloud" },
   sun: { ios: "sun.max.fill", android: "wb_sunny" },
   ozone: { ios: "sun.haze.fill", android: "hexagon" },
+};
+
+/** GOES satellite imagery: a switch drawn under any weather layer, not one of the layers above. */
+export const SATELLITE_OVERLAY = {
+  name: "Satellite clouds",
+  detail: "GOES imagery under the radar, every 10 minutes",
+  symbol: { ios: "globe.americas.fill", android: "satellite_alt" } as SymbolViewProps["name"],
 };
 
 export function layerOption(id: LayerType) {

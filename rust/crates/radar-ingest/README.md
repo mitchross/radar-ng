@@ -11,6 +11,7 @@ Source of truth: `docs/rust-migration/specs/spec-ingest-mrms-hrrr.md`. Defect de
 | Area | Tests | Result |
 |---|---|---|
 | MRMS end to end (fixture GRIB, fake S3, render, manifest, ProcessedSet, cleanup) | `tests/mrms_end_to_end.rs` (11) | 11 pass |
+| MRMS 24-hour QPE layer (toggle, render, grid unit, manifest, cleanup) | `tests/mrms_qpe.rs` (2) | 2 pass |
 | HRRR pure logic (run selection, publishable prefix, extended tail, resampling, wind rotation H24) | `tests/hrrr_pure.rs` (10) | 10 pass |
 | HRRR publication coherence (H5, H6, H7, H21) | `tests/hrrr_publish.rs` (4) | 4 pass |
 | HRRR activities against fake S3 and the Lambert fixture (H1, H2, H10, H11, H12, H13, H15 to H19, D3, D5) | `tests/hrrr_activities.rs` (12) | 12 pass |
@@ -56,6 +57,16 @@ With `PACKED_TILES` on (default), `process_frame` also packs the frame into its 
 bucket (`packed.rs`, `docs/packed-tiles.md`) and lists it in `layers.<layer>.packed` after the frame.
 A packing failure is logged (`packed_failed`) and never fails the frame.
 
+`mrms_qpe` (layer `precip-24h`, schedule `ingest-mrms-qpe-24h`): `mrms::process_frame` hands this layer to
+`mrms_qpe::process_frame`. It converts MultiSensor QPE 24H Pass 1 from mm to inches (negative missing codes
+become NaN), renders the `precip_accum` palettes at z4 to z7, dumps the grid in `in` and adds the frame. No
+packed bucket. `list_unprocessed_keys` returns no keys for the layer unless `MRMS_QPE_24H_ENABLED` is on.
+
+With `PRECIP_TYPE` on (default), `process_frame` also fetches the MRMS PrecipFlag file nearest the
+frame (at most 5 minutes away, in parallel with the reflectivity download) and colors the tiles by
+precipitation type (`precip_type.rs`). A missing, late or bad PrecipFlag file is logged
+(`precip_flag_missing`, `precip_flag_failed`); the frame then renders with the rain ramp only.
+
 `hrrr` activities:
 
 - `find_latest_run(ctx, now) -> FindRunResult`
@@ -64,6 +75,12 @@ A packing failure is logged (`packed_failed`) and never fails the frame.
 - `publish_run(ctx, run_id, results) -> Vec<String>`
 - `mark_processed(ctx, run_id)`
 - `cleanup(ctx, retention_hours) -> HrrrCleanupResult`
+
+With `PACKED_TILES` on, each rendered layer of an hour (not `precip-type`) is also packed into its run
+bucket (`hrrr/packed.rs`): hours 1 to 24 in `<run>`, 25 to 48 in `<run>.p1`. An hour whose PNG tiles
+exist but whose slot is missing is rendered again. `publish_run` lists the buckets of every run the
+layer's frames come from (the extended tail included) in the same manifest write as the frames.
+`cleanup` deletes buckets of unreferenced runs past the retention, as it does run directories.
 
 `global_model` activities (Rust-only, `IngestGlobalModelWorkflow`; `Product` is `radar-gfs` or `uv`):
 
