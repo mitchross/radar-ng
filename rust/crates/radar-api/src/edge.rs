@@ -33,6 +33,7 @@ use crate::grid;
 use crate::health;
 use crate::manifest;
 use crate::nowcast;
+use crate::outlooks;
 use crate::palettes;
 use crate::places;
 use crate::prefetch;
@@ -96,6 +97,7 @@ pub fn api_router() -> Router<AppState> {
         .route("/api/basemap/style/{name}", get(basemap::get_basemap_style))
         .route("/api/alerts", get(places::get_alerts))
         .route("/api/alerts/map", get(places::get_alerts_map))
+        .route("/api/outlooks", get(outlooks::get_outlooks))
         .route("/api/alerts/explain", get(briefing::explain_alert))
         .route("/api/geocode", get(places::get_geocode))
         .route("/api/reverse-geocode", get(places::get_reverse_geocode))
