@@ -230,13 +230,13 @@ function Compass({ theme, towardDeg }: { theme: WeatherClearTheme; towardDeg: nu
   const S = 46;
   const c = S / 2;
   const arrow = useMemo(() => {
-    const p = Skia.Path.Make();
-    p.moveTo(c, 7);
-    p.lineTo(c + 6, c + 7);
-    p.lineTo(c, c + 3);
-    p.lineTo(c - 6, c + 7);
-    p.close();
-    return p;
+    return Skia.PathBuilder.Make()
+      .moveTo(c, 7)
+      .lineTo(c + 6, c + 7)
+      .lineTo(c, c + 3)
+      .lineTo(c - 6, c + 7)
+      .close()
+      .build();
   }, [c]);
   return (
     <View style={{ width: S, height: S }}>
@@ -259,9 +259,9 @@ function SunArc({ theme, progress }: { theme: WeatherClearTheme; progress: numbe
   const cx = W / 2 - (W / 2 - 8) * Math.cos(angle);
   const cy = H - 6 - (H - 16) * Math.sin(angle);
   const arc = useMemo(() => {
-    const p = Skia.Path.Make();
-    p.addArc({ x: 8, y: 10, width: W - 16, height: (H - 16) * 2 }, -180, 180);
-    return p;
+    return Skia.PathBuilder.Make()
+      .addArc({ x: 8, y: 10, width: W - 16, height: (H - 16) * 2 }, -180, 180)
+      .build();
   }, []);
   return (
     <Canvas style={{ width: W, height: H, alignSelf: "center", marginTop: 6 }}>
