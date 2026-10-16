@@ -1,16 +1,17 @@
 //! `GET /api/forecast/{lat}/{lon}`: the Open-Meteo passthrough with a rounded-cell cache (spec 5.2).
 //!
 //! The point is rounded to one decimal (about 11 km). The upstream request and the cache key both
-//! use the rounded values. The 200 body is the Open-Meteo JSON, unchanged. Failures are
+//! use the rounded values. Concurrent misses for one cell share one upstream request. The 200 body
+//! is the Open-Meteo JSON, unchanged, cached encoded. Failures are
 //! `502 {"error":"upstream_unavailable"}` with **no** `Cache-Control`. A 200 whose body is not JSON
 //! is also a 502 (defect D5 fix; Python returned 500).
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use bytes::Bytes;
 use radar_core::pycompat::float_repr;
 use radar_core::time::round_digits;
 use serde_json::Value;
@@ -47,45 +48,50 @@ pub fn cell_key(lat: f64, lon: f64) -> (f64, f64, String) {
     (glat, glon, key)
 }
 
-/// Forecast body for a point, counted as one `forecast_requests_total` request (the briefing path).
+/// Forecast body for a point, parsed, counted as one `forecast_requests_total` request (the
+/// briefing path).
 ///
 /// # Errors
 /// [`ForecastError::OutOfRange`] for a bad point, [`ForecastError::Upstream`] for any upstream failure.
-pub async fn forecast_for(
-    state: &AppState,
-    lat: f64,
-    lon: f64,
-) -> Result<Arc<Value>, ForecastError> {
+pub async fn forecast_for(state: &AppState, lat: f64, lon: f64) -> Result<Value, ForecastError> {
     state
         .metrics
         .counters
         .forecast_requests_total
         .fetch_add(1, Ordering::Relaxed);
-    forecast_lookup(state, lat, lon).await
+    let body = forecast_lookup(state, lat, lon).await?;
+    serde_json::from_slice(&body).map_err(|_| ForecastError::Upstream)
 }
 
-/// Forecast body for a point, from the cache or Open-Meteo. Does not count the request: the caller
-/// does, exactly once, so `GET /api/forecast` is counted once (before validation, as in Python).
+/// Encoded forecast body for a point, from the cache or Open-Meteo. Does not count the request:
+/// the caller does, exactly once, so `GET /api/forecast` is counted once (before validation, as in
+/// Python). A request that waited on another request's upstream call counts as a cache hit.
 ///
 /// # Errors
 /// [`ForecastError::OutOfRange`] for a bad point, [`ForecastError::Upstream`] for any upstream failure.
-pub async fn forecast_lookup(
-    state: &AppState,
-    lat: f64,
-    lon: f64,
-) -> Result<Arc<Value>, ForecastError> {
+pub async fn forecast_lookup(state: &AppState, lat: f64, lon: f64) -> Result<Bytes, ForecastError> {
     if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
         return Err(ForecastError::OutOfRange);
     }
     let (glat, glon, key) = cell_key(lat, lon);
-    if let Some(hit) = state.forecast_cache.get(&key) {
+    let entry = state
+        .forecast_cache
+        .entry(key)
+        .or_try_insert_with(fetch(state, glat, glon))
+        .await
+        .map_err(|_| ForecastError::Upstream)?;
+    if !entry.is_fresh() {
         state
             .metrics
             .counters
             .forecast_cache_hits_total
             .fetch_add(1, Ordering::Relaxed);
-        return Ok(hit);
     }
+    Ok(entry.into_value())
+}
+
+/// One Open-Meteo request for a rounded cell, encoded.
+async fn fetch(state: &AppState, glat: f64, glon: f64) -> Result<Bytes, ForecastError> {
     let query: Vec<(&str, String)> = vec![
         ("latitude", float_repr(glat)),
         ("longitude", float_repr(glon)),
@@ -119,9 +125,7 @@ pub async fn forecast_lookup(
             .fetch_add(1, Ordering::Relaxed);
         return Err(ForecastError::Upstream);
     };
-    let data = Arc::new(data);
-    state.forecast_cache.insert(key, data.clone());
-    Ok(data)
+    Ok(respond::encode(&data))
 }
 
 /// `GET /api/forecast/{lat}/{lon}`.
@@ -145,7 +149,7 @@ pub async fn get_forecast(
     };
     let ttl = state.config.forecast_ttl_s;
     let resp = match forecast_lookup(&state, lat, lon).await {
-        Ok(data) => respond::json(StatusCode::OK, &data, Some(&respond::public_max_age(ttl))),
+        Ok(data) => respond::json_bytes(StatusCode::OK, data, Some(&respond::public_max_age(ttl))),
         Err(ForecastError::OutOfRange) => {
             respond::detail(StatusCode::UNPROCESSABLE_ENTITY, "lat/lon out of range")
         }

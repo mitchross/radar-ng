@@ -218,6 +218,25 @@ fn nsk_04_headline_is_withheld_until_enough_runs_are_scored() {
 }
 
 #[test]
+fn summary_is_stable_until_the_oldest_counted_entry_leaves_the_window() {
+    let cfg = SkillConfig::default();
+    let log = six_run_log();
+    // The oldest entry was scored 6 minutes ago; the window is 24 h.
+    let expiry = summary_expiry(&log, now(), None, &cfg).expect("entries are counted");
+    assert_eq!(
+        expiry,
+        now() - ChronoDuration::minutes(6) + ChronoDuration::hours(24)
+    );
+    let before = summarize(&log, expiry - ChronoDuration::seconds(1), None, &cfg);
+    assert_eq!(before, summarize(&log, now(), None, &cfg));
+    assert_ne!(
+        summarize(&log, expiry + ChronoDuration::seconds(1), None, &cfg),
+        before
+    );
+    assert_eq!(summary_expiry(&log_of(vec![]), now(), None, &cfg), None);
+}
+
+#[test]
 fn nsk_05_per_lead_scores_and_the_30_minute_headline() {
     let cfg = SkillConfig::default();
     let summary = summarize(&six_run_log(), now(), None, &cfg);
