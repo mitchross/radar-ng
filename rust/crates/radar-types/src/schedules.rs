@@ -2,9 +2,9 @@
 //!
 //! [`all_schedules`] reproduces `temporal/schedules/seed.py` exactly: the same
 //! 12 schedules, in the same order, with the same intervals, jitter, catch-up
-//! windows, execution timeouts, queues and arguments. The seeder overwrites live
-//! definitions on every worker start, so any drift here silently changes running
-//! schedules.
+//! windows, execution timeouts, queues and arguments. `ingest-mrms-qpe-24h` is
+//! the one schedule added since. The seeder overwrites live definitions on every
+//! worker start, so any drift here silently changes running schedules.
 
 use serde_json::{Value, json};
 
@@ -20,6 +20,8 @@ pub const SCHEDULE_ACTION_ID_PREFIX: &str = "sched-";
 pub const SCHEDULE_INGEST_MRMS_BASE: &str = "ingest-mrms-base";
 /// Schedule ID of the MRMS composite reflectivity schedule.
 pub const SCHEDULE_INGEST_MRMS_COMPOSITE: &str = "ingest-mrms-composite";
+/// Schedule ID of the MRMS 24-hour precipitation (QPE) schedule.
+pub const SCHEDULE_INGEST_MRMS_QPE_24H: &str = "ingest-mrms-qpe-24h";
 /// Schedule ID of the HRRR schedule.
 pub const SCHEDULE_INGEST_HRRR: &str = "ingest-hrrr";
 /// Schedule ID of the air-quality schedule.
@@ -57,6 +59,8 @@ pub const FAST_JITTER_S: u64 = 20;
 pub const DEFAULT_CATCHUP_S: u64 = 60 * 60;
 /// MRMS poll interval: 1 minute.
 pub const MRMS_POLL_INTERVAL_S: u64 = 60;
+/// MRMS QPE poll interval: 5 minutes (the product is hourly).
+pub const MRMS_QPE_POLL_INTERVAL_S: u64 = 5 * 60;
 
 /// Overlap policy of a schedule. The only policy used is `SKIP` (a slow run
 /// means the next fire is dropped).
@@ -144,7 +148,7 @@ pub fn action_workflow_id(schedule_id: &str) -> String {
     format!("{SCHEDULE_ACTION_ID_PREFIX}{schedule_id}")
 }
 
-/// The 12 schedules, in `seed.py` order. Seed-time queue routing is applied by
+/// The 13 schedules, in `seed.py` order with `ingest-mrms-qpe-24h` after the reflectivity ones. Seed-time queue routing is applied by
 /// [`schedule_action_queue`], not here.
 pub fn all_schedules() -> Vec<ScheduleDef> {
     vec![
@@ -171,6 +175,18 @@ pub fn all_schedules() -> Vec<ScheduleDef> {
         .with_args(vec![json!({
             "mrms_prefix": "CONUS/MergedReflectivityComposite_00.50",
             "layer_name": "radar-composite",
+        })]),
+        // Hourly product; the worker skips it unless `MRMS_QPE_24H_ENABLED` is set.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_MRMS_QPE_24H,
+            wire::WORKFLOW_INGEST_MRMS,
+            MRMS_QPE_POLL_INTERVAL_S,
+            6 * 60,
+            MRMS_TASK_QUEUE,
+        )
+        .with_args(vec![json!({
+            "mrms_prefix": "CONUS/MultiSensor_QPE_24H_Pass1_00.00",
+            "layer_name": "precip-24h",
         })]),
         ScheduleDef::new(
             SCHEDULE_INGEST_HRRR,

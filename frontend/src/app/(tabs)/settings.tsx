@@ -1010,6 +1010,7 @@ function buildStackActivity(
     temperature: "Temperature layer published",
     wind: "Wind layer published",
     "precip-accum": "Rain-total layer published",
+    "precip-24h": "Past-24-hour precip published",
     "precip-type": "Precip-type layer published",
     cloud: "Cloud layer published",
     "air-quality": "Air-quality run published",
