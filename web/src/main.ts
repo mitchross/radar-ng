@@ -46,6 +46,8 @@ const rainAlerts = new BrowserRainAlerts();
 const IOS_BROWSER = /iPhone|iPad|iPod/.test(navigator.userAgent) && !matchMedia("(display-mode: standalone)").matches;
 
 maplibregl.setWorkerUrl(workerUrl);
+// Default is 16. Tiles share one HTTP/3 connection, and each costs a ~140 ms tunnel round trip.
+maplibregl.setMaxParallelImageRequests(48);
 let serverPalettes: ServerPalettes | null = null;
 void fetchServerPalettes().then((p) => {
   serverPalettes = p;

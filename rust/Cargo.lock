@@ -2425,6 +2425,7 @@ dependencies = [
  "http-body-util",
  "lru 0.12.5",
  "moka",
+ "percent-encoding",
  "pmtiles",
  "radar-core",
  "radar-storms",

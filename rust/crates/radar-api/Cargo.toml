@@ -36,6 +36,7 @@ temporalio-client.workspace = true
 temporalio-common.workspace = true
 pmtiles = { version = "0.24", default-features = false, features = ["iter-async", "write"] }
 lru = "0.12"
+percent-encoding = "2"
 
 [dev-dependencies]
 tempfile.workspace = true
