@@ -18,8 +18,9 @@ policy, scheduling and the AQM concurrency limit.
 Config structs read from the environment, with `new(..)` / struct literals for tests:
 
 - `aqm::AqmConfig` (`TILE_DIR`, `STATE_DIR`, `GRID_DIR` via `GridConfig`, `AQM_TMP_ROOT`, palette names from
-  `PALETTES`). Fields include `sources: radar_grib::naqfc::AqmSources`, `heartbeat_every` (30 s) and
-  `read_timeout` (300 s).
+  `PALETTES`, `PACKED_TILES`). Fields include `sources: radar_grib::naqfc::AqmSources`, `heartbeat_every`
+  (30 s), `read_timeout` (300 s) and `packed_tiles`. With packing on, chunk `k` packs its frames into the
+  run's bucket part `k` (`aqm/packed.rs`), and `aqm_publish_run` lists the run's buckets with the frames.
 - `tropical::TropicalConfig` (`feed_url`, `gis_url`, timeouts 20/15/15 s, `gis_concurrency` 8).
 - `tile_cleanup::TileCleanupConfig` (`TILE_DIR`, `STATE_DIR`, `GridConfig`).
 - `open_meteo::OpenMeteoConfig` (`OPENMETEO_BIN`, `OPENMETEO_DATA_DIR`, heartbeat 30 s).

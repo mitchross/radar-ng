@@ -1214,7 +1214,14 @@ async function boot() {
     renderRadarStatus();
     return;
   }
-  if (packed) void serverPalettesReady.then((p) => p && packed.setServerPalettes(p));
+  // Only reflectivity has a built-in table; other layers turn packed once the server tables arrive.
+  if (packed)
+    void serverPalettesReady.then((p) => {
+      if (!p) return;
+      packed.setServerPalettes(p);
+      syncPacked();
+      showCurrentFrame();
+    });
   await refreshManifest();
   overlays.start();
   if (rainAlerts.enabled) void rainAlerts.connect();

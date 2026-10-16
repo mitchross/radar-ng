@@ -130,7 +130,7 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `EXTENDED_FORECAST_HOURS` | `48` | Extended sub-hourly HRRR hours. |
 | `HRRR_ENABLED_LAYERS` | `radar-hrrr` (compose: all layers) | Comma-separated HRRR layers: `radar-hrrr`, `temperature`, `feels-like`, `dewpoint`, `humidity`, `wind`, `cape`, `precip-type`, `precip-accum`, `cloud`. `feels-like` is the NWS heat index or wind chill. |
 | `MRMS_QPE_24H_ENABLED` | `0` (compose: `1`) | Render the `precip-24h` layer: MRMS MultiSensor QPE Pass 1, past 24 hours, in inches, colored with `precip_accum`. Hourly; each file lands about 16 minutes after the hour. Read by the MRMS worker. The `ingest-mrms-qpe-24h` schedule is always seeded; with `0` it lists nothing and its cleanup removes old frames. |
-| `PACKED_TILES` | `1` | Write packed data tile buckets (`docs/packed-tiles.md`) for `radar`, `radar-composite` and `nowcast`. `0` stops new buckets; the PNG pyramids are unchanged. Read by the MRMS and nowcast workers. |
+| `PACKED_TILES` | `1` | Write packed data tile buckets (`docs/packed-tiles.md`) for `radar`, `radar-composite`, `nowcast`, the HRRR layers (not `precip-type`) and the AQM layers. `0` stops new buckets; HRRR and AQM publishes then drop their buckets from the manifest. The PNG pyramids are unchanged. Read by the MRMS, nowcast, HRRR and AQM workers. |
 | `PRECIP_TYPE` | `1` | Color `radar` and `radar-composite` by precipitation type (rain, snow, mix) from MRMS PrecipFlag. Packed buckets become v2 typed codes. `0` gives rain-only frames and v1 buckets. Read by the MRMS worker. |
 | `PRECIP_FLAG_PREFIX` | `CONUS/PrecipFlag_00.00` | MRMS PrecipFlag product prefix in `noaa-mrms-pds`. |
 

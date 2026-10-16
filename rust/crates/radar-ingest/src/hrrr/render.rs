@@ -104,7 +104,14 @@ pub fn render_layer(
         ..FrameOptions::default()
     };
     let result = render_frame_palettes(grid, &kind, &tables, &dirs, &HRRR_ZOOMS, &options)?;
-    Ok(result.rendered_palettes().len() == tables.len())
+    let rendered = result.rendered_palettes().len() == tables.len();
+    if rendered
+        && cfg.packed_tiles
+        && let Err(err) = super::packed::pack_hour(&cfg.paths, layer, run_id, valid, grid)
+    {
+        tracing::warn!(layer, run_id, valid, err = %format!("{err:#}"), "packed_failed");
+    }
+    Ok(rendered)
 }
 
 /// Whether a stored identity is acceptable for the current contract (spec H13 to H18).
