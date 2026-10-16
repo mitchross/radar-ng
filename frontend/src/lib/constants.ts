@@ -111,6 +111,7 @@ export const LAYERS: LayerConfig[] = [
   // MRMS multi-sensor QPE: observed 24-hour total, one frame per hour (z4-z7).
   { id: "precip-24h", label: "Rain 24h", icon: "H", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 7 },
   { id: "cloud", label: "Clouds", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  { id: "uv", label: "UV", icon: "U", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "cape", label: "CAPE", icon: "S", isFillLayer: false, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   // NAQFC AQMv7 guidance (~5 km): current hour + 3-day forecast per cycle.
   { id: "air-quality", label: "Air Quality", icon: "Q", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },

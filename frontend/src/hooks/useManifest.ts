@@ -4,6 +4,7 @@ import { fetchSelfHostedManifest } from "../lib/api";
 import { useWeatherStore } from "../stores/useWeatherStore";
 import { DEFAULTS } from "../lib/constants";
 import { cacheManifestIfChanged, readCachedManifest } from "../lib/manifestCache";
+import { longRangeFrames } from "../lib/playbackSequence";
 import type { RadarFrame, SelfHostedManifest } from "../types/weather";
 
 /**
@@ -12,6 +13,7 @@ import type { RadarFrame, SelfHostedManifest } from "../types/weather";
  *   mode=current  → past MRMS only (radar/radar-hrrr fall back to radar
  *                   since MRMS is the observation source)
  *   mode=forecast → past MRMS (last hour) + nowcast (0..+60min) + HRRR (+1h..+48h)
+ *                   + GFS (after the last HRRR frame, to +72h)
  *
  * Non-radar layers (temperature/wind/cape/precip-type) always source from
  * their own HRRR series since we don't observe them in real time.
@@ -52,7 +54,8 @@ function buildSelfHostedFrames(
     const past = toFrames("radar", "radar").filter((f) => f.time <= nowSec);
     const nowcast = toFrames("nowcast", "nowcast").filter((f) => f.time > nowSec && f.time <= nowSec + 60 * 60);
     const hrrr = toFrames("radar-hrrr", "radar-hrrr").filter((f) => f.time > nowSec + 60 * 60);
-    return dedupe([...past, ...nowcast, ...hrrr].sort((a, b) => a.time - b.time));
+    const gfs = longRangeFrames(toFrames("radar-gfs", "radar-gfs"), hrrr, nowSec);
+    return dedupe([...past, ...nowcast, ...hrrr, ...gfs].sort((a, b) => a.time - b.time));
   }
 
   return toFrames(layer);
@@ -80,7 +83,7 @@ export function pickNowFrameIndex(frames: RadarFrame[]): number {
   const nowSec = Math.floor(Date.now() / 1000);
   for (let i = frames.length - 1; i >= 0; i--) {
     const f = frames[i];
-    const isObserved = f.source !== "nowcast" && f.source !== "radar-hrrr";
+    const isObserved = f.source !== "nowcast" && f.source !== "radar-hrrr" && f.source !== "radar-gfs";
     if (isObserved && f.time <= nowSec) return i;
   }
   let best = 0;

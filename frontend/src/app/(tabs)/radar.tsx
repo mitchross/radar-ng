@@ -64,6 +64,7 @@ const WEATHER_LAYERS: readonly LayerType[] = [
   "precip-accum",
   "precip-24h",
   "cloud",
+  "uv",
   "air-quality",
   "ozone",
 ];
@@ -72,6 +73,7 @@ const FIXED_LAYER_OPACITY: Partial<Record<LayerType, number>> = {
   wind: 0.6,
   cape: 0.5,
   cloud: 0.65,
+  uv: 0.6,
   "air-quality": 0.75,
   ozone: 0.75,
 };

@@ -182,13 +182,14 @@ pub fn inspect_complete_pyramid(
         )));
     }
     let paths = list_tile_paths(dir)?;
-    if paths.is_empty() {
+    let marker = dir.join(PYRAMID_COMPLETE_FILE);
+    // An empty pyramid is valid only when a marker binds zero tiles (`FrameOptions::keep_empty`).
+    if paths.is_empty() && !marker.is_file() {
         return Err(TilerError::Corrupt(format!(
             "published pyramid has no PNG tiles: {}",
             dir.display()
         )));
     }
-    let marker = dir.join(PYRAMID_COMPLETE_FILE);
     if !marker.is_file() {
         let detail = if dir.join(PREVIOUS_PYRAMID_COMPLETE_FILE).exists() {
             format!("legacy completion marker {PREVIOUS_PYRAMID_COMPLETE_FILE:?}")

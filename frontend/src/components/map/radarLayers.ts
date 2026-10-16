@@ -6,7 +6,7 @@
 import type { SymbolViewProps } from "expo-symbols";
 import type { LayerType } from "../../types/weather";
 
-export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" | "ozone";
+export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" | "sun" | "ozone";
 
 export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] = [
   { id: "radar", name: "Radar", icon: "rain" },
@@ -17,6 +17,7 @@ export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] =
   { id: "precip-accum", name: "Rain Total", icon: "drop" },
   { id: "precip-24h", name: "Past 24 Hr Precip", icon: "drop" },
   { id: "cloud", name: "Clouds", icon: "cloud" },
+  { id: "uv", name: "UV Index", icon: "sun" },
   { id: "air-quality", name: "Air Quality", icon: "dust" },
   { id: "ozone", name: "Ozone", icon: "ozone" },
 ];
@@ -28,6 +29,7 @@ export const LAYER_SYMBOLS: Record<LayerIcon, SymbolViewProps["name"]> = {
   wind: { ios: "wind", android: "air" },
   drop: { ios: "drop.fill", android: "water_drop" },
   cloud: { ios: "cloud.fill", android: "cloud" },
+  sun: { ios: "sun.max.fill", android: "wb_sunny" },
   ozone: { ios: "sun.haze.fill", android: "hexagon" },
 };
 

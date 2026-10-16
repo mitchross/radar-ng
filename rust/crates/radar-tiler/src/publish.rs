@@ -381,6 +381,21 @@ pub fn publish_palette_set<F>(
 where
     F: FnOnce(&[(String, PathBuf)]) -> Result<Vec<u64>>,
 {
+    publish_palette_set_with(outputs, identities, lock_root, false, render)
+}
+
+/// [`publish_palette_set`], optionally publishing a render with no tiles as a complete empty pyramid
+/// (`keep_empty`), so tile requests for it get the cacheable empty 204 instead of 404.
+pub fn publish_palette_set_with<F>(
+    outputs: &[(String, PathBuf)],
+    identities: &[(String, PyramidIdentity)],
+    lock_root: Option<&Path>,
+    keep_empty: bool,
+    render: F,
+) -> Result<MultiPaletteRenderResult>
+where
+    F: FnOnce(&[(String, PathBuf)]) -> Result<Vec<u64>>,
+{
     if outputs.is_empty() {
         return Ok(MultiPaletteRenderResult {
             outcomes: Vec::new(),
@@ -469,7 +484,10 @@ where
                 paths.len()
             )));
         }
-        if count == 0 && final_path.exists() {
+        if count == 0 && keep_empty {
+            // An empty pyramid has no tiles to sync; its directory is made durable here.
+            durable_mkdir(staged_dir)?;
+        } else if count == 0 && final_path.exists() {
             return Err(TilerError::Conflict(format!(
                 "existing pyramid conflicts with an empty render: {}",
                 final_path.display()
@@ -498,7 +516,7 @@ where
     let mut staged: Vec<Option<PyramidInspection>> = Vec::with_capacity(unresolved.len());
     for (k, paths) in staged_paths.iter().enumerate() {
         let (name, staged_dir) = &staged_targets[k];
-        if counts[k] == 0 {
+        if counts[k] == 0 && !keep_empty {
             staged.push(None);
             continue;
         }
@@ -518,7 +536,7 @@ where
         let (name, _) = &staged_targets[k];
         let final_path = &finals[i].1;
         let identity = identity_for(name).expect("checked above");
-        if counts[k] == 0 {
+        if counts[k] == 0 && !keep_empty {
             actions.push(Action::Empty);
         } else if !final_path.exists() {
             actions.push(Action::Create);
@@ -698,6 +716,29 @@ mod tests {
         );
         assert!(!out.exists());
         assert!(result.rendered_palettes().is_empty());
+    }
+
+    #[test]
+    fn keep_empty_publishes_a_complete_pyramid_without_tiles() {
+        let tmp = tempfile::tempdir().unwrap();
+        let out = tmp.path().join("uv/classic/ts");
+        let outputs = vec![("classic".to_string(), out.clone())];
+        let ids = vec![("classic".to_string(), sample_identity())];
+        let result = publish_palette_set_with(&outputs, &ids, None, true, |_| Ok(vec![0])).unwrap();
+        let outcome = result.outcome("classic").unwrap();
+        assert_eq!(outcome.status, PublishStatus::Created);
+        assert_eq!(outcome.tile_count, 0);
+        assert_eq!(
+            crate::marker::complete_pyramid_identity(&out),
+            Some(sample_identity())
+        );
+        // A second publish finds the empty pyramid and does not render.
+        let again =
+            publish_palette_set_with(&outputs, &ids, None, true, |_| panic!("no render")).unwrap();
+        assert_eq!(
+            again.outcome("classic").unwrap().status,
+            PublishStatus::ExistingValid
+        );
     }
 
     #[test]

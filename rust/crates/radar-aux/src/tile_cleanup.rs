@@ -19,9 +19,10 @@ use radar_core::time::parse_iso_as_utc;
 use radar_types::payloads::cleanup::TileCleanupResult;
 use tracing::info;
 
-/// Per-layer retention in minutes (`LAYER_RETENTION_MIN`, verbatim). `air-quality` and `ozone` are not
-/// here: `aqm_cleanup` owns them.
-pub const LAYER_RETENTION_MIN: [(&str, i64); 13] = [
+/// Per-layer retention in minutes (`LAYER_RETENTION_MIN`, verbatim, plus `precip-24h` and the two
+/// global-model layers, whose run directories `global_model_cleanup` owns). `air-quality` and `ozone`
+/// are not here: `aqm_cleanup` owns them.
+pub const LAYER_RETENTION_MIN: [(&str, i64); 15] = [
     ("radar", 240),
     ("radar-composite", 240),
     ("precip-24h", 240),
@@ -35,6 +36,8 @@ pub const LAYER_RETENTION_MIN: [(&str, i64); 13] = [
     ("precip-type", 720),
     ("precip-accum", 720),
     ("cloud", 720),
+    ("radar-gfs", 720),
+    ("uv", 2160),
 ];
 
 /// Age after which an orphaned `.tmp-` staging directory is removed (by its mtime).
@@ -95,7 +98,7 @@ pub enum CleanupError {
     Join(String),
 }
 
-/// `tile_cleanup_sweep`: sweeps all 12 layers, then the grid store.
+/// `tile_cleanup_sweep`: sweeps all 14 layers, then the grid store.
 pub async fn tile_cleanup_sweep(
     cfg: &TileCleanupConfig,
 ) -> Result<TileCleanupResult, CleanupError> {
@@ -277,8 +280,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn retention_table_has_thirteen_layers_and_no_aqm() {
-        assert_eq!(LAYER_RETENTION_MIN.len(), 13);
+    fn retention_table_has_fifteen_layers_and_no_aqm() {
+        assert_eq!(LAYER_RETENTION_MIN.len(), 15);
         assert!(
             LAYER_RETENTION_MIN
                 .iter()

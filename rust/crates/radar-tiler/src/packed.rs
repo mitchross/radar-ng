@@ -68,6 +68,7 @@ impl Quantizer {
             "cloud_cover" => (5.0, 0.0, 10.0),
             "pm25" => (1.0, 0.5, 0.0),
             "ozone" => (1.0, 0.0, 0.0),
+            "uv_index" => (0.5, 0.5, 0.5),
             _ => return None,
         };
         Some(Quantizer {

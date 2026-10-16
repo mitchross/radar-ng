@@ -46,6 +46,21 @@ export function playbackSequence(frames: readonly TimedFrame[], zoom: TimelineZo
   return [...past, ...future];
 }
 
+/** Future radar ends here: GFS fills from the last HRRR frame out to 72 h. */
+export const RADAR_HORIZON_S = 72 * HOUR;
+
+/** The GFS frames the radar timeline plays: after HRRR's last frame (or +1h), up to the horizon. */
+export function longRangeFrames<T extends TimedFrame>(gfs: readonly T[], hrrr: readonly TimedFrame[], nowSec: number): T[] {
+  const hrrrEnd = hrrr.reduce((t, f) => Math.max(t, f.time), nowSec + HOUR);
+  return gfs.filter((f) => f.time > hrrrEnd && f.time <= nowSec + RADAR_HORIZON_S);
+}
+
+/** Label of the long zoom (key "48h"): "72h" once frames reach past two days. */
+export function longZoomLabel(frames: readonly TimedFrame[], nowSec: number): string {
+  const last = frames.length ? frames[frames.length - 1].time : nowSec;
+  return last - nowSec > 54 * HOUR ? "72h" : "48h";
+}
+
 /** Index into `frames` of the frame closest in time to `sec`. */
 export function nearestIndex(frames: readonly TimedFrame[], sec: number): number {
   let best = 0;

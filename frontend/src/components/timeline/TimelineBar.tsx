@@ -1,6 +1,6 @@
 /**
  * Cumulus radar timeline — Apple-Weather-inspired "forecast pill".
- * Violet play button + layer/date header + 1h/48h segmented zoom + segmented
+ * Violet play button + layer/date header + 1h/48h (72h with GFS) segmented zoom + segmented
  * track (past / nowcast / HRRR / long-range) + NOW marker + draggable thumb.
  * Playback follows the configured speed within the active zoom window.
  */
@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
 import { findClosestIdx } from "../../lib/frameIndex";
-import { offsetLabel, playbackSequence, positionOf, type TimelineZoom } from "../../lib/playbackSequence";
+import { longZoomLabel, offsetLabel, playbackSequence, positionOf, type TimelineZoom } from "../../lib/playbackSequence";
 import { createThrottle } from "../../lib/throttle";
 import { selectionHaptic, tapHaptic } from "../../lib/haptics";
 import { useAppActive } from "../../hooks/useAppActive";
@@ -45,6 +45,7 @@ const LAYER_TITLE: Record<LayerType, string> = {
   "precip-accum": "Rain Total",
   "precip-24h": "Past 24 Hr Precip",
   cloud: "Clouds",
+  uv: "UV Index",
   cape: "Storm Energy",
   "air-quality": "Air Quality",
   ozone: "Ozone",
@@ -124,7 +125,7 @@ export function TimelineBar() {
   // Segment boundaries and axis labels don't depend on the playback index —
   // memoize so the playback tick doesn't rescan frames. Must stay above the
   // early return below (rules-of-hooks).
-  const { nowPct, nowcastPct, axisLabels } = useMemo(() => {
+  const { nowPct, nowcastPct, longPct, longLabel, axisLabels } = useMemo(() => {
     const toPct = (p: number) => (lastPos === 0 ? 0 : (p / lastPos) * 100);
     // Last position at or before a time; -1 when the sequence starts after it.
     const lastPosAtOrBefore = (sec: number) => {
@@ -137,9 +138,14 @@ export function TimelineBar() {
     const labels = sequence.length === 0
       ? []
       : AXIS_FRACTIONS.map((f) => offsetLabel(frames[sequence[Math.round(f * lastPos)]].time, nowSec));
+    // GFS frames (after HRRR's last) get their own, sparser dash.
+    const gfsAt = sequence.findIndex((i) => frames[i].source === "radar-gfs");
+    const nowcastClamped = nowcastP < 0 ? 0 : clampPct(toPct(nowcastP));
     return {
       nowPct: nowP < 0 ? 0 : clampPct(toPct(nowP)),
-      nowcastPct: nowcastP < 0 ? 0 : clampPct(toPct(nowcastP)),
+      nowcastPct: nowcastClamped,
+      longPct: gfsAt < 0 ? 100 : Math.max(nowcastClamped, clampPct(toPct(gfsAt - 1))),
+      longLabel: longZoomLabel(frames, nowSec),
       axisLabels: labels,
     };
   }, [frames, sequence, lastPos, nowSec]);
@@ -195,10 +201,10 @@ export function TimelineBar() {
                   pressed ? styles.controlPressed : null,
                 ]}
                 accessibilityRole="radio"
-                accessibilityLabel={`${z} radar timeline`}
+                accessibilityLabel={`${z === "48h" ? longLabel : z} radar timeline`}
                 accessibilityState={{ checked: zoom === z }}
               >
-                <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.segText, zoom === z ? styles.segTextActive : null]}>{z}</Text>
+                <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.segText, zoom === z ? styles.segTextActive : null]}>{z === "48h" ? longLabel : z}</Text>
               </Pressable>
             ))}
           </View>
@@ -219,14 +225,20 @@ export function TimelineBar() {
             />
           )}
           {/* model forecast */}
-          {100 > nowcastPct && (
+          {longPct > nowcastPct && (
             <View
               style={[
                 styles.segmentHrrr,
-                { left: `${nowcastPct}%`, width: `${100 - nowcastPct}%` },
+                { left: `${nowcastPct}%`, width: `${longPct - nowcastPct}%` },
               ]}
             >
               <DashedRow color="rgba(139,124,255,0.5)" />
+            </View>
+          )}
+          {/* long-range model (GFS) */}
+          {100 > longPct && (
+            <View style={[styles.segmentHrrr, { left: `${longPct}%`, width: `${100 - longPct}%` }]}>
+              <DashedRow color="rgba(139,124,255,0.28)" dashes={24} />
             </View>
           )}
           {/* NOW marker */}
@@ -276,8 +288,8 @@ function useNowSec(): number {
   return Math.floor(useNow(NOW_REFRESH_MS) / 1000);
 }
 
-function DashedRow({ color }: { color: string }) {
-  const dashes = Array.from({ length: 12 });
+function DashedRow({ color, dashes: count = 12 }: { color: string; dashes?: number }) {
+  const dashes = Array.from({ length: count });
   return (
     <View style={styles.dashRow}>
       {dashes.map((_, i) => (

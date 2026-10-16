@@ -6,6 +6,7 @@
 pub mod alerts;
 pub mod aqm;
 pub mod aux;
+pub mod global_model;
 pub mod hrrr;
 pub mod mrms;
 pub mod nowcast;

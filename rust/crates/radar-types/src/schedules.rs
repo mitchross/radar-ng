@@ -2,9 +2,10 @@
 //!
 //! [`all_schedules`] reproduces `temporal/schedules/seed.py` exactly: the same
 //! 12 schedules, in the same order, with the same intervals, jitter, catch-up
-//! windows, execution timeouts, queues and arguments. `ingest-mrms-qpe-24h` is
-//! the one schedule added since. The seeder overwrites live definitions on every
-//! worker start, so any drift here silently changes running schedules.
+//! windows, execution timeouts, queues and arguments. Three schedules were added
+//! since: `ingest-mrms-qpe-24h`, and the Rust-only `ingest-gfs-radar` and
+//! `ingest-uv` at the end. The seeder overwrites live definitions on every worker
+//! start, so any drift here silently changes running schedules.
 
 use serde_json::{Value, json};
 
@@ -42,6 +43,10 @@ pub const SCHEDULE_OPEN_METEO_SYNC_GFS: &str = "open-meteo-sync-gfs";
 pub const SCHEDULE_OPEN_METEO_SYNC_GFS025: &str = "open-meteo-sync-gfs025";
 /// Schedule ID of the Open-Meteo HRRR schedule.
 pub const SCHEDULE_OPEN_METEO_SYNC_HRRR: &str = "open-meteo-sync-hrrr";
+/// Schedule ID of the GFS long-range radar schedule (`radar-gfs`).
+pub const SCHEDULE_INGEST_GFS_RADAR: &str = "ingest-gfs-radar";
+/// Schedule ID of the UV Index schedule (`uv`).
+pub const SCHEDULE_INGEST_UV: &str = "ingest-uv";
 
 /// `GFS013_VARIABLES` (`seed.py`), exact comma-joined list.
 pub const GFS013_VARIABLES: &str = "temperature_2m,relative_humidity_2m,precipitation,showers,snowfall_water_equivalent,frozen_precipitation_percent,cloud_cover,wind_u_component_10m,wind_v_component_10m,shortwave_radiation,uv_index";
@@ -148,8 +153,8 @@ pub fn action_workflow_id(schedule_id: &str) -> String {
     format!("{SCHEDULE_ACTION_ID_PREFIX}{schedule_id}")
 }
 
-/// The 13 schedules, in `seed.py` order with `ingest-mrms-qpe-24h` after the reflectivity ones. Seed-time queue routing is applied by
-/// [`schedule_action_queue`], not here.
+/// The 15 schedules: `seed.py` order with `ingest-mrms-qpe-24h` after the reflectivity ones, then
+/// the two global-model ones. Seed-time queue routing is applied by [`schedule_action_queue`], not here.
 pub fn all_schedules() -> Vec<ScheduleDef> {
     vec![
         ScheduleDef::new(
@@ -275,6 +280,23 @@ pub fn all_schedules() -> Vec<ScheduleDef> {
             "variables": HRRR_VARIABLES,
             "past_days": 1,
         })]),
+        // GFS posts a run every 6 h; a 30 min poll picks it up soon after its last hour lands.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_GFS_RADAR,
+            wire::WORKFLOW_INGEST_GLOBAL_MODEL,
+            30 * 60,
+            40 * 60,
+            HRRR_TASK_QUEUE,
+        )
+        .with_args(vec![json!("radar-gfs")]),
+        ScheduleDef::new(
+            SCHEDULE_INGEST_UV,
+            wire::WORKFLOW_INGEST_GLOBAL_MODEL,
+            60 * 60,
+            40 * 60,
+            HRRR_TASK_QUEUE,
+        )
+        .with_args(vec![json!("uv")]),
     ]
 }
 

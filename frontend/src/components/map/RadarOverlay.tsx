@@ -9,6 +9,7 @@ import type { RadarFrame } from "../../types/weather";
 const SOURCE_MAX_ZOOM: Record<string, number> = {
   radar: 7,
   "radar-hrrr": 6,
+  "radar-gfs": 6,
   nowcast: 6,
 };
 

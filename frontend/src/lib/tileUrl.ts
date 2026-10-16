@@ -3,7 +3,7 @@ import type { LayerType, Palette } from "../types/weather";
 /** Tile URL template for MapLibre RasterSource. */
 export function buildSelfHostedTileUrl(
   serverUrl: string,
-  layer: LayerType | "nowcast",
+  layer: LayerType | "nowcast" | "radar-gfs",
   timestamp: string,
   palette: Palette = "classic",
 ): string {

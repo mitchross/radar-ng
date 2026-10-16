@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { layerLegend, type ServerPalettes } from "./layerLegends";
+import { layerLegend, uvCategory, type ServerPalettes } from "./layerLegends";
 
 const table = (id: string) =>
   JSON.parse(readFileSync(new URL(`../../rust/crates/radar-tiler/assets/${id}.json`, import.meta.url), "utf8"));
@@ -17,6 +17,30 @@ describe("layerLegend", () => {
     expect(temp.title).toBe("Temperature (°F)");
     expect(temp.labels[0]).toBe("-40");
     expect(temp.gradient).toContain("rgb(128,0,255) 0.0%");
+  });
+
+  it("labels the UV legend with whole WHO index values in every palette", () => {
+    for (const palette of ["classic", "muted", "vivid"] as const) {
+      const uv = layerLegend(palettes, palette, "uv")!;
+      expect(uv.title).toBe("UV index (WHO)");
+      expect(uv.labels).toEqual(["1", "11+"]);
+    }
+    expect(layerLegend(palettes, "classic", "uv")!.gradient).toContain("rgb(40,149,0)");
+  });
+
+  it("names WHO categories on the rounded index", () => {
+    expect([0, 2.4, 2.5, 5.4, 6, 7.4, 8, 10.4, 10.5, 14].map(uvCategory)).toEqual([
+      "Low",
+      "Low",
+      "Moderate",
+      "Moderate",
+      "High",
+      "High",
+      "Very high",
+      "Very high",
+      "Extreme",
+      "Extreme",
+    ]);
   });
 
   it("colors the observed 24-hour total with the rain-total table", () => {

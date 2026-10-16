@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Manifest } from "./frames";
+import { buildFrames, isForecastSource, longZoomLabel, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Manifest } from "./frames";
 
 const NOW = 1_800_000_000;
 const iso = (s: number) => new Date(s * 1000).toISOString();
@@ -19,6 +19,35 @@ describe("buildFrames", () => {
     expect(frames.filter((f) => f.source === "radar-hrrr")).toHaveLength(46);
     for (let i = 1; i < frames.length; i++) expect(frames[i].time).toBeGreaterThan(frames[i - 1].time);
     expect(frames[nowIndex(frames, NOW)].time).toBe(NOW);
+  });
+});
+
+describe("GFS long range", () => {
+  const withGfs: Manifest = {
+    layers: {
+      ...manifest.layers,
+      "radar-gfs": { frames: Array.from({ length: 61 }, (_, i) => ({ timestamp: iso(NOW + (i + 24) * 3600), path: `g${i}` })) },
+    },
+  };
+
+  it("plays GFS only after HRRR's last frame and stops at +72h", () => {
+    const frames = buildFrames(withGfs, "radar", NOW);
+    const gfs = frames.filter((f) => f.source === "radar-gfs");
+    expect(gfs[0].time).toBe(NOW + 48 * 3600);
+    expect(gfs[gfs.length - 1].time).toBe(NOW + 72 * 3600);
+    expect(gfs).toHaveLength(25);
+    expect(gfs.every((f) => f.maxZoom === 6)).toBe(true);
+    expect(frames.filter((f) => f.source === "radar-hrrr")).toHaveLength(46);
+    expect(longZoomLabel(frames, NOW)).toBe("72h");
+    expect(longZoomLabel(buildFrames(manifest, "radar", NOW), NOW)).toBe("48h");
+  });
+
+  it("fills from +1h when HRRR is missing, and is never the live frame", () => {
+    const { "radar-hrrr": _hrrr, ...rest } = withGfs.layers;
+    const frames = buildFrames({ layers: rest }, "radar", NOW);
+    expect(frames.find((f) => f.source === "radar-gfs")!.time).toBe(NOW + 24 * 3600);
+    expect(isForecastSource("radar-gfs")).toBe(true);
+    expect(frames[nowIndex(frames, NOW)].source).toBe("radar");
   });
 });
 

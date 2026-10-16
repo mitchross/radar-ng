@@ -185,5 +185,17 @@
       { "min": 80, "max": 90, "rgba": [40, 110, 210, 200] },
       { "min": 90, "max": 100.01, "rgba": [40, 60, 180, 200] }
     ]
+  },
+  "uv_index": {
+    "_comment": "WHO UV Index categories: Low 1-2, Moderate 3-5, High 6-7, Very High 8-10, Extreme 11+. Edges sit halfway between the reported whole numbers; night (below 0.5) is clear.",
+    "unit": "UVI",
+    "ranges": [
+      { "min": 0.5, "max": 2.5, "rgba": [40, 149, 0, 180] },
+      { "min": 2.5, "max": 5.5, "rgba": [247, 228, 0, 180] },
+      { "min": 5.5, "max": 7.5, "rgba": [248, 89, 0, 180] },
+      { "min": 7.5, "max": 10.5, "rgba": [216, 0, 29, 180] },
+      { "min": 10.5, "max": 25, "rgba": [107, 73, 200, 180] }
+    ],
+    "no_data_below": 0.5
   }
 }

@@ -18,6 +18,15 @@ describe("serverLegend", () => {
     }
   });
 
+  it("labels the UV legend with whole WHO index values", () => {
+    for (const palette of ["classic", "muted", "vivid"] as const) {
+      const uv = serverLegend(palettes, palette, "uv")!;
+      expect(uv.title).toBe("UV Index (WHO)");
+      expect(uv.stops.map((s) => s.label)).toEqual(["11+", "8", "6", "3", "1"]);
+    }
+    expect(serverLegend(palettes, "classic", "uv")!.stops[4].color).toBe("#289500");
+  });
+
   it("colors the past-24-hour layer with the rain-total table", () => {
     const observed = serverLegend(palettes, "classic", "precip-24h")!;
     expect(observed.title).toBe("Past 24 Hr (in)");

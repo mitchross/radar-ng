@@ -40,6 +40,7 @@ back to PNG rasters otherwise.
 | `cloud_cover` (cloud) | 5 | 0 | 10 % | 10 to 1275 % | 101 |
 | `pm25` (air-quality) | 1 | 0.5 | 0 µg/m³ | 1.5 to 255.5 µg/m³ | 9.1, 20, 45, 90, 175, 500, 20000 |
 | `ozone` (ozone) | 1 | 0 | 0 ppb | 1 to 255 ppb | 600 |
+| `uv_index` (uv; not packed yet, `radar-gfs` and `uv` are raster only) | 0.5 | 0.5 | 0.5 | 1 to 128 | none |
 
 NaN or a value below `floor` stores 0. Otherwise `q = clamp(floor((value - offset) / scale), 1, 255)`.
 The client decodes `value = offset + q * scale`, the bottom of the code's bin. A floor below

@@ -62,6 +62,7 @@ mod tests {
                 "cape",
                 "pm25",
                 "ozone",
+                "uv_index",
             ] {
                 let ranges = table[key]["ranges"].as_array().unwrap();
                 assert!(!ranges.is_empty(), "{name}.{key}");

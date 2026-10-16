@@ -6,8 +6,11 @@ Layout: `<WorkflowType>/<version>/<scenario>.json` (`.json.gz` above 512 KiB).
 never regenerated or edited: the replay gate (`tests/replay.rs`) proves the
 current workflows still replay every retained release.
 
-All histories here were recorded from the Python worker releases (v1.1.26,
-v1.1.27, v1.1.49, and `src-e8c8659`) before the Python code was removed.
+The histories of the Python-era workflows were recorded from the Python worker
+releases (v1.1.26, v1.1.27, v1.1.49, and `src-e8c8659`) before the Python code
+was removed. `IngestGlobalModelWorkflow` is Rust-only: its `src-<sha>` histories
+come from the Rust workflow with scripted fake activities on a local
+`temporal server start-dev`, exported with `temporal workflow show --output json`.
 
 Every history is synthetic: real workflow code, fake activities, placeholder
 inputs (`synthetic-*` identifiers, a `synthetic-placeholder` token, 0.0
@@ -21,6 +24,7 @@ tokens, coordinates and alert geometry.
 |---|---|
 | IngestMrmsWorkflow | success, empty-backlog, partial (a frame reports unrendered), frame-activity-error (caught, run continues), list-activity-error (run fails) |
 | IngestHrrrWorkflow | success, no-run, already-processed, partial (last hour pending), hour-activity-error (caught), publish-incoherent, find-activity-error |
+| IngestGlobalModelWorkflow | success, no-run, already-processed, partial (last hour unrendered), hour-activity-error (caught), find-activity-error |
 | IngestAirQualityWorkflow | success, no-run, already-processed, partial (ozone unrendered), chunk-activity-error (PM2.5 lost, not marked), find-activity-error |
 | PollAlertsWorkflow | geometry-fanout, zoneless-alerts, no-new-alerts, signal-activity-error (one alert isolated), fetch-activity-error |
 | WatchStormWorkflow | signal-unpin, timer-poll, push-change, push-activity-error (watch survives), alert-signal-push, compare-activity-error, continue-as-new (1000 polls) |

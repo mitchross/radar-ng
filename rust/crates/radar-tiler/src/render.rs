@@ -24,7 +24,7 @@ use crate::identity::{
 };
 use crate::palettes::{ColorTable, validate_palette_name};
 use crate::png::{IndexedTileEncoder, append_palette_chunks, bit_depth_for_entries, header_bytes};
-use crate::publish::{MultiPaletteRenderResult, publish_palette_set};
+use crate::publish::{MultiPaletteRenderResult, publish_palette_set_with};
 use crate::sample::{
     footprint_edges, max_block_factors, reduce_column_ranges, reduce_column_ranges_u8,
     reduce_row_ranges, reduce_row_ranges_u8, region_transparent, sample_bilinear_into,
@@ -61,6 +61,8 @@ pub struct FrameOptions {
     pub overview: Option<Overview>,
     /// zlib level for IDAT, `0..=9`. Defaults to `TILE_PNG_COMPRESS_LEVEL`.
     pub png_compress_level: u32,
+    /// Publish a frame with no tiles as a complete empty pyramid (default off: nothing is published).
+    pub keep_empty: bool,
     /// Precipitation type per cell (continuous frames only). Colors each pixel with the rain, snow
     /// or mix ramp of its palette ([`crate::typed`]).
     pub types: Option<TypePlane>,
@@ -74,6 +76,7 @@ impl Default for FrameOptions {
             publication_lock_root: None,
             overview: None,
             png_compress_level: crate::env::png_compress_level(),
+            keep_empty: false,
             types: None,
         }
     }
@@ -173,10 +176,11 @@ pub fn render_frame_palettes(
         &tables,
     )?;
     let job = FrameJob::new(grid, src, kind, &model, options, zoom_levels)?;
-    publish_palette_set(
+    publish_palette_set_with(
         output_dirs,
         &identities,
         options.publication_lock_root.as_deref(),
+        options.keep_empty,
         |staged| job.render(staged),
     )
 }

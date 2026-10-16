@@ -32,6 +32,7 @@ const LAYER_SOURCE: Record<LayerType, SourceTag> = {
   "precip-accum": "Later",
   "precip-24h": "Now",
   cloud: "Later",
+  uv: "Later",
   "air-quality": "Now",
   ozone: "Now",
 };
@@ -161,6 +162,17 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
       { label: "0%", color: "#e6e6e6" },
     ],
   },
+  // WHO UV Index categories; the server palettes (serverLegend) normally replace this.
+  uv: {
+    title: "UV Index",
+    stops: [
+      { label: "11+", color: "#6b49c8" },
+      { label: "8", color: "#d8001d" },
+      { label: "6", color: "#f85900" },
+      { label: "3", color: "#f7e400" },
+      { label: "1", color: "#289500" },
+    ],
+  },
   // US AQI category colors (EPA), worst at the top like the other scales.
   "air-quality": {
     title: "Air Quality",
@@ -208,7 +220,7 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   let source = LAYER_SOURCE[activeLayer] ?? "Now";
   if ((activeLayer === "radar" || activeLayer === "radar-hrrr") && timelineMode === "forecast") {
     if (frameSource === "nowcast") source = "Soon";
-    else if (frameSource === "radar-hrrr") source = "Later";
+    else if (frameSource === "radar-hrrr" || frameSource === "radar-gfs") source = "Later";
     else source = "Now";
   } else if (activeLayer === "air-quality" || activeLayer === "ozone") {
     // A single AQM run spans the current hour plus 3 days out, so the tag

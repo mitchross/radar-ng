@@ -16,7 +16,7 @@ export interface ColorTable {
 export type ServerPalettes = Partial<Record<PaletteId, Record<string, ColorTable>>>;
 
 /** Map layer id to palette key, as the server's HRRR `layer_color_key` and MRMS QPE map them. */
-const LAYER_TABLES: Record<string, { key: string; title: string; unit: string }> = {
+const LAYER_TABLES: Record<string, { key: string; title: string; unit: string; whole?: boolean }> = {
   temperature: { key: "temperature", title: "Temperature", unit: "°F" },
   "feels-like": { key: "temperature", title: "Feels like", unit: "°F" },
   dewpoint: { key: "dewpoint", title: "Dew point", unit: "°F" },
@@ -24,6 +24,8 @@ const LAYER_TABLES: Record<string, { key: string; title: string; unit: string }>
   "precip-accum": { key: "precip_accum", title: "Rain total", unit: "in" },
   "precip-24h": { key: "precip_accum", title: "Past 24 hr precip", unit: "in" },
   cloud: { key: "cloud_cover", title: "Clouds", unit: "%" },
+  // Band edges sit halfway between whole index values (0.5, 2.5, ...); label the whole values.
+  uv: { key: "uv_index", title: "UV index", unit: "WHO", whole: true },
 };
 
 export interface LayerLegend {
@@ -38,6 +40,7 @@ export function layerLegend(palettes: ServerPalettes | null, palette: PaletteId,
   const spec = LAYER_TABLES[layer];
   const ranges = spec && (palettes?.[palette] ?? palettes?.classic)?.[spec.key]?.ranges;
   if (!spec || !ranges?.length) return null;
+  const label = (v: number) => fmt(spec.whole ? Math.ceil(v) : v);
   const lo = ranges[0].min;
   const hi = ranges[ranges.length - 1].max;
   const pos = (v: number) => `${(((v - lo) / (hi - lo)) * 100).toFixed(1)}%`;
@@ -46,7 +49,7 @@ export function layerLegend(palettes: ServerPalettes | null, palette: PaletteId,
   return {
     title: `${spec.title} (${spec.unit})`,
     gradient: `linear-gradient(90deg,${stops})`,
-    labels: [fmt(lo), fmt(ranges[ranges.length - 1].min) + "+"],
+    labels: [label(lo), label(ranges[ranges.length - 1].min) + "+"],
   };
 }
 
@@ -57,4 +60,10 @@ export async function fetchServerPalettes(): Promise<ServerPalettes | null> {
   } catch {
     return null;
   }
+}
+
+/** WHO category of a UV Index reading, on the rounded index as forecasts report it. */
+export function uvCategory(uv: number): string {
+  const i = Math.round(uv);
+  return i <= 2 ? "Low" : i <= 5 ? "Moderate" : i <= 7 ? "High" : i <= 10 ? "Very high" : "Extreme";
 }
