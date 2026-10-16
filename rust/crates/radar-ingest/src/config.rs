@@ -8,9 +8,10 @@ use radar_core::grid_dump::GridConfig;
 use radar_storms::StormConfig;
 
 /// `HRRR_ENABLED_LAYERS` names that the pipeline knows. `radar-hrrr` is always enabled.
-pub const HRRR_LAYERS: [&str; 9] = [
+pub const HRRR_LAYERS: [&str; 10] = [
     "radar-hrrr",
     "temperature",
+    "feels-like",
     "dewpoint",
     "humidity",
     "wind",
@@ -21,7 +22,7 @@ pub const HRRR_LAYERS: [&str; 9] = [
 ];
 
 /// Layers whose tile trees are swept by `hrrr_cleanup` (spec §12.2 `HRRR_TILE_LAYERS`).
-pub const HRRR_TILE_LAYERS: [&str; 9] = HRRR_LAYERS;
+pub const HRRR_TILE_LAYERS: [&str; 10] = HRRR_LAYERS;
 
 /// Default MRMS base URL.
 pub const MRMS_BASE_URL: &str = "https://noaa-mrms-pds.s3.amazonaws.com";

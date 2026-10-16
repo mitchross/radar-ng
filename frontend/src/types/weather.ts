@@ -171,6 +171,8 @@ export type LayerType =
   | "radar-composite"
   | "radar-hrrr"
   | "temperature"
+  | "feels-like"
+  | "dewpoint"
   | "wind"
   | "cape"
   | "precip-type"

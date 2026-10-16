@@ -314,6 +314,7 @@ pub fn process_hour_sync(
             cfg, "dewpoint", run_id, valid, &g, palettes, "dewpoint", false,
         )? {
             rendered.push("dewpoint".into());
+            dump("dewpoint", &g.values, "degF");
         }
     }
     if enabled("humidity")
@@ -323,6 +324,41 @@ pub fn process_hour_sync(
         )?
     {
         rendered.push("humidity".into());
+        dump("humidity", &rh.grid.values, "%");
+    }
+    if enabled("feels-like")
+        && let (Some(t2m), Some(rh), Some(u), Some(v)) = (
+            extract(&bytes, HrrrVar::T2m),
+            extract(&bytes, HrrrVar::Rh2m),
+            extract(&bytes, HrrrVar::U10),
+            extract(&bytes, HrrrVar::V10),
+        )
+    {
+        let vals: Vec<f32> = t2m
+            .grid
+            .values
+            .iter()
+            .zip(&rh.grid.values)
+            .zip(u.grid.values.iter().zip(&v.grid.values))
+            .map(|((&k, &h), (&uc, &vc))| {
+                let wind = units::wind_speed_mph(units::ms_to_mph(uc), units::ms_to_mph(vc));
+                units::apparent_temperature_f(units::kelvin_to_f(k), h, wind)
+            })
+            .collect();
+        let g = grid_of(vals, &t2m.grid);
+        if render_layer(
+            cfg,
+            "feels-like",
+            run_id,
+            valid,
+            &g,
+            palettes,
+            "temperature",
+            false,
+        )? {
+            rendered.push("feels-like".into());
+            dump("feels-like", &g.values, "degF");
+        }
     }
     if enabled("cape")
         && let Some(cape) = extract(&bytes, HrrrVar::Cape)

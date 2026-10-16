@@ -19,6 +19,8 @@ const LAYER_LABEL: Record<LayerType, string> = {
   "radar-composite": "COMPOSITE",
   "radar-hrrr": "HRRR FORECAST",
   temperature: "TEMPERATURE",
+  "feels-like": "FEELS LIKE",
+  dewpoint: "DEW POINT",
   wind: "WIND",
   "precip-type": "PRECIP TYPE",
   "precip-accum": "RAINFALL 1H",

@@ -743,6 +743,50 @@ async fn alerts_pass_through_with_the_three_decimal_key_and_fail_closed() {
 }
 
 #[tokio::test]
+async fn outlooks_proxy_spc_by_day_cache_and_fail_closed() {
+    let hits = counter();
+    let seen = hits.clone();
+    let spc = Router::new().route(
+        "/outlook/{file}",
+        get(move |AxPath(file): AxPath<String>| {
+            let seen = seen.clone();
+            async move {
+                seen.fetch_add(1, Ordering::SeqCst);
+                if file != "day2otlk_cat.lyr.geojson" {
+                    return StatusCode::NOT_FOUND.into_response_boxed();
+                }
+                Json(json!({"features": [
+                    {"geometry": {"type": "Polygon", "coordinates": []},
+                     "properties": {"LABEL": "ENH", "LABEL2": "Enhanced Risk", "fill": "#FFA366", "stroke": "#FF6600"}}
+                ]}))
+                .into_response_boxed()
+            }
+        }),
+    );
+    let base = mock(spc).await;
+    let env = Env::new();
+    let app = env.app(|c| c.spc_outlook_base = format!("{base}/outlook"));
+
+    for _ in 0..2 {
+        let (status, headers, body) = get_json(&app, "/api/outlooks?day=2").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(header_str(&headers, "cache-control"), "public, max-age=600");
+        assert_eq!(body["features"][0]["properties"]["label"], json!("ENH"));
+    }
+    assert_eq!(
+        hits.load(Ordering::SeqCst),
+        1,
+        "second request is served from the cache"
+    );
+
+    let (bad, bad_headers, _) = get_json(&app, "/api/outlooks?day=1").await;
+    assert_eq!(bad, StatusCode::BAD_GATEWAY);
+    assert_eq!(header_str(&bad_headers, "cache-control"), "no-store");
+    let (invalid, _, _) = get_json(&app, "/api/outlooks?day=4").await;
+    assert_eq!(invalid, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
 async fn geocode_is_503_when_unconfigured_and_filters_photon_to_settlements() {
     let env = Env::new();
     let unconfigured = env.app(|_| {});

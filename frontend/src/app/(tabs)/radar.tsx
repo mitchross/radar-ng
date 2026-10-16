@@ -29,6 +29,7 @@ import {
 import { TropicalDetailSheet } from "../../components/map/TropicalDetailSheet";
 import { StormCellsOverlay } from "../../components/map/StormCellsOverlay";
 import { WarningsOverlay, type WarningDetails } from "../../components/map/WarningsOverlay";
+import { OutlookOverlay } from "../../components/map/OutlookOverlay";
 import { StormCellSheet, WarningSheet } from "../../components/map/FeatureSheets";
 import type { StormCellInfo } from "../../lib/stormTracks";
 import { WindParticlesOverlay, useSharedCamera } from "../../components/map/WindParticlesOverlay";
@@ -104,6 +105,8 @@ export default function RadarScreen() {
       >
         {(activeLayer === "radar" || activeLayer === "radar-hrrr") && <RadarOverlay isPacked={packed?.isPacked} />}
         {activeLayer === "temperature" && <WeatherLayerOverlay layerId="temperature" opacity={radarOpacity} />}
+        {activeLayer === "feels-like" && <WeatherLayerOverlay layerId="feels-like" opacity={radarOpacity} />}
+        {activeLayer === "dewpoint" && <WeatherLayerOverlay layerId="dewpoint" opacity={radarOpacity} />}
         {activeLayer === "precip-type" && <WeatherLayerOverlay layerId="precip-type" opacity={radarOpacity} />}
         {activeLayer === "wind" && <WeatherLayerOverlay layerId="wind" opacity={0.6} />}
         {activeLayer === "cape" && <WeatherLayerOverlay layerId="cape" opacity={0.5} />}
@@ -113,6 +116,7 @@ export default function RadarScreen() {
         {activeLayer === "ozone" && <WeatherLayerOverlay layerId="ozone" opacity={0.75} />}
         {/* Always mounted: each overlay renders an empty collection / hidden pin when
             it has nothing to show, so the map's native child count never churns. */}
+        <OutlookOverlay />
         <WarningsOverlay onSelect={setSelectedWarning} />
         <AlertPolygon />
         <TropicalOverlay onSelect={setSelectedTropical} />
