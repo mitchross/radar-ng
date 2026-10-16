@@ -18,6 +18,13 @@ describe("serverLegend", () => {
     }
   });
 
+  it("colors the past-24-hour layer with the rain-total table", () => {
+    const observed = serverLegend(palettes, "classic", "precip-24h")!;
+    expect(observed.title).toBe("Past 24 Hr (in)");
+    expect(observed.stops).toEqual(serverLegend(palettes, "classic", "precip-accum")!.stops);
+    expect(observed.stops[0].label).toBe("8+");
+  });
+
   it("falls back to null without tables or for layers it does not map", () => {
     expect(serverLegend(undefined, "classic", "temperature")).toBeNull();
     expect(serverLegend(palettes, "classic", "radar")).toBeNull();

@@ -24,6 +24,7 @@ const LAYER_LABEL: Record<LayerType, string> = {
   wind: "WIND",
   "precip-type": "PRECIP TYPE",
   "precip-accum": "RAINFALL 1H",
+  "precip-24h": "PAST 24 HR",
   cloud: "CLOUD COVER",
   cape: "CAPE",
   "air-quality": "PM2.5",
