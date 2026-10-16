@@ -129,6 +129,7 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `FORECAST_HOURS` | `18` | HRRR forecast hours rendered per model run. |
 | `EXTENDED_FORECAST_HOURS` | `48` | Extended sub-hourly HRRR hours. |
 | `HRRR_ENABLED_LAYERS` | `radar-hrrr` (compose: all layers) | Comma-separated HRRR layers: `radar-hrrr`, `temperature`, `feels-like`, `dewpoint`, `humidity`, `wind`, `cape`, `precip-type`, `precip-accum`, `cloud`. `feels-like` is the NWS heat index or wind chill. |
+| `PACKED_TILES` | `1` | Write packed data tile buckets (`docs/packed-tiles.md`) for `radar`, `radar-composite` and `nowcast`. `0` stops new buckets; the PNG pyramids are unchanged. Read by the MRMS and nowcast workers. |
 
 ### Nowcast (Lucas-Kanade motion + S-PROG)
 | Var | Default | Notes |

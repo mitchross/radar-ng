@@ -22,12 +22,14 @@ const ZOOM_MAX = 15;
 interface WeatherMapProps {
   children?: React.ReactNode;
   onLongPress?: (lat: number, lon: number) => void;
-  onCameraChanged?: (camera: { lon: number; lat: number; zoom: number }) => void;
+  onCameraChanged?: (camera: { lon: number; lat: number; zoom: number; bearing: number }) => void;
   /**
    * Report every camera frame during a gesture, not just where it settles.
    * Only a live overlay (wind particles) needs this; each event crosses the bridge.
    */
   trackCameraContinuously?: boolean;
+  /** Two-finger pitch gesture; off while a flat screen overlay (packed radar) is drawn. */
+  allowPitch?: boolean;
 }
 
 export function WeatherMap({
@@ -35,6 +37,7 @@ export function WeatherMap({
   onLongPress,
   onCameraChanged,
   trackCameraContinuously = false,
+  allowPitch = true,
 }: WeatherMapProps) {
   const mapRef = useRef<MapRef>(null);
   const chrome = useMapChromeInsets();
@@ -103,12 +106,13 @@ export function WeatherMap({
   const handleRegionChange = (
     event: NativeSyntheticEvent<ViewStateChangeEvent>,
   ) => {
-    const { center, zoom } = event.nativeEvent;
+    const { center, zoom, bearing } = event.nativeEvent;
     zoomRef.current = zoom;
     onCameraChanged?.({
       lon: center[0],
       lat: center[1],
       zoom,
+      bearing: bearing ?? 0,
     });
   };
 
@@ -122,6 +126,7 @@ export function WeatherMap({
         attribution={true}
         attributionPosition={{ bottom: chrome.aboveTimeline + 8, left: chrome.left }}
         onLongPress={handleLongPress}
+        touchPitch={allowPitch}
         onRegionIsChanging={trackCameraContinuously ? handleRegionChange : undefined}
         onRegionDidChange={handleRegionChange}
       >

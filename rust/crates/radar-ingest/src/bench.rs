@@ -1,6 +1,7 @@
 //! Binary-free benchmark entry point (port of `backend/scripts/bench_render_once.py`): decode one GRIB
 //! file (gzip or raw), render it into three palettes at zooms 4 to 7, and run storm detection. Times
-//! each stage. The benchmark harness calls [`bench_render_once`] directly.
+//! each stage, then packs the frame into one packed-tile bucket (`out_dir/packed/radar/bench`).
+//! The benchmark harness calls [`bench_render_once`] directly.
 
 use std::path::Path;
 use std::time::Instant;
@@ -33,6 +34,12 @@ pub struct BenchReport {
     pub tiles: Vec<(String, u64)>,
     /// Total bytes of published tile PNGs.
     pub tile_bytes: u64,
+    /// Sampling, quantizing and writing the packed bucket, in milliseconds.
+    pub pack_ms: f64,
+    /// Packed tiles written (all-empty tiles are skipped).
+    pub packed_tiles: u64,
+    /// Total bytes of the packed tiles.
+    pub packed_bytes: u64,
 }
 
 /// Decode, render and detect storms for one GRIB file, publishing tiles under `out_dir`.
@@ -92,6 +99,28 @@ pub fn bench_render_once(grib_path: &Path, out_dir: &Path) -> anyhow::Result<Ben
         .map(|(n, c)| (n.to_string(), c))
         .collect();
     let tile_bytes = dir_png_bytes(out_dir)?;
+
+    let t3 = Instant::now();
+    let sampler = radar_tiler::ValueSampler::new(
+        &grid,
+        None,
+        &crate::packed::MRMS_PACKED_ZOOMS,
+        radar_tiler::packed::PACKED_TILE_SIZE,
+        Some(Overview::Max),
+    )?;
+    let packed_dir = out_dir.join("packed").join("radar");
+    let quant = radar_tiler::Quantizer::for_color_key("reflectivity")
+        .ok_or_else(|| anyhow::anyhow!("no reflectivity quantizer"))?;
+    let frame = radar_tiler::PackFrame {
+        timestamp: "2026-01-01T00:00:00+00:00",
+        sampler: &sampler,
+    };
+    let packed_tiles = match radar_tiler::pack_frames(&packed_dir, "bench", &[frame], quant)? {
+        radar_tiler::PackOutcome::Written { tiles_written, .. } => tiles_written,
+        radar_tiler::PackOutcome::Full => 0,
+    };
+    let pack_ms = t3.elapsed().as_secs_f64() * 1e3;
+    let packed_bytes = dir_png_bytes(&packed_dir)?;
     Ok(BenchReport {
         height: grid.height,
         width: grid.width,
@@ -101,6 +130,9 @@ pub fn bench_render_once(grib_path: &Path, out_dir: &Path) -> anyhow::Result<Ben
         storm_cells: doc.features.len(),
         tiles,
         tile_bytes,
+        pack_ms,
+        packed_tiles,
+        packed_bytes,
     })
 }
 

@@ -147,7 +147,7 @@ pub fn render_frame_palettes(
         &contract,
         &tables,
     )?;
-    let job = FrameJob::new(grid, &src, kind, &model, options, zoom_levels)?;
+    let job = FrameJob::new(grid, src, kind, &model, options, zoom_levels)?;
     publish_palette_set(
         output_dirs,
         &identities,
@@ -214,25 +214,213 @@ struct TileJob {
 struct PoolCtx {
     lat_axis: AxisMap,
     lon_axis: AxisMap,
-    /// Frame values with `f32(nodata)` replaced by NaN (spec 4.4 step 1).
-    nan_values: Vec<f32>,
+    /// Frame values with `f32(nodata)` replaced by NaN (spec 4.4 step 1). `None` when the frame has
+    /// no nodata value, so the grid values are used as they are.
+    nan_values: Option<Vec<f32>>,
+}
+
+/// Per-frame sampling state: tile routing, geometry and the physical-value kernels. Shared by the
+/// indexed renderer ([`FrameJob`]) and the packed-value sampler (`crate::packed`). Read-only after
+/// construction.
+pub(crate) struct Sampler<'a> {
+    grid: &'a Grid,
+    src: SourceGeometry,
+    identity: Arc<GridIdentity>,
+    tile: usize,
+    nodata: Option<f64>,
+    min_valid_weight: f64,
+    pool: Option<PoolCtx>,
+    tiles: Vec<TileJob>,
+}
+
+impl<'a> Sampler<'a> {
+    /// Plan the tiles of `zooms`. `overview` enables the max-pooled route on pooled zooms; it needs a
+    /// regular grid. Categorical frames always take the nearest route.
+    #[allow(clippy::too_many_arguments)] // internal constructor shared by two callers
+    pub(crate) fn new(
+        grid: &'a Grid,
+        src: SourceGeometry,
+        nodata: Option<f64>,
+        min_valid_weight: f64,
+        categorical: bool,
+        overview: bool,
+        tile: usize,
+        zooms: &[u32],
+    ) -> Result<Self> {
+        let regular = match &grid.geo {
+            GridGeo::Regular { lats, lons } => Some((lats, lons)),
+            GridGeo::Projected { .. } => None,
+        };
+        let mut pool = None;
+        if overview {
+            let (lats, lons) = regular.ok_or_else(|| {
+                TilerError::Invalid("overview requires regular 1-D lats/lons".into())
+            })?;
+            if lats.len() < 2 || lons.len() < 2 {
+                return Err(TilerError::Invalid(
+                    "overview requires at least two rows and two columns".into(),
+                ));
+            }
+            let nan_values = nodata.map(|nd| {
+                grid.values
+                    .iter()
+                    .map(|&v| if v == nd as f32 { f32::NAN } else { v })
+                    .collect()
+            });
+            pool = Some(PoolCtx {
+                lat_axis: AxisMap::new(lats)?,
+                lon_axis: AxisMap::new(lons)?,
+                nan_values,
+            });
+        }
+        let mut tiles = Vec::new();
+        for &z in zooms {
+            let pooled = match regular {
+                Some((lats, lons)) if pool.is_some() => {
+                    max_block_factors(lats, lons, z, tile) != (1, 1)
+                }
+                _ => false,
+            };
+            let route = if categorical {
+                Route::Nearest
+            } else if pooled {
+                Route::Footprint
+            } else {
+                Route::Bilinear
+            };
+            for (z, tx, ty) in src.tile_jobs(&[z]) {
+                tiles.push(TileJob { z, tx, ty, route });
+            }
+        }
+        let identity = Arc::new(src.identity().clone());
+        Ok(Self {
+            grid,
+            src,
+            identity,
+            tile,
+            nodata,
+            min_valid_weight,
+            pool,
+            tiles,
+        })
+    }
+
+    /// Tile edge in pixels.
+    pub(crate) fn tile_size(&self) -> usize {
+        self.tile
+    }
+
+    /// `(z, x, y)` of every planned tile, in spec order.
+    pub(crate) fn tile_coords(&self) -> impl Iterator<Item = (u32, u32, u32)> + '_ {
+        self.tiles.iter().map(|j| (j.z, j.tx, j.ty))
+    }
+
+    fn geometry(&self, sampling: Sampling, job: TileJob) -> Result<Option<Arc<TileGeometry>>> {
+        let key = GeometryKey {
+            grid: Arc::clone(&self.identity),
+            sampling,
+            tile_size: self.tile,
+            z: job.z,
+            tx: job.tx,
+            ty: job.ty,
+        };
+        global_cache().get_or_compute(key, || {
+            self.src
+                .tile_geometry(sampling, self.tile, job.z, job.tx, job.ty)
+        })
+    }
+
+    /// Physical values of planned tile `index` into `out` (`tile * tile`, NaN = no value): bilinear
+    /// at native zooms, max-pooled footprint at pooled zooms. Returns `false`, with `out` unspecified,
+    /// when the tile has no source coverage. Categorical tiles are an error.
+    pub(crate) fn values_at(&self, index: usize, out: &mut Vec<f32>) -> Result<bool> {
+        let job = *self
+            .tiles
+            .get(index)
+            .ok_or_else(|| TilerError::Invalid(format!("tile index {index} out of range")))?;
+        self.values_into(job, out)
+    }
+
+    fn values_into(&self, job: TileJob, out: &mut Vec<f32>) -> Result<bool> {
+        match job.route {
+            Route::Nearest => Err(TilerError::Invalid(
+                "categorical tiles have no physical values".into(),
+            )),
+            Route::Bilinear => {
+                let Some(geom) = self.geometry(Sampling::Bilinear, job)? else {
+                    return Ok(false);
+                };
+                out.resize(self.tile * self.tile, f32::NAN);
+                sample_bilinear_into(
+                    &geom,
+                    &self.grid.values,
+                    self.grid.height,
+                    self.grid.width,
+                    self.tile,
+                    self.nodata,
+                    self.min_valid_weight,
+                    out,
+                )?;
+                Ok(true)
+            }
+            Route::Footprint => {
+                let pool = self.pool.as_ref().ok_or_else(|| {
+                    TilerError::Corrupt("footprint route without overview state".into())
+                })?;
+                self.footprint_values(pool, job, out)
+            }
+        }
+    }
+
+    /// Max-pooled footprint values of a tile (spec 4.4). `false` when no source row is covered.
+    fn footprint_values(&self, pool: &PoolCtx, job: TileJob, out: &mut Vec<f32>) -> Result<bool> {
+        let t = self.tile;
+        let tf = t as f64;
+        let n = f64::from(1u32 << job.z);
+        let (tx, ty) = (f64::from(job.tx), f64::from(job.ty));
+        let col_edges: Vec<f64> = (0..=t)
+            .map(|j| (tx + j as f64 / tf) / n * 360.0 - 180.0)
+            .collect();
+        let lat_edges: Vec<f64> = (0..=t)
+            .map(|i| {
+                let y = 1.0 - 2.0 * (ty + i as f64 / tf) / n;
+                (PI * y).sinh().atan() * (180.0 / PI)
+            })
+            .collect();
+        let row_ranges = footprint_edges(&lat_edges, &pool.lat_axis);
+        let col_ranges = footprint_edges(&col_edges, &pool.lon_axis);
+        let (mut rmin, mut rmax) = (usize::MAX, 0usize);
+        for &(a, b) in &row_ranges {
+            if b > a {
+                rmin = rmin.min(a);
+                rmax = rmax.max(b);
+            }
+        }
+        if rmin == usize::MAX {
+            return Ok(false);
+        }
+        let w = self.grid.width;
+        let values = pool.nan_values.as_deref().unwrap_or(&self.grid.values);
+        // Only source rows inside the union of row footprints feed the tile.
+        let rows = &values[rmin * w..rmax * w];
+        let shifted: Vec<(usize, usize)> = row_ranges
+            .iter()
+            .map(|&(a, b)| if b > a { (a - rmin, b - rmin) } else { (0, 0) })
+            .collect();
+        let cols = reduce_column_ranges(rows, rmax - rmin, w, &col_ranges);
+        *out = reduce_row_ranges(&cols, col_ranges.len(), &shifted);
+        Ok(true)
+    }
 }
 
 /// Per-frame state shared by every tile worker. Read-only after construction.
 struct FrameJob<'a> {
-    grid: &'a Grid,
-    src: &'a SourceGeometry,
-    identity: Arc<GridIdentity>,
+    sampler: Sampler<'a>,
     model: &'a ClassModel,
-    tile: usize,
     level: u32,
     depth: u8,
-    nodata: Option<f64>,
-    min_valid_weight: f64,
     /// Whole-grid class index for categorical frames; empty otherwise.
     class_index: Vec<u8>,
-    pool: Option<PoolCtx>,
-    tiles: Vec<TileJob>,
 }
 
 /// Per-worker buffers, reused across tiles.
@@ -259,7 +447,7 @@ impl Scratch {
 impl<'a> FrameJob<'a> {
     fn new(
         grid: &'a Grid,
-        src: &'a SourceGeometry,
+        src: SourceGeometry,
         kind: &FrameKind,
         model: &'a ClassModel,
         options: &FrameOptions,
@@ -277,67 +465,22 @@ impl<'a> FrameJob<'a> {
             class_index = vec![0u8; grid.height * grid.width];
             model.classify_category_into(&grid.values, &mut class_index)?;
         }
-        let tile = options.tile_size;
-        let regular = match &grid.geo {
-            GridGeo::Regular { lats, lons } => Some((lats, lons)),
-            GridGeo::Projected { .. } => None,
-        };
-        let mut pool = None;
-        if options.overview.is_some() {
-            let (lats, lons) = regular.ok_or_else(|| {
-                TilerError::Invalid("overview requires regular 1-D lats/lons".into())
-            })?;
-            if lats.len() < 2 || lons.len() < 2 {
-                return Err(TilerError::Invalid(
-                    "overview requires at least two rows and two columns".into(),
-                ));
-            }
-            let nan_values = grid
-                .values
-                .iter()
-                .map(|&v| match nodata {
-                    Some(nd) if v == nd as f32 => f32::NAN,
-                    _ => v,
-                })
-                .collect();
-            pool = Some(PoolCtx {
-                lat_axis: AxisMap::new(lats)?,
-                lon_axis: AxisMap::new(lons)?,
-                nan_values,
-            });
-        }
-        let mut tiles = Vec::new();
-        for &z in zooms {
-            let pooled = match regular {
-                Some((lats, lons)) if pool.is_some() => {
-                    max_block_factors(lats, lons, z, tile) != (1, 1)
-                }
-                _ => false,
-            };
-            let route = if categorical {
-                Route::Nearest
-            } else if pooled {
-                Route::Footprint
-            } else {
-                Route::Bilinear
-            };
-            for (z, tx, ty) in src.tile_jobs(&[z]) {
-                tiles.push(TileJob { z, tx, ty, route });
-            }
-        }
-        Ok(Self {
+        let sampler = Sampler::new(
             grid,
             src,
-            identity: Arc::new(src.identity().clone()),
-            model,
-            tile,
-            level: options.png_compress_level,
-            depth: bit_depth_for_entries(model.n_classes()),
             nodata,
             min_valid_weight,
+            categorical,
+            options.overview.is_some(),
+            options.tile_size,
+            zooms,
+        )?;
+        Ok(Self {
+            sampler,
+            model,
+            level: options.png_compress_level,
+            depth: bit_depth_for_entries(model.n_classes()),
             class_index,
-            pool,
-            tiles,
         })
     }
 
@@ -351,8 +494,9 @@ impl<'a> FrameJob<'a> {
             palettes.push((lut.plte(), lut.trns()));
         }
         let roots: Vec<&Path> = staged.iter().map(|(_, p)| p.as_path()).collect();
-        let (tile, level) = (self.tile, self.level);
+        let (tile, level) = (self.sampler.tile, self.level);
         let count = self
+            .sampler
             .tiles
             .par_iter()
             .map_init(
@@ -370,39 +514,23 @@ impl<'a> FrameJob<'a> {
         roots: &[&Path],
         palettes: &[(&[u8], &[u8])],
     ) -> Result<u64> {
-        let t = self.tile;
+        let sampler = &self.sampler;
         match job.route {
             Route::Nearest => {
-                let Some(geom) = self.geometry(Sampling::Nearest, job)? else {
+                let Some(geom) = sampler.geometry(Sampling::Nearest, job)? else {
                     return Ok(0);
                 };
-                let w = self.grid.width;
+                let w = sampler.grid.width;
                 if region_transparent(&self.class_index, w, geom.row_bounds, geom.col_bounds) {
                     return Ok(0);
                 }
-                sample_nearest_into(&geom, &self.class_index, w, t, &mut s.classes)?;
+                sample_nearest_into(&geom, &self.class_index, w, sampler.tile, &mut s.classes)?;
             }
-            Route::Bilinear => {
-                let Some(geom) = self.geometry(Sampling::Bilinear, job)? else {
+            Route::Bilinear | Route::Footprint => {
+                if !sampler.values_into(job, &mut s.values)? {
                     return Ok(0);
-                };
-                sample_bilinear_into(
-                    &geom,
-                    &self.grid.values,
-                    self.grid.height,
-                    self.grid.width,
-                    t,
-                    self.nodata,
-                    self.min_valid_weight,
-                    &mut s.values,
-                )?;
+                }
                 self.model.classify_f32_into(&s.values, &mut s.classes)?;
-            }
-            Route::Footprint => {
-                let pool = self.pool.as_ref().ok_or_else(|| {
-                    TilerError::Corrupt("footprint route without overview state".into())
-                })?;
-                self.footprint_tile(pool, s, job)?;
             }
         }
         if !s.classes.iter().any(|&c| c != 0) {
@@ -410,61 +538,6 @@ impl<'a> FrameJob<'a> {
         }
         self.write_tile(s, job, roots, palettes)?;
         Ok(1)
-    }
-
-    fn geometry(&self, sampling: Sampling, job: TileJob) -> Result<Option<Arc<TileGeometry>>> {
-        let key = GeometryKey {
-            grid: Arc::clone(&self.identity),
-            sampling,
-            tile_size: self.tile,
-            z: job.z,
-            tx: job.tx,
-            ty: job.ty,
-        };
-        global_cache().get_or_compute(key, || {
-            self.src
-                .tile_geometry(sampling, self.tile, job.z, job.tx, job.ty)
-        })
-    }
-
-    /// Max-pooled footprint tile (spec 4.4), classified into `s.classes`.
-    fn footprint_tile(&self, pool: &PoolCtx, s: &mut Scratch, job: TileJob) -> Result<()> {
-        let t = self.tile;
-        let tf = t as f64;
-        let n = f64::from(1u32 << job.z);
-        let (tx, ty) = (f64::from(job.tx), f64::from(job.ty));
-        let col_edges: Vec<f64> = (0..=t)
-            .map(|j| (tx + j as f64 / tf) / n * 360.0 - 180.0)
-            .collect();
-        let lat_edges: Vec<f64> = (0..=t)
-            .map(|i| {
-                let y = 1.0 - 2.0 * (ty + i as f64 / tf) / n;
-                (PI * y).sinh().atan() * (180.0 / PI)
-            })
-            .collect();
-        let row_ranges = footprint_edges(&lat_edges, &pool.lat_axis);
-        let col_ranges = footprint_edges(&col_edges, &pool.lon_axis);
-        let (mut rmin, mut rmax) = (usize::MAX, 0usize);
-        for &(a, b) in &row_ranges {
-            if b > a {
-                rmin = rmin.min(a);
-                rmax = rmax.max(b);
-            }
-        }
-        if rmin == usize::MAX {
-            s.classes.iter_mut().for_each(|c| *c = 0);
-            return Ok(());
-        }
-        let w = self.grid.width;
-        // Only source rows inside the union of row footprints feed the tile.
-        let rows = &pool.nan_values[rmin * w..rmax * w];
-        let shifted: Vec<(usize, usize)> = row_ranges
-            .iter()
-            .map(|&(a, b)| if b > a { (a - rmin, b - rmin) } else { (0, 0) })
-            .collect();
-        let cols = reduce_column_ranges(rows, rmax - rmin, w, &col_ranges);
-        s.values = reduce_row_ranges(&cols, col_ranges.len(), &shifted);
-        self.model.classify_f32_into(&s.values, &mut s.classes)
     }
 
     /// Encode the tile once and write it under every staged palette (spec 9.2, `_write_index_tile`).
@@ -475,9 +548,10 @@ impl<'a> FrameJob<'a> {
         roots: &[&Path],
         palettes: &[(&[u8], &[u8])],
     ) -> Result<()> {
-        let t = self.tile as u32;
+        let tile = self.sampler.tile;
+        let t = tile as u32;
         s.encoder
-            .encode_tail(&s.classes, self.tile, self.tile, self.depth, &mut s.tail)?;
+            .encode_tail(&s.classes, tile, tile, self.depth, &mut s.tail)?;
         for (root, (plte, trns)) in roots.iter().zip(palettes) {
             s.file.clear();
             s.file.extend_from_slice(&header_bytes(t, t, self.depth));

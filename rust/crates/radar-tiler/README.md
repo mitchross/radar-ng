@@ -45,6 +45,9 @@ pyramids; see Deviations.
   `PyramidIdentity`, `RENDERER`.
 - `resolve_tile_renderer`, `tile_renderer_for_role`, `TileRenderer`.
 - `tile_geometry_cache_stats`, `clear_tile_geometry_cache`.
+- `packed` (`docs/packed-tiles.md`): `ValueSampler` (physical values per tile, same routes as the
+  colored tiles), `sample_tiles`, `Quantizer`, `slot_position`, `atlas_dims`, and `pack_frames`, which
+  merges slots into a bucket under `<layer dir>/.packed.lock` and writes `.packed-bucket-v1.json` last.
 - Errors: `TilerError::{Invalid, Conflict, Unbound, Corrupt, Io}`. Callers branch on the
   variant. `Unbound` means a pre-marker tree sits at a final path and needs Python adoption.
 

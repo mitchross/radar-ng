@@ -23,6 +23,7 @@ use radar_core::grid_dump::{
     GridInput, finalize_grid_generation, prune_grid_generations, write_grid,
 };
 use radar_core::heartbeat::run_blocking_with_heartbeat;
+use radar_core::manifest::packed::{PackedBucket, replace_packed_buckets};
 use radar_core::manifest::{FrameSpec, ReplaceOptions, replace_layer};
 use radar_core::nowcast_skill::Summary;
 use radar_core::processed_set::ProcessedSet;
@@ -127,16 +128,16 @@ pub async fn nowcast_run(
     };
 
     // Dry window (D2): nothing is rendered; the commit publishes an empty run and says so in the status.
-    let (leads, palettes) = if no_rain {
-        (Vec::new(), Vec::new())
+    let (leads, palettes, packed) = if no_rain {
+        (Vec::new(), Vec::new(), None)
     } else {
-        let rendered = {
+        let (rendered, packed) = {
             let cfg = Arc::clone(&cfg);
             let latest = latest.clone();
             let lats = lats.clone();
             let lons = lons.clone();
             blocking(every, &heartbeat, move || {
-                render_all(
+                let rendered = render_all(
                     &cfg,
                     &latest,
                     latest_dt,
@@ -145,7 +146,10 @@ pub async fn nowcast_run(
                     method,
                     interval_min,
                     &fields,
-                )
+                )?;
+                // Outside the render pool: packing takes a file lock (see `crate::packed`).
+                let packed = pack_leads(&cfg, &latest, &lats, &lons, &fields, &rendered);
+                Ok((rendered, packed))
             })
             .await?
         };
@@ -154,7 +158,7 @@ pub async fn nowcast_run(
             .iter()
             .flat_map(|l| l.palettes.iter().cloned())
             .collect();
-        (leads, palettes.into_iter().collect::<Vec<_>>())
+        (leads, palettes.into_iter().collect::<Vec<_>>(), packed)
     };
     let leadtimes = if no_rain { 0 } else { n_lead as i64 };
     let palettes_out = palettes.clone();
@@ -177,6 +181,7 @@ pub async fn nowcast_run(
                 lons: &lons,
                 method,
                 no_rain,
+                packed,
             })
         })
         .await?;
@@ -512,6 +517,31 @@ fn render_pool(threads: usize) -> anyhow::Result<Arc<rayon::ThreadPool>> {
     Ok(pool)
 }
 
+/// Pack the run when packing is on and every lead was accepted. Failures are logged, not raised.
+fn pack_leads(
+    cfg: &NowcastConfig,
+    anchor: &str,
+    lats: &[f64],
+    lons: &[f64],
+    fields: &[Field2<f32>],
+    rendered: &[Option<AcceptedLead>],
+) -> Option<Vec<PackedBucket>> {
+    if !cfg.packed_tiles {
+        return None;
+    }
+    let timestamps: Vec<String> = rendered
+        .iter()
+        .map(|lead| lead.as_ref().map(|l| l.timestamp.clone()))
+        .collect::<Option<_>>()?;
+    match crate::packed::pack_run(cfg, anchor, lats, lons, fields, &timestamps) {
+        Ok(buckets) => Some(buckets),
+        Err(err) => {
+            tracing::warn!(anchor, error = %format!("{err:#}"), "nowcast_packed_failed");
+            None
+        }
+    }
+}
+
 /// Inputs to [`commit_run`]. `leads` must hold every lead for a non-dry run.
 pub(crate) struct CommitPlan<'a> {
     /// Run configuration.
@@ -534,6 +564,8 @@ pub(crate) struct CommitPlan<'a> {
     pub method: &'static str,
     /// True for a dry window: no leads, and the layer is removed.
     pub no_rain: bool,
+    /// The run's packed buckets, or `None` when packing is off or failed.
+    pub packed: Option<Vec<PackedBucket>>,
 }
 
 /// Commit a run (spec 9.5). Order: observed anchor, generation marker, manifest swap, retention,
@@ -551,6 +583,7 @@ pub(crate) fn commit_run(plan: CommitPlan<'_>) -> anyhow::Result<()> {
         lons,
         method,
         no_rain,
+        packed,
     } = plan;
     if !no_rain && leads.len() != expected_leads {
         bail!(
@@ -596,6 +629,20 @@ pub(crate) fn commit_run(plan: CommitPlan<'_>) -> anyhow::Result<()> {
     };
     replace_layer(&cfg.paths.state_dir, LAYER, &timestamps, &options)
         .context("replacing the nowcast manifest layer")?;
+    // The layer lists only this run's buckets (none when packing is off), before old ones are deleted.
+    match replace_packed_buckets(
+        &cfg.paths.state_dir,
+        LAYER,
+        &crate::packed::layout(),
+        packed.unwrap_or_default(),
+    ) {
+        Ok(_) => {
+            if let Err(err) = crate::packed::prune_run_buckets(cfg, anchor, Utc::now()) {
+                tracing::warn!(anchor, error = %format!("{err:#}"), "nowcast_packed_prune_failed");
+            }
+        }
+        Err(err) => tracing::warn!(anchor, error = %err, "nowcast_packed_manifest_failed"),
+    }
 
     prune_grid_generations(&cfg.grid, LAYER, cfg.retention_runs, Some(anchor))
         .context("pruning nowcast runs")?;
@@ -655,6 +702,7 @@ mod tests {
             lons: &lons,
             method: METHOD_SPROG,
             no_rain: false,
+            packed: None,
         })
         .unwrap_err();
         assert!(
@@ -698,6 +746,7 @@ mod tests {
             lons: &lons,
             method: METHOD_PERSISTENCE,
             no_rain: true,
+            packed: None,
         })
         .unwrap();
         let text =

@@ -51,7 +51,8 @@ describe("raster overlays share the carousel", () => {
     const source = read("components/map/RadarOverlay.tsx");
     expect(source).toContain("SOURCE_MAX_ZOOM");
     expect(source).toContain("SOURCE_MIN_ZOOM");
-    expect(source).toContain("opacity={radarOpacity}");
+    // Hidden (0) only while a packed frame shows on the GPU overlay.
+    expect(source).toMatch(/opacity=\{[^}]*radarOpacity\}/);
   });
 });
 

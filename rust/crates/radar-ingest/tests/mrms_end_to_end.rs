@@ -167,6 +167,25 @@ async fn m8_process_frame_publishes_tiles_grids_storms_and_manifest() {
     assert_eq!(layer.frames[0].palettes, vec!["classic".to_string()]);
     assert_eq!(layer.frames[0].extra["source"], "mrms");
     assert_eq!(layer.frames[0].extra["max_zoom"], 7);
+    // Packed bucket: the frame took slot 0 of its 30-minute window, listed after the bucket file.
+    let packed = &layer.extra["packed"];
+    assert_eq!(
+        packed["url_template"],
+        "/tiles/packed/{layer}/{bucket}/{z}/{x}/{y}.png?v={v}"
+    );
+    assert_eq!(
+        (packed["min_zoom"].as_u64(), packed["max_zoom"].as_u64()),
+        (Some(3), Some(6))
+    );
+    let bucket = &packed["buckets"][0];
+    assert_eq!(bucket["slots"], serde_json::json!([MRMS_VALID]));
+    assert_eq!(bucket["v"], 1);
+    let bucket_dir = h
+        .paths
+        .tile_dir
+        .join("packed/radar")
+        .join(bucket["id"].as_str().unwrap());
+    assert!(bucket_dir.join(".packed-bucket-v1.json").is_file());
     assert!(
         dir_is_empty_or_missing(&h.ctx.cfg.mrms_tmp_root),
         "scratch removed after success (D3)"
@@ -346,4 +365,13 @@ async fn cleanup_removes_old_frames_and_keeps_new() {
     );
     let manifest = radar_core::manifest::read_manifest(&h.paths.state_dir).unwrap();
     assert!(!manifest.layers.contains_key("radar"));
+    let packed_layer = h.paths.tile_dir.join("packed/radar");
+    assert_eq!(
+        std::fs::read_dir(&packed_layer)
+            .unwrap()
+            .filter(|e| e.as_ref().unwrap().path().is_dir())
+            .count(),
+        0,
+        "expired bucket removed"
+    );
 }
