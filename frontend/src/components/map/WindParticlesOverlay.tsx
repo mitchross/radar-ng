@@ -41,15 +41,16 @@ import { useIsFocused } from "expo-router";
 
 const PARTICLE_COUNT = 1200;
 const LIFETIME_FRAMES = 90; // ~1.5s at 60fps
-const SPEED_SCALE = 0.0008; // deg lon/lat per frame per mph; tune for feel
+const SPEED_SCALE = 0.0004; // deg lon/lat per frame per mph; halved with the 512-pt fix to keep the on-screen speed
 // One frame's drift in degrees is sub-pixel at typical zoom levels, so the
 // rendered "head" is a thicker stub at the current position plus a short
 // tail drawn back along the wind vector. TRAIL_FRAMES is the multiplier on
 // per-frame drift used to compute the tail length.
 const TRAIL_FRAMES = 18;
-// Seed particles in a box centered on the camera. Without this, 1200
-// particles spread across CONUS leaves only a handful in a ~1-2° viewport.
-const SEED_HALF_DEG = 3.0;
+// MapLibre Native zoom counts 512-pt tiles: the world is 512 * 2^zoom points wide.
+const WORLD_TILE_PT = 512;
+// Seed particles over the visible map plus this margin, so density follows the zoom.
+const SEED_MARGIN_PT = 40;
 
 export interface SharedCamera {
   lon: SharedValue<number>;
@@ -133,12 +134,7 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
     if (!field) return;
     runOnUI(() => {
       "worklet";
-      const camLon = camera.lon.get();
-      const camLat = camera.lat.get();
-      const lonMin = Math.max(field.lon_min, camLon - SEED_HALF_DEG);
-      const lonMax = Math.min(field.lon_max, camLon + SEED_HALF_DEG);
-      const latMin = Math.max(field.lat_min, camLat - SEED_HALF_DEG);
-      const latMax = Math.min(field.lat_max, camLat + SEED_HALF_DEG);
+      const { lonMin, lonMax, latMin, latMax } = seedBox(field, camera, width, height);
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         particles.lats[i] = latMin + Math.random() * (latMax - latMin);
         particles.lons[i] = lonMin + Math.random() * (lonMax - lonMin);
@@ -148,7 +144,7 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
         particles.speeds[i] = 0;
       }
     })();
-  }, [field, particles, camera]);
+  }, [field, particles, camera, width, height]);
 
   // Advect every particle each frame. The typed-array buffer is mutated on the
   // UI thread by design; copying 1200 particles per frame would defeat it.
@@ -156,12 +152,7 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
   useFrameCallback(() => {
     "worklet";
     if (!enabled || !field) return;
-    const camLon = camera.lon.get();
-    const camLat = camera.lat.get();
-    const lonMin = Math.max(field.lon_min, camLon - SEED_HALF_DEG);
-    const lonMax = Math.min(field.lon_max, camLon + SEED_HALF_DEG);
-    const latMin = Math.max(field.lat_min, camLat - SEED_HALF_DEG);
-    const latMax = Math.min(field.lat_max, camLat + SEED_HALF_DEG);
+    const { lonMin, lonMax, latMin, latMax } = seedBox(field, camera, width, height);
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const age = particles.ages[i] + 1;
       // Respawn either on age or on drift out of the seed box — keeps particle
@@ -208,7 +199,7 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
       Skia.PathBuilder.Make(),
     ];
     if (field) {
-      const scale = (256 * Math.pow(2, camera.zoom.get())) / (2 * Math.PI);
+      const scale = (WORLD_TILE_PT * Math.pow(2, camera.zoom.get())) / (2 * Math.PI);
       const cx = width / 2;
       const cy = height / 2;
       const centerProj = projectLngLat(camera.lon.get(), camera.lat.get(), scale);
@@ -258,6 +249,22 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
       <Path path={pathExtreme} color="rgba(255,70,110,1)" style="stroke" strokeWidth={3.2} />
     </Canvas>
   );
+}
+
+/** Lon/lat box around the visible map (a circle, so any bearing fits), clipped to the field. */
+function seedBox(field: WindField, camera: SharedCamera, width: number, height: number) {
+  "worklet";
+  const scale = (WORLD_TILE_PT * Math.pow(2, camera.zoom.get())) / (2 * Math.PI);
+  const center = projectLngLat(camera.lon.get(), camera.lat.get(), scale);
+  const r = Math.hypot(width, height) / 2 + SEED_MARGIN_PT;
+  const halfLon = (r / scale) * (180 / Math.PI);
+  const latAt = (y: number) => (Math.atan(Math.sinh(-y / scale)) * 180) / Math.PI;
+  return {
+    lonMin: Math.max(field.lon_min, camera.lon.get() - halfLon),
+    lonMax: Math.min(field.lon_max, camera.lon.get() + halfLon),
+    latMin: Math.max(field.lat_min, latAt(center.y + r)),
+    latMax: Math.min(field.lat_max, latAt(center.y - r)),
+  };
 }
 
 function projectLngLat(lon: number, lat: number, scale: number) {
