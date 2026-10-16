@@ -145,6 +145,11 @@ pub struct Inner {
     /// USGS imagery tiles by `(z, x, y)`, weighted by body length. Each entry keeps the forwarded
     /// upstream headers (`ETag`, `Last-Modified`) so a hit answers exactly like a miss.
     pub imagery_cache: Cache<(u8, u64, u64), CachedImagery>,
+    /// Satellite tiles by `(epoch minute, z, x, y)`, weighted by body length. `try_get_with` makes
+    /// concurrent misses for one tile share one GIBS fetch.
+    pub satellite_tiles: moka::future::Cache<crate::satellite::TileKey, Bytes>,
+    /// GIBS frame times for the `satellite` manifest layer.
+    pub satellite_domain: crate::satellite::DomainCache,
     /// Lazily connected Temporal client. Reset to `None` after an RPC failure.
     pub temporal: AsyncMutex<Option<temporalio_client::Client>>,
     /// The basemap archive, opened on first use and reopened when the file is replaced (F6).
@@ -184,6 +189,15 @@ impl AppState {
                 u32::try_from(v.body.len()).unwrap_or(u32::MAX)
             })
             .time_to_live(Duration::from_secs(604_800))
+            .build();
+        let satellite_tiles = moka::future::Cache::builder()
+            .max_capacity(config.satellite_cache_max_bytes)
+            .weigher(|_k: &crate::satellite::TileKey, v: &Bytes| {
+                u32::try_from(v.len()).unwrap_or(u32::MAX)
+            })
+            .time_to_live(Duration::from_secs(
+                crate::satellite::ACCEPT_WINDOW_S.unsigned_abs(),
+            ))
             .build();
         let inner = Inner {
             limiter: Mutex::new(RateLimiter::new(
@@ -236,6 +250,8 @@ impl AppState {
             llm_slots: Semaphore::new(config.llm_max_concurrency.max(1)),
             inflight: Mutex::new(HashMap::new()),
             imagery_cache,
+            satellite_tiles,
+            satellite_domain: crate::satellite::DomainCache::default(),
             temporal: AsyncMutex::new(None),
             pmtiles: AsyncMutex::new(None),
             push_tokens: PushTokenStore::new(config.state_dir.clone()),

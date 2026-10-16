@@ -94,7 +94,7 @@ pub async fn cached_manifest(state: &AppState) -> Result<Arc<ManifestSnapshot>, 
     {
         return Ok(snap);
     }
-    let value = build_manifest(state).await?;
+    let value = crate::satellite::with_layer(state, build_manifest(state).await?).await;
     let encoded = respond::encode(&value);
     let etag = etag_of(&encoded);
     let snap = Arc::new(ManifestSnapshot {
