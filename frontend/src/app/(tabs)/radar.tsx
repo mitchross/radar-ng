@@ -7,7 +7,8 @@
  *   • RadarStatusChip  (LIVE / UPDATED 12M AGO / OFFLINE, same as Home)
  *   • RadarStatusNotice (loading, offline or unavailable card)
  *   • RadarFABs        (map options + locate capsule)
- *   • MapOptionsSheet  (layer, map style, storm overlays)
+ *   • SatelliteOverlay (GOES imagery under every weather layer)
+ *   • MapOptionsSheet  (layer, satellite, map style, storm overlays)
  *   • EyedropperPin    (long-press map → readout)
  *   • TimelineBar      ("Reflectivity / Sunday, April 19 2026" header)
  */
@@ -34,6 +35,7 @@ import { StormCellSheet, WarningSheet } from "../../components/map/FeatureSheets
 import type { StormCellInfo } from "../../lib/stormTracks";
 import { WindParticlesOverlay, useSharedCamera } from "../../components/map/WindParticlesOverlay";
 import { PackedRadarOverlay } from "../../components/map/PackedRadarOverlay";
+import { SatelliteOverlay } from "../../components/map/SatelliteOverlay";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { LayerLegendCard } from "../../components/map/LayerLegendCard";
 import { LayerLocationMarker } from "../../components/map/LayerLocationMarker";
@@ -128,6 +130,8 @@ export default function RadarScreen() {
           camera.bearing.set(c.bearing);
         }}
       >
+        {/* First child: its anchor layer must sit below every weather layer. */}
+        <SatelliteOverlay />
         {(activeLayer === "radar" || activeLayer === "radar-hrrr") && <RadarOverlay isPacked={packed?.isPacked} />}
         {WEATHER_LAYERS.includes(activeLayer) && (
           <WeatherLayerOverlay key={activeLayer} layerId={activeLayer} opacity={layerOpacity} isPacked={packed?.isPacked} />

@@ -18,6 +18,8 @@ interface Props {
   opacity: number;
   minZoom: number;
   specFor: (frame: RadarFrame) => CarouselFrameSpec;
+  /** Insert every slot under this layer; slots without it stack on top as they remount. */
+  beforeId?: string;
 }
 
 /**
@@ -38,6 +40,7 @@ export function RasterFrameCarousel({
   opacity,
   minZoom,
   specFor,
+  beforeId,
 }: Props) {
   if (frames.length === 0 || currentFrameIndex < 0) return null;
   const clampedIndex = Math.min(currentFrameIndex, frames.length - 1);
@@ -69,6 +72,7 @@ export function RasterFrameCarousel({
         <Layer
           type="raster"
           id={`${idPrefix}-layer-${slot}-${variant}-${frame.path}`}
+          beforeId={beforeId}
           paint={{
             "raster-opacity": isVisible ? opacity : 0,
             "raster-fade-duration": 0,

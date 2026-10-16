@@ -12,7 +12,7 @@ import { selectionHaptic } from "../../lib/haptics";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { MapStyle } from "../../types/weather";
-import { LAYER_OPTIONS, LAYER_SYMBOLS } from "./radarLayers";
+import { LAYER_OPTIONS, LAYER_SYMBOLS, SATELLITE_OVERLAY } from "./radarLayers";
 
 const MAP_STYLES: { id: MapStyle; label: string; color: string }[] = [
   { id: "light", label: "Light", color: "#e8ece5" },
@@ -30,6 +30,8 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
   const setMapStyle = useWeatherStore((s) => s.setMapStyle);
   const extrasVisible = useWeatherStore((s) => s.extrasVisible);
   const toggleExtras = useWeatherStore((s) => s.toggleExtras);
+  const satelliteVisible = useWeatherStore((s) => s.satelliteVisible);
+  const setSatelliteVisible = useWeatherStore((s) => s.setSatelliteVisible);
   // Match phone sheet insets and keep the iPad form sheet compact.
   const contentWidth = Math.min(500, width - 32);
   const tileWidth = (contentWidth - 2 * 10) / 3;
@@ -75,6 +77,21 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
                 </Pressable>
               );
             })}
+          </View>
+
+          <View style={styles.switchRow}>
+            <SymbolView name={SATELLITE_OVERLAY.symbol} size={22} tintColor={theme.colors.text} type="hierarchical" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.switchTitle}>{SATELLITE_OVERLAY.name}</Text>
+              <Text style={styles.switchDetail}>{SATELLITE_OVERLAY.detail}</Text>
+            </View>
+            <Switch
+              value={satelliteVisible}
+              onValueChange={setSatelliteVisible}
+              trackColor={{ true: theme.colors.accent }}
+              style={styles.switch}
+              accessibilityLabel="Toggle satellite clouds"
+            />
           </View>
 
           <Text style={styles.section}>MAP STYLE</Text>

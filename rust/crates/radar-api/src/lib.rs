@@ -28,6 +28,7 @@ mod places;
 mod prefetch;
 mod ratelimit;
 mod respond;
+mod satellite;
 mod state;
 mod upstream;
 mod wind;

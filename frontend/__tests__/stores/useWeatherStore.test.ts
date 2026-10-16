@@ -21,6 +21,12 @@ describe("useWeatherStore", () => {
     expect(useWeatherStore.getState().temperatureUnit).toBe("celsius");
     expect(useWeatherStore.getState().radarOpacity).toBe(0.45);
   });
+  it("keeps satellite clouds off until asked and remembers the choice", () => {
+    expect(useWeatherStore.getState().satelliteVisible).toBe(false);
+    useWeatherStore.getState().setSatelliteVisible(true);
+    expect(setString).toHaveBeenCalledWith("satelliteVisible", "1");
+    expect(useWeatherStore.getState().satelliteVisible).toBe(true);
+  });
   it("keeps rain alerts off until asked and remembers the lead time", () => {
     expect(useWeatherStore.getState().rainAlertsEnabled).toBe(false);
     expect(useWeatherStore.getState().rainAlertLeadMinutes).toBe(10);

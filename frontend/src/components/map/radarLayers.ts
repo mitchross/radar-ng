@@ -31,6 +31,13 @@ export const LAYER_SYMBOLS: Record<LayerIcon, SymbolViewProps["name"]> = {
   ozone: { ios: "sun.haze.fill", android: "hexagon" },
 };
 
+/** GOES satellite imagery: a switch drawn under any weather layer, not one of the layers above. */
+export const SATELLITE_OVERLAY = {
+  name: "Satellite clouds",
+  detail: "GOES imagery under the radar, every 10 minutes",
+  symbol: { ios: "globe.americas.fill", android: "satellite_alt" } as SymbolViewProps["name"],
+};
+
 export function layerOption(id: LayerType) {
   return LAYER_OPTIONS.find((o) => o.id === id) ?? LAYER_OPTIONS[0];
 }
