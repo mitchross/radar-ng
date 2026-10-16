@@ -60,6 +60,8 @@ void initAnalytics();
 const LAYERS: { id: string; name: string; needs: string }[] = [
   { id: "radar", name: "Radar", needs: "radar" },
   { id: "temperature", name: "Temperature", needs: "temperature" },
+  { id: "feels-like", name: "Feels like", needs: "feels-like" },
+  { id: "dewpoint", name: "Dew point", needs: "dewpoint" },
   { id: "wind", name: "Wind", needs: "wind" },
   { id: "precip-accum", name: "Rain total", needs: "precip-accum" },
   { id: "cloud", name: "Clouds", needs: "cloud" },
@@ -1123,6 +1125,10 @@ map.on("click", async (e) => {
     if (state.layer === "radar") text = `${describeDbz(value)} <small>${Math.round(value)} dBZ</small>`;
     else if (state.layer === "air-quality") text = `AQI ${usAqiFromPm25(value)} · ${aqiLabel(usAqiFromPm25(value))} <small>${Math.round(value)} µg/m³</small>`;
     else if (state.layer === "ozone") text = `${Math.round(value)} ppb`;
+    else if (["temperature", "feels-like", "dewpoint"].includes(state.layer)) text = `${Math.round(value)}°F`;
+    else if (state.layer === "wind") text = `${Math.round(value)} mph`;
+    else if (state.layer === "cloud") text = `${Math.round(value)}%`;
+    else if (state.layer === "precip-accum") text = `${value.toFixed(2)} in`;
     else text = `${value.toFixed(1)}`;
   }
   popup.setHTML(`<div class="readout"><b>${title}</b><div class="v">${text}</div><small>${lat.toFixed(3)}, ${lng.toFixed(3)}</small></div>`);

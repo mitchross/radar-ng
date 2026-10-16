@@ -31,6 +31,44 @@ pub fn wind_speed_mph(u_mph: f32, v_mph: f32) -> f32 {
     (u_mph * u_mph + v_mph * v_mph).sqrt()
 }
 
+/// NWS apparent temperature in °F: wind chill at or below 50 °F with wind of at least 3 mph, heat index
+/// at 80 °F and above (Rothfusz regression with the NWS low/high humidity adjustments), else the air
+/// temperature. NaN in any input gives NaN.
+pub fn apparent_temperature_f(t_f: f32, rh_pct: f32, wind_mph: f32) -> f32 {
+    if t_f.is_nan() || rh_pct.is_nan() || wind_mph.is_nan() {
+        return f32::NAN;
+    }
+    let (t, rh, v) = (
+        f64::from(t_f),
+        f64::from(rh_pct.clamp(0.0, 100.0)),
+        f64::from(wind_mph),
+    );
+    if t <= 50.0 && v >= 3.0 {
+        let v16 = v.powf(0.16);
+        return (35.74 + 0.6215 * t - 35.75 * v16 + 0.4275 * t * v16) as f32;
+    }
+    if t < 80.0 {
+        return t_f;
+    }
+    let simple = 0.5 * (t + 61.0 + (t - 68.0) * 1.2 + rh * 0.094);
+    if (simple + t) / 2.0 < 80.0 {
+        return simple as f32;
+    }
+    let mut hi = -42.379 + 2.049_015_23 * t + 10.143_331_27 * rh
+        - 0.224_755_41 * t * rh
+        - 0.006_837_83 * t * t
+        - 0.054_817_17 * rh * rh
+        + 0.001_228_74 * t * t * rh
+        + 0.000_852_82 * t * rh * rh
+        - 0.000_001_99 * t * t * rh * rh;
+    if rh < 13.0 && (80.0..=112.0).contains(&t) {
+        hi -= ((13.0 - rh) / 4.0) * ((17.0 - (t - 95.0).abs()) / 17.0).sqrt();
+    } else if rh > 85.0 && (80.0..=87.0).contains(&t) {
+        hi += ((rh - 85.0) / 10.0) * ((87.0 - t) / 5.0);
+    }
+    hi as f32
+}
+
 /// Kilograms per square metre (mm) to inches: `d / 25.4`, in f32.
 #[inline]
 pub fn mm_to_inches(mm: f32) -> f32 {
@@ -72,6 +110,18 @@ pub fn precip_type_category(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apparent_temperature_follows_nws_tables() {
+        // NWS heat index chart: 90 °F at 60 % RH reads 100 °F.
+        assert!((apparent_temperature_f(90.0, 60.0, 5.0) - 100.0).abs() < 1.0);
+        // NWS wind chill chart: 20 °F with 15 mph wind reads 6 °F.
+        assert!((apparent_temperature_f(20.0, 50.0, 15.0) - 6.0).abs() < 1.0);
+        // Mild air, or calm cold air: the air temperature.
+        assert_eq!(apparent_temperature_f(65.0, 90.0, 20.0), 65.0);
+        assert_eq!(apparent_temperature_f(30.0, 50.0, 2.0), 30.0);
+        assert!(apparent_temperature_f(f32::NAN, 50.0, 5.0).is_nan());
+    }
 
     #[test]
     fn kelvin_to_f_matches_numpy_f32_order() {

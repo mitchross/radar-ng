@@ -101,7 +101,7 @@ export function formatReading(layer: LayerType, r: InspectReading): string {
     if (v < 5) return "Clear";
     return describeDBZ(Math.round(v));
   }
-  if (layer === "temperature") return `${Math.round(v)}${r.unit || "°F"}`;
+  if (layer === "temperature" || layer === "feels-like" || layer === "dewpoint") return `${Math.round(v)}${r.unit || "°F"}`;
   if (layer === "wind") return `${Math.round(v)} ${r.unit || "mph"}`;
   if (layer === "cape") return `${Math.round(v)} ${r.unit || "J/kg"}`;
   if (layer === "precip-type") return "Active";
