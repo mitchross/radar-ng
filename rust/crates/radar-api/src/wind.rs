@@ -10,11 +10,11 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use axum::extract::{Path as AxPath, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use bytes::Bytes;
 use radar_core::pycompat::py_int;
 use radar_core::time::round_half_even;
 use serde_json::{Value, json};
@@ -28,8 +28,8 @@ const TARGET_H: usize = 120;
 
 /// What the handler needs: the JSON body and whether it may carry `Cache-Control: max-age=300`.
 pub struct WindOutcome {
-    /// The response body.
-    pub body: Value,
+    /// The encoded response body.
+    pub body: Bytes,
     /// True for a successful (cacheable) response.
     pub cacheable: bool,
 }
@@ -206,7 +206,9 @@ pub fn wind_field(state: &AppState, raw_timestamp: &str) -> WindOutcome {
             Some(last) => ts = last.clone(),
             None => {
                 return WindOutcome {
-                    body: json!({ "ok": false, "reason": "grid_missing", "timestamp": raw_timestamp }),
+                    body: respond::encode(
+                        &json!({ "ok": false, "reason": "grid_missing", "timestamp": raw_timestamp }),
+                    ),
                     cacheable: false,
                 };
             }
@@ -214,7 +216,7 @@ pub fn wind_field(state: &AppState, raw_timestamp: &str) -> WindOutcome {
     }
     if let Some(hit) = state.wind_cache.get(&ts) {
         return WindOutcome {
-            body: (*hit).clone(),
+            body: hit,
             cacheable: true,
         };
     }
@@ -222,15 +224,15 @@ pub fn wind_field(state: &AppState, raw_timestamp: &str) -> WindOutcome {
     let v_meta = v_dir.join(format!("{ts}.meta.json"));
     match compute(&u_meta, &v_meta, &ts) {
         Ok(body) => {
-            let shared = Arc::new(body.clone());
-            state.wind_cache.insert(ts, shared);
+            let body = respond::encode(&body);
+            state.wind_cache.insert(ts, body.clone());
             WindOutcome {
                 body,
                 cacheable: true,
             }
         }
         Err(reason) => WindOutcome {
-            body: json!({ "ok": false, "reason": reason }),
+            body: respond::encode(&json!({ "ok": false, "reason": reason })),
             cacheable: false,
         },
     }
@@ -245,7 +247,7 @@ pub async fn get_wind_field(
     let outcome = tokio::task::spawn_blocking(move || wind_field(&st, &timestamp))
         .await
         .unwrap_or_else(|_| WindOutcome {
-            body: json!({ "ok": false, "reason": "grid_read_failed" }),
+            body: respond::encode(&json!({ "ok": false, "reason": "grid_read_failed" })),
             cacheable: false,
         });
     let cc = if outcome.cacheable {
@@ -253,7 +255,7 @@ pub async fn get_wind_field(
     } else {
         None
     };
-    respond::json(StatusCode::OK, &outcome.body, cc.as_deref()).into_response()
+    respond::json_bytes(StatusCode::OK, outcome.body, cc.as_deref()).into_response()
 }
 
 #[cfg(test)]

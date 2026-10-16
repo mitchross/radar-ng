@@ -414,6 +414,50 @@ fn add_counts(into: &mut Counts, value: Option<&Value>) {
     into.false_alarms += get("false_alarms");
 }
 
+/// The summary window in hours: the argument, else the log's, else the configured one (zero means unset).
+fn window_hours_for(log: &SkillLog, window_hours: Option<i64>, cfg: &SkillConfig) -> i64 {
+    window_hours
+        .filter(|h| *h != 0)
+        .or(log.window_hours.filter(|h| *h != 0))
+        .unwrap_or(cfg.window_hours)
+}
+
+/// The entries [`summarize`] counts at `now`, with their `scored_at` and lead.
+fn windowed_entries(
+    log: &SkillLog,
+    now: DateTime<Utc>,
+    window: ChronoDuration,
+) -> impl Iterator<Item = (&Map<String, Value>, DateTime<Utc>, i64)> {
+    log.entries.iter().filter_map(move |entry| {
+        let Value::Object(obj) = entry else {
+            return None;
+        };
+        let scored = obj.get("scored_at").and_then(|v| match v {
+            Value::String(s) => parse_iso_as_utc(s),
+            _ => None,
+        })?;
+        if now - scored > window {
+            return None;
+        }
+        let lead = obj.get("lead_minutes").and_then(py_int)?;
+        Some((obj, scored, lead))
+    })
+}
+
+/// When `summarize(log, now, window_hours)` next changes for an unchanged log: the moment the
+/// oldest counted entry leaves the window. `None` when no entry is counted (it never changes).
+pub fn summary_expiry(
+    log: &SkillLog,
+    now: DateTime<Utc>,
+    window_hours: Option<i64>,
+    cfg: &SkillConfig,
+) -> Option<DateTime<Utc>> {
+    let window = ChronoDuration::hours(window_hours_for(log, window_hours, cfg));
+    windowed_entries(log, now, window)
+        .map(|(_, scored, _)| scored + window)
+        .min()
+}
+
 /// `summarize(log, now=now, window_hours=...)`.
 pub fn summarize(
     log: &SkillLog,
@@ -421,30 +465,12 @@ pub fn summarize(
     window_hours: Option<i64>,
     cfg: &SkillConfig,
 ) -> Summary {
-    let window_h = window_hours
-        .filter(|h| *h != 0)
-        .or(log.window_hours.filter(|h| *h != 0))
-        .unwrap_or(cfg.window_hours);
+    let window_h = window_hours_for(log, window_hours, cfg);
     let window = ChronoDuration::hours(window_h);
 
     let mut by_lead: BTreeMap<i64, Bucket> = BTreeMap::new();
     let mut anchors: BTreeSet<String> = BTreeSet::new();
-    for entry in &log.entries {
-        let Value::Object(obj) = entry else {
-            continue;
-        };
-        let Some(scored) = obj.get("scored_at").and_then(|v| match v {
-            Value::String(s) => parse_iso_as_utc(s),
-            _ => None,
-        }) else {
-            continue;
-        };
-        if now - scored > window {
-            continue;
-        }
-        let Some(lead) = obj.get("lead_minutes").and_then(py_int) else {
-            continue;
-        };
+    for (obj, _, lead) in windowed_entries(log, now, window) {
         let bucket = by_lead.entry(lead).or_default();
         let anchor = obj
             .get("anchor")

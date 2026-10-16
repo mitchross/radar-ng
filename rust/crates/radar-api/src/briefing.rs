@@ -20,10 +20,10 @@ use radar_core::time::{now_isoformat, round_digits, round_half_even};
 use serde_json::{Value, json};
 use tokio::sync::watch;
 
+use crate::alerts::alerts_for;
 use crate::forecast::forecast_for;
 use crate::nowcast::nowcast_point;
 use crate::params::{Issues, query_param};
-use crate::places::alerts_for;
 use crate::respond;
 use crate::state::AppState;
 use crate::upstream;
@@ -509,7 +509,6 @@ async fn gather(state: &AppState, lat: f64, lon: f64) -> (Value, Value, Value, V
     let forecast = async {
         forecast_for(state, lat, lon)
             .await
-            .map(|f| (*f).clone())
             .unwrap_or_else(|_| json!({}))
     };
     let nowcast = async {

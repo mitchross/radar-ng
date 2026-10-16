@@ -2,17 +2,19 @@
 //!
 //! The point body is cached per `(run_id, lat3, lon3)` **without** `skill`. Every response then
 //! merges the current headline in, so the skill can change without invalidating the body. The
-//! skill summary is a single-entry snapshot re-read every 15 s.
+//! skill summary is a single-entry snapshot. It is re-read only when the skill log file changes or
+//! when its oldest counted entry leaves the window, so it always equals a fresh summary.
 
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::{Duration, Instant};
+use std::time::SystemTime;
 
 use axum::extract::{Path as AxPath, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
-use radar_core::nowcast_skill;
+use radar_core::nowcast_skill::{self, Summary};
 use radar_core::pycompat::{float_repr, is_falsy, py_str};
 use radar_core::time::{parse_iso_as_utc, round_digits};
 use serde_json::{Map, Value, json};
@@ -22,9 +24,6 @@ use crate::manifest::cached_manifest;
 use crate::params::Issues;
 use crate::respond;
 use crate::state::AppState;
-
-/// TTL of the skill snapshot (`_MANIFEST_TTL_S`).
-pub const SKILL_TTL: Duration = Duration::from_secs(15);
 
 /// A published run is expired when none of its frames remains valid in the future.
 pub(crate) fn run_expired(layer: &Value, now: DateTime<Utc>) -> bool {
@@ -51,30 +50,86 @@ pub fn dbz_to_rain_rate(dbz: f64) -> f64 {
     ((z / 200.0).powf(1.0 / 1.6)).clamp(0.0, 300.0)
 }
 
-/// The skill summary as JSON, from the cache or the skill log. Synchronous (reads a file).
+/// The skill summary and its JSON form.
+#[derive(Debug)]
+pub struct Skill {
+    /// The summary (for `/api/metrics`).
+    pub summary: Summary,
+    /// The summary as JSON (for the routes).
+    pub value: Value,
+}
+
+/// Identity of the skill log file. The writer replaces it with tmp + rename, which changes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LogStamp {
+    len: u64,
+    modified: Option<SystemTime>,
+    ino: u64,
+}
+
+fn log_stamp(path: &Path) -> Option<LogStamp> {
+    let meta = std::fs::metadata(path).ok()?;
+    #[cfg(unix)]
+    let ino = std::os::unix::fs::MetadataExt::ino(&meta);
+    #[cfg(not(unix))]
+    let ino = 0;
+    Some(LogStamp {
+        len: meta.len(),
+        modified: meta.modified().ok(),
+        ino,
+    })
+}
+
+/// The cached summary, the log stamp it was read from, and when it stops being exact.
+#[derive(Debug)]
+pub struct SkillCache {
+    stamp: Option<LogStamp>,
+    expires: Option<DateTime<Utc>>,
+    skill: Arc<Skill>,
+}
+
+impl SkillCache {
+    fn is_current(&self, stamp: Option<&LogStamp>, now: DateTime<Utc>) -> bool {
+        self.stamp.as_ref() == stamp && self.expires.is_none_or(|t| now < t)
+    }
+}
+
+/// The skill summary, from the cache or the skill log. Synchronous (stats and may read a file).
 #[must_use]
-pub fn skill_summary_blocking(state: &AppState) -> Arc<Value> {
+pub fn skill_summary_blocking(state: &AppState) -> Arc<Skill> {
+    let path = nowcast_skill::skill_path(&state.config.state_dir);
+    let now = Utc::now();
+    // Stat before reading, so a rewrite during the read is picked up by the next call.
+    let stamp = log_stamp(&path);
+    if let Some(cached) = lock(&state.skill).as_ref()
+        && cached.is_current(stamp.as_ref(), now)
     {
-        let guard = lock(&state.skill);
-        if let Some((expires, value)) = guard.as_ref()
-            && Instant::now() < *expires
-        {
-            return value.clone();
-        }
+        return cached.skill.clone();
     }
     let log = nowcast_skill::read_log(&state.config.state_dir, &state.skill_cfg);
-    let summary = nowcast_skill::summarize(&log, Utc::now(), None, &state.skill_cfg);
-    let value = Arc::new(serde_json::to_value(&summary).unwrap_or(Value::Null));
-    *lock(&state.skill) = Some((Instant::now() + SKILL_TTL, value.clone()));
-    value
+    let summary = nowcast_skill::summarize(&log, now, None, &state.skill_cfg);
+    let expires = nowcast_skill::summary_expiry(&log, now, None, &state.skill_cfg);
+    let value = serde_json::to_value(&summary).unwrap_or(Value::Null);
+    let skill = Arc::new(Skill { summary, value });
+    *lock(&state.skill) = Some(SkillCache {
+        stamp,
+        expires,
+        skill: skill.clone(),
+    });
+    skill
 }
 
 /// The skill summary without blocking the runtime.
-pub async fn skill_summary(state: &AppState) -> Arc<Value> {
+pub async fn skill_summary(state: &AppState) -> Arc<Skill> {
     let st = state.clone();
     tokio::task::spawn_blocking(move || skill_summary_blocking(&st))
         .await
-        .unwrap_or_else(|_| Arc::new(Value::Null))
+        .unwrap_or_else(|_| {
+            let log = nowcast_skill::SkillLog::empty(&state.skill_cfg);
+            let summary = nowcast_skill::summarize(&log, Utc::now(), None, &state.skill_cfg);
+            let value = serde_json::to_value(&summary).unwrap_or(Value::Null);
+            Arc::new(Skill { summary, value })
+        })
 }
 
 /// The headline (`summary.headline`, or `null`).
@@ -162,14 +217,18 @@ pub async fn nowcast_point(state: &AppState, lat: f64, lon: f64) -> Result<Point
     let glon = round_digits(lon, 3);
     let cache_key = (run_id.clone(), float_repr(glat), float_repr(glon));
 
-    if let Some(cached) = state.nowcast_cache.get(&cache_key) {
+    if let Some(cached) = state
+        .nowcast_cache
+        .get(&cache_key)
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+    {
         state
             .metrics
             .counters
             .nowcast_point_cache_hits_total
             .fetch_add(1, Ordering::Relaxed);
         return Ok(PointResult {
-            body: with_skill(&cached, state).await,
+            body: with_skill(cached, state).await,
             max_age: 30,
         });
     }
@@ -263,23 +322,22 @@ pub async fn nowcast_point(state: &AppState, lat: f64, lon: f64) -> Result<Point
         "longitude": glon,
         "points": points,
     });
-    let cached = Arc::new(body);
-    state.nowcast_cache.insert(cache_key, cached.clone());
+    state
+        .nowcast_cache
+        .insert(cache_key, respond::encode(&body));
     Ok(PointResult {
-        body: with_skill(&cached, state).await,
+        body: with_skill(body, state).await,
         max_age: 30,
     })
 }
 
-/// Clone a cached body and append the current skill headline as the last key.
-async fn with_skill(body: &Value, state: &AppState) -> Value {
-    let mut out = body.clone();
-    let summary = skill_summary(state).await;
-    let headline = headline(summary.as_ref());
-    if let Some(map) = out.as_object_mut() {
-        map.insert("skill".into(), headline);
+/// Append the current skill headline to a body as its last key.
+async fn with_skill(mut body: Value, state: &AppState) -> Value {
+    let skill = skill_summary(state).await;
+    if let Some(map) = body.as_object_mut() {
+        map.insert("skill".into(), headline(&skill.value));
     }
-    out
+    body
 }
 
 /// `GET /api/nowcast/{lat}/{lon}`.
@@ -311,8 +369,13 @@ pub async fn get_nowcast_point(
 
 /// `GET /api/nowcast/skill`.
 pub async fn get_nowcast_skill(State(state): State<AppState>) -> Response {
-    let summary = skill_summary(&state).await;
-    respond::json(StatusCode::OK, &summary, Some(&respond::public_max_age(30))).into_response()
+    let skill = skill_summary(&state).await;
+    respond::json(
+        StatusCode::OK,
+        &skill.value,
+        Some(&respond::public_max_age(30)),
+    )
+    .into_response()
 }
 
 #[cfg(test)]
