@@ -85,11 +85,14 @@ export function buildLut(table: ColorTable | undefined, scale: number, offset: n
   return lut;
 }
 
-/** Inverse of the server's quantization; 0 means no data. */
-export function quantize(value: number, scale: number, offset: number, floor = -Infinity): number {
+/**
+ * The server's quantization; 0 means no data. A `floor` below `offset + scale` stores the values
+ * in between as code 1 (spec "Quantization per palette key").
+ */
+export function quantize(value: number, scale: number, offset: number, floor = offset + scale): number {
   if (Number.isNaN(value) || value < floor) return 0;
   const q = Math.floor((value - offset) / scale);
-  return q < 1 ? 0 : Math.min(q, 255);
+  return Math.max(1, Math.min(q, 255));
 }
 
 export interface SlotAddress {

@@ -16,6 +16,7 @@
 mod cleanup;
 mod download;
 pub mod grib;
+pub mod packed;
 mod publish;
 mod render;
 
@@ -109,6 +110,8 @@ pub struct AqmConfig {
     pub heartbeat_every: Duration,
     /// Per-read timeout for the GRIB download (300 s, as httpx `timeout=300`).
     pub read_timeout: Duration,
+    /// `PACKED_TILES` (default on): write packed data tile buckets per run.
+    pub packed_tiles: bool,
 }
 
 impl AqmConfig {
@@ -124,6 +127,7 @@ impl AqmConfig {
             sources: AqmSources::default(),
             heartbeat_every: Duration::from_secs(30),
             read_timeout: Duration::from_secs(300),
+            packed_tiles: radar_core::env::bool_var("PACKED_TILES", true)?,
         })
     }
 
@@ -143,6 +147,7 @@ impl AqmConfig {
             sources: AqmSources::default(),
             heartbeat_every: Duration::from_secs(30),
             read_timeout: Duration::from_secs(300),
+            packed_tiles: true,
         }
     }
 
@@ -373,6 +378,7 @@ pub async fn aqm_render_chunk(
         tables,
         tile_dir: cfg.tile_dir.clone(),
         grid: cfg.grid.clone(),
+        packed: cfg.packed_tiles,
     };
     let timestamps = radar_core::heartbeat::run_blocking_with_heartbeat(
         move || render::render_chunk_blocking(&job),
@@ -410,11 +416,14 @@ pub async fn aqm_publish_run(
     .await
     .map_err(|e| AqmError::Invalid(format!("palette task failed: {e}")))??;
     let state_dir = cfg.state_dir.clone();
+    let packed = cfg.packed_tiles.then(|| cfg.tile_dir.clone());
     let run_id = run_id.to_string();
     let results = results.to_vec();
-    tokio::task::spawn_blocking(move || publish::publish_run(&state_dir, &run_id, &results, &keys))
-        .await
-        .map_err(|e| AqmError::Invalid(format!("publish task failed: {e}")))?
+    tokio::task::spawn_blocking(move || {
+        publish::publish_run(&state_dir, packed.as_deref(), &run_id, &results, &keys)
+    })
+    .await
+    .map_err(|e| AqmError::Invalid(format!("publish task failed: {e}")))?
 }
 
 /// `aqm_mark_processed`: adds the run id to `STATE_DIR/ingest-airquality.json` (max 100, oldest dropped).

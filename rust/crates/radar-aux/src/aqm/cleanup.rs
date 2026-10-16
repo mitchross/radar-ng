@@ -30,6 +30,8 @@ pub(crate) fn cleanup_blocking(
             .and_then(|layer| layer.extra.get("run_id"))
             .and_then(|v| v.as_str())
             .map(str::to_string);
+        removed +=
+            super::packed::cleanup_buckets(&cfg.tile_dir, spec.name, current.as_deref(), cutoff)?;
         let layer_dir = cfg.tile_dir.join(spec.name);
         if !layer_dir.is_dir() {
             continue;

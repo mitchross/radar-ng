@@ -30,6 +30,7 @@ fn h5_no_f01_publishes_nothing_and_writes_no_manifest() {
     let pals = load_hrrr_palettes(&["classic".into()]);
     let published = publish_run(
         dir.path(),
+        None,
         "20260715_12",
         &[hour(2, &["radar-hrrr"])],
         &pals,
@@ -46,7 +47,7 @@ fn h6_complete_run_publishes_run_scoped_frames() {
     let dir = tempfile::tempdir().unwrap();
     let pals = load_hrrr_palettes(&["classic".into()]);
     let results = [hour(1, &["radar-hrrr"]), hour(2, &["radar-hrrr"])];
-    let published = publish_run(dir.path(), "20260715_12", &results, &pals, 2).unwrap();
+    let published = publish_run(dir.path(), None, "20260715_12", &results, &pals, 2).unwrap();
     assert_eq!(published, vec!["radar-hrrr".to_string()]);
     let m = read_manifest(dir.path()).unwrap();
     let layer = &m.layers["radar-hrrr"];
@@ -73,7 +74,7 @@ fn h7_partial_then_extended_publication() {
         hour(3, &[]),
         hour(4, &["radar-hrrr"]),
     ];
-    publish_run(dir.path(), "20260715_12", &first, &pals, 4).unwrap();
+    publish_run(dir.path(), None, "20260715_12", &first, &pals, 4).unwrap();
     let m = read_manifest(dir.path()).unwrap();
     assert_eq!(lead_minutes(&m.layers["radar-hrrr"]), vec![60, 120]);
     assert_eq!(m.layers["radar-hrrr"].extra["complete"], false);
@@ -85,7 +86,7 @@ fn h7_partial_then_extended_publication() {
         hour(3, &["radar-hrrr"]),
         hour(4, &["radar-hrrr"]),
     ];
-    publish_run(dir.path(), "20260715_12", &filled, &pals, 4).unwrap();
+    publish_run(dir.path(), None, "20260715_12", &filled, &pals, 4).unwrap();
     let m = read_manifest(dir.path()).unwrap();
     assert_eq!(
         lead_minutes(&m.layers["radar-hrrr"]),
@@ -100,10 +101,10 @@ fn h21_extended_tail_carry_and_drop() {
     let dir = tempfile::tempdir().unwrap();
     let pals = load_hrrr_palettes(&["classic".into()]);
     let twelve: Vec<ForecastHourResult> = (1..=48).map(|f| hour(f, &["radar-hrrr"])).collect();
-    publish_run(dir.path(), "20260716_12", &twelve, &pals, 48).unwrap();
+    publish_run(dir.path(), None, "20260716_12", &twelve, &pals, 48).unwrap();
 
     let thirteen: Vec<ForecastHourResult> = (1..=18).map(|f| hour(f, &["radar-hrrr"])).collect();
-    publish_run(dir.path(), "20260716_13", &thirteen, &pals, 18).unwrap();
+    publish_run(dir.path(), None, "20260716_13", &thirteen, &pals, 18).unwrap();
     let m = read_manifest(dir.path()).unwrap();
     let layer = &m.layers["radar-hrrr"];
     assert_eq!(layer.frames.len(), 18 + 29);
@@ -129,7 +130,7 @@ fn h21_extended_tail_carry_and_drop() {
     );
 
     let oh_one: Vec<ForecastHourResult> = (1..=18).map(|f| hour(f, &["radar-hrrr"])).collect();
-    publish_run(dir.path(), "20260717_01", &oh_one, &pals, 18).unwrap();
+    publish_run(dir.path(), None, "20260717_01", &oh_one, &pals, 18).unwrap();
     let m = read_manifest(dir.path()).unwrap();
     let layer = &m.layers["radar-hrrr"];
     assert_eq!(layer.frames.len(), 18);
@@ -139,4 +140,69 @@ fn h21_extended_tail_carry_and_drop() {
             .iter()
             .all(|f| f.extra["run_id"] == "20260717_01")
     );
+}
+
+/// Packed buckets follow the frames: the 13z run lists its own bucket plus the slots of the 12z
+/// extended tail; slots the 13z run replaced are blank. Publishing without packing drops them.
+#[test]
+fn packed_buckets_follow_the_published_frames_and_the_extended_tail() {
+    use radar_core::manifest::packed::packed_buckets;
+    use radar_ingest::hrrr::packed::pack_hour;
+    use radar_ingest::hrrr::{run_init, valid_time};
+
+    let dir = tempfile::tempdir().unwrap();
+    let paths = radar_core::env::Paths::new(
+        dir.path().join("state"),
+        dir.path().join("grids"),
+        dir.path().join("tiles"),
+    );
+    let lats: Vec<f64> = (0..50).map(|i| 35.0 + 0.04 * f64::from(i)).collect();
+    let lons: Vec<f64> = (0..50).map(|i| -98.0 + 0.04 * f64::from(i)).collect();
+    let grid = radar_geo::Grid {
+        height: 50,
+        width: 50,
+        values: vec![40.0; 2500],
+        geo: radar_geo::GridGeo::Regular { lats, lons },
+    };
+    let pals = load_hrrr_palettes(&["classic".into()]);
+    let state = &paths.state_dir;
+    for (run, hours) in [("20260716_12", 48), ("20260716_13", 18)] {
+        let init = run_init(run).unwrap();
+        for fhr in 1..=hours {
+            pack_hour(&paths, "radar-hrrr", run, &valid_time(init, fhr), &grid).unwrap();
+        }
+        let results: Vec<ForecastHourResult> = (1..=i64::from(hours))
+            .map(|f| hour(f, &["radar-hrrr"]))
+            .collect();
+        publish_run(state, Some(&paths), run, &results, &pals, hours).unwrap();
+    }
+    let m = read_manifest(state).unwrap();
+    let buckets = packed_buckets(&m, "radar-hrrr");
+    let ids: Vec<&str> = buckets.iter().map(|b| b.id.as_str()).collect();
+    assert_eq!(ids, ["20260716_12", "20260716_12.p1", "20260716_13"]);
+    let shown = |i: usize| buckets[i].slots.iter().filter(|s| !s.is_empty()).count();
+    // 12z f20 to f24 (after 13z's last hour, f19 of 12z), all of 12z f25 to f48, all of 13z.
+    assert_eq!((shown(0), shown(1), shown(2)), (5, 24, 18));
+    let layer = &m.layers["radar-hrrr"];
+    for frame in &layer.frames {
+        let hits = buckets
+            .iter()
+            .filter(|b| b.slots.contains(&frame.timestamp))
+            .count();
+        assert_eq!(hits, 1, "{} is in exactly one bucket", frame.timestamp);
+    }
+
+    publish_run(
+        state,
+        None,
+        "20260716_13",
+        &(1..=18)
+            .map(|f| hour(f, &["radar-hrrr"]))
+            .collect::<Vec<_>>(),
+        &pals,
+        18,
+    )
+    .unwrap();
+    let m = read_manifest(state).unwrap();
+    assert!(packed_buckets(&m, "radar-hrrr").is_empty());
 }
