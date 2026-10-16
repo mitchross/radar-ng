@@ -327,6 +327,44 @@ async fn tiles_are_immutable_and_errors_are_overridden_to_no_store_text() {
 }
 
 #[tokio::test]
+async fn missing_tile_in_a_complete_pyramid_is_a_cacheable_204() {
+    let env = Env::new();
+    let root = env.path("tiles/radar/classic/2026-10-13T12:00:00+00:00");
+    std::fs::create_dir_all(root.join("6/16")).expect("dirs");
+    std::fs::write(root.join("6/16/23.png"), b"png").expect("tile");
+    std::fs::write(root.join(".render-complete-v2.json"), b"{}").expect("marker");
+    let app = env.app(|_| {});
+
+    // Clients percent-encode the timestamp segment.
+    for uri in [
+        "/tiles/radar/classic/2026-10-13T12:00:00+00:00/6/17/23.png",
+        "/tiles/radar/classic/2026-10-13T12%3A00%3A00%2B00%3A00/6/17/23.png",
+    ] {
+        let (status, headers, body) = send(&app, get_req(uri)).await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "{uri}");
+        assert!(body.is_empty());
+        assert_eq!(
+            header_str(&headers, "cache-control"),
+            "public, max-age=86400, immutable"
+        );
+        assert_eq!(header_str(&headers, "access-control-allow-origin"), "*");
+    }
+
+    // No marker yet (still publishing) or not a tile path: the no-store 404 stays.
+    let pending = env.path("tiles/radar/classic/2026-10-13T12:02:00+00:00/6/16");
+    std::fs::create_dir_all(&pending).expect("dirs");
+    for uri in [
+        "/tiles/radar/classic/2026-10-13T12:02:00+00:00/6/17/23.png",
+        "/tiles/radar/classic/2026-10-13T12:00:00+00:00/6/17/x.png",
+        "/tiles/radar/classic/2026-10-13T12:00:00+00:00/../2026-10-13T12:00:00+00:00/6/17/23.png",
+    ] {
+        let (status, headers, _) = send(&app, get_req(uri)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+        assert_eq!(header_str(&headers, "cache-control"), "no-store", "{uri}");
+    }
+}
+
+#[tokio::test]
 async fn imagery_outside_the_regexp_is_a_bare_404_without_headers() {
     let env = Env::new();
     let app = env.app(|_| {});

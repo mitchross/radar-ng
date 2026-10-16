@@ -294,22 +294,23 @@ function PolygonMap({
     userPt = { x: 200, y: 85 };
   }
 
-  const polyPath = Skia.Path.Make();
+  const polyBuilder = Skia.PathBuilder.Make();
   polyPts.forEach((p, i) => {
-    if (i === 0) polyPath.moveTo(p.x, p.y);
-    else polyPath.lineTo(p.x, p.y);
+    if (i === 0) polyBuilder.moveTo(p.x, p.y);
+    else polyBuilder.lineTo(p.x, p.y);
   });
-  polyPath.close();
+  const polyPath = polyBuilder.close().build();
 
-  const gridPath = Skia.Path.Make();
+  const gridBuilder = Skia.PathBuilder.Make();
   for (let i = 1; i < 8; i++) {
-    gridPath.moveTo(i * 45, 0);
-    gridPath.lineTo(i * 45, H);
+    gridBuilder.moveTo(i * 45, 0);
+    gridBuilder.lineTo(i * 45, H);
   }
   for (let i = 1; i < 6; i++) {
-    gridPath.moveTo(0, i * 30);
-    gridPath.lineTo(W, i * 30);
+    gridBuilder.moveTo(0, i * 30);
+    gridBuilder.lineTo(W, i * 30);
   }
+  const gridPath = gridBuilder.build();
 
   const userX = userPt?.x ?? -100;
   const userY = userPt?.y ?? -100;

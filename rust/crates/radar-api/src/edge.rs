@@ -34,6 +34,7 @@ use crate::health;
 use crate::manifest;
 use crate::nowcast;
 use crate::outlooks;
+use crate::palettes;
 use crate::places;
 use crate::prefetch;
 use crate::respond;
@@ -73,6 +74,7 @@ pub const ROUTE_TEMPLATES: &[&str] = &[
 pub fn api_router() -> Router<AppState> {
     Router::new()
         .route("/api/manifest.json", get(manifest::get_manifest))
+        .route("/api/palettes", get(palettes::get_palettes))
         .route("/api/forecast/{lat}/{lon}", get(forecast::get_forecast))
         .route(
             "/api/inspect/{layer}/{timestamp}/{lat}/{lon}",

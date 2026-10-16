@@ -9,6 +9,8 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { MapChromeSurface } from "../ui/MapChromeSurface";
+import { useServerPalettes } from "../../hooks/useServerPalettes";
+import { serverLegend } from "../../lib/serverPalettes";
 
 // Plain-English tag at the top of the legend telling the user whether
 // they're looking at "Now" (live radar), "Soon" (next hour, pysteps
@@ -21,6 +23,8 @@ const LAYER_SOURCE: Record<LayerType, SourceTag> = {
   "radar-composite": "Now",
   "radar-hrrr": "Later",
   temperature: "Later",
+  "feels-like": "Later",
+  dewpoint: "Later",
   wind: "Later",
   "precip-type": "Later",
   cape: "Later",
@@ -78,6 +82,28 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
       { label: "30", color: "#7ed957" },
       { label: "0", color: "#4fb8ff" },
       { label: "-40", color: "#3a2c8a" },
+    ],
+  },
+  "feels-like": {
+    title: "Feels Like",
+    stops: [
+      { label: "130", color: "#7c1f11" },
+      { label: "90", color: "#ff6b28" },
+      { label: "60", color: "#ffd042" },
+      { label: "30", color: "#7ed957" },
+      { label: "0", color: "#4fb8ff" },
+      { label: "-40", color: "#3a2c8a" },
+    ],
+  },
+  dewpoint: {
+    title: "Dew Point",
+    stops: [
+      { label: "75+", color: "#a01e8c" },
+      { label: "65", color: "#ff9628" },
+      { label: "60", color: "#f0d73c" },
+      { label: "50", color: "#5ac36e" },
+      { label: "40", color: "#d7c382" },
+      { label: "10", color: "#966e46" },
     ],
   },
   wind: {
@@ -152,7 +178,9 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
 };
 
 export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
-  const legend = LEGENDS[activeLayer] ?? LEGENDS.radar;
+  const palette = useWeatherStore((s) => s.activePalette);
+  const { data: palettes } = useServerPalettes();
+  const legend = serverLegend(palettes, palette, activeLayer) ?? LEGENDS[activeLayer] ?? LEGENDS.radar;
   const chrome = useMapChromeInsets();
   const timelineMode = useWeatherStore((s) => s.timelineMode);
   // Scalars, not the frame array: the card re-renders only when the tag can

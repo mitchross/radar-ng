@@ -22,6 +22,7 @@ mod manifest;
 mod metrics;
 mod nowcast;
 mod outlooks;
+mod palettes;
 mod params;
 mod places;
 mod prefetch;

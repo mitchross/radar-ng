@@ -9,6 +9,7 @@ import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabl
 import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
 import { css, LEGEND_TICKS, PALETTES, type PaletteId } from "./palettes";
+import { fetchServerPalettes, layerLegend, type ServerPalettes } from "./layerLegends";
 import {
   aqiLabel,
   conditionOf,
@@ -45,6 +46,13 @@ const rainAlerts = new BrowserRainAlerts();
 const IOS_BROWSER = /iPhone|iPad|iPod/.test(navigator.userAgent) && !matchMedia("(display-mode: standalone)").matches;
 
 maplibregl.setWorkerUrl(workerUrl);
+// Default is 16. Tiles share one HTTP/3 connection, and each costs a ~140 ms tunnel round trip.
+maplibregl.setMaxParallelImageRequests(48);
+let serverPalettes: ServerPalettes | null = null;
+void fetchServerPalettes().then((p) => {
+  serverPalettes = p;
+  renderLegend();
+});
 void initAnalytics();
 
 // ---------- configuration ----------
@@ -52,6 +60,8 @@ void initAnalytics();
 const LAYERS: { id: string; name: string; needs: string }[] = [
   { id: "radar", name: "Radar", needs: "radar" },
   { id: "temperature", name: "Temperature", needs: "temperature" },
+  { id: "feels-like", name: "Feels like", needs: "feels-like" },
+  { id: "dewpoint", name: "Dew point", needs: "dewpoint" },
   { id: "wind", name: "Wind", needs: "wind" },
   { id: "precip-accum", name: "Rain total", needs: "precip-accum" },
   { id: "cloud", name: "Clouds", needs: "cloud" },
@@ -500,6 +510,15 @@ function renderLegend() {
       `<div class="legend-title"><span>Precipitation</span><span class="legend-tag">${PALETTES[state.palette].name}</span></div>` +
       `<div class="legend-bar" style="background:linear-gradient(90deg,${bands.map((b, i) => `${css(b.rgba)} ${pos(b.min)} ${pos(bands[i + 1]?.min ?? hi)}`).join(",")})"></div>` +
       `<div class="legend-ticks">${LEGEND_TICKS.map(([dbz, name]) => `<span style="left:${pos(dbz)}">${name}</span>`).join("")}</div>`;
+    return;
+  }
+  const table = layerLegend(serverPalettes, state.palette, state.layer);
+  if (table) {
+    el.hidden = false;
+    el.innerHTML =
+      `<div class="legend-title">${table.title}</div>` +
+      `<div class="legend-bar" style="background:${table.gradient}"></div>` +
+      `<div class="legend-labels">${table.labels.map((l) => `<span>${l}</span>`).join("")}</div>`;
     return;
   }
   const spec = LEGENDS[state.layer];
@@ -1106,6 +1125,10 @@ map.on("click", async (e) => {
     if (state.layer === "radar") text = `${describeDbz(value)} <small>${Math.round(value)} dBZ</small>`;
     else if (state.layer === "air-quality") text = `AQI ${usAqiFromPm25(value)} · ${aqiLabel(usAqiFromPm25(value))} <small>${Math.round(value)} µg/m³</small>`;
     else if (state.layer === "ozone") text = `${Math.round(value)} ppb`;
+    else if (["temperature", "feels-like", "dewpoint"].includes(state.layer)) text = `${Math.round(value)}°F`;
+    else if (state.layer === "wind") text = `${Math.round(value)} mph`;
+    else if (state.layer === "cloud") text = `${Math.round(value)}%`;
+    else if (state.layer === "precip-accum") text = `${value.toFixed(2)} in`;
     else text = `${value.toFixed(1)}`;
   }
   popup.setHTML(`<div class="readout"><b>${title}</b><div class="v">${text}</div><small>${lat.toFixed(3)}, ${lng.toFixed(3)}</small></div>`);

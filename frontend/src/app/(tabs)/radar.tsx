@@ -94,6 +94,8 @@ export default function RadarScreen() {
       >
         {(activeLayer === "radar" || activeLayer === "radar-hrrr") && <RadarOverlay />}
         {activeLayer === "temperature" && <WeatherLayerOverlay layerId="temperature" opacity={radarOpacity} />}
+        {activeLayer === "feels-like" && <WeatherLayerOverlay layerId="feels-like" opacity={radarOpacity} />}
+        {activeLayer === "dewpoint" && <WeatherLayerOverlay layerId="dewpoint" opacity={radarOpacity} />}
         {activeLayer === "precip-type" && <WeatherLayerOverlay layerId="precip-type" opacity={radarOpacity} />}
         {activeLayer === "wind" && <WeatherLayerOverlay layerId="wind" opacity={0.6} />}
         {activeLayer === "cape" && <WeatherLayerOverlay layerId="cape" opacity={0.5} />}
