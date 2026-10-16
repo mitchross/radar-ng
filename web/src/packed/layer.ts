@@ -302,14 +302,14 @@ export class PackedRadarLayer implements CustomLayerInterface {
   }
 
   private lut(gl: WebGL2RenderingContext, meta: PackedMeta): WebGLTexture | null {
-    const key = `${this.palette}|${meta.color_key}|${meta.scale}|${meta.offset}`;
+    const key = `${this.palette}|${meta.color_key}|${meta.scale}|${meta.offset}|${meta.types?.stride ?? 0}|${meta.types?.classes.join(",") ?? ""}`;
     const existing = this.luts.get(key);
     if (existing) return existing;
     const table = colorTable(this.server, this.palette, meta.color_key);
     if (!table) return null;
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, buildLut(table, meta.scale, meta.offset));
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, buildLut(table, meta.scale, meta.offset, meta.types));
     setNearest(gl);
     this.luts.set(key, tex);
     return tex;

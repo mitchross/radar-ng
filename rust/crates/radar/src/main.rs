@@ -6,7 +6,7 @@
 //! radar seed                         # create-or-update all Temporal schedules, then exit
 //! radar watchdog                     # schedule stall watchdog (normally runs inside the seeding worker)
 //! radar debug <check> [...]          # operator diagnostics (port of tools/debug_harness)
-//! radar render-once <grib.gz> <out>  # decode + render + storms one MRMS frame and print timings
+//! radar render-once <grib.gz> <out> [--precip-flag <grib.gz>]  # render one MRMS frame, print timings
 //! radar parity --python-root A --rust-root B   # decode and compare two tile pyramids
 //! ```
 
@@ -39,7 +39,13 @@ enum Cmd {
     /// Operator diagnostics.
     Debug(radar_debug::DebugArgs),
     /// Decode, render and detect storms for one MRMS GRIB2 file; print timings.
-    RenderOnce { grib: PathBuf, out_dir: PathBuf },
+    RenderOnce {
+        grib: PathBuf,
+        out_dir: PathBuf,
+        /// MRMS PrecipFlag file: color the frame by precipitation type.
+        #[arg(long)]
+        precip_flag: Option<PathBuf>,
+    },
     /// Compare two tile pyramids (Python build vs Rust build) tile by tile, decoded to RGBA.
     ///
     /// The default threshold (--max-diff-pct 10) accepts Python's production legacy RGBA tiles,
@@ -108,9 +114,13 @@ fn main() -> anyhow::Result<()> {
                 std::process::exit(code);
             }
             Cmd::Parity(_) => unreachable!("handled above"),
-            Cmd::RenderOnce { grib, out_dir } => {
+            Cmd::RenderOnce {
+                grib,
+                out_dir,
+                precip_flag,
+            } => {
                 let report = tokio::task::spawn_blocking(move || {
-                    radar_ingest::bench_render_once(&grib, &out_dir)
+                    radar_ingest::bench_render_once(&grib, &out_dir, precip_flag.as_deref())
                 })
                 .await??;
                 println!("{report:#?}");

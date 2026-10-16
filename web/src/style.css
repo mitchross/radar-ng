@@ -223,6 +223,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .legend-ticks { position: relative; height: 14px; font-size: 10px; color: var(--ink-2); }
 .legend-ticks span { position: absolute; transform: translateX(-10%); white-space: nowrap; }
 .legend-ticks span:last-child { transform: translateX(-80%); }
+.legend-types { display: grid; gap: 4px; margin-top: 6px; }
+.legend-type { display: grid; grid-template-columns: 32px 1fr; align-items: center; gap: 6px; font-size: 10px; color: var(--ink-2); }
+.legend-type-bar { height: 6px; border-radius: 3px; }
 
 /* Layers sheet */
 .sheet { position: fixed; top: 16px; right: 16px; z-index: 8; width: 320px; max-height: calc(100dvh - 170px); border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; }

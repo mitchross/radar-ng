@@ -52,6 +52,7 @@ pub fn layout() -> PackedLayout {
         categorical: false,
         scale: q.scale,
         offset: q.offset,
+        types: None,
     }
 }
 

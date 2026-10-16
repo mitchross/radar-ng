@@ -18,6 +18,7 @@ pub mod png;
 pub mod publish;
 pub mod render;
 pub mod sample;
+pub mod typed;
 
 pub use cache::{GeometryCacheStats, clear_tile_geometry_cache, tile_geometry_cache_stats};
 pub use classify::{ClassModel, PaletteLut, build_categorical_class_model, build_class_model};
@@ -31,3 +32,4 @@ pub use png::{DecodedIndexed, decode_indexed, encode_indexed, replace_palette};
 pub use publish::{MultiPaletteRenderResult, PalettePublishOutcome, PublishStatus};
 pub use radar_geo::{Crs, Grid, GridGeo};
 pub use render::{FrameOptions, Overview, render_frame_palettes};
+pub use typed::TypePlane;

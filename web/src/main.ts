@@ -8,7 +8,7 @@ import "./style.css";
 import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabled, track } from "./analytics";
 import { buildFrames, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
-import { css, LEGEND_TICKS, PALETTES, type PaletteId } from "./palettes";
+import { css, LEGEND_TICKS, PALETTES, typeRamps, type PaletteId } from "./palettes";
 import { fetchServerPalettes, layerLegend, type ServerPalettes } from "./layerLegends";
 import {
   aqiLabel,
@@ -539,6 +539,15 @@ function renderLegend() {
       `<div class="legend-title"><span>Precipitation</span><span class="legend-tag">${PALETTES[state.palette].name}</span></div>` +
       `<div class="legend-bar" style="background:linear-gradient(90deg,${bands.map((b, i) => `${css(b.rgba)} ${pos(b.min)} ${pos(bands[i + 1]?.min ?? hi)}`).join(",")})"></div>` +
       `<div class="legend-ticks">${LEGEND_TICKS.map(([dbz, name]) => `<span style="left:${pos(dbz)}">${name}</span>`).join("")}</div>`;
+    // Observed radar is colored by precipitation type when the server says so.
+    if (state.manifest?.layers.radar?.precip_type === true) {
+      el.innerHTML +=
+        `<div class="legend-types">` +
+        typeRamps(state.palette)
+          .map((r) => `<div class="legend-type"><span>${r.label}</span><div class="legend-type-bar" style="background:${r.gradient}"></div></div>`)
+          .join("") +
+        `</div>`;
+    }
     return;
   }
   const table = layerLegend(serverPalettes, state.palette, state.layer);

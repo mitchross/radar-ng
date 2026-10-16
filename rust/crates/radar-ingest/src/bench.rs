@@ -1,6 +1,7 @@
 //! Binary-free benchmark entry point (port of `backend/scripts/bench_render_once.py`): decode one GRIB
 //! file (gzip or raw), render it into three palettes at zooms 4 to 7, and run storm detection. Times
 //! each stage, then packs the frame into one packed-tile bucket (`out_dir/packed/radar/bench`).
+//! With a PrecipFlag file, the tiles and the bucket are colored and coded by precipitation type.
 //! The benchmark harness calls [`bench_render_once`] directly.
 
 use std::path::Path;
@@ -24,6 +25,10 @@ pub struct BenchReport {
     pub width: usize,
     /// Decoding (gunzip and GRIB2) in milliseconds.
     pub decode_ms: f64,
+    /// Decoding and classifying the PrecipFlag file in milliseconds (0 without one).
+    pub types_ms: f64,
+    /// Cells per display class (rain, snow, mix) from the PrecipFlag file.
+    pub type_cells: [usize; 3],
     /// Tile rendering for all palettes in milliseconds.
     pub render_ms: f64,
     /// Storm detection and tracking in milliseconds.
@@ -46,7 +51,11 @@ pub struct BenchReport {
 ///
 /// Gzip input (`1f 8b` magic) is gunzipped first. Errors propagate: decoding, rendering and storm
 /// detection are not best-effort in the benchmark.
-pub fn bench_render_once(grib_path: &Path, out_dir: &Path) -> anyhow::Result<BenchReport> {
+pub fn bench_render_once(
+    grib_path: &Path,
+    out_dir: &Path,
+    precip_flag: Option<&Path>,
+) -> anyhow::Result<BenchReport> {
     let raw = std::fs::read(grib_path)?;
     let t0 = Instant::now();
     let mut grid = if raw.starts_with(&[0x1f, 0x8b]) {
@@ -56,6 +65,20 @@ pub fn bench_render_once(grib_path: &Path, out_dir: &Path) -> anyhow::Result<Ben
     };
     ensure_south_up(&mut grid);
     let decode_ms = t0.elapsed().as_secs_f64() * 1e3;
+
+    let t_types = Instant::now();
+    let types = match precip_flag {
+        Some(path) => Some(crate::precip_type::type_plane(
+            &std::fs::read(path)?,
+            &grid,
+        )?),
+        None => None,
+    };
+    let types_ms = t_types.elapsed().as_secs_f64() * 1e3;
+    let mut type_cells = [0usize; 3];
+    for &c in types.as_ref().map_or(&[][..], |t| t.classes()) {
+        type_cells[usize::from(c)] += 1;
+    }
 
     let tables: Vec<(String, radar_tiler::ColorTable)> = BENCH_PALETTES
         .iter()
@@ -72,6 +95,7 @@ pub fn bench_render_once(grib_path: &Path, out_dir: &Path) -> anyhow::Result<Ben
         source_id: "bench:radar".to_string(),
         publication_lock_root: Some(out_dir.to_path_buf()),
         overview: Some(Overview::Max),
+        types: types.clone(),
         ..FrameOptions::default()
     };
     let t1 = Instant::now();
@@ -107,10 +131,14 @@ pub fn bench_render_once(grib_path: &Path, out_dir: &Path) -> anyhow::Result<Ben
         &crate::packed::MRMS_PACKED_ZOOMS,
         radar_tiler::packed::PACKED_TILE_SIZE,
         Some(Overview::Max),
-    )?;
+    )?
+    .with_types(types.clone())?;
     let packed_dir = out_dir.join("packed").join("radar");
-    let quant = radar_tiler::Quantizer::for_color_key("reflectivity")
+    let mut quant = radar_tiler::Quantizer::for_color_key("reflectivity")
         .ok_or_else(|| anyhow::anyhow!("no reflectivity quantizer"))?;
+    if types.is_some() {
+        quant = quant.with_types();
+    }
     let frame = radar_tiler::PackFrame {
         timestamp: "2026-01-01T00:00:00+00:00",
         sampler: &sampler,
@@ -125,6 +153,8 @@ pub fn bench_render_once(grib_path: &Path, out_dir: &Path) -> anyhow::Result<Ben
         height: grid.height,
         width: grid.width,
         decode_ms,
+        types_ms,
+        type_cells,
         render_ms,
         storms_ms,
         storm_cells: doc.features.len(),

@@ -30,7 +30,8 @@ export interface PackedFrames {
   luts: Record<string, Uint8Array>;
 }
 
-const lutKeyOf = (meta: PackedMeta) => `${meta.color_key}|${meta.scale}|${meta.offset}`;
+const lutKeyOf = (meta: PackedMeta) =>
+  `${meta.color_key}|${meta.scale}|${meta.offset}|${meta.types?.stride ?? 0}|${meta.types?.classes.join(",") ?? ""}`;
 
 /**
  * Which radar frames the GPU overlay draws. Null when the setting is off, the layer is not
@@ -56,7 +57,7 @@ export function usePackedFrames(): PackedFrames | null {
         const table = meta ? (tables?.[meta.color_key] as PackedColorTable | undefined) : undefined;
         // No table for the key: leave the layer on rasters rather than draw it blank.
         const usable = meta && table?.ranges?.length ? meta : null;
-        if (usable && table) luts[lutKeyOf(usable)] ??= buildLut(table, usable.scale, usable.offset);
+        if (usable && table) luts[lutKeyOf(usable)] ??= buildLut(table, usable.scale, usable.offset, usable.types);
         metas.set(layer, usable);
       }
       return metas.get(layer) ?? null;
