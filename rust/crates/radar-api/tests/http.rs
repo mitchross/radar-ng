@@ -365,6 +365,57 @@ async fn missing_tile_in_a_complete_pyramid_is_a_cacheable_204() {
 }
 
 #[tokio::test]
+async fn packed_bucket_tiles_are_immutable_and_missing_ones_are_204_once_the_bucket_file_exists() {
+    let env = Env::new();
+    let bucket = env.path("tiles/packed/nowcast/2026-10-15T18:30:00+00:00");
+    std::fs::create_dir_all(bucket.join("5/7/11")).expect("dirs");
+    std::fs::write(bucket.join("5/7/11.png"), b"png").expect("tile");
+    let app = env.app(|_| {});
+
+    // Present tile: served with the tile cache headers, with or without percent-encoding or `?v=`.
+    for uri in [
+        "/tiles/packed/nowcast/2026-10-15T18:30:00+00:00/5/7/11.png?v=3",
+        "/tiles/packed/nowcast/2026-10-15T18%3A30%3A00%2B00%3A00/5/7/11.png?v=3",
+    ] {
+        let (status, headers, body) = send(&app, get_req(uri)).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(body, b"png");
+        assert_eq!(
+            header_str(&headers, "cache-control"),
+            "public, max-age=86400, immutable"
+        );
+        assert_eq!(header_str(&headers, "access-control-allow-origin"), "*");
+    }
+
+    // Missing tile before the bucket file is written: the no-store 404.
+    let missing = "/tiles/packed/nowcast/2026-10-15T18%3A30%3A00%2B00%3A00/5/8/11.png?v=3";
+    let (status, headers, _) = send(&app, get_req(missing)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(header_str(&headers, "cache-control"), "no-store");
+
+    // With the bucket file, a missing tile is a cacheable empty 204.
+    std::fs::write(
+        bucket.join(".packed-bucket-v1.json"),
+        br#"{"v":3,"slots":[]}"#,
+    )
+    .expect("bucket file");
+    let (status, headers, body) = send(&app, get_req(missing)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert!(body.is_empty());
+    assert_eq!(
+        header_str(&headers, "cache-control"),
+        "public, max-age=86400, immutable"
+    );
+    // A bucket that does not exist stays a 404.
+    let (status, _, _) = send(
+        &app,
+        get_req("/tiles/packed/nowcast/2026-10-15T18:35:00+00:00/5/8/11.png"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn imagery_outside_the_regexp_is_a_bare_404_without_headers() {
     let env = Env::new();
     let app = env.app(|_| {});
