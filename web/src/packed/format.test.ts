@@ -40,6 +40,42 @@ const meta = (over: Partial<PackedMeta> = {}): PackedMeta => ({
   ...over,
 });
 
+describe("typed codes (v2)", () => {
+  const classic = palette("classic").reflectivity;
+  const types = { stride: 32, classes: ["rain", "snow", "mix"] };
+  const lut = buildLut(classic, 2.5, 0, types);
+
+  it("colors class * 32 + q with that class's ramp", () => {
+    expect(rgba(lut, 12)).toEqual([0, 140, 0, 220]); // rain 30 dBZ
+    expect(rgba(lut, 32 + 12)).toEqual(classic.types!.snow.ranges[5].rgba); // snow 30-35
+    expect(rgba(lut, 64 + 12)).toEqual(classic.types!.mix.ranges[5].rgba); // mix 30-35
+    expect(rgba(lut, 32 + 2)).toEqual(classic.types!.snow.ranges[0].rgba); // snow 5 dBZ
+    expect(rgba(lut, 32)).toEqual([0, 0, 0, 0]); // q = 0 in any class
+    expect(rgba(lut, 96 + 12)).toEqual([0, 0, 0, 0]); // no fourth class
+  });
+
+  it("matches the untyped table for rain codes", () => {
+    const plain = buildLut(classic, 2.5, 0);
+    for (let q = 1; q < 32; q++) expect(rgba(lut, q)).toEqual(rgba(plain, q));
+  });
+
+  it("falls back to the rain ramp without type ramps", () => {
+    const rainOnly = buildLut({ ranges: classic.ranges, no_data_below: 5 }, 2.5, 0, types);
+    expect(rgba(rainOnly, 32 + 12)).toEqual(rgba(rainOnly, 12));
+  });
+
+  it("accepts v2 only with types, and v1 only without", () => {
+    expect(usablePacked(meta({ version: 2, types }))).toBe(true);
+    expect(usablePacked(meta({ version: 2 }))).toBe(false);
+    expect(usablePacked(meta({ version: 1, types }))).toBe(false);
+    expect(usablePacked(meta({ version: 2, types: { stride: 0, classes: [] } }))).toBe(false);
+  });
+
+  it("gives the reflectivity fallback table snow and mix ramps", () => {
+    expect(fallbackTable("vivid", "reflectivity")?.types?.snow.ranges).toEqual(palette("vivid").reflectivity.types!.snow.ranges);
+  });
+});
+
 describe("buildLut", () => {
   const classic = palette("classic").reflectivity;
   const lut = buildLut(classic, 0.5, -32);
