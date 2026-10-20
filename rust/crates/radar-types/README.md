@@ -6,7 +6,7 @@ definition. It stayed wire-compatible with the former Python workers: JSON paylo
 snake_case field names, and the same workflow, activity, signal, query, patch, queue and
 schedule names.
 
-Sources of truth: `docs/rust-migration/specs/spec-temporal.md` (sections 1, 2, 4, 6, 10 and 11) and the payload
+Sources of truth: `docs/develop/specs/spec-temporal.md` (sections 1, 2, 4, 6, 10 and 11) and the payload
 sections of `spec-ingest-mrms-hrrr.md` (section 2), `spec-ingest-aux.md` (sections 2 and 4) and
 `spec-nowcast.md` (section 2). It was cross-checked against the Python workflows, activities, seeder and task-queue
 module before they were removed.

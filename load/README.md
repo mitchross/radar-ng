@@ -3,8 +3,8 @@
 `load/k6-radar.js` generates the traffic the app, widget and Watch produce against the tile-server.
 `load/k8s/k6-job.yaml` runs it in-cluster as an Indexed Job, so Cloudflare and the home uplink do not
 skew results. The pass/fail target for capacity is in
-[docs/capacity-acceptance.md](../docs/capacity-acceptance.md); a past run is written up in
-[docs/perf/2026-09-26-load-and-bottlenecks.md](../docs/perf/2026-09-26-load-and-bottlenecks.md).
+[docs/reference/capacity-acceptance.md](../docs/reference/capacity-acceptance.md); a past run is written up in
+[docs/archive/perf/2026-09-26-load-and-bottlenecks.md](../docs/archive/perf/2026-09-26-load-and-bottlenecks.md).
 
 ## What the script drives
 

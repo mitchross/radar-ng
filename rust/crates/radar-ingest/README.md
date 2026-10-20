@@ -4,7 +4,7 @@ MRMS and HRRR ingest activity bodies for radar-ng, as plain async functions. The
 types. The worker crate wraps these functions as activities and supplies the `ActivityInfo` and heartbeat
 sink.
 
-Source of truth: `docs/rust-migration/specs/spec-ingest-mrms-hrrr.md`. Defect decisions: `docs/rust-migration/PLAN.md` (Python defects table).
+Source of truth: `docs/develop/specs/spec-ingest-mrms-hrrr.md`. Defect decisions: `docs/archive/rust-migration/PLAN.md` (Python defects table).
 
 ## Coverage
 
@@ -54,7 +54,7 @@ Crate root:
 - `load_mrms_palettes(names)`
 
 With `PACKED_TILES` on (default), `process_frame` also packs the frame into its 30-minute observation
-bucket (`packed.rs`, `docs/packed-tiles.md`) and lists it in `layers.<layer>.packed` after the frame.
+bucket (`packed.rs`, `docs/reference/packed-tiles.md`) and lists it in `layers.<layer>.packed` after the frame.
 A packing failure is logged (`packed_failed`) and never fails the frame.
 
 `mrms_qpe` (layer `precip-24h`, schedule `ingest-mrms-qpe-24h`): `mrms::process_frame` hands this layer to

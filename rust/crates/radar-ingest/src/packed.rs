@@ -1,4 +1,4 @@
-//! Packed data tiles for the MRMS observation layers (`docs/packed-tiles.md`).
+//! Packed data tiles for the MRMS observation layers (`docs/reference/packed-tiles.md`).
 //!
 //! Each frame takes the next slot of its 30-minute window's bucket under `TILE_DIR/packed/<layer>/`.
 //! The colored PNG pyramids are unchanged; packing is best effort and never fails a frame.

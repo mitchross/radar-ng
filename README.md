@@ -38,7 +38,7 @@ docker compose up -d --build
 
 First radar frame lands ~2 min later. Point the app at `http://<host>:8080`
 (Settings → Advanced Mode → Stack URL). Deploying to your own Kubernetes cluster and running the
-app are covered in **[GETTING_STARTED.md](GETTING_STARTED.md)**.
+app are covered in **[docs/start/getting-started.md](docs/start/getting-started.md)**.
 
 Prebuilt images: `ghcr.io/mitchross/radar-ng-{tile-server,temporal-worker,open-meteo-worker}`.
 
@@ -85,25 +85,21 @@ Every ingest step is a Temporal activity, scheduled by Temporal Schedules (no
 cron). One Rust binary, `radar`, runs the workers and the tile-server: static
 tiles off disk with immutable cache headers, the basemap, and the JSON API on
 one port. The component-by-component breakdown, the per-frame pipeline, and the
-caching story are in **[ARCHITECTURE.md](ARCHITECTURE.md)**; the backend code is
+caching story are in **[docs/reference/architecture.md](docs/reference/architecture.md)**; the backend code is
 in [`rust/`](rust/README.md).
 
 ## Docs
 
-| Doc | For |
+| I want to… | Start here |
 |---|---|
-| [GETTING_STARTED.md](GETTING_STARTED.md) | Run the stack (Compose or k8s) + the app |
-| [docs/configuration.md](docs/configuration.md) | Every env var + the basemap-date gotcha |
-| [docs/self-hosting.md](docs/self-hosting.md) | Docker Compose golden path |
-| [docs/kubernetes.md](docs/kubernetes.md) | Bring-your-own-cluster (Temporal, storage, probes) |
-| [docs/releasing.md](docs/releasing.md) | Code to running pods: GHCR, GitOps, verification |
-| [docs/temporal-safe-deployments.md](docs/temporal-safe-deployments.md) | Worker handoff, functional gates, pinned executions |
-| [docs/tuning.md](docs/tuning.md) | Faster / cheaper / fresher, knob by knob |
-| [docs/debug-harness.md](docs/debug-harness.md) | `radar debug`: freshness, latency, Temporal, disk |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | How it all fits together |
-| [rust/README.md](rust/README.md) | Backend crates, build, tests, CI |
-| [deploy/README.md](deploy/README.md) | Images, compose stack, release runbook |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, verification, conventions |
+| Run it on one computer (Docker Compose) | [docs/self-host/compose.md](docs/self-host/compose.md) |
+| Run it on my Kubernetes cluster | [docs/self-host/kubernetes.md](docs/self-host/kubernetes.md) |
+| Run the phone app against my server | [docs/app/running-the-app.md](docs/app/running-the-app.md) |
+| Change the code | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Not sure yet | [docs/start/getting-started.md](docs/start/getting-started.md) |
+
+Every other doc (configuration, tuning, releasing, debugging, architecture, specs) is listed in
+**[docs/README.md](docs/README.md)**.
 
 ## Data sources
 

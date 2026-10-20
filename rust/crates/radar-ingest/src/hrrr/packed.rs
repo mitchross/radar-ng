@@ -1,4 +1,4 @@
-//! Packed data tiles for the HRRR layers (`docs/packed-tiles.md`): one bucket per run, split into
+//! Packed data tiles for the HRRR layers (`docs/reference/packed-tiles.md`): one bucket per run, split into
 //! parts of [`PACKED_MAX_SLOTS`] hours. Forecast hour `fhr` goes to part `(fhr - 1) / 24`, so an
 //! 18 h run has one bucket and a 48 h run two.
 //!

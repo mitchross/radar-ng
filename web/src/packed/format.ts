@@ -1,5 +1,5 @@
 /**
- * Packed data tiles v1 and v2 (docs/packed-tiles.md): manifest types and the pure math the
+ * Packed data tiles v1 and v2 (docs/reference/packed-tiles.md): manifest types and the pure math the
  * WebGL layer needs. Nothing here touches the DOM or GL, so all of it is unit-tested.
  */
 

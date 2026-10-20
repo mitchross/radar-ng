@@ -8,7 +8,7 @@ Otherwise, require an explicit instruction. Never push directly to the default o
 ## Backend is Rust (since 2026-10-14)
 
 The backend is the Rust workspace in `rust/` (one binary, `radar`); the old Python backend was removed.
-Read `docs/rust-migration/HANDOFF.md` before backend, CI or deploy work. Releases go GHCR `vX.Y.Z` →
+Read `docs/develop/rust-backend-handoff.md` before backend, CI or deploy work. Releases go GHCR `vX.Y.Z` →
 tag@digest PR in `mitchross/talos-argocd-proxmox` → Argo CD. GitOps only, no `kubectl apply`.
 Forward-only: fix a bad release with a new release; never roll back.
 

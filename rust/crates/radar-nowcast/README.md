@@ -106,7 +106,7 @@ to float precision. "Approximate" means an independent re-implementation, not bi
 
 ## Activity glue (`run.rs`, `select.rs`, `inputs.rs`, `render.rs`, `score.rs`, `status.rs`)
 
-Follows `docs/rust-migration/specs/spec-nowcast.md` sections 2 to 5, 8 to 11 and 13, and the former Python nowcast activity.
+Follows `docs/develop/specs/spec-nowcast.md` sections 2 to 5, 8 to 11 and 13, and the former Python nowcast activity.
 
 1. **Setup**: the processed-anchor file (`nowcast.json`, last 100 anchors) short-circuits an anchor
    already committed. `select_input_grids` (spec 4.2) picks the input grids on the 5-minute marks, with
@@ -127,7 +127,7 @@ Follows `docs/rust-migration/specs/spec-nowcast.md` sections 2 to 5, 8 to 11 and
    An incomplete render fails the commit (`nowcast incomplete: rendered n/N leadtimes`) before the
    manifest is touched. The status file is written only after the commit succeeds.
    With `PACKED_TILES` on (default), the leads are also packed into one bucket per run
-   (`packed.rs`, `docs/packed-tiles.md`) after the render, and the commit lists only that run's
+   (`packed.rs`, `docs/reference/packed-tiles.md`) after the render, and the commit lists only that run's
    buckets in `layers.nowcast.packed`, then deletes run buckets older than 60 minutes. Packing is best
    effort.
 6. **Post-commit**: previous runs are scored against the observation (150 s match tolerance, persistence

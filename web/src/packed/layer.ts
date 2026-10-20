@@ -1,5 +1,5 @@
 /**
- * MapLibre custom layer that draws packed data tiles (docs/packed-tiles.md): one atlas
+ * MapLibre custom layer that draws packed data tiles (docs/reference/packed-tiles.md): one atlas
  * texture per (layer, bucket, tile), colored on the GPU through a 256-entry table.
  * Changing frame, palette or opacity re-renders without any network request.
  * Mercator only: under globe projection the layer draws nothing.

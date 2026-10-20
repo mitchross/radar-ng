@@ -50,7 +50,7 @@ docker compose run --rm basemap-publish    # rename it to basemap.pmtiles (the a
 docker compose build api                   # the radar image; `worker` runs it but does not build it
 docker compose up -d --build
 curl http://localhost:8080/api/livez
-radar debug doctor                         # see docs/debug-harness.md
+radar debug doctor                         # see docs/reference/debug-harness.md
 ```
 
 Compose runs one `legacy` worker that registers every workflow on task queue `radar-ng` and seeds the

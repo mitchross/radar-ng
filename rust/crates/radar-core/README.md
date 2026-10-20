@@ -7,7 +7,7 @@ push-token storage, the nowcast skill log, and the blocking-work heartbeat.
 Out of scope for this crate: the tiler, palettes and PNG output (`radar-tiler`), and the storm tracker and
 storm prefetch (`radar-storms`). Spec sections 6 to 8 are not implemented here.
 
-The source of truth is `docs/rust-migration/specs/spec-shared.md`. Invariant IDs (MAN-, GRD-, NSK-, HBT-,
+The source of truth is `docs/develop/specs/spec-shared.md`. Invariant IDs (MAN-, GRD-, NSK-, HBT-,
 DRV-) refer to its section 13 and are cited in the test names.
 
 ## Modules

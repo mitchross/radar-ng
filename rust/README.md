@@ -37,13 +37,13 @@ radar api                          # :8080 (LISTEN_ADDR). /tiles, /basemap, /api
 radar worker --role legacy         # Temporal worker. Roles: legacy|all|mrms|nowcast|hrrr|aux|alerts|open-meteo
 radar seed                         # create or update every Temporal Schedule and exit
 radar watchdog                     # schedule stall watchdog
-radar debug doctor                 # live-stack diagnostics (docs/debug-harness.md)
+radar debug doctor                 # live-stack diagnostics (docs/reference/debug-harness.md)
 radar render-once <mrms.grib2.gz> <out-dir>   # decode, render and detect storms for one frame; print timings
 radar parity --python-root A --rust-root B    # decode and compare two tile pyramids (deploy/RUNBOOK.md)
 ```
 
 Configuration is environment variables (`TILE_DIR`, `STATE_DIR`, `GRID_DIR`, `TEMPORAL_ADDRESS`,
-`WORKER_ROLE`, and so on). Each crate's README lists the variables it reads; `docs/configuration.md`
+`WORKER_ROLE`, and so on). Each crate's README lists the variables it reads; `docs/self-host/configuration.md`
 covers the ones operators usually set.
 
 ## Crates

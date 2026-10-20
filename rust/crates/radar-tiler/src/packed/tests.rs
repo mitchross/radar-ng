@@ -105,7 +105,7 @@ fn quantization_edges() {
 }
 
 /// Every palette band edge, as `(color key, edge)`, where a decoded value can land in another band
-/// than the raw value (docs/packed-tiles.md, "Quantization per palette key").
+/// than the raw value (docs/reference/packed-tiles.md, "Quantization per palette key").
 const INEXACT_EDGES: [(&str, f64); 11] = [
     ("humidity", 100.01),
     ("cloud_cover", 101.0),

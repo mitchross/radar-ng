@@ -26,7 +26,7 @@
  * 2 s (at the default 500 ms tick) before it shows, so the loop doesn't
  * flash blank frames. 1 = the old single remounting source, a frame blank
  * until its tiles land. The slot count is the native child count under
- * MLRNMapView and never changes at runtime (see ARCHITECTURE.md § "The app").
+ * MLRNMapView and never changes at runtime (see docs/reference/architecture.md § "The app").
  *
  * EXPO_PUBLIC_CAROUSEL_WINDOW=1 builds the single-slot kill switch. The value
  * is inlined at build time, so it never changes while the app runs.

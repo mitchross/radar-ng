@@ -146,7 +146,7 @@ describe("quantize", () => {
     expect(quantize(-79.5, 1, -80)).toBe(0);
   });
 
-  // The server's table (docs/packed-tiles.md): [scale, offset, floor] and the band edges it cannot hit.
+  // The server's table (docs/reference/packed-tiles.md): [scale, offset, floor] and the band edges it cannot hit.
   const TABLE: Record<string, [number, number, number, number[]]> = {
     reflectivity: [2.5, 0, 5, []],
     temperature: [1, -80, -79, []],

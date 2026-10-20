@@ -2,8 +2,8 @@
 
 GRIB2 decoding and NOAA data access for radar-ng: MRMS, HRRR and NAQFC listing, download, `.idx`
 range planning and decoding, on the pure-Rust `grib` crate plus anonymous S3 over HTTPS. Specs:
-`docs/rust-migration/specs/spec-ingest-mrms-hrrr.md` (sections 4, 5, 12, 17) and
-`docs/rust-migration/specs/spec-ingest-aux.md` (section 5).
+`docs/develop/specs/spec-ingest-mrms-hrrr.md` (sections 4, 5, 12, 17) and
+`docs/develop/specs/spec-ingest-aux.md` (section 5).
 
 Tests: 35 unit, 8 golden. CI's `live-noaa` job (`rust/scripts/live-noaa-check.sh`) decodes the newest
 live MRMS and HRRR files on every PR.
