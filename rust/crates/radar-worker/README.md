@@ -4,7 +4,7 @@ Temporal control plane for radar-ng. It holds the 13 workflow types, the activit
 the sibling ingest, aux, alerts, nowcast and smoke crates, the schedule seeder, the schedule watchdog, and the
 worker process. The wire contract (names, payload shapes, retry constants, schedule definitions, queues,
 and environment variable names) comes from `radar-types`. Behaviour follows
-`docs/rust-migration/specs/spec-temporal.md`. Deviations are listed below.
+`docs/develop/specs/spec-temporal.md`. Deviations are listed below.
 
 ## Coverage
 
@@ -81,7 +81,7 @@ Versioning turns on only when both `TEMPORAL_DEPLOYMENT_NAME` and `TEMPORAL_WORK
 in production the Temporal Worker Controller sets them. Workflows default to `PINNED` (spec 3.6): a run stays
 on the build that started it. Only new work, and Continue-as-New with `AUTO_UPGRADE` (the WatchStorm handoff),
 moves to a new build. The controller promotes a build after `RadarDeploymentSmokeWorkflow` passes on it.
-Operator notes: `docs/temporal-safe-deployments.md` and `deploy/RUNBOOK.md`.
+Operator notes: `docs/develop/temporal-safe-deployments.md` and `deploy/RUNBOOK.md`.
 
 ## Deviations from the spec
 
@@ -114,7 +114,7 @@ Operator notes: `docs/temporal-safe-deployments.md` and `deploy/RUNBOOK.md`.
 9. **Metrics.** Prometheus is served at `TEMPORAL_METRICS_BIND` (default `0.0.0.0:9464`, `off` disables it).
    OTLP tracing is deferred.
 
-## Review fixes (docs/rust-migration/REVIEW.md)
+## Review fixes (docs/archive/rust-migration/REVIEW.md)
 
 - **F2 open-meteo liveness.** `run_open_meteo_pool` starts `health_file_loop` before the poller. The loop is its
   own task, so it keeps touching the alive file during a sync of up to about 35 minutes. The

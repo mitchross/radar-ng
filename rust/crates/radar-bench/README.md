@@ -17,7 +17,7 @@ them is part of the service.
 Common flags: `--warmup`, `--iters`, `--json <file>`. Each run is one process: warmup calls, then timed
 calls. Input arrays are raw little-endian `f32`/`f64` (numpy `tofile` layout). The synthetic-input
 generator and the Python comparison runners were removed with the Python backend; the recorded results
-are in `docs/rust-migration/benchmark-results.md`.
+are in `docs/archive/rust-migration/benchmark-results.md`.
 
 ```sh
 cd rust

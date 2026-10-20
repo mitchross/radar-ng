@@ -4,8 +4,8 @@ Plain async implementations of the alert, lightning and storm-watch activities f
 APNs and FCM push senders. The crate has no Temporal types. The worker crate wraps each function as an activity with
 the same name, retry policy and timeouts.
 
-Sources of truth: `docs/rust-migration/specs/spec-ingest-aux.md` (sections 6, 10), `docs/rust-migration/specs/spec-temporal.md` (sections 4.10 to 4.12 and 8),
-`docs/rust-migration/specs/spec-shared.md` (sections 8 and 9), and `docs/rust-migration/PLAN.md` (Python defects table).
+Sources of truth: `docs/develop/specs/spec-ingest-aux.md` (sections 6, 10), `docs/develop/specs/spec-temporal.md` (sections 4.10 to 4.12 and 8),
+`docs/develop/specs/spec-shared.md` (sections 8 and 9), and `docs/archive/rust-migration/PLAN.md` (Python defects table).
 
 ## Coverage
 

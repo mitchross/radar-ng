@@ -1,4 +1,4 @@
-//! Packed data tiles for the nowcast layer (`docs/packed-tiles.md`): one bucket per run, its slots
+//! Packed data tiles for the nowcast layer (`docs/reference/packed-tiles.md`): one bucket per run, its slots
 //! the lead valid times, under `TILE_DIR/packed/nowcast/<anchor>`.
 //!
 //! Packing runs after the PNG render, on the calling (blocking) thread with the global Rayon pool,

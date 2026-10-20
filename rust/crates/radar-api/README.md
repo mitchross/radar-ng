@@ -3,7 +3,7 @@
 The radar-ng HTTP server (`radar api`, the tile-server image). One axum process serves the tile
 pyramids, the basemap (PMTiles, styles, fonts, imagery proxy), `/api/*`, `/v1/*` and `/api/metrics`.
 It replaced the Python stack's Caddy, FastAPI/uvicorn and go-pmtiles processes; routes, parameters,
-JSON shapes, status codes and headers follow `docs/rust-migration/specs/spec-api.md`, so the app and
+JSON shapes, status codes and headers follow `docs/develop/specs/spec-api.md`, so the app and
 the web radar did not change.
 
 ## Public API
@@ -96,7 +96,7 @@ ACAO `*` is set on the static lane. Errors on the static lane are overridden to
 
 ## Deviations
 
-Items are numbered as in `docs/rust-migration/specs/spec-api.md` section 16. "Fixed" means the port does not
+Items are numbered as in `docs/develop/specs/spec-api.md` section 16. "Fixed" means the port does not
 reproduce the Python bug. "Kept" means the port matches Python on purpose.
 
 | ID | Decision | What the port does |
@@ -150,7 +150,7 @@ Other differences:
 - The `/basemap/imagery` catch-all cannot be a separate route (axum rejects the overlap with the
   `{yjpg}` route). Non-matching paths fall through to the top-level fallback.
 
-## Review fixes (docs/rust-migration/REVIEW.md, F1 to F10)
+## Review fixes (docs/archive/rust-migration/REVIEW.md, F1 to F10)
 
 - **F1 rate limit.** The per-client token bucket applies to `/api/*` and `/v1/*` only. Static lanes (`/tiles`,
   `/basemap/styles`, `/basemap/fonts`, `/basemap/imagery`, `/basemap/tiles`) are never limited, as when Caddy

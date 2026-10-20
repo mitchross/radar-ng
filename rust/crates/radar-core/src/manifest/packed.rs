@@ -1,4 +1,4 @@
-//! `layers.<layer>.packed`: packed data tile metadata (`docs/packed-tiles.md`, "Manifest").
+//! `layers.<layer>.packed`: packed data tile metadata (`docs/reference/packed-tiles.md`, "Manifest").
 //!
 //! The writers take `manifest.lock` like every other manifest writer. They change only the
 //! `packed` key of an existing layer: a layer that is not in the manifest is left absent. Call them

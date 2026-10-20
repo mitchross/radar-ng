@@ -1,5 +1,5 @@
 /**
- * GPU radar: draws packed data tiles (docs/packed-tiles.md) on a Skia canvas over the map, for
+ * GPU radar: draws packed data tiles (docs/reference/packed-tiles.md) on a Skia canvas over the map, for
  * radar and for the HRRR and AQM layers.
  *
  * Each visible tile is one rect whose SkSL shader reads the frame's slot from the RGB atlas

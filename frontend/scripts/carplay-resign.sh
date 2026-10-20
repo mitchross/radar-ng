@@ -8,7 +8,7 @@ and a paid account do not bypass that check. This script makes no changes.
 
 For a real car, request the appropriate CarPlay entitlement from Apple and
 regenerate the development provisioning profile. For simulator development,
-see docs/carplay-watch-setup.md. Small widgets can appear in CarPlay on iOS 26+
+see docs/app/carplay-watch-setup.md. Small widgets can appear in CarPlay on iOS 26+
 without making the containing app a full CarPlay app.
 MESSAGE
 exit 1

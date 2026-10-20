@@ -6,7 +6,7 @@ follows.
 
 ## Getting set up
 
-See **[GETTING_STARTED.md](GETTING_STARTED.md)** — it covers running the stack
+See **[docs/start/getting-started.md](docs/start/getting-started.md)** — it covers running the stack
 (Docker Compose or Kubernetes) and the mobile app.
 
 - **Backend / pipeline:** Rust, one Cargo workspace in `rust/` (toolchain pinned in `rust/rust-toolchain.toml`; `protoc` required). See [rust/README.md](rust/README.md).
@@ -60,7 +60,7 @@ its entitlement is pending.
 
 First-party images publish to GHCR (`ghcr.io/mitchross/radar-ng-*`) via
 `.github/workflows/`. Release/versioning notes are in
-[docs/releasing.md](docs/releasing.md).
+[docs/develop/releasing.md](docs/develop/releasing.md).
 
 ## Reporting bugs / requesting features
 

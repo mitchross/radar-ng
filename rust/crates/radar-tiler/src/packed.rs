@@ -1,4 +1,4 @@
-//! Packed data tiles v1 (`docs/packed-tiles.md`): quantized physical values, several frames per tile.
+//! Packed data tiles v1 (`docs/reference/packed-tiles.md`): quantized physical values, several frames per tile.
 //!
 //! A packed tile is an 8-bit RGB PNG atlas. Each channel of each 512-px block holds one frame (slot)
 //! as `q = floor((value - offset) / scale)` in `1..=255`, with 0 for missing. Blocks of 3 slots are

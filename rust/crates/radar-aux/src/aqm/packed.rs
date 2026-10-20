@@ -1,4 +1,4 @@
-//! Packed data tiles for the AQM layers (`docs/packed-tiles.md`): one bucket per run and chunk.
+//! Packed data tiles for the AQM layers (`docs/reference/packed-tiles.md`): one bucket per run and chunk.
 //! Chunk `k` (messages `24k .. 24k + 24`) packs into part `k`, so a 72-hour run has three buckets:
 //! `<run>`, `<run>.p1` and `<run>.p2` under `TILE_DIR/packed/<layer>`.
 //!

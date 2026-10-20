@@ -9,7 +9,7 @@ Plain async Rust bodies for four groups of ingest activities:
 | `tile_cleanup_sweep` | `backend/tile_cleanup/activities.py`, `cleanup.sh` (retired, D-2) | `tile_cleanup` |
 | `open_meteo_sync` | `backend/open_meteo_sync/activities.py` | `open_meteo` |
 
-Spec: `docs/rust-migration/specs/spec-ingest-aux.md` sections 2-5, 7-9, 11-16. Lightning (section 6) and NWS alerts (section 10) are
+Spec: `docs/develop/specs/spec-ingest-aux.md` sections 2-5, 7-9, 11-16. Lightning (section 6) and NWS alerts (section 10) are
 not here. There are no Temporal types in this crate. The worker crate wraps these functions and owns retry
 policy, scheduling and the AQM concurrency limit.
 

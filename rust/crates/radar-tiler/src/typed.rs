@@ -4,7 +4,7 @@
 //! The indexed renderer folds the class into the value before it classifies:
 //! `typed = dBZ + class * TYPED_VALUE_STRIDE`, against a table whose snow and mix ranges are shifted
 //! by the same stride ([`typed_color_table`]). Packed tiles store `class * TYPE_CODE_STRIDE + q`
-//! instead (`docs/packed-tiles.md`, "Typed codes").
+//! instead (`docs/reference/packed-tiles.md`, "Typed codes").
 
 use std::fmt;
 use std::sync::Arc;

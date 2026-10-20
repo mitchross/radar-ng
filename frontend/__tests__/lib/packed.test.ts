@@ -303,7 +303,7 @@ describe("model layers (HRRR, AQM)", () => {
       string,
       Required<PackedColorTable>
     >;
-  // The server's table (docs/packed-tiles.md): [scale, offset, floor] and the band edges it cannot hit.
+  // The server's table (docs/reference/packed-tiles.md): [scale, offset, floor] and the band edges it cannot hit.
   const TABLE: Record<string, [number, number, number, number[]]> = {
     temperature: [1, -80, -79, []],
     dewpoint: [5, -80, -75, []],

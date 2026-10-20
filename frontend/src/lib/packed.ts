@@ -1,5 +1,5 @@
 /**
- * Packed data tiles (docs/packed-tiles.md): pure helpers shared by the GPU radar overlay.
+ * Packed data tiles (docs/reference/packed-tiles.md): pure helpers shared by the GPU radar overlay.
  *
  * A packed tile is an RGB PNG atlas of quantized frames (3 slots per pixel). The overlay colors a
  * slot through a 256 x 1 lookup table, so playback changes a uniform instead of fetching tiles.

@@ -184,7 +184,7 @@ map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom
 
 const overlays = new Overlays(map, state.overlays);
 const wind = new WindLayer(map);
-/** Packed data tiles (docs/packed-tiles.md); `?raster=1` turns them off. */
+/** Packed data tiles (docs/reference/packed-tiles.md); `?raster=1` turns them off. */
 const packed = new URLSearchParams(location.search).get("raster") === "1" ? null : new PackedRadarLayer(state.palette, state.opacity);
 
 /** GOES imagery goes under the lowest radar layer (raster frame or packed), else under the labels. */

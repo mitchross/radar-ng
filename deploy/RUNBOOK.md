@@ -50,7 +50,7 @@ radar debug doctor --server https://radar.vanillax.me --skip-temporal
 ```
 
 Or the Grafana radar dashboard: MRMS frame age under 10 minutes, nowcast and HRRR publishing,
-`/api/health` 200, no pod restarts, Argo app Healthy. [docs/debug-harness.md](../docs/debug-harness.md)
+`/api/health` 200, no pod restarts, Argo app Healthy. [docs/reference/debug-harness.md](../docs/reference/debug-harness.md)
 explains each check.
 
 ## 4. Temporal notes

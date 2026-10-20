@@ -3,7 +3,7 @@
 radar-ng's tile renderer (ported from the former Python `tiler.py`, `png_palette.py` and
 `palettes.py`). It renders one source grid into one Web Mercator XYZ pyramid per palette,
 published atomically, with indexed (palette-mode) PNG tiles. Behavior follows
-`docs/rust-migration/specs/spec-tiler.md`; the decisions in `docs/rust-migration/PLAN.md` override it where they differ.
+`docs/develop/specs/spec-tiler.md`; the decisions in `docs/archive/rust-migration/PLAN.md` override it where they differ.
 
 Renderer identity: `"indexed-rs1"` (PLAN option B). Rust never reuses or adopts Python
 pyramids; see Deviations.
@@ -46,7 +46,7 @@ pyramids; see Deviations.
   `PyramidIdentity`, `RENDERER`.
 - `resolve_tile_renderer`, `tile_renderer_for_role`, `TileRenderer`.
 - `tile_geometry_cache_stats`, `clear_tile_geometry_cache`.
-- `packed` (`docs/packed-tiles.md`): `ValueSampler` (physical values per tile, same routes as the
+- `packed` (`docs/reference/packed-tiles.md`): `ValueSampler` (physical values per tile, same routes as the
   colored tiles), `sample_tiles`, `Quantizer`, `slot_position`, `atlas_dims`, and `pack_frames`, which
   merges slots into a bucket under `<layer dir>/.packed.lock` and writes `.packed-bucket-v1.json` last.
 - Errors: `TilerError::{Invalid, Conflict, Unbound, Corrupt, Io}`. Callers branch on the

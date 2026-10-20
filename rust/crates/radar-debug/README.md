@@ -4,7 +4,7 @@ Live-stack diagnostics behind `radar debug <check>`, plus the offline tile-pyram
 `radar parity` (see below). It is a library with one entry point, `run(DebugArgs) -> anyhow::Result<i32>`,
 which the `radar` binary calls. It is a port of the former Python debug harness, with the same checks,
 human and JSON output, and exit codes (0 healthy, 1 any `fail`). Operator guide:
-`docs/debug-harness.md`.
+`docs/reference/debug-harness.md`.
 
 It inspects a **live** stack the way the app does. HTTP checks go through the public serving path
 (`radar api` on the tile-server port), so the numbers are client-perceived numbers.
