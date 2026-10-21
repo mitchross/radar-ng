@@ -111,7 +111,7 @@ the three radar images on your machine from `deploy/Dockerfile`.
 ## Disk fills up
 
 Steady state is about 5 GB of tiles and grids (old frames are cleaned up hourly), plus a few GB for
-forecast data and 1–2 GB for the map. `docker system df -v` shows volume sizes. To shrink: fewer
+forecast data and ~9 GB for the map. `docker system df -v` shows volume sizes. To shrink: fewer
 palettes, a smaller `BASEMAP_BBOX`, or shorter retention ([tuning.md](tuning.md#tile-retention--cleanup)).
 
 ## Kubernetes

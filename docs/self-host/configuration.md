@@ -21,9 +21,9 @@ This is the **Protomaps basemap**: the vector map (roads, water, city labels) dr
 `build.protomaps.com` serves **date-stamped daily planet builds** (`YYYYMMDD.pmtiles`) with **~6-day
 retention** and **no `latest` alias**, so the bootstrap finds the newest build itself: Compose's
 `basemap-bootstrap` and the Kubernetes `fetch-basemap` init container run the same script
-(`deploy/kubernetes/base/fetch-basemap.sh`). It extracts your `BASEMAP_BBOX` (default CONUS, ~1–2 GB) to
+(`deploy/kubernetes/base/fetch-basemap.sh`). It extracts your `BASEMAP_BBOX` (default CONUS up to zoom 14, ~9 GB) to
 a temp file and renames it over `basemap.pmtiles`, which the api serves. A marker file makes re-runs a
-no-op until the bbox (or, on Kubernetes, `REFRESH`) changes.
+no-op until the bbox, the max zoom (or, on Kubernetes, `REFRESH`) changes.
 
 - Leave `BASEMAP_PMTILES_URL` empty. Set it only to pin one build, and expect that pin to 404 within
   about a week.

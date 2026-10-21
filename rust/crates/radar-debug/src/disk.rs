@@ -171,6 +171,10 @@ pub fn check_disk(roots: &DiskRoots, now: SystemTime) -> Vec<Check> {
                 let Some(palette_name) = file_name(&palette_dir) else {
                     continue;
                 };
+                // Skip dot-dirs such as the tiler's `.render-publish-locks`.
+                if palette_name.starts_with('.') {
+                    continue;
+                }
                 let mut stamps = BTreeSet::new();
                 for ts_dir in sorted_children(&palette_dir) {
                     if !ts_dir.is_dir() {
@@ -594,6 +598,20 @@ mod tests {
             c.detail
         );
         assert!(c.detail.contains("uneven counts"));
+    }
+
+    #[test]
+    fn lock_dir_is_not_a_palette() {
+        let f = fixture();
+        mkdirs(
+            &f.roots.tile,
+            &["radar", "classic", "2026-10-14T12:00:00+00:00"],
+        );
+        mkdirs(&f.roots.tile, &["radar", ".render-publish-locks"]);
+        let checks = check_disk(&f.roots, SystemTime::now());
+        let c = find(&checks, "disk.tiles.radar");
+        assert_eq!(c.status, Status::Ok, "{}", c.detail);
+        assert!(!c.detail.contains("render-publish-locks"), "{}", c.detail);
     }
 
     #[test]

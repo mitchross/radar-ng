@@ -42,7 +42,7 @@ cd deploy
 
 The first run creates `deploy/.env` and asks you to set your contact email in it
 (`NWS_USER_AGENT=(radar-ng, you@example.org)`; the NWS asks every app for one). Run it again: it downloads
-the background map once (~1–2 GB), starts everything from ready-made images, and waits for the first
+the background map once (~9 GB), starts everything from ready-made images, and waits for the first
 radar frame.
 
 **How to know it worked:** `up.sh` ends by printing the address for the app. You can also check

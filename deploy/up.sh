@@ -50,7 +50,7 @@ port=$(sed -n 's/^TILE_SERVER_PORT=//p' .env | tail -n1)
 port=${port:-8080}
 
 # --- 3. Basemap (one-time; skips itself when already done) -------------------------------------------
-say "Basemap: downloading the newest US map once (~1-2 GB; skipped if already there)"
+say "Basemap: downloading the newest US map once (~9 GB; skipped if already there)"
 # shellcheck disable=SC2086
 docker compose $files run --rm basemap-bootstrap || die "The basemap download failed. See 'Blank / gray basemap' in docs/self-host/troubleshooting.md."
 
@@ -82,7 +82,10 @@ until curl -fsS "http://localhost:${port}/api/health" >/dev/null 2>&1; do
   sleep 5
 done
 
+# `hostname -I` is GNU-only (Arch's inetutils and macOS lack it); fall back to the default route.
 ip=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+[ -n "$ip" ] || ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)
+[ -n "$ip" ] || ip=$(ipconfig getifaddr en0 2>/dev/null || true)
 ip=${ip:-YOUR-COMPUTER-IP}
 cat <<EOF
 
