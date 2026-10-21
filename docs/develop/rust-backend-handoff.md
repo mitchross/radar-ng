@@ -1,5 +1,10 @@
 # Rust migration: handoff notes
 
+> **Working in `rust/` today?** Read the **`rust-dev` skill** first
+> ([`.claude/commands/rust-dev.md`](../../.claude/commands/rust-dev.md)): toolchain, the push gate,
+> replay compatibility, concurrency traps and the image contract, in one place. This page is the
+> history behind those rules.
+
 Read this first if you're an engineer or an LLM picking up radar-ng after the Python → Rust migration
 (October 2026). It records what changed, where things live now, and the gotchas the migration hit.
 
