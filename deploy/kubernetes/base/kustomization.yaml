@@ -1,0 +1,37 @@
+# radar-ng base: everything the app needs except Temporal itself.
+#
+# Bring your own Temporal (set TEMPORAL_ADDRESS in settings.env), or add the
+# components/temporal-dev component to run a throwaway one next to it. See
+# ../README.md and ../examples/minimal for the one-command version.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: radar-ng
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: radar-ng
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - pvcs.yaml
+  - services.yaml
+  - tile-server.yaml
+  - worker.yaml
+  - open-meteo.yaml
+  - basemap.yaml
+
+configMapGenerator:
+  # The settings you are expected to change. Edit settings.env, or override single keys from
+  # your own kustomization with `behavior: merge` (examples/minimal shows how).
+  - name: radar-ng-settings
+    envs:
+      - settings.env
+  # Worker tunables (palettes, cadences, nowcast, storm watch). Defaults work.
+  - name: radar-ng-worker-config
+    envs:
+      - worker.env
+  - name: radar-ng-scripts
+    files:
+      - fetch-basemap.sh

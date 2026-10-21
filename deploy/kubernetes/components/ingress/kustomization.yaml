@@ -1,0 +1,6 @@
+# Publish the tile-server through a standard Kubernetes Ingress (ingress-nginx, Traefik, ...).
+# Change the host (and ingressClassName) in ingress.yaml, or patch them from your overlay.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - ingress.yaml

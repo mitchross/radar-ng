@@ -1,0 +1,66 @@
+# No storageClassName: these use your cluster's default StorageClass
+# (local-path on kind/k3d/k3s). Add one in an overlay if you want something else.
+#
+# tiles, grids and state are shared by the tile-server (read-only) and the worker (read-write).
+# On ReadWriteOnce storage that only works while those pods sit on the same node, which the
+# worker's podAffinity takes care of. With an RWX class you can drop that affinity.
+# See ../README.md "Storage".
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tiles
+  namespace: radar-ng
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grids
+  namespace: radar-ng
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: state
+  namespace: radar-ng
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+# Open-Meteo model data. Must be a block/local filesystem (ext4, xfs): Open-Meteo's .om writer
+# fails with errno 95 on NFS. RWO is fine because the sync worker is a sidecar in the same pod.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openmeteo-data
+  namespace: radar-ng
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      # Raw GFS/HRRR fields are ~15Gi; the rest is headroom for chunk turnover.
+      storage: 60Gi
+---
+# Protomaps basemap extract (CONUS is ~1-2 GB; 50Gi leaves room for a planet-scale bbox).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pmtiles
+  namespace: radar-ng
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 50Gi

@@ -1,0 +1,6 @@
+# Publish the tile-server through a Gateway API HTTPRoute. Needs the Gateway API CRDs and a
+# Gateway you already run; set parentRefs and the hostname in httproute.yaml.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - httproute.yaml

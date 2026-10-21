@@ -1,0 +1,17 @@
+# The api exports Prometheus metrics at /api/metrics.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tile-server
+  namespace: radar-ng
+  labels:
+    app: tile-server
+spec:
+  selector:
+    matchLabels:
+      app: tile-server
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /api/metrics
+      scrapeTimeout: 10s

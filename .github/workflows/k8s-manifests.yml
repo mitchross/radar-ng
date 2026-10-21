@@ -1,0 +1,50 @@
+name: ci · k8s manifests
+
+# Renders every Kustomize example and component under deploy/kubernetes/ and validates the output
+# with kubeconform (Kubernetes schemas + the community CRD catalog). No cluster involved.
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/kubernetes/**'
+      - '.github/workflows/k8s-manifests.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'deploy/kubernetes/**'
+      - '.github/workflows/k8s-manifests.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: k8s-manifests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KUBECONFORM_VERSION: v0.8.0
+  # sha256 of kubeconform-linux-amd64.tar.gz from the release's CHECKSUMS file.
+  KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install kubeconform
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          tarball="$RUNNER_TEMP/kubeconform.tar.gz"
+          curl -fsSL -o "$tarball" "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  $tarball" | sha256sum -c -
+          tar -xzf "$tarball" -C "$RUNNER_TEMP/bin" kubeconform
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Build and validate
+        run: |
+          kubectl version --client
+          kubeconform -v
+          deploy/kubernetes/validate.sh

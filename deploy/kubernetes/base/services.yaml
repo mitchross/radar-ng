@@ -1,0 +1,44 @@
+# tile-server is the only public entry point (see components/ingress or components/gateway-api).
+# basemap and open-meteo are reached only by the tile-server.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tile-server
+  namespace: radar-ng
+  labels:
+    app: tile-server
+spec:
+  selector:
+    app: tile-server
+  ports:
+    - { port: 8080, targetPort: 8080, name: http }
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: basemap
+  namespace: radar-ng
+  labels:
+    app: basemap
+spec:
+  selector:
+    app: basemap
+  ports:
+    - { port: 8081, targetPort: 8081, name: http }
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-meteo
+  namespace: radar-ng
+  labels:
+    app: open-meteo
+spec:
+  selector:
+    app: open-meteo
+  ports:
+    - { port: 8080, targetPort: 8080, name: http }
+  type: ClusterIP

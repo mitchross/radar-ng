@@ -1,0 +1,126 @@
+# `radar api`: /tiles from the PVCs, /basemap (styles bundled, tiles proxied to the basemap
+# Service), /api and /v1. The public endpoint.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tile-server
+  namespace: radar-ng
+  labels:
+    app: tile-server
+spec:
+  # One replica: it mounts the RWO tiles/grids/state volumes. More replicas need RWX or object
+  # storage first (see ../README.md "Storage").
+  replicas: 1
+  # Recreate, or the new pod waits forever on a Multi-Attach error for the RWO volumes.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: tile-server
+  template:
+    metadata:
+      labels:
+        app: tile-server
+    spec:
+      enableServiceLinks: false
+      # The image runs as uid 1000; fsGroup lets it read what the worker writes.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tile-server
+          image: ghcr.io/mitchross/radar-ng-tile-server:v2.0.9@sha256:3981502164c2f366f123cad41378a956483247fe7015e1e104ab3703050424dc
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            # NWS_USER_AGENT, TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE, TEMPORAL_ALERTS_TASK_QUEUE
+            - configMapRef:
+                name: radar-ng-settings
+          env:
+            - name: TILE_DIR
+              value: /data/tiles
+            - name: GRID_DIR
+              value: /data/grids
+            - name: STATE_DIR
+              value: /data/state
+            - name: OPEN_METEO_BASE
+              value: http://open-meteo:8080/v1/forecast
+            - name: BASEMAP_TILES_UPSTREAM
+              value: http://basemap:8081
+            - name: MRMS_MAX_AGE_S
+              value: "600"
+            # 5 min: polite to the Open-Meteo upstream, short enough that pull-to-refresh shows new data.
+            - name: FORECAST_TTL_S
+              value: "300"
+            - name: API_RATE_LIMIT_RPS
+              value: "20"
+            - name: API_RATE_LIMIT_BURST
+              value: "60"
+            # NWS alert proxy; api.weather.gov can take several seconds.
+            - name: PLACES_UPSTREAM_TIMEOUT_S
+              value: "12"
+            # Push/watch routes need a per-user token issuer; keep them off unless you set one up.
+            - name: DISABLE_WORKFLOW_ROUTES
+              value: "1"
+            # Optional AI briefing card. Without LLM_BASE_URL the card is hidden. To turn it on, add
+            # LLM_BASE_URL (and LLM_MODEL) here and create the Secret described in ../README.md.
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: radar-ng-llm
+                  key: LLM_API_KEY
+                  optional: true
+            # City search (/api/geocode) answers 503 until you set GEOCODER_URL or PHOTON_URL.
+          # /api/livez, never /api/health: health returns 503 when NOAA data is stale, which would
+          # restart (liveness) or drain (readiness) every replica at once.
+          livenessProbe:
+            httpGet:
+              path: /api/livez
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+          # TCP only: an HTTP readiness check empties this single-replica Service whenever the API is slow.
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 10
+          volumeMounts:
+            - name: tiles
+              mountPath: /data/tiles
+              readOnly: true
+            - name: grids
+              mountPath: /data/grids
+              readOnly: true
+            - name: state
+              mountPath: /data/state
+              readOnly: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "3"
+              memory: 2Gi
+      volumes:
+        - name: tiles
+          persistentVolumeClaim:
+            claimName: tiles
+        - name: grids
+          persistentVolumeClaim:
+            claimName: grids
+        - name: state
+          persistentVolumeClaim:
+            claimName: state

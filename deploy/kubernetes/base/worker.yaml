@@ -1,0 +1,98 @@
+# One `legacy` worker: every radar workflow on Temporal task queue `radar-ng`. It also seeds the
+# Temporal Schedules on boot (create-or-update), so there are no CronJobs. Exactly one worker may
+# seed. For the production layout (five role pools) use components/worker-controller.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radar-ng-worker
+  namespace: radar-ng
+  labels:
+    app: radar-ng-worker
+    radar-ng/worker: "true"
+spec:
+  replicas: 1
+  # RWO volumes: the old pod must let go before the new one mounts them.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: radar-ng-worker
+  template:
+    metadata:
+      labels:
+        app: radar-ng-worker
+        radar-ng/worker: "true"
+    spec:
+      enableServiceLinks: false
+      affinity:
+        # tiles/grids/state are shared with the tile-server. On RWO storage both pods must be on
+        # one node. Remove this if your storage class is ReadWriteMany.
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: tile-server
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        # Fresh block volumes mount root:root; uid 1000 cannot write without fsGroup.
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      # Lets in-flight activities finish; TEMPORAL_GRACEFUL_SHUTDOWN_S stays 5 s under it.
+      terminationGracePeriodSeconds: 180
+      containers:
+        - name: worker
+          image: ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.9@sha256:1432031a17e5126eb591a4e0cb3e72f632283a45c3c190fe8cd7865dc51b64a9
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          ports:
+            - { containerPort: 9464, name: metrics, protocol: TCP }
+          envFrom:
+            - configMapRef:
+                name: radar-ng-settings
+            - configMapRef:
+                name: radar-ng-worker-config
+          env:
+            - { name: WORKER_ROLE, value: legacy }
+            # The single Schedule seeder. Set SKIP_SCHEDULE_SEED=1 instead to hand-edit Schedules.
+            - { name: SEED_SCHEDULES, value: "1" }
+            - { name: TEMPORAL_GRACEFUL_SHUTDOWN_S, value: "175" }
+            - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "4" }
+            - { name: TILE_DIR, value: /data/tiles }
+            - { name: GRID_DIR, value: /data/grids }
+            - { name: STATE_DIR, value: /data/state }
+          # The worker touches /tmp/worker-alive every 30 s, independent of Temporal.
+          livenessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/worker-alive -mmin -3)"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+          # /tmp/temporal-healthy tracks Temporal reachability.
+          readinessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/temporal-healthy -mmin -3)"]
+            periodSeconds: 30
+            failureThreshold: 2
+          volumeMounts:
+            - { name: tiles, mountPath: /data/tiles }
+            - { name: grids, mountPath: /data/grids }
+            - { name: state, mountPath: /data/state }
+          # Starting point from docs/self-host/kubernetes.md. On a small laptop lower the requests;
+          # the MRMS render must still finish inside its 2-minute cadence.
+          resources:
+            requests: { cpu: "1", memory: 3Gi }
+            limits: { cpu: "12", memory: 12Gi }
+      volumes:
+        - name: tiles
+          persistentVolumeClaim: { claimName: tiles }
+        - name: grids
+          persistentVolumeClaim: { claimName: grids }
+        - name: state
+          persistentVolumeClaim: { claimName: state }

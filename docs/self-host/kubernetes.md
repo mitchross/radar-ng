@@ -15,9 +15,23 @@ The advanced path. Compose ([self-hosting.md](compose.md)) gives you everything 
 
 ## Reference manifests
 
-This repo ships no Kubernetes manifests. The live ones are in
-[talos-argocd-proxmox `my-apps/personal-projects/radar-ng/`](https://github.com/mitchross/talos-argocd-proxmox/tree/main/my-apps/personal-projects/radar-ng);
-copy and adapt image pins, storage classes and hostnames.
+Start with **[`deploy/kubernetes/`](../../deploy/kubernetes/README.md)** in this repo: a Kustomize
+base (tile-server, one `legacy` worker, open-meteo with its sync sidecar, basemap, Services, PVCs
+with no storage class, settings) plus optional components (`temporal-dev`, `ingress`,
+`gateway-api`, `monitoring`, `worker-controller`, `autoscaling`). To try it on kind, k3d or k3s:
+
+```bash
+kubectl apply -k deploy/kubernetes/examples/minimal
+```
+
+`deploy/kubernetes/examples/production` is the production layout (role pools under the Worker
+Controller, Gateway API, monitoring, autoscaling) with the owner's hostnames, secrets and storage
+classes removed. Its README covers settings, Temporal options, storage and publishing the api.
+
+The owner's live manifests are a production example built on the same layout, in
+[talos-argocd-proxmox `my-apps/personal-projects/radar-ng/`](https://github.com/mitchross/talos-argocd-proxmox/tree/main/my-apps/personal-projects/radar-ng).
+They add cluster-specific pieces (ExternalSecret, PriorityClass, named storage classes, the web
+frontend):
 
 | file | purpose |
 |---|---|
@@ -34,6 +48,9 @@ The pattern is app repo (this one: code, Dockerfile, CI that publishes images) p
 kustomization works too; the split is a workflow choice, not a requirement.
 
 ## Deploy steps
+
+`deploy/kubernetes/` already does all of this. The steps below are what it does, for when you
+write your own manifests or need to know why a piece is there.
 
 1. **Get the images.** Use the three `ghcr.io/mitchross/radar-ng-*` images, pinned by `vX.Y.Z@sha256:…`, or mirror them into your own registry.
 2. **Temporal.** Run Temporal plus its datastore. Pick one:

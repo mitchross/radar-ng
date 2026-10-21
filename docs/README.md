@@ -9,7 +9,7 @@ links to the guide for it.
 |---|---|
 | Understand what radar-ng is and pick how to run it | [start/getting-started.md](start/getting-started.md) |
 | Run the whole stack on one computer (Docker Compose) | [self-host/compose.md](self-host/compose.md) |
-| Run it on my own Kubernetes cluster | [self-host/kubernetes.md](self-host/kubernetes.md) |
+| Run it on my own Kubernetes cluster | [self-host/kubernetes.md](self-host/kubernetes.md) · manifests: [../deploy/kubernetes/](../deploy/kubernetes/README.md) |
 | Look up an environment variable | [self-host/configuration.md](self-host/configuration.md) |
 | Make it faster, cheaper or fresher | [self-host/tuning.md](self-host/tuning.md) |
 | Run the phone app and point it at my server | [app/running-the-app.md](app/running-the-app.md) |

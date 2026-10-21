@@ -1,0 +1,176 @@
+# Alert rules for radar-ng. Metric names come from the api (/api/metrics), the workers (Temporal SDK)
+# and kube-state-metrics / kubelet (pod restarts, volume usage).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: radar-ng
+  namespace: radar-ng
+  labels:
+    app: radar-ng
+spec:
+  groups:
+    - name: radar-ng.data
+      rules:
+        - alert: RadarNgObservedRadarStale
+          expr: radar_ng_mrms_age_seconds > 600
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: radar-ng observed radar is stale
+            description: MRMS has been more than 10 minutes old for 5 minutes.
+        - alert: RadarNgFreshnessMetricMissing
+          expr: absent(radar_ng_mrms_age_seconds) == 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: radar-ng is not reporting MRMS freshness
+            description: The tile API is unavailable or has no published MRMS frame.
+        - alert: RadarNgApiHighErrorRate
+          expr: |
+            sum(rate(radar_ng_http_requests_total{status=~"5.."}[5m]))
+              /
+            clamp_min(sum(rate(radar_ng_http_requests_total[5m])), 0.01) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: radar-ng API error rate is above 5 percent
+            description: The five-minute API 5xx ratio has stayed above 5 percent for 10 minutes.
+    - name: radar-ng.forecast
+      rules:
+        - alert: RadarNgOpenMeteoSyncFailing
+          expr: sum(increase(temporal_workflow_failed{workflow_type="OpenMeteoSyncWorkflow"}[6h])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: radar-ng Open-Meteo sync is failing
+            description: >-
+              An Open-Meteo sync workflow failed in the last 6 hours. Check the
+              workflow's activity error in the Temporal UI; forecasts stop updating
+              while this persists.
+        - alert: RadarNgOpenMeteoSyncStalled
+          expr: (sum(increase(temporal_workflow_completed{workflow_type="OpenMeteoSyncWorkflow"}[3h])) or vector(0)) == 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: radar-ng Open-Meteo has not synced in 3 hours
+            description: >-
+              No Open-Meteo sync completed in 3 hours (HRRR runs hourly). Forecast
+              data is going stale. Check the open-meteo pod (sync-worker container)
+              and its volume.
+        - alert: RadarNgPlacesUpstreamErrors
+          expr: sum by (path) (rate(radar_ng_http_requests_total{path=~"/api/(alerts|geocode|reverse-geocode)", status="502"}[10m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'radar-ng {{ $labels.path }} upstream is failing'
+            description: >-
+              {{ $labels.path }} has returned 502 for 15 minutes: NWS for /api/alerts,
+              your GEOCODER_URL / PHOTON_URL for the geocode routes.
+    - name: radar-ng.worker
+      rules:
+        - alert: RadarNgWorkerOOMKilled
+          expr: kube_pod_container_status_last_terminated_reason{namespace="radar-ng", container=~"worker|sync-worker", reason="OOMKilled"} == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: radar-ng worker was OOMKilled
+            description: The Temporal worker container hit its memory limit; schedules skip while it restarts and heavy activities restart from scratch.
+        - alert: RadarNgWorkerMemoryHigh
+          expr: |
+            container_memory_working_set_bytes{namespace="radar-ng", container=~"worker|sync-worker"}
+              /
+            on (pod, container) kube_pod_container_resource_limits{namespace="radar-ng", container=~"worker|sync-worker", resource="memory"} > 0.85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: radar-ng worker memory above 85 percent of its limit
+            description: Nowcast, HRRR and air-quality renders are overlapping; an OOM kill is likely without a slot or limit change.
+        - alert: RadarNgWorkerRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="radar-ng", container="worker"}[1h]) > 1
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: radar-ng worker restarted more than once in an hour
+            description: Repeated restarts drop in-flight renders and can leave Temporal schedules skipping.
+    - name: radar-ng.layers
+      rules:
+        - alert: RadarNgHrrrLayerMissing
+          expr: absent(radar_ng_tile_timestamps{layer="radar-hrrr"}) == 1
+          for: 3h
+          labels:
+            severity: warning
+          annotations:
+            summary: radar-ng has published no HRRR forecast radar for 3 hours
+            description: The ingest-hrrr schedule is running but never publishing a complete run; check hour_pending and incomplete-run log lines.
+        - alert: RadarNgNowcastLayerMissing
+          expr: absent(radar_ng_tile_timestamps{layer="nowcast"}) == 1
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: radar-ng nowcast layer has no published frames
+            description: Nowcast fails closed on radar publication gaps; look at /api/health nowcast.reason.
+    - name: radar-ng.temporal
+      rules:
+        - alert: RadarNgTaskQueueNoPollers
+          # Any radar-ng queue: `radar-ng` (legacy worker) or `radar-ng-<role>` (role pools).
+          # For role pools, copy this per queue so one missing pool still fires.
+          expr: absent(temporal_worker_task_slots_available{task_queue=~"radar-ng(-.+)?"}) == 1
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: no radar-ng worker is reporting task slots
+            description: >-
+              No worker has reported task slots for 10 minutes. Schedules buffer and time
+              out until a pod polls the queue again. Check the worker pods and Temporal.
+        - alert: RadarNgScheduleOverdue
+          expr: |
+            (sum(increase(temporal_workflow_completed{workflow_type="IngestMrmsWorkflow"}[15m])) or vector(0)) == 0
+              or (sum(increase(temporal_workflow_completed{workflow_type="NowcastWorkflow"}[20m])) or vector(0)) == 0
+              or (sum(increase(temporal_workflow_completed{workflow_type="PollAlertsWorkflow"}[15m])) or vector(0)) == 0
+              or (sum(increase(temporal_workflow_completed{workflow_type="IngestHrrrWorkflow"}[2h])) or vector(0)) == 0
+              or (sum(increase(temporal_workflow_completed{workflow_type="IngestLightningWorkflow"}[150m])) or vector(0)) == 0
+              or (sum(increase(temporal_workflow_completed{workflow_type="IngestAirQualityWorkflow"}[3h])) or vector(0)) == 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: a radar-ng schedule has not completed a run on time
+            description: >-
+              MRMS every minute, nowcast every 2-3 minutes, alerts every 5, HRRR and
+              lightning hourly, air quality hourly: one of them has produced no
+              completed run inside its window. Check the Schedules in the Temporal UI.
+    - name: radar-ng.capacity
+      rules:
+        - alert: RadarNgVolumeAlmostFull
+          expr: |
+            kubelet_volume_stats_available_bytes{namespace="radar-ng"}
+              /
+            kubelet_volume_stats_capacity_bytes{namespace="radar-ng"} < 0.10
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'radar-ng volume {{ $labels.persistentvolumeclaim }} is below 10 percent free'
+            description: >-
+              Renders fail with ENOSPC once a volume is full. tiles and grids are pruned by
+              TileCleanupWorkflow; check that it runs, or expand the PVC.
+        - alert: RadarNgNowcastSkillStale
+          expr: changes(radar_ng_nowcast_skill_runs[3h]) == 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: radar-ng nowcast skill scoring has stalled
+            description: >-
+              No nowcast has been scored against later radar for 3 hours, so the app's
+              accuracy line and the skill dashboard are stale.

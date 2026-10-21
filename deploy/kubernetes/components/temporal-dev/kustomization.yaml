@@ -1,0 +1,8 @@
+# A throwaway single-pod Temporal (auto-setup) + PostgreSQL + Web UI, for trying radar-ng out.
+# Same images as deploy/docker-compose.yml. Not for production: no HA, no backups, default
+# credentials. Workers reach it at temporal:7233 (the default in base/settings.env).
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - postgres.yaml
+  - temporal.yaml

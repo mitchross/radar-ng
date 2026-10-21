@@ -1,0 +1,496 @@
+# One WorkerDeployment per role; each polls only its own queue (radar-ng-<role>).
+# Exactly one pool seeds Schedules: aux has SEED_SCHEDULES=1, every other pool SKIP_SCHEDULE_SEED=1.
+# All pools share the RWO tiles/grids/state volumes with the tile-server, so they must land on
+# its node (podAffinity). Drop the affinity if your storage is ReadWriteMany.
+# The controller injects TEMPORAL_ADDRESS/NAMESPACE/DEPLOYMENT_NAME/WORKER_BUILD_ID; don't set them.
+---
+apiVersion: temporal.io/v1alpha1
+kind: WorkerDeployment
+metadata:
+  name: radar-ng-worker-mrms
+  namespace: radar-ng
+  labels:
+    app: radar-ng-worker-mrms
+    radar-ng/worker: "true"
+spec:
+  minReadySeconds: 0
+  progressDeadlineSeconds: 600
+  replicas: 1
+  workerOptions:
+    connectionRef:
+      name: radar-ng-temporal
+    temporalNamespace: default   # <<< must match TEMPORAL_NAMESPACE in base/settings.env
+  rollout:
+    strategy: AllAtOnce
+    gate:
+      workflowType: RadarDeploymentSmokeWorkflow
+  sunset:
+    scaledownDelay: 10m
+    deleteDelay: 1h
+  template:
+    metadata:
+      labels:
+        app: radar-ng-worker-mrms
+        radar-ng/worker: "true"
+    spec:
+      enableServiceLinks: false
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: tile-server
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      # Lets in-flight activities finish on rollout; TEMPORAL_GRACEFUL_SHUTDOWN_S stays 5 s under it.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: worker
+          image: ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.9@sha256:1432031a17e5126eb591a4e0cb3e72f632283a45c3c190fe8cd7865dc51b64a9
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          ports:
+            - { containerPort: 9464, name: metrics, protocol: TCP }
+          envFrom:
+            - configMapRef:
+                name: radar-ng-worker-config
+          env:
+            - { name: WORKER_ROLE, value: mrms }
+            - { name: USE_ISOLATED_TASK_QUEUES, value: "1" }
+            - name: NWS_USER_AGENT
+              valueFrom:
+                configMapKeyRef: { name: radar-ng-settings, key: NWS_USER_AGENT }
+            - { name: TEMPORAL_GRACEFUL_SHUTDOWN_S, value: "55" }
+            # Indexed-PNG renderer canary: both keys on every pod that polls radar-ng-mrms.
+            - { name: TILE_RENDERER, value: indexed }
+            - { name: TILE_RENDERER_CANARY_ROLE, value: mrms }
+            - { name: SKIP_SCHEDULE_SEED, value: "1" }
+            # Slots cover 2 frames x 2 layers plus list/mark.
+            - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "6" }
+            - { name: TILE_DIR, value: /data/tiles }
+            - { name: GRID_DIR, value: /data/grids }
+            - { name: STATE_DIR, value: /data/state }
+          livenessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/worker-alive -mmin -3)"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/temporal-healthy -mmin -3)"]
+            periodSeconds: 30
+            failureThreshold: 2
+          volumeMounts:
+            - { name: tiles, mountPath: /data/tiles }
+            - { name: grids, mountPath: /data/grids }
+            - { name: state, mountPath: /data/state }
+          resources:
+            requests: { cpu: "500m", memory: 1Gi }
+            limits: { cpu: "6", memory: 6Gi }
+      volumes:
+        - name: tiles
+          persistentVolumeClaim: { claimName: tiles }
+        - name: grids
+          persistentVolumeClaim: { claimName: grids }
+        - name: state
+          persistentVolumeClaim: { claimName: state }
+---
+apiVersion: temporal.io/v1alpha1
+kind: WorkerDeployment
+metadata:
+  name: radar-ng-worker-nowcast
+  namespace: radar-ng
+  labels:
+    app: radar-ng-worker-nowcast
+    radar-ng/worker: "true"
+spec:
+  minReadySeconds: 0
+  progressDeadlineSeconds: 600
+  replicas: 1
+  workerOptions:
+    connectionRef:
+      name: radar-ng-temporal
+    temporalNamespace: default   # <<< must match TEMPORAL_NAMESPACE in base/settings.env
+  rollout:
+    strategy: AllAtOnce
+    gate:
+      workflowType: RadarDeploymentSmokeWorkflow
+  sunset:
+    scaledownDelay: 10m
+    deleteDelay: 1h
+  template:
+    metadata:
+      labels:
+        app: radar-ng-worker-nowcast
+        radar-ng/worker: "true"
+    spec:
+      enableServiceLinks: false
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: tile-server
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      # Lets in-flight activities finish on rollout; TEMPORAL_GRACEFUL_SHUTDOWN_S stays 5 s under it.
+      terminationGracePeriodSeconds: 180
+      containers:
+        - name: worker
+          image: ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.9@sha256:1432031a17e5126eb591a4e0cb3e72f632283a45c3c190fe8cd7865dc51b64a9
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          ports:
+            - { containerPort: 9464, name: metrics, protocol: TCP }
+          envFrom:
+            - configMapRef:
+                name: radar-ng-worker-config
+          env:
+            - { name: WORKER_ROLE, value: nowcast }
+            - { name: USE_ISOLATED_TASK_QUEUES, value: "1" }
+            - name: NWS_USER_AGENT
+              valueFrom:
+                configMapKeyRef: { name: radar-ng-settings, key: NWS_USER_AGENT }
+            - { name: TEMPORAL_GRACEFUL_SHUTDOWN_S, value: "175" }
+            - { name: SKIP_SCHEDULE_SEED, value: "1" }
+            # One nowcast run at a time; a second doubles peak memory and starves the first.
+            - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "1" }
+            - { name: TILE_DIR, value: /data/tiles }
+            - { name: GRID_DIR, value: /data/grids }
+            - { name: STATE_DIR, value: /data/state }
+          livenessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/worker-alive -mmin -3)"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/temporal-healthy -mmin -3)"]
+            periodSeconds: 30
+            failureThreshold: 2
+          volumeMounts:
+            - { name: tiles, mountPath: /data/tiles }
+            - { name: grids, mountPath: /data/grids }
+            - { name: state, mountPath: /data/state }
+          resources:
+            requests: { cpu: "500m", memory: 2560Mi }
+            limits: { cpu: "8", memory: 12Gi }
+      volumes:
+        - name: tiles
+          persistentVolumeClaim: { claimName: tiles }
+        - name: grids
+          persistentVolumeClaim: { claimName: grids }
+        - name: state
+          persistentVolumeClaim: { claimName: state }
+---
+apiVersion: temporal.io/v1alpha1
+kind: WorkerDeployment
+metadata:
+  name: radar-ng-worker-hrrr
+  namespace: radar-ng
+  labels:
+    app: radar-ng-worker-hrrr
+    radar-ng/worker: "true"
+spec:
+  minReadySeconds: 0
+  progressDeadlineSeconds: 600
+  replicas: 1
+  workerOptions:
+    connectionRef:
+      name: radar-ng-temporal
+    temporalNamespace: default   # <<< must match TEMPORAL_NAMESPACE in base/settings.env
+  rollout:
+    strategy: AllAtOnce
+    gate:
+      workflowType: RadarDeploymentSmokeWorkflow
+  sunset:
+    scaledownDelay: 10m
+    deleteDelay: 1h
+  template:
+    metadata:
+      labels:
+        app: radar-ng-worker-hrrr
+        radar-ng/worker: "true"
+    spec:
+      enableServiceLinks: false
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: tile-server
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      # Lets in-flight activities finish on rollout; TEMPORAL_GRACEFUL_SHUTDOWN_S stays 5 s under it.
+      terminationGracePeriodSeconds: 180
+      containers:
+        - name: worker
+          image: ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.9@sha256:1432031a17e5126eb591a4e0cb3e72f632283a45c3c190fe8cd7865dc51b64a9
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          ports:
+            - { containerPort: 9464, name: metrics, protocol: TCP }
+          envFrom:
+            - configMapRef:
+                name: radar-ng-worker-config
+          env:
+            - { name: WORKER_ROLE, value: hrrr }
+            - { name: USE_ISOLATED_TASK_QUEUES, value: "1" }
+            - name: NWS_USER_AGENT
+              valueFrom:
+                configMapKeyRef: { name: radar-ng-settings, key: NWS_USER_AGENT }
+            - { name: TEMPORAL_GRACEFUL_SHUTDOWN_S, value: "175" }
+            - { name: SKIP_SCHEDULE_SEED, value: "1" }
+            # Fan-out is 4 forecast hours at a time, so 4 slots is the whole budget.
+            - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "4" }
+            - { name: TILE_DIR, value: /data/tiles }
+            - { name: GRID_DIR, value: /data/grids }
+            - { name: STATE_DIR, value: /data/state }
+          livenessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/worker-alive -mmin -3)"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/temporal-healthy -mmin -3)"]
+            periodSeconds: 30
+            failureThreshold: 2
+          volumeMounts:
+            - { name: tiles, mountPath: /data/tiles }
+            - { name: grids, mountPath: /data/grids }
+            - { name: state, mountPath: /data/state }
+          resources:
+            requests: { cpu: "500m", memory: 1Gi }
+            limits: { cpu: "4", memory: 6Gi }
+      volumes:
+        - name: tiles
+          persistentVolumeClaim: { claimName: tiles }
+        - name: grids
+          persistentVolumeClaim: { claimName: grids }
+        - name: state
+          persistentVolumeClaim: { claimName: state }
+---
+apiVersion: temporal.io/v1alpha1
+kind: WorkerDeployment
+metadata:
+  name: radar-ng-worker-aux
+  namespace: radar-ng
+  labels:
+    app: radar-ng-worker-aux
+    radar-ng/worker: "true"
+spec:
+  minReadySeconds: 0
+  progressDeadlineSeconds: 600
+  replicas: 1
+  workerOptions:
+    connectionRef:
+      name: radar-ng-temporal
+    temporalNamespace: default   # <<< must match TEMPORAL_NAMESPACE in base/settings.env
+  rollout:
+    strategy: AllAtOnce
+    gate:
+      workflowType: RadarDeploymentSmokeWorkflow
+  sunset:
+    scaledownDelay: 10m
+    deleteDelay: 1h
+  template:
+    metadata:
+      labels:
+        app: radar-ng-worker-aux
+        radar-ng/worker: "true"
+    spec:
+      enableServiceLinks: false
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: tile-server
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      # Lets in-flight activities finish on rollout; TEMPORAL_GRACEFUL_SHUTDOWN_S stays 5 s under it.
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: worker
+          image: ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.9@sha256:1432031a17e5126eb591a4e0cb3e72f632283a45c3c190fe8cd7865dc51b64a9
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          ports:
+            - { containerPort: 9464, name: metrics, protocol: TCP }
+          envFrom:
+            - configMapRef:
+                name: radar-ng-worker-config
+          env:
+            - { name: WORKER_ROLE, value: aux }
+            - { name: USE_ISOLATED_TASK_QUEUES, value: "1" }
+            - name: NWS_USER_AGENT
+              valueFrom:
+                configMapKeyRef: { name: radar-ng-settings, key: NWS_USER_AGENT }
+            - { name: TEMPORAL_GRACEFUL_SHUTDOWN_S, value: "85" }
+            # Sole Schedule seeder; never set this on a second pool.
+            - { name: SEED_SCHEDULES, value: "1" }
+            # Lightning holds one slot ~50 min/h; air quality, tropical and cleanup share the rest.
+            - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "4" }
+            - { name: TILE_DIR, value: /data/tiles }
+            - { name: GRID_DIR, value: /data/grids }
+            - { name: STATE_DIR, value: /data/state }
+          livenessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/worker-alive -mmin -3)"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/temporal-healthy -mmin -3)"]
+            periodSeconds: 30
+            failureThreshold: 2
+          volumeMounts:
+            - { name: tiles, mountPath: /data/tiles }
+            - { name: grids, mountPath: /data/grids }
+            - { name: state, mountPath: /data/state }
+          resources:
+            requests: { cpu: "250m", memory: 768Mi }
+            limits: { cpu: "2", memory: 4Gi }
+      volumes:
+        - name: tiles
+          persistentVolumeClaim: { claimName: tiles }
+        - name: grids
+          persistentVolumeClaim: { claimName: grids }
+        - name: state
+          persistentVolumeClaim: { claimName: state }
+---
+apiVersion: temporal.io/v1alpha1
+kind: WorkerDeployment
+metadata:
+  name: radar-ng-worker-alerts
+  namespace: radar-ng
+  labels:
+    app: radar-ng-worker-alerts
+    radar-ng/worker: "true"
+spec:
+  minReadySeconds: 0
+  progressDeadlineSeconds: 600
+  replicas: 1
+  workerOptions:
+    connectionRef:
+      name: radar-ng-temporal
+    temporalNamespace: default   # <<< must match TEMPORAL_NAMESPACE in base/settings.env
+  rollout:
+    strategy: AllAtOnce
+    gate:
+      workflowType: RadarDeploymentSmokeWorkflow
+  sunset:
+    scaledownDelay: 10m
+    deleteDelay: 1h
+  template:
+    metadata:
+      labels:
+        app: radar-ng-worker-alerts
+        radar-ng/worker: "true"
+    spec:
+      enableServiceLinks: false
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: tile-server
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      # Lets in-flight activities finish on rollout; TEMPORAL_GRACEFUL_SHUTDOWN_S stays 5 s under it.
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: worker
+          image: ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.9@sha256:1432031a17e5126eb591a4e0cb3e72f632283a45c3c190fe8cd7865dc51b64a9
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          ports:
+            - { containerPort: 9464, name: metrics, protocol: TCP }
+          envFrom:
+            - configMapRef:
+                name: radar-ng-worker-config
+          env:
+            - { name: WORKER_ROLE, value: alerts }
+            - { name: USE_ISOLATED_TASK_QUEUES, value: "1" }
+            - name: NWS_USER_AGENT
+              valueFrom:
+                configMapKeyRef: { name: radar-ng-settings, key: NWS_USER_AGENT }
+            - { name: TEMPORAL_GRACEFUL_SHUTDOWN_S, value: "25" }
+            - { name: SKIP_SCHEDULE_SEED, value: "1" }
+            # Small HTTP/JSON activities only; storm watches read grids, never write tiles.
+            - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "8" }
+            - { name: TILE_DIR, value: /data/tiles }
+            - { name: GRID_DIR, value: /data/grids }
+            - { name: STATE_DIR, value: /data/state }
+          livenessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/worker-alive -mmin -3)"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/temporal-healthy -mmin -3)"]
+            periodSeconds: 30
+            failureThreshold: 2
+          volumeMounts:
+            - { name: state, mountPath: /data/state }
+            - { name: grids, mountPath: /data/grids, readOnly: true }
+          resources:
+            requests: { cpu: "250m", memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+      volumes:
+        - name: state
+          persistentVolumeClaim: { claimName: state }
+        - name: grids
+          persistentVolumeClaim: { claimName: grids }
