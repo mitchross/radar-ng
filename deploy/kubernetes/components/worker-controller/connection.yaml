@@ -1,0 +1,9 @@
+# How the Worker Controller reaches Temporal. No mTLS; to add it, create a Secret with
+# tls.crt/tls.key/ca.crt and set spec.mutualTLSSecretRef.
+apiVersion: temporal.io/v1alpha1
+kind: Connection
+metadata:
+  name: radar-ng-temporal
+  namespace: radar-ng
+spec:
+  hostPort: "temporal-frontend.temporal.svc.cluster.local:7233"   # <<< your Temporal frontend

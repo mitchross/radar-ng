@@ -1,0 +1,14 @@
+# Temporal SDK metrics (schedule-to-start latency, slot usage, poll failures) from every worker
+# on :9464/metrics: the legacy worker, the open-meteo sidecar and the worker-controller pools.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: radar-ng-workers
+  namespace: radar-ng
+spec:
+  selector:
+    matchLabels:
+      radar-ng/worker: "true"
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 30s

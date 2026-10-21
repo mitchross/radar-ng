@@ -1,0 +1,32 @@
+# Production-style workers: five role pools on isolated task queues, rolled out by the Temporal
+# Worker Controller (https://github.com/temporalio/temporal-worker-controller). Each release is
+# gated by RadarDeploymentSmokeWorkflow before it takes traffic.
+#
+# Needs: the Worker Controller and its CRDs installed, and a Temporal server with Worker
+# Deployment (versioning) support. The 1.25 auto-setup in components/temporal-dev is not meant
+# for this. Set the address in connection.yaml AND TEMPORAL_ADDRESS in base/settings.env.
+#
+# What it changes: removes the base `radar-ng-worker` Deployment, adds the pools, and switches
+# the api to the isolated alerts queue.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - connection.yaml
+  - worker-pools.yaml
+
+patches:
+  - path: delete-legacy-worker.yaml
+
+configMapGenerator:
+  - name: radar-ng-settings
+    behavior: merge
+    literals:
+      - USE_ISOLATED_TASK_QUEUES=1
+      - TEMPORAL_ALERTS_TASK_QUEUE=radar-ng-alerts
+
+# Teach Kustomize that WorkerDeployment pod templates reference ConfigMaps and PVCs, so the
+# hashed ConfigMap names are filled in. A config change then changes the pod template, which
+# the controller turns into a new, smoke-tested worker version.
+configurations:
+  - kustomizeconfig.yaml

@@ -1,0 +1,27 @@
+# Production-shaped example: what the owner's cluster runs, minus its hostnames, secrets and
+# storage classes. Copy this into your own repo (or point at it as a remote base) and adjust:
+#
+#   - base/settings.env              NWS_USER_AGENT, TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE
+#   - worker-controller/connection   your Temporal frontend
+#   - gateway-api/httproute          your Gateway and hostname (or use components/ingress)
+#
+# Needs: Temporal (with Worker Deployment support), the Temporal Worker Controller, Gateway API
+# CRDs, the Prometheus Operator CRDs and the VPA CRDs. See ../../README.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+components:
+  - ../../components/worker-controller
+  - ../../components/gateway-api
+  - ../../components/monitoring
+  - ../../components/autoscaling
+
+configMapGenerator:
+  - name: radar-ng-settings
+    behavior: merge
+    literals:
+      - NWS_USER_AGENT=(radar-ng, you@example.com)
+      - TEMPORAL_ADDRESS=temporal-frontend.temporal.svc.cluster.local:7233

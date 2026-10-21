@@ -64,9 +64,12 @@ sizing, what each step does and how to verify it, is **[self-host/compose.md](..
 
 You provide a cluster, a Temporal server and storage the tile-server and workers can share. The
 **[Kubernetes guide](../self-host/kubernetes.md)** covers what you need, the deploy steps, storage,
-probes and sizing. This repo doesn't ship manifests yet; the guide points at the live ones in
-[talos-argocd-proxmox](https://github.com/mitchross/talos-argocd-proxmox/tree/main/my-apps/personal-projects/radar-ng)
-to copy and adapt.
+probes and sizing. Ready-to-apply Kustomize manifests are in
+**[deploy/kubernetes/](../../deploy/kubernetes/README.md)**; to try them on kind, k3d or k3s:
+
+```bash
+kubectl apply -k deploy/kubernetes/examples/minimal
+```
 
 ## Running the app
 

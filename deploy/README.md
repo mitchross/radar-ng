@@ -2,8 +2,10 @@
 
 Build and run assets for the Rust backend: one Dockerfile with three targets, a single-node compose
 stack, and the release runbook. The build context is the repository root; the Cargo workspace is in
-`rust/`. Cluster manifests live in `mitchross/talos-argocd-proxmox`
-(`my-apps/personal-projects/radar-ng/`) and change only through GitOps PRs synced by Argo CD.
+`rust/`. Kubernetes manifests (Kustomize base, optional components, examples) are in
+[kubernetes/](kubernetes/README.md). The owner's production cluster runs its own copy in
+`mitchross/talos-argocd-proxmox` (`my-apps/personal-projects/radar-ng/`), changed only through
+GitOps PRs synced by Argo CD.
 
 Releases and post-release checks: [RUNBOOK.md](RUNBOOK.md).
 
@@ -16,6 +18,7 @@ Releases and post-release checks: [RUNBOOK.md](RUNBOOK.md).
 | `docker-compose.yml` | Single-node stack: Temporal, `worker` (role `legacy`), `open-meteo-worker`, `open-meteo`, `api`, and one-shot `basemap-bootstrap` / `basemap-publish` |
 | `.env.example` | Compose settings; copy to `.env` |
 | `temporal-dev.yml` | Throwaway Temporal (Postgres, auto-setup, UI) for the worker integration tests |
+| `kubernetes/` | Kustomize base, optional components and examples for Kubernetes; see [kubernetes/README.md](kubernetes/README.md) |
 | `pin-images.sh` | Pins third-party base images in `deploy/` to their current digests |
 | `RUNBOOK.md` | What ships, release path, checks, Temporal notes, tile parity |
 

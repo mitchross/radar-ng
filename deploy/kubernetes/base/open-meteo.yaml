@@ -1,0 +1,121 @@
+# Self-hosted Open-Meteo API (serve container) plus the radar open-meteo worker as a sidecar that
+# syncs GFS/HRRR model data into the same volume. Sidecar, because the volume is RWO.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-meteo
+  namespace: radar-ng
+  labels:
+    app: open-meteo
+spec:
+  progressDeadlineSeconds: 900
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: open-meteo
+  template:
+    metadata:
+      labels:
+        app: open-meteo
+        radar-ng/worker: "true"
+    spec:
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 40
+      # uid 999 is the image's "openmeteo" user; serve and sync must write as the same user.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: open-meteo
+          # Both containers use one image so the synced data format matches the served binary.
+          image: ghcr.io/mitchross/radar-ng-open-meteo-worker:v2.0.9@sha256:1d7c2195d082a6872551d3d4cc5300d054a718a822839aa10d24b1bcce546f07
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          command: ["/app/openmeteo-api"]
+          args: ["serve", "--bind", "0.0.0.0:8080"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          ports:
+            - containerPort: 8080
+              name: http
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 120
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+          volumeMounts:
+            - name: openmeteo-data
+              mountPath: /app/data
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              # Page cache counts toward the limit; 2Gi evicted data before the next request.
+              memory: 6Gi
+        # `radar worker --role open-meteo` (the image default). Polls queue radar-ng-open-meteo.
+        - name: sync-worker
+          image: ghcr.io/mitchross/radar-ng-open-meteo-worker:v2.0.9@sha256:1d7c2195d082a6872551d3d4cc5300d054a718a822839aa10d24b1bcce546f07
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          ports:
+            - { containerPort: 9464, name: metrics, protocol: TCP }
+          envFrom:
+            - configMapRef:
+                name: radar-ng-settings
+          env:
+            - name: WORKER_ROLE
+              value: open-meteo
+            - name: TEMPORAL_GRACEFUL_SHUTDOWN_S
+              value: "25"
+            - name: OPENMETEO_BIN
+              value: /app/openmeteo-api
+            - name: OPENMETEO_DATA_DIR
+              value: /app/data
+          # The image carries a static busybox for this probe (deploy/Dockerfile).
+          livenessProbe:
+            exec:
+              command: [/usr/local/bin/busybox, sh, -c, "test $(/usr/local/bin/busybox find /tmp/worker-alive -mmin -3)"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+          volumeMounts:
+            - name: openmeteo-data
+              mountPath: /app/data
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+      volumes:
+        - name: openmeteo-data
+          persistentVolumeClaim:
+            claimName: openmeteo-data

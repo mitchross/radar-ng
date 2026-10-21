@@ -1,0 +1,9 @@
+# Prometheus Operator objects: scrape the api and every worker, plus alert rules.
+# Needs the monitoring.coreos.com CRDs (kube-prometheus-stack). If your Prometheus selects
+# monitors by label (e.g. release: kube-prometheus-stack), add that label in an overlay.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - servicemonitor.yaml
+  - podmonitor.yaml
+  - prometheusrule.yaml

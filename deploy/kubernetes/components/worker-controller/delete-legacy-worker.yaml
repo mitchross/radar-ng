@@ -1,0 +1,7 @@
+# The role pools replace the single legacy worker (and take over Schedule seeding).
+$patch: delete
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radar-ng-worker
+  namespace: radar-ng

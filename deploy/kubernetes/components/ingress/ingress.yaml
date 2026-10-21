@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: radar-ng-api
+  namespace: radar-ng
+  # annotations:
+  #   cert-manager.io/cluster-issuer: letsencrypt   # if you use cert-manager for TLS
+spec:
+  # Leave unset to use your cluster's default IngressClass (k3s ships Traefik as the default).
+  # ingressClassName: nginx
+  rules:
+    - host: radar-ng-api.example.com   # <<< your hostname
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tile-server
+                port:
+                  number: 8080
+  # tls:
+  #   - hosts: [radar-ng-api.example.com]
+  #     secretName: radar-ng-api-tls
