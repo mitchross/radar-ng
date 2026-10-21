@@ -208,6 +208,27 @@ fn template_of(manifest: &Value) -> String {
         .to_string()
 }
 
+/// The layer's own tile template when it has one, else the manifest-wide template.
+fn layer_template(layer: &Value, default: &str) -> String {
+    layer
+        .get("tile_url_template")
+        .and_then(Value::as_str)
+        .unwrap_or(default)
+        .to_string()
+}
+
+/// The `max_zoom` the manifest advertises for the frame at `timestamp`, if any.
+fn frame_max_zoom(layer: &Value, timestamp: &str) -> Option<u32> {
+    layer
+        .get("frames")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|f| f.get("timestamp").and_then(Value::as_str) == Some(timestamp))?
+        .get("max_zoom")
+        .and_then(Value::as_u64)
+        .and_then(|z| u32::try_from(z).ok())
+}
+
 /// Timestamps of a layer, as strings, in manifest order.
 fn layer_timestamps(layer: &Value) -> Vec<String> {
     layer
@@ -340,7 +361,7 @@ pub async fn check_tiles(
             ),
         )];
     };
-    let template = template_of(&manifest);
+    let default_template = template_of(&manifest);
     let layers = sorted_layers(&manifest);
     let side = ((per_zoom as f64).sqrt() as i64).max(1);
     let mut checks = Vec::new();
@@ -360,9 +381,12 @@ pub async fn check_tiles(
             .map_or_else(|| timestamps[timestamps.len() - 1].clone(), str::to_string);
         let palette = first_palette(layer);
         let path = frame_path(layer, &ts);
+        // Proxied layers (satellite) carry their own template and a lower zoom cap.
+        let template = layer_template(layer, &default_template);
+        let max_zoom = frame_max_zoom(layer, &ts).unwrap_or(8).min(8);
 
         let mut urls = Vec::new();
-        for z in 4..=8u32 {
+        for z in 4..=max_zoom {
             let (cx, cy) = slippy(lat, lon, z);
             for dy in 0..side {
                 for dx in 0..side {
@@ -855,6 +879,21 @@ mod tests {
             ),
             "http://x/tiles/radar/classic/2026-07-04T20%3A02%3A00%2B00%3A00/4/3/6.png"
         );
+    }
+
+    #[test]
+    fn layer_template_and_max_zoom_override_the_defaults() {
+        let layer = json!({
+            "tile_url_template": "/tiles/satellite/{path}/{z}/{x}/{y}.png",
+            "frames": [{"timestamp": "t1", "path": "p1", "max_zoom": 7}, {"timestamp": "t2"}],
+        });
+        assert_eq!(
+            layer_template(&layer, DEFAULT_TILE_TEMPLATE),
+            "/tiles/satellite/{path}/{z}/{x}/{y}.png"
+        );
+        assert_eq!(layer_template(&json!({}), "/d"), "/d");
+        assert_eq!(frame_max_zoom(&layer, "t1"), Some(7));
+        assert_eq!(frame_max_zoom(&layer, "t2"), None);
     }
 
     #[test]

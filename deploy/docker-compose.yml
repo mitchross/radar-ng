@@ -10,7 +10,7 @@
 #                                     # and prints the URL for the app
 # or by hand:
 #   cp .env.example .env              # set NWS_USER_AGENT
-#   docker compose run --rm basemap-bootstrap   # one-time ~1-2 GB download of the newest basemap
+#   docker compose run --rm basemap-bootstrap   # one-time ~9 GB download of the newest basemap
 #   docker compose up -d
 #
 #   curl http://localhost:8080/api/livez
@@ -244,6 +244,7 @@ services:
     environment:
       BBOX: ${BASEMAP_BBOX:--125,24,-66,50}
       PMTILES_URL: ${BASEMAP_PMTILES_URL:-}
+      MAXZOOM: ${BASEMAP_MAXZOOM:-14}
       OUT: /data/basemap.pmtiles
     volumes:
       - basemap-data:/data

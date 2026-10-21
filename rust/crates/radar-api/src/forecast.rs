@@ -4,7 +4,8 @@
 //! use the rounded values. Concurrent misses for one cell share one upstream request. The 200 body
 //! is the Open-Meteo JSON, unchanged, cached encoded. Failures are
 //! `502 {"error":"upstream_unavailable"}` with **no** `Cache-Control`. A 200 whose body is not JSON
-//! is also a 502 (defect D5 fix; Python returned 500).
+//! is also a 502 (defect D5 fix; Python returned 500). A body whose current temperature is null (no model
+//! sync yet on a fresh stack) is served `no-store` and not cached, so data shows up once it lands.
 
 use std::time::Duration;
 
@@ -37,6 +38,8 @@ pub enum ForecastError {
     OutOfRange,
     /// Upstream failed or returned a non-JSON body (HTTP 502 `upstream_unavailable`).
     Upstream,
+    /// Upstream answered, but without data yet (HTTP 200, `no-store`, not cached).
+    NoData(Bytes),
 }
 
 /// The rounded cell for a point, as Python computes it: `round(x, 1)`.
@@ -59,7 +62,10 @@ pub async fn forecast_for(state: &AppState, lat: f64, lon: f64) -> Result<Value,
         .counters
         .forecast_requests_total
         .fetch_add(1, Ordering::Relaxed);
-    let body = forecast_lookup(state, lat, lon).await?;
+    let body = match forecast_lookup(state, lat, lon).await {
+        Ok(body) | Err(ForecastError::NoData(body)) => body,
+        Err(e) => return Err(e),
+    };
     serde_json::from_slice(&body).map_err(|_| ForecastError::Upstream)
 }
 
@@ -68,7 +74,8 @@ pub async fn forecast_for(state: &AppState, lat: f64, lon: f64) -> Result<Value,
 /// Python). A request that waited on another request's upstream call counts as a cache hit.
 ///
 /// # Errors
-/// [`ForecastError::OutOfRange`] for a bad point, [`ForecastError::Upstream`] for any upstream failure.
+/// [`ForecastError::OutOfRange`] for a bad point, [`ForecastError::Upstream`] for any upstream failure,
+/// [`ForecastError::NoData`] (with the body) when Open-Meteo has no data for the point yet.
 pub async fn forecast_lookup(state: &AppState, lat: f64, lon: f64) -> Result<Bytes, ForecastError> {
     if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
         return Err(ForecastError::OutOfRange);
@@ -79,7 +86,10 @@ pub async fn forecast_lookup(state: &AppState, lat: f64, lon: f64) -> Result<Byt
         .entry(key)
         .or_try_insert_with(fetch(state, glat, glon))
         .await
-        .map_err(|_| ForecastError::Upstream)?;
+        .map_err(|e| match &*e {
+            ForecastError::NoData(body) => ForecastError::NoData(body.clone()),
+            _ => ForecastError::Upstream,
+        })?;
     if !entry.is_fresh() {
         state
             .metrics
@@ -125,7 +135,14 @@ async fn fetch(state: &AppState, glat: f64, glon: f64) -> Result<Bytes, Forecast
             .fetch_add(1, Ordering::Relaxed);
         return Err(ForecastError::Upstream);
     };
-    Ok(respond::encode(&data))
+    let encoded = respond::encode(&data);
+    if data
+        .pointer("/current/temperature_2m")
+        .is_some_and(Value::is_null)
+    {
+        return Err(ForecastError::NoData(encoded));
+    }
+    Ok(encoded)
 }
 
 /// `GET /api/forecast/{lat}/{lon}`.
@@ -154,6 +171,9 @@ pub async fn get_forecast(
             respond::detail(StatusCode::UNPROCESSABLE_ENTITY, "lat/lon out of range")
         }
         Err(ForecastError::Upstream) => respond::upstream_unavailable(),
+        Err(ForecastError::NoData(data)) => {
+            respond::json_bytes(StatusCode::OK, data, Some("no-store"))
+        }
     };
     resp.into_response()
 }

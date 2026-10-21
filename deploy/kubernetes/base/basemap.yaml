@@ -42,6 +42,9 @@ spec:
             # Bump to force a re-extract of a fresher Protomaps build without changing the bbox.
             - name: REFRESH
               value: "1"
+            # Highest zoom kept. The bundled styles stop at 14; raise only with a custom style.
+            - name: MAXZOOM
+              value: "14"
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

@@ -112,7 +112,7 @@ What C still needs before it can replace the Esri tiles:
 
 The data volumes are the real reason this was never done. For scale:
 
-- The self-hosted **vector** basemap is a `pmtiles extract` of a CONUS bounding box: **~1–2 GB**
+- The self-hosted **vector** basemap is a `pmtiles extract` of a CONUS bounding box up to zoom 14: **~9 GB**
   (`deploy/docker-compose.yml`, `docs/self-host/compose.md`).
 - NAIP as a program is on the order of **16 PB**, and a single CONUS vintage is on the order of
   **~180 TB** uncompressed at native resolution (USDA FPAC/NGAC presentation, 2024; BigData Earth

@@ -89,7 +89,7 @@
   <rect x="540" y="442" width="430" height="110" rx="12" fill="#ffffff" stroke="#2e8b6f" stroke-opacity="0.5" stroke-width="1.5" stroke-dasharray="5 4"/>
   <text x="556" y="466" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap-bootstrap — one shot</text>
   <text x="556" y="486" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">pmtiles extract $BASEMAP_PMTILES_URL --bbox=CONUS</text>
-  <text x="556" y="504" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">range-reads ~1–2 GB of the 120 GB planet build</text>
+  <text x="556" y="504" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">range-reads ~9 GB of the 120 GB planet build</text>
   <rect x="556" y="516" width="150" height="18" rx="9" fill="#2e8b6f" fill-opacity="0.12"/>
   <text x="564" y="529" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#2e8b6f">docker compose run --rm</text>
 
@@ -123,7 +123,7 @@
   <rect x="1042" y="420" width="180" height="52" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="1042" y="422" width="3" height="48" rx="1.5" fill="#b97a4a"/>
   <text x="1058" y="442" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap-data</text>
-  <text x="1058" y="460" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">~1–2 GB pmtiles archive</text>
+  <text x="1058" y="460" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">~9 GB pmtiles archive</text>
 
   <rect x="1042" y="484" width="180" height="52" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
   <rect x="1042" y="486" width="3" height="48" rx="1.5" fill="#b97a4a"/>
@@ -166,5 +166,5 @@
 
   <!-- footer -->
   <text x="48" y="726" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Quick start: cd deploy &amp;&amp; ./up.sh (set NWS_USER_AGENT in deploy/.env) → basemap-bootstrap → docker compose up -d</text>
-  <text x="48" y="744" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Hardware: lab 4 cores · 4 GB · 20 GB SSD — prod 16 cores · 16 GB · 100 GB. NOAA egress ~50–100 MB/h. Kubernetes path: docs/kubernetes.md</text>
+  <text x="48" y="744" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Hardware: lab 4 cores · 4 GB · 30 GB SSD — prod 16 cores · 16 GB · 100 GB. NOAA egress ~50–100 MB/h. Kubernetes path: docs/kubernetes.md</text>
 </svg>

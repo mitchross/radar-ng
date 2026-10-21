@@ -53,7 +53,7 @@ spec:
       # Raw GFS/HRRR fields are ~15Gi; the rest is headroom for chunk turnover.
       storage: 60Gi
 ---
-# Protomaps basemap extract (CONUS is ~1-2 GB; 50Gi leaves room for a planet-scale bbox).
+# Protomaps basemap extract (CONUS to z14 is ~9 GB; 50Gi leaves room for a larger bbox).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

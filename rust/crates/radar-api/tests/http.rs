@@ -741,6 +741,43 @@ async fn forecast_is_cached_per_cell_and_upstream_failures_are_502_without_cache
     assert_eq!(range_body, json!({"detail": "lat/lon out of range"}));
 }
 
+/// A fresh stack's Open-Meteo answers all-null until the first model sync; that body must not be
+/// cached, or the forecast stays empty for `FORECAST_TTL_S` after the data lands.
+#[tokio::test]
+async fn forecast_without_data_is_served_no_store_and_not_cached() {
+    let calls = counter();
+    let om_calls = calls.clone();
+    let open_meteo = Router::new().route(
+        "/v1/forecast",
+        get(move || {
+            let calls = om_calls.clone();
+            async move {
+                let n = calls.fetch_add(1, Ordering::SeqCst);
+                let t = if n == 0 { json!(null) } else { json!(61) };
+                Json(json!({"current": {"temperature_2m": t}}))
+            }
+        }),
+    );
+    let base = mock(open_meteo).await;
+    let env = Env::new();
+    let app = env.app(|c| c.open_meteo_base = format!("{base}/v1/forecast"));
+
+    let (status, headers, body) = get_json(&app, "/api/forecast/42.96/-85.67").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!({"current": {"temperature_2m": null}}));
+    assert_eq!(header_str(&headers, "cache-control"), "no-store");
+
+    let (_, headers, body) = get_json(&app, "/api/forecast/42.96/-85.67").await;
+    assert_eq!(body, json!({"current": {"temperature_2m": 61}}));
+    assert_eq!(header_str(&headers, "cache-control"), "public, max-age=900");
+    let _ = get_json(&app, "/api/forecast/42.96/-85.67").await;
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        2,
+        "only the data-less answer is refetched"
+    );
+}
+
 #[tokio::test]
 async fn concurrent_forecast_misses_for_one_cell_make_one_upstream_call() {
     let calls = counter();

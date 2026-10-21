@@ -30,7 +30,7 @@ Tile retention per layer is in [tuning.md](tuning.md#tile-retention--cleanup).
 
 | profile | what it runs | min | recommended |
 |---|---|---|---|
-| **lab** | docker compose, single node, MRMS radar + nowcast + forecast | 4 cores · 4 GB · 20 GB SSD | 8 cores · 8 GB · 50 GB SSD |
+| **lab** | docker compose, single node, MRMS radar + nowcast + forecast | 4 cores · 4 GB · 30 GB SSD | 8 cores · 8 GB · 50 GB SSD |
 | **prod** | K8s, MRMS + nowcast + HRRR reflectivity | 16 cores · 16 GB · 100 GB SSD | 24 cores · 32 GB · 200 GB NVMe |
 
 Most of the work is drawing radar pictures: every new radar scan is turned into map tiles at several zoom levels, once per color scheme. More CPU cores means fresher radar. See [tuning.md](tuning.md) before cutting the pipeline down for small hosts.
@@ -47,7 +47,7 @@ Most of the work is drawing radar pictures: every new radar scan is turned into 
 ### Network + disk
 
 - **Egress:** ~50–100 MB/h steady-state pull from NOAA S3 buckets. Blitzortung is a low-volume websocket. Open-Meteo model syncs add bursts (GFS every 6 h, HRRR hourly).
-- **Disk:** steady-state ≈ 5 GB of tiles/grids (the cleanup activity sweeps hourly), spiking to ~10 GB during HRRR runs. The Open-Meteo data volume grows with the models you sync (a few GB for GFS + HRRR CONUS). The basemap PMTiles extract is a one-time ~1–2 GB download.
+- **Disk:** steady-state ≈ 5 GB of tiles/grids (the cleanup activity sweeps hourly), spiking to ~10 GB during HRRR runs. The Open-Meteo data volume grows with the models you sync (a few GB for GFS + HRRR CONUS). The basemap PMTiles extract is a one-time ~9 GB download (CONUS to zoom 14; about 3 minutes on a fast link).
 - **Inbound:** nothing required. The stack is pull-only; the only public listener is the api on `:8080` (compose also publishes Temporal's ports on the host).
 
 ## Steps
@@ -82,7 +82,7 @@ cp .env.example .env
 Open `.env` in any text editor and set **`NWS_USER_AGENT`** to your own contact:
 `NWS_USER_AGENT=(radar-ng, you@example.org)`. Everything else has a working default.
 
-### 2. Download the background map (once, ~1–2 GB)
+### 2. Download the background map (once, ~9 GB)
 
 ```bash
 docker compose run --rm basemap-bootstrap
@@ -90,8 +90,8 @@ docker compose run --rm basemap-bootstrap
 
 This finds the newest daily map build from [Protomaps](https://build.protomaps.com/) by itself (they
 keep each one for only about 6 days), downloads just your area (`BASEMAP_BBOX`, default the lower 48
-US states, ~1–2 GB rather than the ~120 GB planet), and swaps it into place in one step, so the server
-never sees a half-written file. Running it again does nothing unless you change `BASEMAP_BBOX`. To pin
+US states up to zoom 14, ~9 GB rather than the ~120 GB planet), and swaps it into place in one step, so the server
+never sees a half-written file. Running it again does nothing unless you change `BASEMAP_BBOX` or `BASEMAP_MAXZOOM`. To pin
 one specific build, set `BASEMAP_PMTILES_URL` in `.env`.
 
 ### 3. Start everything

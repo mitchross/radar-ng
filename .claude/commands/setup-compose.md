@@ -3,7 +3,7 @@ Bring up radar-ng with Docker Compose on this machine and prove it works. Extra 
 The human-readable version is `docs/self-host/compose.md`; follow it, and use this as the checklist.
 
 1. **Check prerequisites.** `docker version` (Engine 24+), `docker compose version` (v2), `curl`, `jq`.
-   About 20 GB free disk and 4+ GB RAM. Stop and tell the user if Docker isn't running.
+   About 30 GB free disk and 4+ GB RAM. Stop and tell the user if Docker isn't running.
 2. **Settings.** In `deploy/`: `cp .env.example .env` if `.env` doesn't exist. Set
    `NWS_USER_AGENT=(radar-ng, <email>)`: **ask the user for their email**; never invent one. Leave
    `BASEMAP_PMTILES_URL` empty (the bootstrap finds the newest build).
