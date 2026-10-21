@@ -7,42 +7,27 @@ Kubernetes, edit [`deploy/kubernetes/base/settings.env`](../../deploy/kubernetes
 are the code defaults unless marked "compose". Each crate README under
 `rust/crates/` lists every variable that crate reads.
 
-**Only two values must be set** — everything else has a working default:
+**Only one value must be set**; everything else has a working default:
 
 | Must set | Why |
 |---|---|
-| `NWS_USER_AGENT` | `api.weather.gov` rejects requests without a real contact in the User-Agent. Use your email. |
-| `BASEMAP_PMTILES_URL` | The basemap download URL — see the note below; the example date will 404 within days. |
+| `NWS_USER_AGENT` | `api.weather.gov` rejects requests without a real contact in the User-Agent. Use your email. `deploy/up.sh` refuses to start until it's set. |
 
 ---
 
-## The `BASEMAP_PMTILES_URL` gotcha
+## The basemap download
 
-This is the **Protomaps basemap** — the vector map (roads, water, city labels)
-rendered *under* the radar. The one-time `basemap-bootstrap` step does HTTP
-range-reads against this URL to extract your region into
-`basemap.pmtiles.partial`; `basemap-publish` renames it to `basemap.pmtiles`,
-which the api serves.
+This is the **Protomaps basemap**: the vector map (roads, water, city labels) drawn *under* the radar.
+`build.protomaps.com` serves **date-stamped daily planet builds** (`YYYYMMDD.pmtiles`) with **~6-day
+retention** and **no `latest` alias**, so the bootstrap finds the newest build itself: Compose's
+`basemap-bootstrap` and the Kubernetes `fetch-basemap` init container run the same script
+(`deploy/kubernetes/base/fetch-basemap.sh`). It extracts your `BASEMAP_BBOX` (default CONUS, ~1–2 GB) to
+a temp file and renames it over `basemap.pmtiles`, which the api serves. A marker file makes re-runs a
+no-op until the bbox (or, on Kubernetes, `REFRESH`) changes.
 
-`build.protomaps.com` serves **date-stamped daily planet builds**
-(`YYYYMMDD.pmtiles`) with **~6-day retention** and **no `latest` alias**. So:
-
-- **Don't hardcode an old date** — pick the newest from <https://build.protomaps.com/>.
-- `BASEMAP_BBOX` clips the extract (default = CONUS, ~1–2 GB). Narrow it to shrink the download.
-- It's used **once**; after `basemap.pmtiles` exists it isn't read again until you re-bootstrap.
-
-```bash
-# newest date, then bootstrap once:
-BASEMAP_PMTILES_URL=https://build.protomaps.com/YYYYMMDD.pmtiles
-docker compose run --rm basemap-bootstrap
-docker compose run --rm basemap-publish
-```
-
-> **Docker Compose only.** The reference Kubernetes manifests (talos-argocd-proxmox)
-> don't set a date: the `basemap` Deployment's `fetch-basemap` init container
-> resolves the newest available Protomaps build when its archive is missing or
-> its `BBOX`/`REFRESH` env changed. Bump `REFRESH` (a GitOps change) to pull a
-> fresher planet. Never pin a `YYYYMMDD` there — it 404s within ~6 days.
+- Leave `BASEMAP_PMTILES_URL` empty. Set it only to pin one build, and expect that pin to 404 within
+  about a week.
+- Narrow `BASEMAP_BBOX` to shrink the download.
 
 ---
 
@@ -79,7 +64,7 @@ docker compose run --rm basemap-publish
 ### Basemap
 | Var | Default | Notes |
 |---|---|---|
-| `BASEMAP_PMTILES_URL` | dated example | Compose bootstrap only. **Set this** to a recent build (see above). |
+| `BASEMAP_PMTILES_URL` | empty (newest build) | Compose bootstrap only. Pins one build; leave empty (see above). |
 | `BASEMAP_BBOX` | `-125,24,-66,50` | Compose bootstrap only. `minLon,minLat,maxLon,maxLat`; default = CONUS. |
 | `BASEMAP_PMTILES` | `/data/basemap.pmtiles` | api: the archive it serves at `/basemap/tiles/*`. |
 | `BASEMAP_TILES_UPSTREAM` | `http://basemap:8081` | api: go-pmtiles server to proxy `/basemap/tiles/*` to when `BASEMAP_PMTILES` does not exist. |

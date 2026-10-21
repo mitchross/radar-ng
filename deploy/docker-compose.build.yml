@@ -1,0 +1,35 @@
+# Build the radar images from this checkout instead of pulling them from GHCR.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#   ./up.sh --build                   # same thing, plus basemap and health wait
+#
+# Use it on arm64 hosts (Apple Silicon, Raspberry Pi, Ampere): the published images are linux/amd64
+# only. Use it too when you change the Rust code. The first build compiles the whole workspace and needs
+# several GB of RAM and disk; later builds are cached.
+#
+# Build context: the repository root (..). deploy/Dockerfile.dockerignore keeps it to rust/.
+
+services:
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: worker
+    image: radar-ng-temporal-worker:local
+    pull_policy: build
+
+  open-meteo-worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: open-meteo
+    image: radar-ng-open-meteo-worker:local
+    pull_policy: build
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: api
+    image: radar-ng-tile-server:local
+    pull_policy: build

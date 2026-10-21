@@ -1,7 +1,8 @@
 #!/bin/sh
 # Init container (alpine): make sure /data/basemap.pmtiles holds the BBOX extract of the newest
 # Protomaps daily build. Skips the work when the marker says it is already done.
-# Marker format must stay "bbox=<BBOX> refresh=<REFRESH>" or every restart re-runs the extract.
+# Marker format must stay "bbox=<BBOX> refresh=<REFRESH>" (plus " url=<PMTILES_URL>" when pinned) or every
+# restart re-runs the extract. Used by the Kubernetes init container and by Compose's basemap-bootstrap.
 set -eu
 
 BASE_URL="https://build.protomaps.com"
@@ -17,7 +18,7 @@ PMTILES_VERSION="1.31.2"
 SHA256_x86_64="3ed7dbf4ec2e6dfe5e25b6f70d1ffc932729f93c86db353bf514dd71010a312f"
 SHA256_arm64="f8bd47e7ea866863489cad588fbaf2f31f42e5821f7a03f009b3769f05801cb1"
 
-KEY="bbox=${BBOX} refresh=${REFRESH}"
+KEY="bbox=${BBOX} refresh=${REFRESH}${PMTILES_URL:+ url=${PMTILES_URL}}"
 if [ -s "$OUT" ] && [ -f "$MARKER" ] && [ "$(head -n1 "$MARKER")" = "$KEY" ]; then
   echo "marker matches (${KEY}); extract already done"
   exit 0
@@ -36,12 +37,13 @@ echo "${sum}  ${tarball}" | sha256sum -c -
 tar -xzf "$tarball" pmtiles
 PMTILES=/tmp/pmtiles
 
-# No `latest` alias and ~6-day retention: walk back from today to the newest build that exists.
+# PMTILES_URL pins a specific build (optional). Otherwise: no `latest` alias and ~6-day retention,
+# so walk back from today to the newest build that exists.
 now=$(date -u +%s)
-resolved=""
-build=""
+resolved="${PMTILES_URL:-}"
+build="${resolved:+pinned}"
 i=0
-while [ "$i" -le "$MAX_LOOKBACK" ]; do
+while [ -z "$resolved" ] && [ "$i" -le "$MAX_LOOKBACK" ]; do
   d=$(date -u -d "@$((now - i * 86400))" +%Y%m%d)
   if wget -q --spider -T 30 "${BASE_URL}/${d}.pmtiles"; then
     resolved="${BASE_URL}/${d}.pmtiles"

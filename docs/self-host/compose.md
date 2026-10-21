@@ -39,7 +39,7 @@ Most of the work is drawing radar pictures: every new radar scan is turned into 
 
 | requirement | version |
 |---|---|
-| Linux host (x86_64) | any modern distro; macOS works for dev |
+| A computer running Docker | Linux x86-64 runs the ready-made images. Apple Silicon, Raspberry Pi and other arm64 machines build their own (`./up.sh --build`); macOS works with Docker Desktop or OrbStack |
 | Docker Engine | 24+ |
 | Docker Compose | v2 (the `docker compose` plugin, not legacy `docker-compose`) |
 | `curl` + `jq` | for verification |
@@ -52,6 +52,25 @@ Most of the work is drawing radar pictures: every new radar scan is turned into 
 
 ## Steps
 
+### The short way
+
+```bash
+git clone <your-radar-ng-clone-url> radar-ng
+cd radar-ng/deploy
+./up.sh
+```
+
+The first run creates `deploy/.env` and stops, asking you to set your contact email in it
+(`NWS_USER_AGENT=(radar-ng, you@example.org)`; the National Weather Service asks every app for one).
+Run `./up.sh` again. It downloads the background map once, starts everything, waits for the first
+radar picture, and prints the address to put in the app.
+
+**On a Mac with Apple Silicon, a Raspberry Pi or another arm64 machine**, use `./up.sh --build`. The
+ready-made images are for x86-64 (amd64) only, so it builds them on your machine instead. The first
+build takes a while and needs several GB of RAM.
+
+The rest of this section is what `up.sh` does, step by step, if you'd rather type it yourself.
+
 ### 1. Get the code and the settings file
 
 ```bash
@@ -60,30 +79,37 @@ cd radar-ng/deploy
 cp .env.example .env
 ```
 
-Open `.env` in any text editor. Everything has a working default except two values you must set:
-
-- **`NWS_USER_AGENT`**: the National Weather Service asks every app for a contact email. Put yours: `NWS_USER_AGENT=(radar-ng, you@example.com)`.
-- **`BASEMAP_PMTILES_URL`**: where to download the background map from. Protomaps publishes one file per day (`YYYYMMDD.pmtiles`) and deletes them after about 6 days, and there is **no "latest" link**. Open <https://build.protomaps.com/>, copy the newest date, and put it in the URL. An old date makes step 2 fail with a 404.
+Open `.env` in any text editor and set **`NWS_USER_AGENT`** to your own contact:
+`NWS_USER_AGENT=(radar-ng, you@example.org)`. Everything else has a working default.
 
 ### 2. Download the background map (once, ~1–2 GB)
 
-This is the only thing that isn't downloaded automatically:
-
 ```bash
-docker compose run --rm basemap-bootstrap   # download to basemap.pmtiles.partial
-docker compose run --rm basemap-publish     # rename it to basemap.pmtiles
+docker compose run --rm basemap-bootstrap
 ```
 
-`basemap-bootstrap` runs `pmtiles extract`, which uses HTTP range reads to pull only your bounding box (`BASEMAP_BBOX`, default CONUS, ~1–2 GB — not the ~120 GB planet) into the `basemap-data` volume. `basemap-publish` renames the finished file over the served path, so the api never reads a half-written archive. To change coverage later, adjust the bbox and re-run both; the api picks up the replaced file without a restart.
+This finds the newest daily map build from [Protomaps](https://build.protomaps.com/) by itself (they
+keep each one for only about 6 days), downloads just your area (`BASEMAP_BBOX`, default the lower 48
+US states, ~1–2 GB rather than the ~120 GB planet), and swaps it into place in one step, so the server
+never sees a half-written file. Running it again does nothing unless you change `BASEMAP_BBOX`. To pin
+one specific build, set `BASEMAP_PMTILES_URL` in `.env`.
 
 ### 3. Start everything
 
 ```bash
-docker compose build api        # the radar image; `worker` runs it without building
-docker compose up -d --build
+docker compose up -d
 ```
 
-This builds the server inside Docker, so you don't need Rust installed. The first build compiles the whole server and takes a while; later ones are quick. `deploy/Dockerfile.dockerignore` limits the build context to `rust/`.
+This pulls the ready-made server images from GHCR (`ghcr.io/mitchross/radar-ng-*`, pinned by version and
+digest), so there's nothing to compile. To build them from your checkout instead (arm64 machines, or
+after you change the Rust code):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+To use images from your own registry or fork, set `RADAR_API_IMAGE`, `RADAR_WORKER_IMAGE` and
+`RADAR_OPEN_METEO_WORKER_IMAGE` in `.env`.
 
 What starts:
 
@@ -160,6 +186,9 @@ location / { proxy_pass http://your-server:8080; }
 
 ## If it didn't work
 
+More problems and fixes (port already in use, image pulls, Temporal, arm64, disk) are in
+**[troubleshooting.md](troubleshooting.md)**.
+
 ### `/api/health` says `degraded` / radar is stale
 
 `mrms_age_s` exceeded `MRMS_MAX_AGE_S` (default 600 s). Causes, in order of likelihood:
@@ -180,8 +209,8 @@ docker compose logs api
 
 Fixes:
 
-- You skipped the bootstrap or the publish step: `docker compose run --rm basemap-bootstrap`, then `docker compose run --rm basemap-publish`
-- The bootstrap 404'd: your `BASEMAP_PMTILES_URL` build date expired (~6-day retention) — set a recent `YYYYMMDD` from <https://build.protomaps.com/> and re-run
+- You skipped the bootstrap: `docker compose run --rm basemap-bootstrap`
+- The bootstrap 404'd: you pinned `BASEMAP_PMTILES_URL` to a build that has expired (~6-day retention). Empty it to use the newest build, and re-run
 - Your map view is outside the extracted `BASEMAP_BBOX` (default CONUS) — widen the bbox and re-run the bootstrap
 
 ### No forecast / temperatures show 0°

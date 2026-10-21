@@ -6,21 +6,24 @@
 # block at the bottom shows that layout.
 #
 # Usage (from deploy/, the directory this file lives in):
-#   cp .env.example .env              # at minimum: NWS_USER_AGENT, BASEMAP_PMTILES_URL
-#   docker compose run --rm basemap-bootstrap   # one-shot, ~1-2 GB range download to basemap.pmtiles.partial
-#   docker compose run --rm basemap-publish     # renames the download into place
-#   docker compose build api                    # radar image first: `worker` runs it without building
-#   docker compose up -d --build
+#   ./up.sh                           # does everything below, waits for the first radar frame,
+#                                     # and prints the URL for the app
+# or by hand:
+#   cp .env.example .env              # set NWS_USER_AGENT
+#   docker compose run --rm basemap-bootstrap   # one-time ~1-2 GB download of the newest basemap
+#   docker compose up -d
 #
 #   curl http://localhost:8080/api/livez
 #   curl http://localhost:8080/api/manifest.json | jq '.layers | keys'
-#   radar debug doctor
+#
+# Images: the prebuilt GHCR images below (linux/amd64), pinned by tag and digest. To build from this
+# checkout instead (arm64 hosts such as Apple Silicon, or when you change the Rust code):
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build    # or ./up.sh --build
+# Or point at your own registry with RADAR_API_IMAGE / RADAR_WORKER_IMAGE / RADAR_OPEN_METEO_WORKER_IMAGE.
+# Upstream bumps the pins here together with deploy/kubernetes/base on each release.
 #
 # Optional Temporal Web UI (http://localhost:8233):
 #   docker compose --profile ui up -d
-#
-# Build context: the repository root (..). The Dockerfiles copy rust/ and rust/assets/basemap/
-# and nothing else; deploy/Dockerfile.dockerignore keeps the context small.
 
 name: radar-ng
 
@@ -159,8 +162,7 @@ services:
   # --- Workers ---------------------------------------------------------------
   # Legacy role: all workflows on radar-ng. This worker also seeds the Schedules at boot. One seeder only, so leave SEED_SCHEDULES=1 on this service alone.
   worker:
-    image: radar-ng-radar:local
-    pull_policy: never
+    image: ${RADAR_WORKER_IMAGE:-ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.9@sha256:1432031a17e5126eb591a4e0cb3e72f632283a45c3c190fe8cd7865dc51b64a9}
     command: ["worker", "--role", "legacy"]
     environment:
       <<: *worker-env
@@ -182,11 +184,7 @@ services:
   # open-meteo role: the radar binary on the Open-Meteo image. Syncs GFS/HRRR model data into
   # openmeteo-data, which the open-meteo service serves. The `open-meteo` target of the same Dockerfile.
   open-meteo-worker:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-      target: open-meteo
-    image: radar-ng-open-meteo-worker:local
+    image: ${RADAR_OPEN_METEO_WORKER_IMAGE:-ghcr.io/mitchross/radar-ng-open-meteo-worker:v2.0.9@sha256:1d7c2195d082a6872551d3d4cc5300d054a718a822839aa10d24b1bcce546f07}
     command: ["worker", "--role", "open-meteo"]
     environment:
       <<: *temporal-env
@@ -235,25 +233,29 @@ services:
   # The api reopens the archive when its file identity changes, so a rename takes effect without a restart.
   # Writing the served path in place would expose a half-written archive, so do not do that.
   # build.protomaps.com serves date-stamped builds (YYYYMMDD.pmtiles), about 6 days of retention,
-  # and no `latest` alias. Set BASEMAP_PMTILES_URL in .env to a recent date.
+  # and no `latest` alias. The script (shared with the Kubernetes init container) walks back from
+  # today to the newest build, verifies the go-pmtiles download by sha256, extracts the bbox to a temp
+  # file and renames it over basemap.pmtiles. It skips the work when the marker says it's done, so it is
+  # safe to run every time. Set BASEMAP_PMTILES_URL only to pin a specific build.
   basemap-bootstrap:
-    image: protomaps/go-pmtiles:latest
+    image: docker.io/library/alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
     profiles: ["bootstrap"]
-    command:
-      - extract
-      - ${BASEMAP_PMTILES_URL:-https://build.protomaps.com/20260630.pmtiles}
-      - /data/basemap.pmtiles.partial
-      - --bbox=${BASEMAP_BBOX:--125,24,-66,50}
+    command: ["sh", "/opt/scripts/fetch-basemap.sh"]
+    environment:
+      BBOX: ${BASEMAP_BBOX:--125,24,-66,50}
+      PMTILES_URL: ${BASEMAP_PMTILES_URL:-}
+      OUT: /data/basemap.pmtiles
     volumes:
       - basemap-data:/data
+      - ./kubernetes/base/fetch-basemap.sh:/opt/scripts/fetch-basemap.sh:ro
     restart: "no"
 
-  # One-shot rename of the finished download onto the served path. Run after basemap-bootstrap succeeds.
-  # Same volume, so the rename is atomic. The tag matches the Dockerfile ALPINE_IMAGE default.
+  # Kept so older instructions still work: basemap-bootstrap now publishes atomically by itself, so this
+  # only moves a leftover .partial from the old two-step flow, and otherwise does nothing.
   basemap-publish:
-    image: alpine:3.22
+    image: docker.io/library/alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
     profiles: ["bootstrap"]
-    command: ["mv", "-f", "/data/basemap.pmtiles.partial", "/data/basemap.pmtiles"]
+    command: ["sh", "-c", "if [ -f /data/basemap.pmtiles.partial ]; then mv -f /data/basemap.pmtiles.partial /data/basemap.pmtiles; else echo 'nothing to publish (basemap-bootstrap already did)'; fi"]
     volumes:
       - basemap-data:/data
     restart: "no"
@@ -262,11 +264,7 @@ services:
   # The Rust api serves tiles, the manifest, the basemap (PMTiles and styles), and /api/*. The
   # Caddy and FastAPI sidecars are gone. The public endpoint is this service.
   api:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-      target: api
-    image: radar-ng-radar:local
+    image: ${RADAR_API_IMAGE:-ghcr.io/mitchross/radar-ng-tile-server:v2.0.9@sha256:3981502164c2f366f123cad41378a956483247fe7015e1e104ab3703050424dc}
     command: ["api"]
     ports:
       - "${TILE_SERVER_PORT:-8080}:8080"
@@ -310,8 +308,7 @@ services:
   # queue (radar-ng-<role>), and the seeder rewrites every Schedule to its declared queue.
   #
   # mrms:
-  #   image: radar-ng-radar:local
-  #   pull_policy: never
+  #   image: ${RADAR_WORKER_IMAGE:-<same as worker above>}
   #   command: ["worker", "--role", "mrms"]
   #   environment:
   #     <<: *worker-env
