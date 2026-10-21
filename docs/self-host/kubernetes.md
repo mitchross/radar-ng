@@ -1,12 +1,21 @@
 # Running radar-ng on Kubernetes
 
-The advanced path. Compose ([self-hosting.md](compose.md)) gives you everything on one box; Kubernetes adds controlled rollouts, workload isolation, disruption policy, and Prometheus integration. HA tile-serving requires an object/RWX data plane—it does not come from Kubernetes while producer and API pods share ReadWriteOnce volumes. This doc is **bring-your-own-cluster**; nothing here requires the author's Talos/Argo CD setup.
+**Just want it running?** Use [deploy/kubernetes/](../../deploy/kubernetes/README.md): one
+`kubectl apply -k` and a step-by-step README. This page is the background for running it on your
+own production cluster: what to bring, storage, sizing, probes and schedules.
+
+Compared with [Docker Compose](compose.md) (everything on one computer), Kubernetes adds controlled
+rollouts, separate worker pools, disruption rules and Prometheus monitoring. It does **not** give you
+a highly available tile server for free: while the workers and the API share disks that only one
+machine can mount at a time (ReadWriteOnce), they all have to run on the same node. Nothing here
+needs the author's own Talos/Argo CD setup. Unfamiliar terms are in the
+[glossary](../start/glossary.md).
 
 ## What you need first
 
 | prerequisite | notes |
 |---|---|
-| Kubernetes 1.28+ | author runs 1.35; nothing exotic is used |
+| Kubernetes 1.28+ | the author runs 1.35; nothing unusual is used |
 | A **Temporal server** | self-host [temporal](https://github.com/temporalio/temporal) in-cluster or use Temporal Cloud. Workers and the api need `TEMPORAL_ADDRESS` + `TEMPORAL_NAMESPACE` |
 | Storage class | see the storage section below |
 | Images | the three `ghcr.io/mitchross/radar-ng-*` images (public), or build them from `deploy/Dockerfile` |

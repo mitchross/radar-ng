@@ -2,8 +2,8 @@
 
 The environment variables operators usually set. For Docker Compose, copy
 [`deploy/.env.example`](../../deploy/.env.example) to `.env` and edit; on
-Kubernetes the worker values go in a ConfigMap and the api values in the
-tile-server Deployment (see [docs/self-host/kubernetes.md](kubernetes.md)). Defaults below
+Kubernetes, edit [`deploy/kubernetes/base/settings.env`](../../deploy/kubernetes/base/settings.env) and
+[`worker.env`](../../deploy/kubernetes/base/worker.env) (see [kubernetes.md](kubernetes.md)). Defaults below
 are the code defaults unless marked "compose". Each crate README under
 `rust/crates/` lists every variable that crate reads.
 

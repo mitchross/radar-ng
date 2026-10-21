@@ -1,10 +1,16 @@
-# Self-hosting radar-ng
+# Run radar-ng on one computer (Docker Compose)
 
-The golden path: one machine, Docker Compose, a full NOAA radar pipeline in about ten minutes of typing and two minutes of waiting. Kubernetes is the advanced path — see [kubernetes.md](kubernetes.md).
+The easiest way to run your own radar server: one computer, Docker, about 15 minutes of setup and
+2 minutes of waiting for the first radar picture. Running Kubernetes instead? See
+[deploy/kubernetes](../../deploy/kubernetes/README.md).
+
+**In short:** you copy a settings file, set two values, download a map once, and start everything
+with `docker compose up`. Words you don't know are in the [glossary](../start/glossary.md).
 
 ## What you get
 
-A complete weather backend on hardware you own. Every data source is **free and requires no API key, no account, no auth**:
+A complete weather server on hardware you own. Every data source is **free, with no API key and no
+account**:
 
 | layer | source | cadence | resolution |
 |---|---|---|---|
@@ -18,7 +24,7 @@ A complete weather backend on hardware you own. Every data source is **free and 
 
 Tile retention per layer is in [tuning.md](tuning.md#tile-retention--cleanup).
 
-## Requirements
+## What you need
 
 ### Hardware
 
@@ -27,7 +33,7 @@ Tile retention per layer is in [tuning.md](tuning.md#tile-retention--cleanup).
 | **lab** | docker compose, single node, MRMS radar + nowcast + forecast | 4 cores · 4 GB · 20 GB SSD | 8 cores · 8 GB · 50 GB SSD |
 | **prod** | K8s, MRMS + nowcast + HRRR reflectivity | 16 cores · 16 GB · 100 GB SSD | 24 cores · 32 GB · 200 GB NVMe |
 
-The hot spot is the MRMS palette render: every radar frame is rasterized into a z4–z7 PNG pyramid per palette. More cores = fresher radar. See [tuning.md](tuning.md) before cutting the pipeline down for small hosts.
+Most of the work is drawing radar pictures: every new radar scan is turned into map tiles at several zoom levels, once per color scheme. More CPU cores means fresher radar. See [tuning.md](tuning.md) before cutting the pipeline down for small hosts.
 
 ### Software
 
@@ -44,9 +50,9 @@ The hot spot is the MRMS palette render: every radar frame is rasterized into a 
 - **Disk:** steady-state ≈ 5 GB of tiles/grids (the cleanup activity sweeps hourly), spiking to ~10 GB during HRRR runs. The Open-Meteo data volume grows with the models you sync (a few GB for GFS + HRRR CONUS). The basemap PMTiles extract is a one-time ~1–2 GB download.
 - **Inbound:** nothing required. The stack is pull-only; the only public listener is the api on `:8080` (compose also publishes Temporal's ports on the host).
 
-## Quick start
+## Steps
 
-### 1. Clone and configure
+### 1. Get the code and the settings file
 
 ```bash
 git clone <your-radar-ng-clone-url> radar-ng
@@ -54,14 +60,14 @@ cd radar-ng/deploy
 cp .env.example .env
 ```
 
-Edit `.env` — everything has a sane default except two values you should set:
+Open `.env` in any text editor. Everything has a working default except two values you must set:
 
-- **`NWS_USER_AGENT`** — api.weather.gov requires a contact email in the User-Agent. Use your own.
-- **`BASEMAP_PMTILES_URL`** — Protomaps publishes date-stamped daily builds (`YYYYMMDD.pmtiles`) with ~6-day retention and **no `latest` alias**; pick a recent date from <https://build.protomaps.com/> or the bootstrap below will 404.
+- **`NWS_USER_AGENT`**: the National Weather Service asks every app for a contact email. Put yours: `NWS_USER_AGENT=(radar-ng, you@example.com)`.
+- **`BASEMAP_PMTILES_URL`**: where to download the background map from. Protomaps publishes one file per day (`YYYYMMDD.pmtiles`) and deletes them after about 6 days, and there is **no "latest" link**. Open <https://build.protomaps.com/>, copy the newest date, and put it in the URL. An old date makes step 2 fail with a 404.
 
-### 2. Basemap bootstrap (one-time, ~1–2 GB)
+### 2. Download the background map (once, ~1–2 GB)
 
-The `api` serves vector tiles from a local Protomaps PMTiles archive — the one thing that isn't fetched automatically:
+This is the only thing that isn't downloaded automatically:
 
 ```bash
 docker compose run --rm basemap-bootstrap   # download to basemap.pmtiles.partial
@@ -70,15 +76,14 @@ docker compose run --rm basemap-publish     # rename it to basemap.pmtiles
 
 `basemap-bootstrap` runs `pmtiles extract`, which uses HTTP range reads to pull only your bounding box (`BASEMAP_BBOX`, default CONUS, ~1–2 GB — not the ~120 GB planet) into the `basemap-data` volume. `basemap-publish` renames the finished file over the served path, so the api never reads a half-written archive. To change coverage later, adjust the bbox and re-run both; the api picks up the replaced file without a restart.
 
-### 3. Bring it up
+### 3. Start everything
 
 ```bash
 docker compose build api        # the radar image; `worker` runs it without building
 docker compose up -d --build
 ```
 
-Images build locally from the repo (no registry or Rust toolchain needed; the first build compiles the
-workspace and takes a while). `deploy/Dockerfile.dockerignore` limits the build context to `rust/`.
+This builds the server inside Docker, so you don't need Rust installed. The first build compiles the whole server and takes a while; later ones are quick. `deploy/Dockerfile.dockerignore` limits the build context to `rust/`.
 
 What starts:
 
@@ -96,7 +101,7 @@ Named volumes: `tiles`, `grids`, `state`, `openmeteo-data`, `basemap-data`, `tem
 
 The `.env.example` ingest defaults are deliberately lab-sized (`BACKLOG_PER_CYCLE=2`, `TEMPORAL_MAX_CONCURRENT_ACTIVITIES=2`); production values are noted inline in the file and in [tuning.md](tuning.md).
 
-### 4. Verify
+## How to know it worked
 
 ```bash
 # process up? (pure liveness — 200 as soon as the api answers)
@@ -112,7 +117,7 @@ curl -s http://localhost:8080/api/manifest.json | jq '.layers | keys'
 curl -sI http://localhost:8080/basemap/styles/positron.json
 ```
 
-**The first radar frame takes about 2 minutes**: the worker's `ingest-mrms-base` schedule fires, downloads the latest MRMS GRIB2 (~8 MB), decodes it, and renders the tile pyramid. Once `/api/health` returns `{"status":"ok","mrms_age_s":<~120>,...}` you're live. HRRR-derived layers fill in over the next 15–30 minutes; the first forecast appears after the first Open-Meteo sync completes.
+**The first radar picture takes about 2 minutes**: the worker's `ingest-mrms-base` schedule fires, downloads the latest MRMS GRIB2 (~8 MB), decodes it, and renders the tile pyramid. Once `/api/health` returns `{"status":"ok","mrms_age_s":<~120>,...}` you're live. HRRR-derived layers fill in over the next 15–30 minutes; the first forecast appears after the first Open-Meteo sync completes.
 
 Watch the worker if you're impatient:
 
@@ -121,7 +126,7 @@ docker compose logs -f worker
 radar debug doctor               # if you have the binary; see debug-harness.md
 ```
 
-## Connecting the mobile app
+## Connect the phone app
 
 Build and run the app per [running-the-app.md](../app/running-the-app.md), then in the app:
 
@@ -136,7 +141,7 @@ Build and run the app per [running-the-app.md](../app/running-the-app.md), then 
 
 The manifest fetch determines which layers show up — if a layer hasn't been ingested yet, it simply won't be offered.
 
-## Exposing it publicly
+## Reach it from outside your home network
 
 The api speaks plain HTTP on `:8080`. To reach it from outside your LAN, put a TLS-terminating proxy in front — any of:
 
@@ -153,13 +158,13 @@ location /v1/ { deny all; }
 location / { proxy_pass http://your-server:8080; }
 ```
 
-## Troubleshooting
+## If it didn't work
 
 ### `/api/health` says `degraded` / radar is stale
 
 `mrms_age_s` exceeded `MRMS_MAX_AGE_S` (default 600 s). Causes, in order of likelihood:
 
-1. **First boot** — no frame rendered yet. Wait 2–3 minutes.
+1. **It just started.** No radar picture yet. Wait 2–3 minutes.
 2. **Worker down or wedged** — `docker compose logs worker`. Schedules keep firing in Temporal but nothing picks them up if the worker is dead; a restart re-seeds and catches up (`BACKLOG_PER_CYCLE`, newest-first).
 3. **Underpowered host** — the palette render can't keep up with the 2-min cadence. See [tuning.md](tuning.md): fewer palettes.
 4. **NOAA having a slow day** — check whether new objects are actually landing in the MRMS S3 bucket. Nothing to do but wait; the app shows a "data delayed" banner off the same health endpoint.

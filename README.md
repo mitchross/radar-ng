@@ -1,6 +1,6 @@
 # radar-ng
 
-> Self-hosted weather radar on a Rust + Temporal tile pipeline. Pure public data, no aggregators, and no API keys.
+> Your own weather radar app, running on your own hardware, using only free public weather data.
 
 [![expo](https://img.shields.io/badge/expo-SDK%2058-000)](https://expo.dev) [![rust](https://img.shields.io/badge/rust-1.97-000)](https://www.rust-lang.org/) [![temporal](https://img.shields.io/badge/orchestration-temporal-7c53ff)](https://temporal.io) [![k8s](https://img.shields.io/badge/deploy-talos%20%2B%20argocd-326CE5)](https://talos.dev)
 
@@ -12,15 +12,38 @@
   <img src="docs/screenshots/settings.png" width="19%" alt="Settings" />
 </p>
 
-radar-ng pulls radar (NOAA MRMS), forecast (HRRR + Open-Meteo), air quality
-(NOAA NAQFC), alerts (NWS), lightning (Blitzortung), and tropical (NHC)
-straight from the public sources,
-renders map tiles on hardware you own, and serves them to a universal Expo app.
-The phone is the windshield; a Kubernetes + Temporal pipeline is the engine.
-The next hour is a real radar nowcast (Lucas-Kanade motion and S-PROG extrapolation of MRMS) that
-scores itself against the radar that arrives later and shows you its hit rate;
-"rain starting soon" alerts are local notifications planned on the phone, with no
-push service and no account.
+radar-ng is a weather radar app for your phone and browser, like the big weather apps, but the
+data comes from a server **you** run. That server downloads radar, forecasts, alerts and lightning
+straight from public sources such as NOAA, turns them into map images, and serves them to the app.
+There are no API keys, no accounts and no ads, and analytics stay off unless you turn them on.
+
+## What you get
+
+- **Live radar** across the US, refreshed about every 2 minutes.
+- **The next hour of rain**, predicted from how the radar is moving (a "nowcast"). It checks itself
+  against what actually happened and shows you how accurate it's been.
+- **Forecasts**, hourly and 7-day, plus **air quality**, **lightning**, **severe weather alerts**
+  and **hurricanes**.
+- **"Rain starting soon" notifications**, planned on the phone itself: no push service, no account.
+- **An iPhone/Android app** (with Apple Watch and CarPlay extras) and **a web version**.
+
+New to the weather terms (MRMS, HRRR, nowcast, tiles…)? See the
+[glossary](docs/start/glossary.md).
+
+## Pick your path
+
+| I want to… | Start here |
+|---|---|
+| Run the server on one computer (Docker Compose) | [docs/self-host/compose.md](docs/self-host/compose.md) |
+| Run the server on my Kubernetes cluster | [deploy/kubernetes/README.md](deploy/kubernetes/README.md) |
+| Run the phone app against my server | [docs/app/running-the-app.md](docs/app/running-the-app.md) |
+| Run the web radar against my server | [docs/app/web-radar.md](docs/app/web-radar.md) |
+| Change the code | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Fork it and ship my own app | [FORKING.md](FORKING.md) |
+| Not sure yet | [docs/start/getting-started.md](docs/start/getting-started.md) |
+
+Every other doc (configuration, tuning, releasing, debugging, architecture, specs) is listed in
+**[docs/README.md](docs/README.md)**.
 
 ## Quick start (Docker Compose)
 
@@ -36,78 +59,35 @@ docker compose build api                    # the radar image; `worker` runs it 
 docker compose up -d --build
 ```
 
-First radar frame lands ~2 min later. Point the app at `http://<host>:8080`
-(Settings → Advanced Mode → Stack URL). Deploying to your own Kubernetes cluster and running the
-app are covered in **[docs/start/getting-started.md](docs/start/getting-started.md)**.
-
-Prebuilt images: `ghcr.io/mitchross/radar-ng-{tile-server,temporal-worker,open-meteo-worker}`.
-
-## Local iOS/watch IPA
-
-To build a signed standalone iPhone and iPad IPA with the watch app embedded, without
-Metro or EAS:
-
-```bash
-cd frontend
-bun run ios:ipa
-```
-
-The output lands at:
-
-```text
-artifacts/ios/export-debugging/radarng.ipa
-```
-
-This is a `Release` Xcode archive/export. It embeds the Hermes `main.jsbundle`
-and `Payload/radarng.app/Watch/radar-ngWatch.app`, so the installed app does
-not need a Metro server.
-
-The default export method is `debugging`, which is standalone but still
-development-signed with the Apple account configured in Xcode. For a true
-distribution-style install path, use:
-
-```bash
-cd frontend
-bun run ios:ipa:release-testing   # ad-hoc / release testing
-bun run ios:ipa:app-store         # App Store Connect / TestFlight
-```
-
-`release-testing` requires the latest Apple Developer Program License Agreement
-to be accepted, an installed Apple Distribution certificate with private key, and
-provisioning profiles for both `com.vanillax.radar-ng` and
-`com.vanillax.radar-ng.watch`.
+The first radar frame shows up about 2 minutes later. Point the app at `http://<host>:8080`
+(**Settings → Advanced Mode → Stack URL**). The full walk-through, with how to check it worked and
+what to do if it didn't, is [docs/self-host/compose.md](docs/self-host/compose.md).
 
 ## How it works
 
 <img src="docs/diagrams/system-architecture.svg" width="100%">
 
-Every ingest step is a Temporal activity, scheduled by Temporal Schedules (no
-cron). One Rust binary, `radar`, runs the workers and the tile-server: static
-tiles off disk with immutable cache headers, the basemap, and the JSON API on
-one port. The component-by-component breakdown, the per-frame pipeline, and the
-caching story are in **[docs/reference/architecture.md](docs/reference/architecture.md)**; the backend code is
-in [`rust/`](rust/README.md).
+One Rust program, `radar`, does all the server work. Its **workers** download each new radar scan
+and forecast run, render them into map tiles and write them to disk. Its **API** serves those
+tiles, the basemap and a small JSON API to the app on one port. [Temporal](https://temporal.io)
+schedules and retries every step (no cron).
 
-## Docs
+The nowcast extrapolates the latest MRMS radar scans along their motion field (Lucas-Kanade
+optical flow plus S-PROG extrapolation) for the next 60 minutes, then scores itself against the
+radar that arrives later.
 
-| I want to… | Start here |
-|---|---|
-| Run it on one computer (Docker Compose) | [docs/self-host/compose.md](docs/self-host/compose.md) |
-| Run it on my Kubernetes cluster | [docs/self-host/kubernetes.md](docs/self-host/kubernetes.md) |
-| Run the phone app against my server | [docs/app/running-the-app.md](docs/app/running-the-app.md) |
-| Change the code | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Fork it and ship my own app | [FORKING.md](FORKING.md) |
-| Not sure yet | [docs/start/getting-started.md](docs/start/getting-started.md) |
-
-Every other doc (configuration, tuning, releasing, debugging, architecture, specs) is listed in
-**[docs/README.md](docs/README.md)**.
+The component-by-component breakdown, the per-frame pipeline and the caching story are in
+**[docs/reference/architecture.md](docs/reference/architecture.md)**; the backend code is in
+[`rust/`](rust/README.md).
 
 ## Data sources
 
-All free, public, no keys: **NOAA MRMS** (radar) · **NOAA HRRR** + **Open-Meteo**
+All free and public, no keys: **NOAA MRMS** (radar) · **NOAA HRRR** + **Open-Meteo**
 (forecast, wind, precipitation) · **NOAA NAQFC/AQM** (air quality: PM2.5 + ozone,
 current + 3-day forecast) · **NWS** (alerts) · **NHC** (tropical) ·
 **Blitzortung** (lightning) · **Protomaps** (basemap).
+
+Prebuilt server images: `ghcr.io/mitchross/radar-ng-{tile-server,temporal-worker,open-meteo-worker}`.
 
 ## Stack
 

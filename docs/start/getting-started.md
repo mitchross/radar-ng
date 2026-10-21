@@ -1,46 +1,37 @@
 # Getting started with radar-ng
 
-radar-ng is a monorepo with three parts:
+radar-ng has two halves:
 
-- `rust/`: the backend. One Rust binary, `radar`, downloads public weather data, renders map tiles and serves them with a JSON API.
-- `frontend/`: the Expo phone app (iOS and Android).
-- `web/`: the web radar.
+- **The server** (`rust/`). It downloads public weather data, turns it into map images ("tiles") and
+  serves them. You run it on a computer or cluster you own.
+- **The apps** that show it: the phone app (`frontend/`, iPhone and Android) and the web radar (`web/`).
 
-All data sources (NOAA MRMS/HRRR, NWS alerts, Open-Meteo, Blitzortung) are free, with **no API keys
-and no accounts.** The only thing you must set is a contact email for the NWS API.
+All the weather data (NOAA radar and forecasts, NWS alerts, Open-Meteo, Blitzortung lightning) is
+free, with **no API keys and no accounts.** The only thing you must set is a contact email, because
+the NWS asks for one.
+
+Unfamiliar word? See the [glossary](glossary.md).
 
 ## Pick your path
 
 | I want to… | Path | Time | Guide |
 |---|---|---|---|
-| Run the whole stack on one computer | **Docker Compose** | ~10 min, then ~2 min for the first radar frame | [Path A](#path-a-docker-compose-one-computer) → [compose.md](../self-host/compose.md) |
-| Run it on my own Kubernetes cluster | **Kubernetes** | longer; you bring Temporal and storage | [Path B](#path-b-kubernetes) → [kubernetes.md](../self-host/kubernetes.md) |
-| Use the phone app with a server I already run | **App only** | ~5 min | [Running the app](#running-the-app) |
+| Run the server on one computer | **Docker Compose** | ~15 min of setup, then ~2 min for the first radar frame | [Path A](#path-a-docker-compose-one-computer) → [compose.md](../self-host/compose.md) |
+| Run the server on my Kubernetes cluster | **Kubernetes** | ~30 min on a test cluster (kind, k3d, k3s) | [Path B](#path-b-kubernetes) → [deploy/kubernetes](../../deploy/kubernetes/README.md) |
+| See it in a browser, against a server I run | **Web radar** | ~5 min | [app/web-radar.md](../app/web-radar.md) |
+| Use the phone app with a server I run | **Phone app** | 30–60 min the first time (native build) | [Running the phone app](#running-the-phone-app) |
 | Change the code | **Develop** | | [CONTRIBUTING.md](../../CONTRIBUTING.md) |
+| Ship my own copy of the app | **Fork** | | [FORKING.md](../../FORKING.md) |
 
-## Prerequisites
+## What you need
 
 - **Git**, and a clone of this repo.
-- **For the backend:** Docker with Compose v2 (Path A) or a Kubernetes cluster (Path B). You do **not**
-  need a Rust toolchain: images are published to GHCR, and Compose builds the image inside Docker.
-- **For the app:** Node 20+, [Bun](https://bun.sh) and the Expo toolchain (`npx expo`). Use a phone
-  with **Expo Go**, or an iOS/Android simulator.
-- About **3–4 GB of disk** for the US basemap plus a working set of radar tiles.
-
-## Images
-
-| Image | Role |
-|---|---|
-| `ghcr.io/mitchross/radar-ng-tile-server` | `radar api`: serves tiles, the basemap, `/api/*` and `/v1/*` |
-| `ghcr.io/mitchross/radar-ng-temporal-worker` | `radar worker`: the ingest and render jobs (MRMS, HRRR, lightning, nowcast, alerts, cleanup); `WORKER_ROLE` picks the pool |
-| `ghcr.io/mitchross/radar-ng-open-meteo-worker` | the Open-Meteo image plus `radar worker --role open-meteo` (the `open_meteo_sync` activity only) |
-
-All three run the same Rust binary, built from `deploy/Dockerfile`. Tags are `vX.Y.Z` plus `latest`;
-pin a `vX.Y.Z` in production. Build details are in [deploy/README.md](../../deploy/README.md).
-
-Third-party images you'll also run: `temporalio/auto-setup` (or your own Temporal), `postgres:16`
-(Temporal's datastore), `ghcr.io/open-meteo/open-meteo`, and `protomaps/go-pmtiles` for the one-time
-basemap download. The map data is fetched at deploy time, not baked into an image.
+- **For the server:** Docker with Compose v2 (Path A) or a Kubernetes cluster (Path B). You do **not**
+  need Rust installed: the images are published to GHCR, and Compose builds inside Docker.
+- **For the phone app:** [Bun](https://bun.sh), plus Xcode (iPhone, macOS only) or Android Studio
+  (Android). The app uses native map code, so it **can't run in Expo Go**: you build it once onto a
+  simulator or your phone.
+- About **3–4 GB of disk** for the US basemap and a working set of radar tiles.
 
 ## Path A: Docker Compose (one computer)
 
@@ -54,42 +45,61 @@ docker compose run --rm basemap-bootstrap   # one-time basemap download (~1–2 
 docker compose run --rm basemap-publish     # move it into place
 docker compose build api                    # the radar image; `worker` reuses it
 docker compose up -d --build                # add --profile ui for the Temporal Web UI
-curl localhost:8080/api/health              # "degraded" until the first frame, then "ok"
 ```
 
-Then [point the app](#running-the-app) at `http://<your-host>:8080`. The full guide, with hardware
-sizing, what each step does and how to verify it, is **[self-host/compose.md](../self-host/compose.md)**.
+**How to know it worked:** `curl localhost:8080/api/health` says `degraded` at first, then `ok`
+about 2 minutes later, once the first radar frame lands. Then [point an app](#running-the-phone-app)
+at `http://<your-host>:8080`.
+
+The full guide, with hardware sizing, what each step does and what to do if it didn't work, is
+**[self-host/compose.md](../self-host/compose.md)**.
 
 ## Path B: Kubernetes
 
-You provide a cluster, a Temporal server and storage the tile-server and workers can share. The
-**[Kubernetes guide](../self-host/kubernetes.md)** covers what you need, the deploy steps, storage,
-probes and sizing. Ready-to-apply Kustomize manifests are in
-**[deploy/kubernetes/](../../deploy/kubernetes/README.md)**; to try them on kind, k3d or k3s:
+Ready-to-apply manifests live in **[deploy/kubernetes/](../../deploy/kubernetes/README.md)**. To
+try them on a laptop cluster (kind, k3d, k3s):
 
 ```bash
 kubectl apply -k deploy/kubernetes/examples/minimal
 ```
 
-## Running the app
+That README walks through it step by step. For your own production cluster (your Temporal, storage
+and ingress), read the [Kubernetes guide](../self-host/kubernetes.md).
 
-The Expo app in `frontend/` talks to your tile-server over HTTP.
+## Running the phone app
 
 ```bash
 cd frontend
 bun install
-bunx expo start        # scan the QR with Expo Go, or press i / a for a simulator
+bun run ios          # builds and opens it in the iOS simulator (macOS)
+bun run android      # or: Android emulator / a plugged-in Android phone
 ```
 
-Point it at your server in one of two ways:
+The first build takes a while; after that it's quick. Then point the app at your server:
 
-- **In the app (no rebuild):** open **Settings → Advanced Mode → Stack URL** and enter your API base
-  (`http://<host>:8080` for Compose, or your ingress URL such as `https://radar-ng-api.example.com`).
-- **Change the default:** edit `SELF_HOSTED.DEFAULT_URL` in
-  [`frontend/src/lib/constants.ts`](../../frontend/src/lib/constants.ts) and rebuild.
+- **In the app:** **Settings → Advanced Mode → Stack URL**, and enter `http://<host>:8080`
+  (Compose) or your public URL (e.g. `https://radar-ng-api.example.com`). No rebuild needed.
+- **As the default for every install:** set `EXPO_PUBLIC_RADAR_DEFAULT_URL` and rebuild
+  (see [FORKING.md](../../FORKING.md)).
 
-Device builds, CarPlay and Apple Watch: [app/running-the-app.md](../app/running-the-app.md) and
-[app/carplay-watch-setup.md](../app/carplay-watch-setup.md). The web radar: [web/README.md](../../web/README.md).
+Running on a real phone, simulator tips, CarPlay and Apple Watch:
+[app/running-the-app.md](../app/running-the-app.md) and
+[app/carplay-watch-setup.md](../app/carplay-watch-setup.md).
+
+## Images
+
+| Image | What it runs |
+|---|---|
+| `ghcr.io/mitchross/radar-ng-tile-server` | `radar api`: serves tiles, the basemap, `/api/*` and `/v1/*` |
+| `ghcr.io/mitchross/radar-ng-temporal-worker` | `radar worker`: downloads and renders radar, forecasts, lightning, nowcast and alerts; cleans up old frames. `WORKER_ROLE` picks which jobs |
+| `ghcr.io/mitchross/radar-ng-open-meteo-worker` | the Open-Meteo forecast server's image plus `radar worker --role open-meteo` (keeps its forecast data up to date) |
+
+All three run the same Rust program, built from `deploy/Dockerfile`. Tags are `vX.Y.Z` plus
+`latest`; pin a `vX.Y.Z` in production. Build details are in [deploy/README.md](../../deploy/README.md).
+
+You'll also run some third-party images: `temporalio/auto-setup` (or your own Temporal),
+`postgres:16` (Temporal's database), `ghcr.io/open-meteo/open-meteo`, and `protomaps/go-pmtiles`
+for the one-time basemap download. Map data is downloaded when you set up, not baked into an image.
 
 ## Where to go next
 
