@@ -70,6 +70,34 @@ The manifest fetch (`/api/manifest.json`) determines which layers the app offers
 
 User prefs (server URL, data source, palette, opacity, playback speed, active layer, theme, extras visibility) persist in an **MMKV** store with id `radar-ng` (`frontend/src/lib/storage.ts`), read/written by `frontend/src/stores/useWeatherStore.ts`. They survive app restarts but not an uninstall. To reset to defaults, uninstall/reinstall or clear the app's storage.
 
+## Standalone iPhone build (IPA)
+
+A signed iPhone and iPad IPA with the Watch app embedded, that runs without Metro or EAS (macOS
+and Xcode only):
+
+```bash
+cd frontend
+bun run ios:ipa
+```
+
+The output lands at `artifacts/ios/export-debugging/radarng.ipa`. It's a `Release` Xcode
+archive/export that embeds the JS bundle (`main.jsbundle`) and
+`Payload/radarng.app/Watch/radar-ngWatch.app`, so the installed app needs no Metro server.
+
+The default export method, `debugging`, is standalone but still development-signed with the Apple
+account set up in Xcode. For a distribution-style install:
+
+```bash
+cd frontend
+bun run ios:ipa:release-testing   # ad-hoc / release testing
+bun run ios:ipa:app-store         # App Store Connect / TestFlight
+```
+
+`release-testing` needs the latest Apple Developer Program License Agreement accepted, an installed
+Apple Distribution certificate with its private key, and provisioning profiles for both the app and
+Watch bundle IDs (upstream: `com.vanillax.radar-ng` and `com.vanillax.radar-ng.watch`; forks set
+their own, see [FORKING.md](../../FORKING.md)).
+
 ## iOS extras: CarPlay + Apple Watch
 
 The repo ships a native Watch radar/forecast app and an experimental CarPlay map

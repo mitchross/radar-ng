@@ -65,8 +65,8 @@ First-party images publish to GHCR (`ghcr.io/mitchross/radar-ng-*`) via
 ## Reporting bugs / requesting features
 
 Use the issue templates. For anything security-sensitive, please **do not** open
-a public issue — see [SECURITY.md](SECURITY.md) if present, or email the
-maintainer.
+a public issue. Contact the maintainer privately instead (see the
+[GitHub profile](https://github.com/mitchross)).
 
 ## License
 
