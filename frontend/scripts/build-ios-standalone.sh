@@ -19,7 +19,7 @@ BUILD_ROOT="${BUILD_ROOT:-../artifacts/ios}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-${BUILD_ROOT}/${SCHEME}.xcarchive}"
 EXPORT_PATH="${EXPORT_PATH:-${BUILD_ROOT}/export-${EXPORT_METHOD}}"
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${BUILD_ROOT}/DerivedData}"
-TEAM_ID="${TEAM_ID:-$(node -e "process.stdout.write(require('./app.json').expo.ios.appleTeamId || '')")}"
+TEAM_ID="${TEAM_ID:-$(node -e "process.stdout.write(require('./identity').appleTeamId || '')")}"
 QUIET="${QUIET:-1}"
 
 if [[ ! -d "$WORKSPACE" ]]; then

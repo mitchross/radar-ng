@@ -79,7 +79,9 @@ export const DEFAULTS = {
 } as const;
 
 export const SELF_HOSTED = {
-  DEFAULT_URL: "https://radar-ng-api.vanillax.me",
+  // The stack a fresh install points at. Forks set EXPO_PUBLIC_RADAR_DEFAULT_URL
+  // (FORKING.md); the fallback must match identity.js (identity.test.js checks).
+  DEFAULT_URL: (process.env.EXPO_PUBLIC_RADAR_DEFAULT_URL || "https://radar-ng-api.vanillax.me").replace(/\/+$/, ""),
   MANIFEST_PATH: "/api/manifest.json",
   TILE_PATTERN: "/tiles/{layer}/{palette}/{timestamp}/{z}/{x}/{y}.png",
   FORECAST_PATH: "/api/forecast",

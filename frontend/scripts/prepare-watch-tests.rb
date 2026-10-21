@@ -1,6 +1,8 @@
 # Adds a reproducible native watchOS UI test target to Expo's generated project.
 require 'xcodeproj'
 root = File.expand_path('..', __dir__)
+# The app's bundle ID from identity.js (env or the upstream default; FORKING.md).
+bundle_id = `node -p "require(process.argv[1]).bundleId" '#{File.join(root, 'identity.js')}'`.strip
 project = Xcodeproj::Project.open(File.join(root, 'ios/radarng.xcodeproj'))
 watch = project.targets.find { |target| target.name == 'radar-ngWatch' }
 abort 'Run Expo iOS prebuild first (Watch target missing)' unless watch
@@ -8,7 +10,7 @@ name = 'RadarWatchUITests'
 target = project.targets.find { |t| t.name == name } || project.new_target(:ui_test_bundle, name, :watchos, '10.0')
 target.build_configurations.each do |config|
   config.build_settings.merge!({
-    'PRODUCT_BUNDLE_IDENTIFIER' => 'com.vanillax.radar-ng.watch.uitests',
+    'PRODUCT_BUNDLE_IDENTIFIER' => "#{bundle_id}.watch.uitests",
     'SWIFT_VERSION' => '5.0',
     'PRODUCT_NAME' => '$(TARGET_NAME)',
     'GENERATE_INFOPLIST_FILE' => 'YES',

@@ -48,7 +48,7 @@ fi
 
 APP_VERSION="$(node -e "process.stdout.write(require('./app.json').expo.version)")"
 BUILD_NUMBER="$(node -e "process.stdout.write(String(require('./app.json').expo.ios.buildNumber))")"
-BUNDLE_ID="$(node -e "process.stdout.write(require('./app.json').expo.ios.bundleIdentifier)")"
+BUNDLE_ID="$(node -e "process.stdout.write(require('./identity').bundleId)")"
 
 python3 - "$INFO_PLIST" "$ENTITLEMENTS" "$PBXPROJ" \
   "$APP_VERSION" "$BUILD_NUMBER" "$BUNDLE_ID" "${RADAR_CARPLAY:-0}" <<'PY'

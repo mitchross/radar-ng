@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { appGroup } = require("../../identity");
 
 const targets = path.join(__dirname, "../../targets");
 const copies = ["radar-widget", "carplay", "watch"].map((t) => path.join(targets, t, "RadarShared.swift"));
@@ -16,7 +17,7 @@ test("Swift and the app agree on the App Group, key and payload fields", () => {
     "utf8",
   );
   const ts = fs.readFileSync(path.join(__dirname, "../../src/lib/sharedState.ts"), "utf8");
-  for (const needle of ['"group.com.vanillax.radar-ng"', '"radarng.shared"']) {
+  for (const needle of [`"${appGroup}"`, '"radarng.shared"']) {
     expect(swift).toContain(needle);
     expect(module).toContain(needle);
   }
@@ -25,8 +26,9 @@ test("Swift and the app agree on the App Group, key and payload fields", () => {
     expect(ts).toContain(`${field}:`);
   }
   const app = JSON.parse(fs.readFileSync(path.join(__dirname, "../../app.json"), "utf8"));
-  expect(app.expo.ios.entitlements["com.apple.security.application-groups"]).toEqual(["group.com.vanillax.radar-ng"]);
+  const resolved = require("../../app.config")({ config: app.expo });
+  expect(resolved.ios.entitlements["com.apple.security.application-groups"]).toEqual([appGroup]);
   expect(require("../../targets/radar-widget/expo-target.config.js").entitlements).toEqual({
-    "com.apple.security.application-groups": ["group.com.vanillax.radar-ng"],
+    "com.apple.security.application-groups": [appGroup],
   });
 });

@@ -39,7 +39,8 @@ name: unavailable server and recovery
 - tapOn:
     id: "stack-url-input"
 - eraseText
-- inputText: "https://radar-ng-api.vanillax.me"
+# STACK_URL: the working stack, passed by scripts/test-*-simulator.sh from identity.js.
+- inputText: "${STACK_URL}"
 - runFlow:
     # The Android keyboard covers the Save button.
     when:

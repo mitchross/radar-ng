@@ -1,4 +1,5 @@
 const configure = require("../../app.config");
+const { appGroup } = require("../../identity");
 
 const carPlayLocation = "Radar NG uses your location for nearby radar and turn-by-turn driving directions, including in CarPlay.";
 
@@ -18,7 +19,8 @@ afterEach(() => { delete process.env.RADAR_CARPLAY; });
 
 test("ordinary iPhone builds retain their provisioning and background behavior", () => {
   const config = { ios: { bundleIdentifier: "com.example.radar" } };
-  expect(configure({ config })).toBe(config);
+  // Only identity.js's fields are applied; no CarPlay entitlement or background modes.
+  expect(configure({ config })).toEqual(configure.withIdentity(config));
 });
 
 test("CarPlay builds request navigation and preserve unrelated entitlements", () => {
@@ -27,6 +29,8 @@ test("CarPlay builds request navigation and preserve unrelated entitlements", ()
   const output = configure({ config });
   expect(output.ios.entitlements).toEqual({
     "aps-environment": "development", "com.apple.developer.carplay-maps": true,
+    // identity.js always supplies the App Group (app.json no longer carries it).
+    "com.apple.security.application-groups": [appGroup],
   });
   expect(output.ios.infoPlist.UIBackgroundModes).toEqual(["audio", "fetch", "location"]);
   expect(config.ios.entitlements).toEqual({ "aps-environment": "development" });

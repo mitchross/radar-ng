@@ -6,7 +6,8 @@ cd "$(dirname "$0")/.."
 
 : "${ANDROID_SERIAL:?Set ANDROID_SERIAL to a running emulator or device (adb devices)}"
 QA_OUTPUT="${QA_OUTPUT:-/tmp/radar-android-qa}"
-APP_ID="com.vanillax.radarng"
+APP_ID="$(node -p "require('./identity').androidPackage")"
+STACK_URL="${STACK_URL:-$(node -p "require('./identity').defaultServerUrl")}"
 mkdir -p "$QA_OUTPUT"
 export MAESTRO_CLI_NO_ANALYTICS=1
 export MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true
@@ -21,6 +22,6 @@ fi
 
 adb -s "$ANDROID_SERIAL" wait-for-device
 adb -s "$ANDROID_SERIAL" install -r android/app/build/outputs/apk/release/app-release.apk
-maestro --device "$ANDROID_SERIAL" test -e APP_ID="$APP_ID" \
+maestro --device "$ANDROID_SERIAL" test -e APP_ID="$APP_ID" -e STACK_URL="$STACK_URL" \
   --format JUNIT --output "$QA_OUTPUT/results.xml" \
   --test-output-dir "$QA_OUTPUT/maestro" .maestro/

@@ -6,6 +6,8 @@ cd "$(dirname "$0")/.."
 QA_OUTPUT="${QA_OUTPUT:-/tmp/radar-ios-qa}"
 mkdir -p "$QA_OUTPUT"
 export MAESTRO_CLI_NO_ANALYTICS=1
+APP_ID="$(node -p "require('./identity').bundleId")"
+STACK_URL="${STACK_URL:-$(node -p "require('./identity').defaultServerUrl")}"
 export MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true
 
 if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
@@ -27,6 +29,6 @@ fi
 xcrun simctl bootstatus "$SIMULATOR_UDID" -b
 xcrun simctl install "$SIMULATOR_UDID" \
   "$QA_OUTPUT/DerivedData/Build/Products/Release-iphonesimulator/radarng.app"
-maestro --device "$SIMULATOR_UDID" test -e APP_ID=com.vanillax.radar-ng \
+maestro --device "$SIMULATOR_UDID" test -e APP_ID="$APP_ID" -e STACK_URL="$STACK_URL" \
   --format JUNIT --output "$QA_OUTPUT/results.xml" \
   --test-output-dir "$QA_OUTPUT/maestro" .maestro/

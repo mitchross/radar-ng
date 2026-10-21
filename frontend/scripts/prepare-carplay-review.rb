@@ -11,10 +11,12 @@ target = project.new_target(:application, 'CarPlayReview', :ios, '26.0')
 sources = %w[RadarAPI RadarRouteProgress RadarLocationManager RadarDrivingSession RadarTileOverlay RadarManeuverFactory RadarMapController]
 sources.each { |name| target.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'targets/carplay', "#{name}.swift"))) }
 target.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'tests/carplay/CarPlayReviewHost.swift')))
-team = JSON.parse(File.read(File.join(root, 'app.json')))['expo']['ios']['appleTeamId']
+# Team and bundle ID from identity.js (env or the upstream defaults; FORKING.md).
+identity = JSON.parse(`node -e "process.stdout.write(JSON.stringify(require(process.argv[1])))" '#{File.join(root, 'identity.js')}'`)
+team = identity['appleTeamId']
 target.build_configurations.each do |configuration|
   configuration.build_settings.merge!({
-    'PRODUCT_BUNDLE_IDENTIFIER' => 'com.vanillax.radar-ng.carplay-review',
+    'PRODUCT_BUNDLE_IDENTIFIER' => "#{identity['bundleId']}.carplay-review",
     'PRODUCT_NAME' => 'CarPlayReview',
     'DEVELOPMENT_TEAM' => team,
     'CODE_SIGN_STYLE' => 'Automatic',
