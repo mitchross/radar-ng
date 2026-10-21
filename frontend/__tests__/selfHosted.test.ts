@@ -9,12 +9,17 @@ import path from "path";
  */
 
 const ROOT = path.join(__dirname, "..");
-const SCANNED = ["src", "targets", "plugins", "app.json", "app.config.js", ".env.production"];
+const SCANNED = ["src", "targets", "plugins", "app.json", "app.config.js", "identity.js", ".env.production"];
 
-// The deployment's own servers, plus placeholders used in docs and examples.
+// The deployment's own servers (the upstream ones, plus a fork's from identity.js),
+// and placeholders used in docs and examples.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const identity = require("../identity");
 const ALLOWED_HOSTS = new Set([
   "radar-ng-api.vanillax.me",
   "maps.vanillax.me",
+  new URL(identity.defaultServerUrl).hostname,
+  new URL(identity.basemapRasterUrl).hostname,
   "localhost",
   "127.0.0.1",
   "10.0.2.2",

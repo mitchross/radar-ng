@@ -26,7 +26,7 @@ xcodebuild -project "$CARPLAY_REVIEW_OUTPUT/CarPlayReview.xcodeproj" -scheme Car
   -derivedDataPath "$CARPLAY_REVIEW_OUTPUT/DerivedData" "${REVIEW_SIGNING[@]}" build \
   > "$CARPLAY_REVIEW_OUTPUT/build.log" 2>&1
 REVIEW_APP="$CARPLAY_REVIEW_OUTPUT/DerivedData/Build/Products/$REVIEW_PRODUCT/CarPlayReview.app"
-REVIEW_BUNDLE=com.vanillax.radar-ng.carplay-review
+REVIEW_BUNDLE="$(node -p "require('./identity').bundleId").carplay-review"
 REVIEW_RUN_ID="$(uuidgen)"
 export RADAR_REVIEW_RUN_ID="$REVIEW_RUN_ID"
 # Forward optional location/scale settings identically on device and simulator.

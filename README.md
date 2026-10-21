@@ -96,6 +96,7 @@ in [`rust/`](rust/README.md).
 | Run it on my Kubernetes cluster | [docs/self-host/kubernetes.md](docs/self-host/kubernetes.md) |
 | Run the phone app against my server | [docs/app/running-the-app.md](docs/app/running-the-app.md) |
 | Change the code | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Fork it and ship my own app | [FORKING.md](FORKING.md) |
 | Not sure yet | [docs/start/getting-started.md](docs/start/getting-started.md) |
 
 Every other doc (configuration, tuning, releasing, debugging, architecture, specs) is listed in

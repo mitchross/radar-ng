@@ -13,15 +13,8 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.vanillax.radar-ng",
       "buildNumber": "10",
-      "appleTeamId": "FVU6RGL532",
       "icon": "./assets/expo.icon",
-      "entitlements": {
-        "com.apple.security.application-groups": [
-          "group.com.vanillax.radar-ng"
-        ]
-      },
       "infoPlist": {
         "CFBundleDisplayName": "Radar NG",
         "NSLocalNetworkUsageDescription": "Radar NG connects to a weather server on your local network when you configure one."
@@ -38,7 +31,6 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
       ],
-      "package": "com.vanillax.radarng",
       "versionCode": 10
     },
     "plugins": [

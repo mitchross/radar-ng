@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+BUNDLE_ID="$(node -p "require('./identity').bundleId")"
 : "${WATCH_SIMULATOR_UDID:?Set WATCH_SIMULATOR_UDID to an available Watch simulator UUID}"
 WATCH_QA_OUTPUT="${WATCH_QA_OUTPUT:-$(mktemp -d /tmp/radar-watch-qa.XXXXXX)}"
 mkdir -p "$WATCH_QA_OUTPUT"
@@ -14,7 +15,7 @@ if [[ -n "$PAIRED_IPHONE_UDID" ]]; then
   if [[ -n "${IOS_SIMULATOR_APP_PATH:-}" ]]; then
     xcrun simctl install "$PAIRED_IPHONE_UDID" "$IOS_SIMULATOR_APP_PATH"
   fi
-  if ! xcrun simctl get_app_container "$PAIRED_IPHONE_UDID" com.vanillax.radar-ng app >/dev/null 2>&1; then
+  if ! xcrun simctl get_app_container "$PAIRED_IPHONE_UDID" "$BUNDLE_ID" app >/dev/null 2>&1; then
     echo "The paired iPhone needs the companion app. Set IOS_SIMULATOR_APP_PATH to a simulator radarng.app build." >&2
     exit 1
   fi
@@ -31,8 +32,8 @@ swiftc targets/watch/WatchAPI.swift targets/watch/WatchForecastPresentation.swif
 "$WATCH_QA_OUTPUT/presentation-checks"
 xcrun simctl bootstatus "$WATCH_SIMULATOR_UDID" -b
 # Start the permission-denial scenario from a known authorization state.
-if xcrun simctl get_app_container "$WATCH_SIMULATOR_UDID" com.vanillax.radar-ng.watch app >/dev/null 2>&1; then
-  xcrun simctl privacy "$WATCH_SIMULATOR_UDID" reset all com.vanillax.radar-ng.watch
+if xcrun simctl get_app_container "$WATCH_SIMULATOR_UDID" "$BUNDLE_ID.watch" app >/dev/null 2>&1; then
+  xcrun simctl privacy "$WATCH_SIMULATOR_UDID" reset all "$BUNDLE_ID.watch"
 fi
 xcodebuild -project ios/radarng.xcodeproj -scheme WatchQA -configuration Release \
   -destination "platform=watchOS Simulator,id=$WATCH_SIMULATOR_UDID" \

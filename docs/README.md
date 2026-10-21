@@ -17,6 +17,7 @@ links to the guide for it.
 | Build an Android release | [app/android-release.md](app/android-release.md) |
 | Know what the app sends, and to whom | [app/privacy.md](app/privacy.md) |
 | Contribute code | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
+| Fork it with my own app name, server and images | [../FORKING.md](../FORKING.md) |
 | Work on the Rust backend | [develop/rust-backend-handoff.md](develop/rust-backend-handoff.md) · [../rust/README.md](../rust/README.md) · [develop/specs/](develop/specs/) |
 | Cut a release | [develop/releasing.md](develop/releasing.md) · [develop/temporal-safe-deployments.md](develop/temporal-safe-deployments.md) |
 | Upgrade Expo / React Native | [develop/expo-rn-upgrade-playbook.md](develop/expo-rn-upgrade-playbook.md) |

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify a device profile before building Radar NG's CarPlay variant."""
 import argparse
+import json
 import plistlib
 import subprocess
 from datetime import datetime, timezone
@@ -21,11 +22,20 @@ def validate(profile, bundle_id, team_id):
     return errors
 
 
+def app_identity():
+    """Bundle ID and team from identity.js (env or the upstream defaults; FORKING.md)."""
+    script = "process.stdout.write(JSON.stringify(require(process.argv[1])))"
+    path = Path(__file__).resolve().parent.parent / "identity.js"
+    out = subprocess.run(["node", "-e", script, str(path)], capture_output=True, check=True, text=True)
+    return json.loads(out.stdout)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("profile", type=Path)
-    parser.add_argument("--bundle-id", default="com.vanillax.radar-ng")
-    parser.add_argument("--team-id", default="FVU6RGL532")
+    identity = app_identity()
+    parser.add_argument("--bundle-id", default=identity["bundleId"])
+    parser.add_argument("--team-id", default=identity["appleTeamId"])
     args = parser.parse_args()
     result = subprocess.run(["security", "cms", "-D", "-i", str(args.profile)],
                             capture_output=True, check=True)

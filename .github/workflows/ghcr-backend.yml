@@ -96,6 +96,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # GHCR names must be lowercase; repository_owner keeps the account's casing.
+      # Upstream this is `mitchross`, so the published image names are unchanged.
+      - name: Image owner
+        run: echo "IMAGE_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
       - uses: actions/download-artifact@v8
         with:
           name: radar
@@ -113,8 +118,8 @@ jobs:
           if [ -n "$EXPLICIT" ]; then
             NEXT="$EXPLICIT"
           else
-            TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${{ github.repository_owner }}/${IMAGE}:pull" | jq -r .token)
-            LATEST=$(curl -s -H "Authorization: Bearer $TOKEN" "https://ghcr.io/v2/${{ github.repository_owner }}/${IMAGE}/tags/list" \
+            TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${{ env.IMAGE_OWNER }}/${IMAGE}:pull" | jq -r .token)
+            LATEST=$(curl -s -H "Authorization: Bearer $TOKEN" "https://ghcr.io/v2/${{ env.IMAGE_OWNER }}/${IMAGE}/tags/list" \
               | jq -r '.tags[]?' \
               | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
               | sort -V \
@@ -150,7 +155,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          images: ghcr.io/${{ env.IMAGE_OWNER }}/${{ matrix.image }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
@@ -176,6 +181,6 @@ jobs:
 
       - name: Published reference
         run: |
-          ref="ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.ver.outputs.version }}@${{ steps.build.outputs.digest }}"
+          ref="ghcr.io/${{ env.IMAGE_OWNER }}/${{ matrix.image }}:${{ steps.ver.outputs.version }}@${{ steps.build.outputs.digest }}"
           echo "::notice title=published::$ref"
           echo "Published \`$ref\`" >> "$GITHUB_STEP_SUMMARY"

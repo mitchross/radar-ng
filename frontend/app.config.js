@@ -7,7 +7,29 @@
 const CARPLAY_LOCATION_PERMISSION =
   "Radar NG uses your location for nearby radar and turn-by-turn driving directions, including in CarPlay.";
 
-module.exports = ({ config }) => {
+const identity = require("./identity");
+
+// Bundle ID, signing team, Android package and App Group come from identity.js
+// (env with the upstream values as fallback), not app.json, so a fork sets them
+// without editing tracked files. See FORKING.md.
+function withIdentity(config) {
+  return {
+    ...config,
+    ios: {
+      ...config.ios,
+      bundleIdentifier: identity.bundleId,
+      appleTeamId: identity.appleTeamId,
+      entitlements: {
+        ...config.ios?.entitlements,
+        "com.apple.security.application-groups": [identity.appGroup],
+      },
+    },
+    android: { ...config.android, package: identity.androidPackage },
+  };
+}
+
+module.exports = ({ config: input }) => {
+  const config = withIdentity(input);
   if (process.env.RADAR_CARPLAY !== "1") return config;
 
   const plugins = (config.plugins ?? []).map((entry) => {
@@ -35,3 +57,5 @@ module.exports = ({ config }) => {
     },
   };
 };
+
+module.exports.withIdentity = withIdentity;
