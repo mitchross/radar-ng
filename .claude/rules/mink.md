@@ -2,7 +2,10 @@
 description: Mink context management — automatic via hooks
 ---
 
-This project uses **Mink** (`@drewpayment/mink`) for cross-session context management.
+> **Only applies if the `mink` CLI is installed** (`command -v mink`). If it isn't, ignore this file:
+> the hooks in `.claude/settings.json` turn themselves off, and nothing else depends on Mink.
+
+This project's maintainer uses **Mink** (`@drewpayment/mink`) for cross-session context management.
 
 ## How it works
 - Mink runs automatically through Claude Code hooks configured in `.claude/settings.json` (SessionStart, PreToolUse, PostToolUse, Stop).

@@ -11,7 +11,6 @@
   prConcurrentLimit: 5,
   enabledManagers: [
     'bun',
-    'pip_requirements',
     'github-actions',
   ],
   packageRules: [
@@ -55,18 +54,6 @@
       ],
       groupName: 'Expo and React Native compatibility set',
       dependencyDashboardApproval: true,
-      automerge: false,
-    },
-    {
-      description: 'Group routine Python updates across all requirements files.',
-      matchManagers: [
-        'pip_requirements',
-      ],
-      matchUpdateTypes: [
-        'minor',
-        'patch',
-      ],
-      groupName: 'Python dependencies',
       automerge: false,
     },
     {

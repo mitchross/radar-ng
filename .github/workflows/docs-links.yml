@@ -1,0 +1,27 @@
+name: docs-links
+
+# llms.txt and the markdown docs link to files in this repo; fail if any of them point nowhere.
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+      - "llms.txt"
+      - ".github/workflows/docs-links.yml"
+      - ".github/scripts/check-links.py"
+  push:
+    branches: [master]
+    paths:
+      - "**/*.md"
+      - "llms.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  links:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check repo links in llms.txt and markdown
+        run: python3 .github/scripts/check-links.py

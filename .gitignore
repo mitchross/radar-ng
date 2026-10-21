@@ -78,3 +78,8 @@ eas.local.json
 # Logs
 *.log
 logs/
+
+# Personal agent instructions and settings (never committed)
+CLAUDE.local.md
+AGENTS.local.md
+.claude/settings.local.json

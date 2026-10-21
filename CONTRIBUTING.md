@@ -42,6 +42,9 @@ See **[docs/start/getting-started.md](docs/start/getting-started.md)** — it co
    - User-facing features ship to both the app (`frontend/`) and the web radar (`web/`) in the same change.
 4. Open a PR against `master` with a clear description of the what and the why.
 
+Using a coding agent? [AGENTS.md](AGENTS.md) lists repo skills (`rust-dev`, `setup-compose`,
+`setup-k8s`, `fork-setup`, `add-layer`, `doctor`) in `.claude/commands/` and `.agents/skills/`.
+
 ## Self-hosted only
 
 Clients (phone, Watch, widget) talk **only** to the operator's own servers at runtime. That rules out
