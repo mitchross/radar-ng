@@ -16,7 +16,7 @@ Unfamiliar word? See the [glossary](glossary.md).
 
 | I want to… | Path | Time | Guide |
 |---|---|---|---|
-| Run the server on one computer | **Docker Compose** | ~15 min of setup, then ~2 min for the first radar frame | [Path A](#path-a-docker-compose-one-computer) → [compose.md](../self-host/compose.md) |
+| Run the server on one computer | **Docker Compose** | ~10 min (mostly the map download), then ~2 min for the first radar frame | [Path A](#path-a-docker-compose-one-computer) → [compose.md](../self-host/compose.md) |
 | Run the server on my Kubernetes cluster | **Kubernetes** | ~30 min on a test cluster (kind, k3d, k3s) | [Path B](#path-b-kubernetes) → [deploy/kubernetes](../../deploy/kubernetes/README.md) |
 | See it in a browser, against a server I run | **Web radar** | ~5 min | [app/web-radar.md](../app/web-radar.md) |
 | Use the phone app with a server I run | **Phone app** | 30–60 min the first time (native build) | [Running the phone app](#running-the-phone-app) |
@@ -37,22 +37,20 @@ Unfamiliar word? See the [glossary](glossary.md).
 
 ```bash
 cd deploy
-cp .env.example .env
-# Edit .env and set:
-#   NWS_USER_AGENT=(radar-ng, you@example.com)                         # api.weather.gov needs a real contact
-#   BASEMAP_PMTILES_URL=https://build.protomaps.com/YYYYMMDD.pmtiles   # a date from the last few days
-docker compose run --rm basemap-bootstrap   # one-time basemap download (~1–2 GB)
-docker compose run --rm basemap-publish     # move it into place
-docker compose build api                    # the radar image; `worker` reuses it
-docker compose up -d --build                # add --profile ui for the Temporal Web UI
+./up.sh          # use ./up.sh --build on Apple Silicon / arm64
 ```
 
-**How to know it worked:** `curl localhost:8080/api/health` says `degraded` at first, then `ok`
-about 2 minutes later, once the first radar frame lands. Then [point an app](#running-the-phone-app)
-at `http://<your-host>:8080`.
+The first run creates `deploy/.env` and asks you to set your contact email in it
+(`NWS_USER_AGENT=(radar-ng, you@example.org)`; the NWS asks every app for one). Run it again: it downloads
+the background map once (~1–2 GB), starts everything from ready-made images, and waits for the first
+radar frame.
 
-The full guide, with hardware sizing, what each step does and what to do if it didn't work, is
-**[self-host/compose.md](../self-host/compose.md)**.
+**How to know it worked:** `up.sh` ends by printing the address for the app. You can also check
+`curl localhost:8080/api/health`: `degraded` at first, then `ok` about 2 minutes later.
+
+The full guide, with hardware sizing, the manual steps and what to do if it didn't work, is
+**[self-host/compose.md](../self-host/compose.md)**; common problems are in
+[troubleshooting.md](../self-host/troubleshooting.md).
 
 ## Path B: Kubernetes
 

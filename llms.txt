@@ -17,9 +17,10 @@ Images publish to `ghcr.io/<repo-owner>/radar-ng-{tile-server,temporal-worker,op
 - [Docs index](https://github.com/mitchross/radar-ng/blob/master/docs/README.md): every doc by task.
 
 ## Run it
-- [Docker Compose](https://github.com/mitchross/radar-ng/blob/master/docs/self-host/compose.md): one computer, ~15 minutes.
+- [Docker Compose](https://github.com/mitchross/radar-ng/blob/master/docs/self-host/compose.md): one computer, `deploy/up.sh`, prebuilt images.
 - [Kubernetes manifests](https://github.com/mitchross/radar-ng/blob/master/deploy/kubernetes/README.md): `kubectl apply -k deploy/kubernetes/examples/minimal`, then make your own overlay.
 - [Kubernetes background](https://github.com/mitchross/radar-ng/blob/master/docs/self-host/kubernetes.md): storage, sizing, probes, schedules for production clusters.
+- [Troubleshooting](https://github.com/mitchross/radar-ng/blob/master/docs/self-host/troubleshooting.md): gray map, no radar, ports, Temporal, arm64, disk.
 - [Configuration](https://github.com/mitchross/radar-ng/blob/master/docs/self-host/configuration.md): environment variables, including the `BASEMAP_PMTILES_URL` date gotcha.
 - [Tuning](https://github.com/mitchross/radar-ng/blob/master/docs/self-host/tuning.md): faster, cheaper or fresher, knob by knob.
 - [Phone app](https://github.com/mitchross/radar-ng/blob/master/docs/app/running-the-app.md): build, simulators, devices, IPA, CarPlay, Apple Watch.

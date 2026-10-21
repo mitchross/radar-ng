@@ -15,7 +15,9 @@ Releases and post-release checks: [RUNBOOK.md](RUNBOOK.md).
 |---|---|
 | `Dockerfile` | Builder `debian:bookworm-slim` with the toolchain from `rust/rust-toolchain.toml` and `protoc`; runs the offline replay gate (`REPLAY_GATE=1`), then `cargo build --release --locked -p radar`. Runtime distroless `cc-debian12`, uid 1000, static busybox for probes, bundled styles and glyphs under `/srv/basemap` |
 | `Dockerfile.dockerignore` | Build-context excludes (keeps `rust/`, drops `target/`, app and data) |
-| `docker-compose.yml` | Single-node stack: Temporal, `worker` (role `legacy`), `open-meteo-worker`, `open-meteo`, `api`, and one-shot `basemap-bootstrap` / `basemap-publish` |
+| `up.sh` | One command for Compose: settings check, basemap, start, wait for the first frame, print the app URL (`--build` to build locally) |
+| `docker-compose.yml` | Single-node stack on the prebuilt GHCR images: Temporal, `worker` (role `legacy`), `open-meteo-worker`, `open-meteo`, `api`, and the one-shot `basemap-bootstrap` (shares `kubernetes/base/fetch-basemap.sh`) |
+| `docker-compose.build.yml` | Override that builds the three radar images from this checkout (arm64 hosts, Rust changes) |
 | `.env.example` | Compose settings; copy to `.env` |
 | `temporal-dev.yml` | Throwaway Temporal (Postgres, auto-setup, UI) for the worker integration tests |
 | `kubernetes/` | Kustomize base, optional components and examples for Kubernetes; see [kubernetes/README.md](kubernetes/README.md) |
@@ -37,7 +39,7 @@ command to run it. `radar --help` lists the subcommands: `api`, `worker`, `seed`
 Build by hand from the repository root:
 
 ```bash
-docker build -f deploy/Dockerfile --target api        -t radar-ng-radar:local .
+docker build -f deploy/Dockerfile --target api        -t radar-ng-tile-server:local .
 docker build -f deploy/Dockerfile --target worker     -t radar-ng-temporal-worker:local .
 docker build -f deploy/Dockerfile --target open-meteo -t radar-ng-open-meteo-worker:local .
 ```
@@ -47,11 +49,13 @@ docker build -f deploy/Dockerfile --target open-meteo -t radar-ng-open-meteo-wor
 From `deploy/`:
 
 ```bash
-cp .env.example .env                       # NWS_USER_AGENT and BASEMAP_PMTILES_URL at minimum
-docker compose run --rm basemap-bootstrap  # one-shot basemap download to basemap.pmtiles.partial
-docker compose run --rm basemap-publish    # rename it to basemap.pmtiles (the api reopens it, no restart)
-docker compose build api                   # the radar image; `worker` runs it but does not build it
-docker compose up -d --build
+./up.sh                                    # all of the below, plus a wait for the first frame
+# or by hand:
+cp .env.example .env                       # set NWS_USER_AGENT
+docker compose run --rm basemap-bootstrap  # newest basemap, extracted and renamed into place (no restart)
+docker compose up -d                       # prebuilt GHCR images (linux/amd64)
+# build locally instead (arm64, or Rust changes):
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 curl http://localhost:8080/api/livez
 radar debug doctor                         # see docs/reference/debug-harness.md
 ```

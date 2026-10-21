@@ -48,19 +48,13 @@ Every other doc (configuration, tuning, releasing, debugging, architecture, spec
 ## Quick start (Docker Compose)
 
 ```bash
-cd deploy
-cp .env.example .env
-# set two values in .env:
-#   NWS_USER_AGENT=(radar-ng, you@example.com)
-#   BASEMAP_PMTILES_URL=   # newest date from https://build.protomaps.com/
-docker compose run --rm basemap-bootstrap   # one-time basemap fetch
-docker compose run --rm basemap-publish     # move it into place
-docker compose build api                    # the radar image; `worker` runs it without building
-docker compose up -d --build
+git clone https://github.com/mitchross/radar-ng && cd radar-ng/deploy
+./up.sh          # first run: asks you to put your email in deploy/.env; run it again
 ```
 
-The first radar frame shows up about 2 minutes later. Point the app at `http://<host>:8080`
-(**Settings → Advanced Mode → Stack URL**). The full walk-through, with how to check it worked and
+It downloads the map once, starts everything, waits for the first radar frame (about 2 minutes) and
+prints the address to put in the app (**Settings → Advanced Mode → Stack URL**). On Apple Silicon or
+another arm64 machine, use `./up.sh --build`. The full walk-through, with how to check it worked and
 what to do if it didn't, is [docs/self-host/compose.md](docs/self-host/compose.md).
 
 ## How it works

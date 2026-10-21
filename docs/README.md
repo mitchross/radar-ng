@@ -11,6 +11,7 @@ links to the guide for it.
 | Look up a word (MRMS, HRRR, nowcast, tile…) | [start/glossary.md](start/glossary.md) |
 | Run the whole stack on one computer (Docker Compose) | [self-host/compose.md](self-host/compose.md) |
 | Run it on my own Kubernetes cluster | [self-host/kubernetes.md](self-host/kubernetes.md) · manifests: [../deploy/kubernetes/](../deploy/kubernetes/README.md) |
+| Fix a problem (gray map, no radar, port in use, arm64…) | [self-host/troubleshooting.md](self-host/troubleshooting.md) |
 | Look up an environment variable | [self-host/configuration.md](self-host/configuration.md) |
 | Make it faster, cheaper or fresher | [self-host/tuning.md](self-host/tuning.md) |
 | Run the phone app and point it at my server | [app/running-the-app.md](app/running-the-app.md) |

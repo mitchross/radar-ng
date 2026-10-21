@@ -8,7 +8,7 @@
 # uid, and the probe helpers the cluster manifests exec (`sh`, `find`, `test` from busybox).
 #
 # Build context is the repository root (it reads rust/ only):
-#   docker build -f deploy/Dockerfile --target api -t radar-ng-radar:local .
+#   docker build -f deploy/Dockerfile --target api -t radar-ng-tile-server:local .
 #
 # Layout the build expects inside the context:
 #   rust/                     Cargo workspace (Cargo.lock committed; built with --locked)

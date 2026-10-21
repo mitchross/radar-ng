@@ -165,6 +165,6 @@
   <text x="1018" y="111" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#5d574d">http://host:8080</text>
 
   <!-- footer -->
-  <text x="48" y="726" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Quick start: cp deploy/.env.example deploy/.env (set NWS_USER_AGENT + BASEMAP_PMTILES_URL) → run basemap-bootstrap, basemap-publish → docker compose up -d --build</text>
+  <text x="48" y="726" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Quick start: cd deploy &amp;&amp; ./up.sh (set NWS_USER_AGENT in deploy/.env) → basemap-bootstrap → docker compose up -d</text>
   <text x="48" y="744" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">Hardware: lab 4 cores · 4 GB · 20 GB SSD — prod 16 cores · 16 GB · 100 GB. NOAA egress ~50–100 MB/h. Kubernetes path: docs/kubernetes.md</text>
 </svg>
