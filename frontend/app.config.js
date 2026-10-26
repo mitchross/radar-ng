@@ -28,8 +28,16 @@ function withIdentity(config) {
   };
 }
 
+// CI sets IOS_BUILD_RUN ("<run>.<attempt>") so each IPA gets a unique build number;
+// prebuild copies ios.buildNumber into the widget and Watch targets.
+function withBuildRun(config) {
+  const run = process.env.IOS_BUILD_RUN;
+  if (!run) return config;
+  return { ...config, ios: { ...config.ios, buildNumber: `${config.ios?.buildNumber ?? "1"}.${run}` } };
+}
+
 module.exports = ({ config: input }) => {
-  const config = withIdentity(input);
+  const config = withBuildRun(withIdentity(input));
   if (process.env.RADAR_CARPLAY !== "1") return config;
 
   const plugins = (config.plugins ?? []).map((entry) => {
