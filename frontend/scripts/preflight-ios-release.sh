@@ -47,7 +47,8 @@ if [[ "$ALLOW_BETA" != "1" ]] && printf '%s' "$ACTIVE_DEVELOPER_DIR" | tr '[:upp
 fi
 
 APP_VERSION="$(node -e "process.stdout.write(require('./app.json').expo.version)")"
-BUILD_NUMBER="$(node -e "process.stdout.write(String(require('./app.json').expo.ios.buildNumber))")"
+# app.config.js appends CI's IOS_BUILD_RUN to the build number; expect the same here.
+BUILD_NUMBER="$(node -e "process.stdout.write(String(require('./app.json').expo.ios.buildNumber))")${IOS_BUILD_RUN:+.$IOS_BUILD_RUN}"
 BUNDLE_ID="$(node -e "process.stdout.write(require('./identity').bundleId)")"
 
 python3 - "$INFO_PLIST" "$ENTITLEMENTS" "$PBXPROJ" \

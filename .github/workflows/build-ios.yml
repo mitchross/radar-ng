@@ -21,6 +21,8 @@ jobs:
   ipa:
     runs-on: [self-hosted, ios]
     timeout-minutes: 60
+    env:
+      IOS_BUILD_RUN: ${{ github.run_number }}.${{ github.run_attempt }}
     defaults:
       run:
         working-directory: frontend
@@ -31,8 +33,6 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Prebuild native project
-        env:
-          IOS_BUILD_RUN: ${{ github.run_number }}.${{ github.run_attempt }}
         run: bunx expo prebuild --platform ios --clean --no-install
 
       - name: Install pods
