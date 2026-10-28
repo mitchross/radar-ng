@@ -28,19 +28,21 @@
       matchUpdateTypes: [
         'major',
       ],
+      groupName: null,
+      groupSlug: null,
       dependencyDashboardApproval: true,
       automerge: false,
     },
     {
-      description: 'Group routine frontend updates into one review.',
-      matchManagers: [
-        'bun',
-      ],
+      description: 'Group routine updates; later rules preserve compatibility sets and the monthly Actions cadence.',
       matchUpdateTypes: [
         'minor',
         'patch',
+        'digest',
+        'pin',
+        'pinDigest',
       ],
-      groupName: 'frontend dependencies',
+      groupName: 'weekly routine updates',
       automerge: false,
     },
     {
@@ -64,6 +66,9 @@
       matchUpdateTypes: [
         'minor',
         'patch',
+        'digest',
+        'pin',
+        'pinDigest',
       ],
       groupName: 'GitHub Actions',
       automerge: false,
