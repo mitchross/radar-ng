@@ -185,7 +185,9 @@ fn open_meteo_body() -> Value {
     json!({
         "utc_offset_seconds": -14400,
         "current": {"temperature_2m": 61.4, "apparent_temperature": 60.2, "weather_code": 61,
-                    "wind_speed_10m": 8.2, "wind_gusts_10m": 15.1},
+                    "wind_speed_10m": 8.2, "wind_gusts_10m": 15.1, "wind_direction_10m": 0,
+                    "relative_humidity_2m": 70, "dew_point_2m": 51.5,
+                    "surface_pressure": 1013.2, "precipitation": 0},
         "hourly": {"time": ["2026-10-13T08:00", "2026-10-13T09:00", "2026-10-13T10:00", "2026-10-13T11:00"],
                    "temperature_2m": [50, 52, 55, 58], "weather_code": [0, 1, 61, 3],
                    "precipitation": [0.0, 0.01, 0.02, 0.0]},
@@ -709,7 +711,7 @@ async fn forecast_is_cached_per_cell_and_upstream_failures_are_502_without_cache
                 let calls = om_calls.clone();
                 async move {
                     calls.fetch_add(1, Ordering::SeqCst);
-                    Json(json!({"current": {"temperature_2m": 61}}))
+                    Json(open_meteo_body())
                 }
             }),
         )
@@ -720,7 +722,7 @@ async fn forecast_is_cached_per_cell_and_upstream_failures_are_502_without_cache
 
     let (status, headers, body) = get_json(&app, "/api/forecast/42.96/-85.67").await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, json!({"current": {"temperature_2m": 61}}));
+    assert_eq!(body, open_meteo_body());
     assert_eq!(header_str(&headers, "cache-control"), "public, max-age=900");
     // Both points round (one decimal) to the cell 43.0,-85.7.
     let _ = get_json(&app, "/api/forecast/42.99/-85.72").await;
@@ -753,8 +755,11 @@ async fn forecast_without_data_is_served_no_store_and_not_cached() {
             let calls = om_calls.clone();
             async move {
                 let n = calls.fetch_add(1, Ordering::SeqCst);
-                let t = if n == 0 { json!(null) } else { json!(61) };
-                Json(json!({"current": {"temperature_2m": t}}))
+                let mut body = open_meteo_body();
+                if n == 0 {
+                    body["current"]["temperature_2m"] = Value::Null;
+                }
+                Json(body)
             }
         }),
     );
@@ -764,11 +769,13 @@ async fn forecast_without_data_is_served_no_store_and_not_cached() {
 
     let (status, headers, body) = get_json(&app, "/api/forecast/42.96/-85.67").await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, json!({"current": {"temperature_2m": null}}));
+    let mut empty = open_meteo_body();
+    empty["current"]["temperature_2m"] = Value::Null;
+    assert_eq!(body, empty);
     assert_eq!(header_str(&headers, "cache-control"), "no-store");
 
     let (_, headers, body) = get_json(&app, "/api/forecast/42.96/-85.67").await;
-    assert_eq!(body, json!({"current": {"temperature_2m": 61}}));
+    assert_eq!(body, open_meteo_body());
     assert_eq!(header_str(&headers, "cache-control"), "public, max-age=900");
     let _ = get_json(&app, "/api/forecast/42.96/-85.67").await;
     assert_eq!(
@@ -776,6 +783,85 @@ async fn forecast_without_data_is_served_no_store_and_not_cached() {
         2,
         "only the data-less answer is refetched"
     );
+}
+
+#[tokio::test]
+async fn partial_forecast_is_refetched_until_current_fields_are_complete() {
+    let fields = [
+        "temperature_2m",
+        "relative_humidity_2m",
+        "apparent_temperature",
+        "weather_code",
+        "wind_speed_10m",
+        "wind_direction_10m",
+        "wind_gusts_10m",
+        "dew_point_2m",
+        "surface_pressure",
+        "precipitation",
+    ];
+    for field in fields {
+        for missing in [false, true] {
+            let mut partial = open_meteo_body();
+            if missing {
+                partial["current"]
+                    .as_object_mut()
+                    .expect("current")
+                    .remove(field);
+            } else {
+                partial["current"][field] = Value::Null;
+            }
+            let first = partial.clone();
+            let calls = counter();
+            let om_calls = calls.clone();
+            let base = mock(Router::new().route(
+                "/v1/forecast",
+                get(move || {
+                    let calls = om_calls.clone();
+                    let first = first.clone();
+                    async move {
+                        Json(if calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                            first
+                        } else {
+                            open_meteo_body()
+                        })
+                    }
+                }),
+            ))
+            .await;
+            let env = Env::new();
+            let app = env.app(|c| c.open_meteo_base = format!("{base}/v1/forecast"));
+            let uri = "/api/forecast/42.96/-85.67";
+            let (status, headers, body) = get_json(&app, uri).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(body, partial);
+            assert_eq!(
+                header_str(&headers, "cache-control"),
+                "no-store",
+                "{field}, missing={missing}"
+            );
+            for _ in 0..2 {
+                let (status, headers, body) = get_json(&app, uri).await;
+                assert_eq!(status, StatusCode::OK);
+                assert_eq!(body, open_meteo_body());
+                assert_eq!(header_str(&headers, "cache-control"), "public, max-age=900");
+            }
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                2,
+                "partial bypasses cache; complete answer is cached"
+            );
+            let (_, _, metrics) = send(&app, get_req("/api/metrics")).await;
+            let metrics = String::from_utf8(metrics).expect("utf8");
+            assert!(
+                metrics.contains("radar_ng_forecast_cache_hits_total 1\n"),
+                "{metrics}"
+            );
+            assert!(
+                metrics.contains("radar_ng_forecast_upstream_errors_total 0\n"),
+                "{metrics}"
+            );
+        }
+    }
 }
 
 #[tokio::test]
@@ -830,7 +916,8 @@ fn get_with_encoding(uri: &str, accept: &str) -> Request<Body> {
 
 #[tokio::test]
 async fn api_json_is_compressed_per_accept_encoding_and_identical_once_decoded() {
-    let big = json!({"hourly": {"temperature_2m": vec![61.5; 2000]}});
+    let mut big = open_meteo_body();
+    big["hourly"]["temperature_2m"] = json!(vec![61.5; 2000]);
     let body = big.clone();
     let open_meteo = Router::new().route(
         "/v1/forecast",
@@ -1715,10 +1802,7 @@ async fn rate_limit_applies_to_api_lanes_but_not_static_tiles() {
 /// including requests that fail validation (spec: counted before validation).
 #[tokio::test]
 async fn forecast_requests_are_counted_once_including_422s() {
-    let open_meteo = Router::new().route(
-        "/v1/forecast",
-        get(|| async { Json(json!({"current": {}})) }),
-    );
+    let open_meteo = Router::new().route("/v1/forecast", get(|| async { Json(open_meteo_body()) }));
     let base = mock(open_meteo).await;
     let env = Env::new();
     let app = env.app(|c| c.open_meteo_base = format!("{base}/v1/forecast"));

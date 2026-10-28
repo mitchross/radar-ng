@@ -4,8 +4,8 @@
 //! use the rounded values. Concurrent misses for one cell share one upstream request. The 200 body
 //! is the Open-Meteo JSON, unchanged, cached encoded. Failures are
 //! `502 {"error":"upstream_unavailable"}` with **no** `Cache-Control`. A 200 whose body is not JSON
-//! is also a 502 (defect D5 fix; Python returned 500). A body whose current temperature is null (no model
-//! sync yet on a fresh stack) is served `no-store` and not cached, so data shows up once it lands.
+//! is also a 502 (defect D5 fix; Python returned 500). Missing or null requested current fields
+//! bypass the cache and return `no-store`, so partial model syncs do not delay fresh data.
 
 use std::time::Duration;
 
@@ -38,7 +38,7 @@ pub enum ForecastError {
     OutOfRange,
     /// Upstream failed or returned a non-JSON body (HTTP 502 `upstream_unavailable`).
     Upstream,
-    /// Upstream answered, but without data yet (HTTP 200, `no-store`, not cached).
+    /// Upstream answered with incomplete current data (HTTP 200, `no-store`, not cached).
     NoData(Bytes),
 }
 
@@ -75,7 +75,7 @@ pub async fn forecast_for(state: &AppState, lat: f64, lon: f64) -> Result<Value,
 ///
 /// # Errors
 /// [`ForecastError::OutOfRange`] for a bad point, [`ForecastError::Upstream`] for any upstream failure,
-/// [`ForecastError::NoData`] (with the body) when Open-Meteo has no data for the point yet.
+/// [`ForecastError::NoData`] (with the body) when current data is incomplete.
 pub async fn forecast_lookup(state: &AppState, lat: f64, lon: f64) -> Result<Bytes, ForecastError> {
     if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
         return Err(ForecastError::OutOfRange);
@@ -136,10 +136,11 @@ async fn fetch(state: &AppState, glat: f64, glon: f64) -> Result<Bytes, Forecast
         return Err(ForecastError::Upstream);
     };
     let encoded = respond::encode(&data);
-    if data
-        .pointer("/current/temperature_2m")
-        .is_some_and(Value::is_null)
-    {
+    if CURRENT.split(',').any(|field| {
+        data.get("current")
+            .and_then(|current| current.get(field))
+            .is_none_or(Value::is_null)
+    }) {
         return Err(ForecastError::NoData(encoded));
     }
     Ok(encoded)
