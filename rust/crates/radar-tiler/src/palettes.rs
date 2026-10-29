@@ -13,10 +13,6 @@ use crate::error::{Result, TilerError};
 const CLASSIC_JSON: &str = include_str!("../assets/classic.json");
 const MUTED_JSON: &str = include_str!("../assets/muted.json");
 const VIVID_JSON: &str = include_str!("../assets/vivid.json");
-/// The legacy `color_tables.json`. Python uses it only as a fallback for `classic` when
-/// `classic.json` is missing, which never happens with the shipped tree, so it is exposed
-/// through [`legacy_color_tables`] and not used by [`load_palette`].
-const LEGACY_JSON: &str = include_str!("../assets/color_tables.json");
 
 /// Shipped palette names with their embedded documents.
 pub const EMBEDDED_PALETTES: [(&str, &str); 3] = [
@@ -238,12 +234,6 @@ pub fn load_palette(name: &str) -> Result<Palette> {
         .unwrap_or_else(|| Err(TilerError::Invalid(format!("palette not found: {name}"))))
 }
 
-/// The legacy `color_tables.json` as a [`Palette`] (named `legacy`). Not used by the
-/// renderer; it documents the fallback the Python loader would have used.
-pub fn legacy_color_tables() -> Result<Palette> {
-    parse_palette("legacy", LEGACY_JSON)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,12 +263,6 @@ mod tests {
             assert!(p.color_keys().all(|k| !k.starts_with('_')));
             assert!(p.color_keys().any(|k| k == "reflectivity"));
         }
-        assert!(
-            legacy_color_tables()
-                .unwrap()
-                .color_keys()
-                .any(|k| k == "reflectivity")
-        );
     }
 
     #[test]

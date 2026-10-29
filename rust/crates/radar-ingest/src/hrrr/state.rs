@@ -158,8 +158,3 @@ pub fn layer_color_key(layer: &str) -> Option<&'static str> {
         _ => return None,
     })
 }
-
-/// Layers swept by `hrrr_cleanup` (spec §12.2 `HRRR_TILE_LAYERS`).
-pub fn tile_layers() -> &'static [&'static str] {
-    &crate::config::HRRR_TILE_LAYERS
-}

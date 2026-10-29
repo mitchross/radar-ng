@@ -133,9 +133,4 @@ impl NowcastConfig {
             packed_tiles: true,
         }
     }
-
-    /// Number of lead times, `horizon / step` (integer division, as Python).
-    pub fn n_leads(&self) -> usize {
-        (self.horizon_min / self.step_min).max(0) as usize
-    }
 }

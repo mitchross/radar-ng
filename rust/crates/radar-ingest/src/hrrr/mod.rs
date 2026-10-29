@@ -10,7 +10,7 @@ pub mod render;
 pub mod state;
 
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use radar_grib::hrrr::{HrrrVar, parse_run_id};
+use radar_grib::hrrr::parse_run_id;
 
 /// `ProcessedSet` file for HRRR runs (spec §9.2).
 pub const HRRR_PROCESSED_FILE: &str = "ingest-hrrr.json";
@@ -52,23 +52,4 @@ pub fn horizon_for(run_id: &str, forecast_hours: u32, extended_hours: u32) -> an
         forecast_hours,
         extended_hours,
     ))
-}
-
-/// Every HRRR variable the pipeline can extract (used only for documentation and tests).
-pub fn all_vars() -> [HrrrVar; 13] {
-    [
-        HrrrVar::Refc,
-        HrrrVar::T2m,
-        HrrrVar::Dpt2m,
-        HrrrVar::Cape,
-        HrrrVar::U10,
-        HrrrVar::V10,
-        HrrrVar::Crain,
-        HrrrVar::Csnow,
-        HrrrVar::Cfrzr,
-        HrrrVar::Cicep,
-        HrrrVar::Rh2m,
-        HrrrVar::Apcp,
-        HrrrVar::Tcdc,
-    ]
 }

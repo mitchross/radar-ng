@@ -165,11 +165,6 @@ impl Resampler {
             (ru, rv)
         }
     }
-
-    /// Grid-x angle in radians at output index `k` (test hook).
-    pub fn theta_at(&self, k: usize) -> f64 {
-        self.theta[k]
-    }
 }
 
 /// Angle of the grid x-axis measured from east at `(lon, lat)`, in radians (spec §5.5).

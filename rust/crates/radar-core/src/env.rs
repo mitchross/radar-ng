@@ -172,11 +172,6 @@ impl Paths {
         self.state_dir.join(crate::manifest::MANIFEST_FILE)
     }
 
-    /// `<STATE_DIR>/nowcast-skill.json`.
-    pub fn nowcast_skill_path(&self) -> PathBuf {
-        self.state_dir.join(crate::nowcast_skill::SKILL_FILE)
-    }
-
     /// `<STATE_DIR>/push_tokens.sqlite`.
     pub fn push_tokens_db(&self) -> PathBuf {
         self.state_dir.join(crate::push_tokens::DB_FILE)

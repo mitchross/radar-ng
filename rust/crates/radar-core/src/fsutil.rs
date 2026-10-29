@@ -8,7 +8,6 @@
 
 use rustix::fs::{FlockOperation, Mode, OFlags};
 use rustix::io::Errno;
-use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -210,22 +209,6 @@ pub fn read_json_opt(path: &Path) -> Result<Option<Value>, JsonFileError> {
             path: path.to_path_buf(),
             source,
         })
-}
-
-/// Read a JSON file into `T`, returning `default()` when the file is missing, unreadable or invalid.
-/// Use only for readers that the spec says degrade silently (for example the nowcast skill log, NSK-03).
-pub fn read_json_lenient<T, F>(path: &Path, default: F) -> T
-where
-    T: DeserializeOwned,
-    F: FnOnce() -> T,
-{
-    match fs::read_to_string(path)
-        .ok()
-        .and_then(|text| serde_json::from_str::<T>(&text).ok())
-    {
-        Some(value) => value,
-        None => default(),
-    }
 }
 
 #[cfg(test)]

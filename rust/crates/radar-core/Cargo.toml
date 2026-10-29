@@ -20,7 +20,6 @@ uuid.workspace = true
 sha2.workspace = true
 hex.workspace = true
 rusqlite.workspace = true
-pathfinding.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]

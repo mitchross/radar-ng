@@ -22,7 +22,6 @@ serde.workspace = true
 serde_json.workspace = true
 rayon.workspace = true
 tempfile.workspace = true
-uuid.workspace = true
 async-trait.workspace = true
 
 [dev-dependencies]
