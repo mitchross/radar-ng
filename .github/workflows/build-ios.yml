@@ -39,9 +39,7 @@ jobs:
         working-directory: frontend/ios
         run: RUBYOPT="-r$PWD/../scripts/cocoapods_xcodeproj_object_version_70" pod install
 
-      # Fails on master today: expo-background-task adds fetch/processing modes the check rejects.
       - name: Release preflight
-        continue-on-error: true
         run: bash scripts/preflight-ios-release.sh
 
       - name: Write export options
