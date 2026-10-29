@@ -39,6 +39,8 @@ export function RadarMiniMap() {
 
   const { status, nowFrame, layerKey } = useRadarStatus();
   const radarUrl = nowFrame ? buildSelfHostedTileUrl(serverUrl, layerKey, nowFrame.path, activePalette) : null;
+  // Source and layer ids carry the frame: iOS can reuse a stale native source whose id is reused.
+  const frameKey = `${activePalette}-${layerKey}-${nowFrame?.path ?? "none"}`;
   const fallbackHeadline = nowFrame
     ? "Explore nearby precipitation"
     : status.tone === "unavailable" && status.label !== "LOADING"
@@ -73,8 +75,8 @@ export function RadarMiniMap() {
             <Camera center={[lon, lat]} zoom={MINI_ZOOM} minZoom={MINI_ZOOM} maxZoom={MINI_ZOOM} />
             {radarUrl ? (
               <RasterSource
-                id="home-radar-source"
-                key={`${activePalette}-${layerKey}-${nowFrame?.path ?? "none"}`}
+                id={`home-radar-source-${frameKey}`}
+                key={frameKey}
                 tiles={[radarUrl]}
                 tileSize={256}
                 minzoom={MINI_SOURCE_MIN_ZOOM}
@@ -82,7 +84,7 @@ export function RadarMiniMap() {
               >
                 <Layer
                   type="raster"
-                  id="home-radar-layer"
+                  id={`home-radar-layer-${frameKey}`}
                   paint={{
                     "raster-opacity": 0.42,
                     "raster-fade-duration": 0,
