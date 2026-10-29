@@ -38,7 +38,6 @@ Anything else needs an explicit instruction. Never push to the default branch (`
 | docs or `llms.txt` | every relative link resolves (CI checks `llms.txt`) |
 
 Say plainly what you could not run (no Xcode, no Docker, no cluster) instead of claiming it works.
-`frontend` CI's `expo-doctor` step currently fails on `master` too; don't chase it in unrelated PRs.
 
 ## Web + app parity
 
