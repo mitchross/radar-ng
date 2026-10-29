@@ -58,17 +58,11 @@ jobs:
         run: bash scripts/preflight-ios-release.sh
 
       - name: Write export options
-        env:
-          TESTFLIGHT: ${{ inputs.testflight }}
         run: |
           plutil -create xml1 ExportOptions.plist
           plutil -insert method -string app-store-connect ExportOptions.plist
           plutil -insert signingStyle -string automatic ExportOptions.plist
           plutil -insert teamID -string "$(node -p "require('./identity').appleTeamId")" ExportOptions.plist
-          # destination=upload makes the export step itself upload to App Store Connect (TestFlight).
-          if [ "$TESTFLIGHT" = "true" ]; then
-            plutil -insert destination -string upload ExportOptions.plist
-          fi
 
       - name: Archive and export
         working-directory: frontend/ios
@@ -77,9 +71,23 @@ jobs:
           EXPORT_OPTIONS: ../ExportOptions.plist
         run: ~/bin/ios-build "$SCHEME" build
 
-      - if: ${{ !inputs.testflight }}
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
         with:
           name: ipa
           path: frontend/ios/build/*.ipa
           if-no-files-found: error
+
+      # Upload the already-signed IPA. Exporting with destination=upload re-signs inside
+      # Xcode's distribution pipeline, which fails on the headless runner (errSecInternalComponent).
+      # altool finds the key at ~/.appstoreconnect/private_keys/AuthKey_<id>.p8.
+      - name: Upload to TestFlight
+        if: ${{ inputs.testflight }}
+        working-directory: frontend/ios/build
+        run: |
+          set -euo pipefail
+          source ~/.ios-signing/env
+          ipa=$(ls *.ipa | head -1)
+          xcrun altool --upload-app --type ios --file "$ipa" \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee altool.log
+          # Since Xcode 26, altool can exit 0 on a failed upload, so check its output too.
+          if grep -qE "ERROR|Failed to upload" altool.log; then exit 1; fi

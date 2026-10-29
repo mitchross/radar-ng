@@ -108,7 +108,7 @@ gh workflow run build-ios.yml --ref master -f scheme=radarng -f testflight=true
 
 This needs the app record in App Store Connect and an App Store Connect API key on the Mac with at
 least the App Manager role. The build then appears in the TestFlight app for internal testers.
-Without `testflight=true`, the run attaches the IPA as an `ipa` artifact instead.
+The run always attaches the IPA as an `ipa` artifact; `testflight=true` then uploads that IPA with `xcrun altool`.
 
 ## iOS extras: CarPlay + Apple Watch
 
