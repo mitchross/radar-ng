@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { advance, compass, distanceKm, incomingStorm, lightningWithAge, parseStorms, stormGeoJSON, type StormCell } from "./overlays";
+import type { MapGeoJSONFeature } from "maplibre-gl";
+import { advance, compass, describeFeature, distanceKm, incomingStorm, lightningWithAge, parseStorms, stormGeoJSON, type StormCell } from "./overlays";
 
 const cell = (over: Partial<StormCell> = {}): StormCell => ({
   history: [[0, -86.4, 42.96], [300, -86.3, 42.96], [600, -86.2, 42.96]],
@@ -75,5 +76,21 @@ describe("helpers", () => {
   it("adds strike age", () => {
     const fc = lightningWithAge({ type: "FeatureCollection", features: [{ type: "Feature", geometry: { type: "Point", coordinates: [0, 0] }, properties: { time: 100 } }] }, 160);
     expect(fc.features[0].properties?.age_s).toBe(60);
+  });
+});
+
+describe("describeFeature", () => {
+  const feature = (layer: string, properties: Record<string, unknown>) => ({ layer: { id: layer }, properties }) as unknown as MapGeoJSONFeature;
+
+  it("escapes tropical category and wind fields", () => {
+    const xss = '<img src=x onerror="alert(1)">';
+    for (const [layer, props] of [
+      ["ov-tropical-position", { name: "A", category: xss, wind_mph: xss }],
+      ["ov-tropical-points", { name: "A", wind_mph: xss }],
+    ] as const) {
+      const html = describeFeature(feature(layer, props), []);
+      expect(html).not.toContain("<img");
+      expect(html).toContain("&lt;img");
+    }
   });
 });

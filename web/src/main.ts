@@ -7,6 +7,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabled, track } from "./analytics";
 import { buildFrames, isForecastSource, longZoomLabel, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
+import { escapeHtml } from "./html";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
 import { css, LEGEND_TICKS, PALETTES, typeRamps, type PaletteId } from "./palettes";
 import { fetchServerPalettes, layerLegend, uvCategory, type ServerPalettes } from "./layerLegends";
@@ -857,10 +858,6 @@ async function airQualityNow(lat: number, lon: number): Promise<{ pm25: number |
   };
   const [pm25, ozone] = await Promise.all([read("air-quality"), read("ozone")]);
   return { pm25, ozone };
-}
-
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 }
 
 function toast(message: string) {

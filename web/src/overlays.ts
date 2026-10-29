@@ -5,6 +5,7 @@
  */
 import type { Feature, FeatureCollection } from "geojson";
 import type { GeoJSONSource, Map as MLMap, MapGeoJSONFeature } from "maplibre-gl";
+import { escapeHtml as esc } from "./html";
 
 export type OverlayId = "outlook" | "warnings" | "storms" | "lightning" | "tropical";
 type FC = FeatureCollection;
@@ -295,7 +296,6 @@ export class Overlays {
 
 // ---------- popups ----------
 
-const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 const until = (iso: unknown) => (iso ? new Date(String(iso)).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : "");
 
 export function describeFeature(f: MapGeoJSONFeature, cells: StormCell[]): string {
@@ -315,12 +315,12 @@ export function describeFeature(f: MapGeoJSONFeature, cells: StormCell[]): strin
     return `<div class="readout"><b style="color:${esc(p.stroke)}">SEVERE OUTLOOK · ${esc(p.label)}</b><div class="v">${esc(p.name)}</div><small>Today · until ${esc(until(p.expire))}</small></div>`;
   }
   if (f.layer.id === "ov-tropical-position") {
-    const cat = p.category ? `Category ${p.category} hurricane` : esc(p.classification);
+    const cat = p.category ? `Category ${esc(p.category)} hurricane` : esc(p.classification);
     const move = p.movement_mph ? ` · moving ${compass(Number(p.movement_dir_deg))} at ${Math.round(p.movement_mph)} mph` : "";
-    return `<div class="readout"><b>${esc(p.name).toUpperCase()}</b><div class="v">${cat}</div><small>${p.wind_mph ?? "—"} mph winds · ${p.pressure_mb ? `${Math.round(p.pressure_mb)} mb` : ""}${move}</small></div>`;
+    return `<div class="readout"><b>${esc(p.name).toUpperCase()}</b><div class="v">${cat}</div><small>${esc(p.wind_mph ?? "—")} mph winds · ${p.pressure_mb ? `${Math.round(p.pressure_mb)} mb` : ""}${move}</small></div>`;
   }
   if (f.layer.id === "ov-tropical-points") {
-    return `<div class="readout"><b>${esc(p.name).toUpperCase()} · +${Math.round(Number(p.tau_h ?? 0))}h</b><div class="v">${p.wind_mph ?? "—"} mph</div><small>${esc(p.label)}</small></div>`;
+    return `<div class="readout"><b>${esc(p.name).toUpperCase()} · +${Math.round(Number(p.tau_h ?? 0))}h</b><div class="v">${esc(p.wind_mph ?? "—")} mph</div><small>${esc(p.label)}</small></div>`;
   }
   return "";
 }
