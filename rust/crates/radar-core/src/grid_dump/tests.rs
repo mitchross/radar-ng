@@ -455,11 +455,7 @@ fn decimated_bin_is_byte_identical_to_the_full_copy_path() {
         let lats: Vec<f64> = (0..h)
             .map(|i| {
                 let v = 50.0 - i as f64;
-                if asc_lat {
-                    -v
-                } else {
-                    v
-                }
+                if asc_lat { -v } else { v }
             })
             .collect();
         let lons: Vec<f64> = (0..w)
