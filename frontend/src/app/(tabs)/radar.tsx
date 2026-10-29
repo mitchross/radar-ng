@@ -34,6 +34,7 @@ import { OutlookOverlay } from "../../components/map/OutlookOverlay";
 import { StormCellSheet, WarningSheet } from "../../components/map/FeatureSheets";
 import type { StormCellInfo } from "../../lib/stormTracks";
 import { WindParticlesOverlay, useSharedCamera } from "../../components/map/WindParticlesOverlay";
+import { WeatherAnchor } from "../../components/map/RasterFrameCarousel";
 import { PackedRadarOverlay } from "../../components/map/PackedRadarOverlay";
 import { SatelliteOverlay } from "../../components/map/SatelliteOverlay";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
@@ -138,6 +139,8 @@ export default function RadarScreen() {
         {WEATHER_LAYERS.includes(activeLayer) && (
           <WeatherLayerOverlay key={activeLayer} layerId={activeLayer} opacity={layerOpacity} isPacked={packed?.isPacked} />
         )}
+        {/* Radar and weather slots insert under this; everything after it draws above them. */}
+        <WeatherAnchor />
         {/* Always mounted: each overlay renders an empty collection / hidden pin when
             it has nothing to show, so the map's native child count never churns. */}
         <OutlookOverlay />

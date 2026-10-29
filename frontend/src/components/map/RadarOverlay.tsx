@@ -1,6 +1,6 @@
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
-import { RasterFrameCarousel, type CarouselFrameSpec } from "./RasterFrameCarousel";
+import { RasterFrameCarousel, WEATHER_ANCHOR_ID, type CarouselFrameSpec } from "./RasterFrameCarousel";
 import { rasterCarouselView } from "../../lib/packed";
 import type { RadarFrame } from "../../types/weather";
 
@@ -54,6 +54,7 @@ export function RadarOverlay({ isPacked }: { isPacked?: readonly boolean[] }) {
       opacity={view && !view.visible ? 0 : radarOpacity}
       minZoom={SOURCE_MIN_ZOOM}
       specFor={specFor}
+      beforeId={WEATHER_ANCHOR_ID}
     />
   );
 }

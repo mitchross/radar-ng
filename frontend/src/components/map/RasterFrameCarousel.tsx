@@ -2,6 +2,17 @@ import { Layer, RasterSource } from "@maplibre/maplibre-react-native";
 import { assignSlots, assignSlotsInSequence, CAROUSEL_WINDOW, clampWindow, type PlaybackWindow } from "../../lib/radarCarousel";
 import type { RadarFrame } from "../../types/weather";
 
+/**
+ * Radar and weather slots insert under this invisible layer. radar.tsx mounts it
+ * after the weather overlays and before warnings, storm cells and the pin, so
+ * slots that remount every tick stay below them (the web's order too).
+ */
+export const WEATHER_ANCHOR_ID = "weather-anchor";
+
+export function WeatherAnchor() {
+  return <Layer id={WEATHER_ANCHOR_ID} type="background" paint={{ "background-opacity": 0 }} />;
+}
+
 export interface CarouselFrameSpec {
   tileUrl: string;
   maxZoom: number;
