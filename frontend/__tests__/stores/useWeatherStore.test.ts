@@ -109,6 +109,33 @@ describe("useWeatherStore", () => {
     expect(useWeatherStore.getState().frames[1].time).toBe(1000);
   });
 
+  it("follows a new scan when paused on the live frame, but holds a scrubbed frame", () => {
+    const f = (time: number) => ({ time, timestamp: "", path: `/${time}`, source: "radar" as const });
+    const before = [f(1000), f(2000)];
+    const after = [...before, f(3000)];
+
+    // Paused on the newest observed frame: move to the new scan.
+    useWeatherStore.getState().setFrameTimeline(before, 1);
+    useWeatherStore.getState().setCurrentFrameIndex(1);
+    useWeatherStore.getState().setFrameTimeline(after, 2);
+    expect(useWeatherStore.getState().currentFrameIndex).toBe(2);
+
+    // Paused on an older frame: stay on it.
+    useWeatherStore.setState(useWeatherStore.getInitialState());
+    useWeatherStore.getState().setFrameTimeline(before, 1);
+    useWeatherStore.getState().setCurrentFrameIndex(0);
+    useWeatherStore.getState().setFrameTimeline(after, 2);
+    expect(useWeatherStore.getState().currentFrameIndex).toBe(0);
+
+    // Playing on the newest frame: hold the time, like the web.
+    useWeatherStore.setState(useWeatherStore.getInitialState());
+    useWeatherStore.getState().setFrameTimeline(before, 1);
+    useWeatherStore.getState().setCurrentFrameIndex(1);
+    useWeatherStore.getState().setIsPlaying(true);
+    useWeatherStore.getState().setFrameTimeline(after, 2);
+    expect(useWeatherStore.getState().currentFrameIndex).toBe(1);
+  });
+
   it("resets the selected index when a manifest publishes no frames", () => {
     useWeatherStore.getState().setFrameTimeline(
       [{ time: 1000, timestamp: "1970-01-01T00:16:40Z", path: "/a" }],

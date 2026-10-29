@@ -16,7 +16,7 @@ import {
 } from "../lib/persistedPrefs";
 import type { AppearanceMode } from "../theme/weatherClearTheme";
 import type { PlaybackWindow } from "../lib/radarCarousel";
-import { resnapFrameIndex, sameFrames } from "../lib/frameIndex";
+import { refreshKeepTime, resnapFrameIndex, sameFrames } from "../lib/frameIndex";
 import { roundCoord } from "../lib/coordinates";
 import { DEFAULT_RAIN_ALERT_LEAD, parseRainAlertLead, type RainAlertLeadMinutes } from "../lib/rainAlerts";
 import { parseDeviceFix, statusForFix, type LocationStatus } from "../lib/locationStatus";
@@ -189,7 +189,12 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
       if (sameFrames(state.frames, frames)) return state;
       if (frames.length === 0) return { frames, currentFrameIndex: -1 };
 
-      const previousTime = state.frames[state.currentFrameIndex]?.time ?? null;
+      const previousTime = refreshKeepTime(
+        state.frames,
+        state.currentFrameIndex,
+        state.isPlaying,
+        Math.floor(Date.now() / 1000),
+      );
       const preservedIndex = previousTime === null
         ? -1
         : resnapFrameIndex(frames, state.currentFrameIndex, previousTime);

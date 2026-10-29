@@ -43,6 +43,30 @@ export function sameFrames(
 }
 
 /**
+ * The time the playhead keeps after a manifest refresh, or null to follow "now".
+ * Hold while playing or scrubbed; only a paused playhead parked on the latest
+ * observed frame follows a new scan. Mirrors `refreshKeepTime` in web/src/frames.ts.
+ */
+export function refreshKeepTime(
+  frames: { time: number; source?: string }[],
+  currentIndex: number,
+  playing: boolean,
+  nowSec: number,
+): number | null {
+  const current = frames[currentIndex];
+  if (!current) return null;
+  if (!playing) {
+    for (let i = frames.length - 1; i >= 0; i--) {
+      const s = frames[i].source;
+      if (s === "nowcast" || s === "radar-hrrr" || s === "radar-gfs" || frames[i].time > nowSec) continue;
+      if (frames[i].time === current.time) return null;
+      break;
+    }
+  }
+  return current.time;
+}
+
+/**
  * Where the frame the user was looking at (by wall-clock `prevTime`) lives in a
  * refreshed frame list. Indices shift every manifest poll (head pruned, run
  * rolled), so a bare index would silently move the paused frame forward in time.

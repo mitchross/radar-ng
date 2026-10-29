@@ -314,7 +314,7 @@ pub async fn process_frame(
     .await;
 
     if layer == RADAR_LAYER {
-        let grid_for_input = grid.clone();
+        let grid_for_input = grid;
         let cfg_for_input = cfg.clone();
         let ts_for_input = timestamp.clone();
         // Not guarded (D12): a failure here fails the frame activity. Retry converges.
