@@ -32,6 +32,16 @@ jobs:
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
 
+      # Plain swiftc on the Mac, no simulator. RadarShared.swift is what WatchAPI and RadarAPI read.
+      - name: Swift checks
+        run: |
+          swiftc targets/watch/WatchAPI.swift targets/watch/WatchForecastPresentation.swift \
+            targets/watch/RadarShared.swift tests/watch/PresentationChecks.swift -o "$RUNNER_TEMP/presentation-checks"
+          "$RUNNER_TEMP/presentation-checks"
+          swiftc -parse-as-library targets/carplay/RadarRouteProgress.swift targets/carplay/RadarAPI.swift \
+            targets/carplay/RadarShared.swift tests/carplay/RouteProgressChecks.swift -o "$RUNNER_TEMP/route-progress-checks"
+          "$RUNNER_TEMP/route-progress-checks"
+
       - name: Prebuild native project
         run: bunx expo prebuild --platform ios --clean --no-install
 
