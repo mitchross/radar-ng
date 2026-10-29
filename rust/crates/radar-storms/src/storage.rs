@@ -7,7 +7,7 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use rustix::fs::{FlockOperation, flock};
 use serde_json::Value;
@@ -161,12 +161,6 @@ fn sync_dir(dir: &Path) -> io::Result<()> {
         Err(err) if err.raw_os_error() == Some(rustix::io::Errno::INVAL.raw_os_error()) => Ok(()),
         Err(err) => Err(err),
     }
-}
-
-/// Path of `storms.json` inside `state_dir`.
-#[must_use]
-pub fn storms_path(state_dir: &Path) -> PathBuf {
-    state_dir.join(STORMS_FILE)
 }
 
 #[cfg(test)]

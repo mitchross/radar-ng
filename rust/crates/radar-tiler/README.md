@@ -159,7 +159,7 @@ palettes classic/muted/vivid, 615 tiles per palette, 1.59 s wall. Run with:
     <venv>/bin/pip install numpy Pillow scipy pyproj
     PYTHONDONTWRITEBYTECODE=1 <venv>/bin/python testdata/gen_golden.py /path/to/old-checkout
 
-`assets/` holds the palettes (`classic`, `muted`, `vivid`) and `color_tables.json`, embedded with
+`assets/` holds the palettes (`classic`, `muted`, `vivid`), embedded with
 `include_str!`; they are the only palette source.
 
 ## TODO

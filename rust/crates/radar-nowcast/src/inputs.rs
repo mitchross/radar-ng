@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use radar_core::grid_read::{self, GridMeta};
 use radar_core::time::parse_iso_as_utc;
-use radar_tiler::GridGeo;
 
 use crate::config::NowcastConfig;
 use crate::field::Field2;
@@ -78,11 +77,6 @@ pub fn load_grid(meta_path: &Path) -> Option<LoadedGrid> {
     })
 }
 
-/// Load only the values of a grid (for scoring), with the same fill rule.
-pub fn load_values(meta_path: &Path) -> Option<(Field2<f32>, GridMeta)> {
-    load_grid(meta_path).map(|g| (g.values, g.meta))
-}
-
 /// Directory of the input layer: `GRID_DIR/<layer>`, falling back to `GRID_DIR/radar` only when the
 /// layer directory is absent and the layer is not already `radar` (spec 2.3).
 pub fn input_layer_dir(cfg: &NowcastConfig) -> PathBuf {
@@ -127,14 +121,6 @@ pub fn recent_input_grids(cfg: &NowcastConfig) -> Vec<Candidate<PathBuf>> {
 /// Time of a stem, as used for matching (Python `datetime.fromisoformat`).
 pub fn stem_time(stem: &str) -> Option<DateTime<Utc>> {
     parse_iso_as_utc(stem)
-}
-
-/// Axes of a regular grid from its metadata, for the tiler.
-pub fn regular_geo(lats: &[f64], lons: &[f64]) -> GridGeo {
-    GridGeo::Regular {
-        lats: lats.to_vec(),
-        lons: lons.to_vec(),
-    }
 }
 
 #[cfg(test)]

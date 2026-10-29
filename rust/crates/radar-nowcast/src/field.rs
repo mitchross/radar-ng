@@ -86,12 +86,6 @@ impl<T: Copy> Field2<T> {
         &self.data
     }
 
-    /// Mutable row-major view of the values.
-    #[inline]
-    pub fn as_mut_slice(&mut self) -> &mut [T] {
-        &mut self.data
-    }
-
     /// Consume the field and return its buffer.
     pub fn into_vec(self) -> Vec<T> {
         self.data
@@ -128,16 +122,6 @@ impl Field2<f32> {
                 *v = f32::NAN;
             }
         }
-    }
-
-    /// Smallest non-NaN value, or `None` when every value is NaN.
-    pub fn nan_min(&self) -> Option<f32> {
-        nan_min_f32(&self.data)
-    }
-
-    /// Count of cells that are finite (neither NaN nor infinite).
-    pub fn count_finite(&self) -> usize {
-        self.data.iter().filter(|v| v.is_finite()).count()
     }
 }
 
