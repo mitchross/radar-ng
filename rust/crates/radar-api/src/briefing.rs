@@ -8,6 +8,7 @@
 //! on a `watch` channel. Followers wait on that channel. The leader drops its sender when done, so a
 //! follower sees `None` (unavailable) if the leader failed or was cancelled.
 
+use std::collections::hash_map::Entry;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -636,20 +637,28 @@ pub async fn get_briefing(State(state): State<AppState>, uri: Uri) -> Response {
     }
 
     // One LLM call per area, however many requests ask at once.
-    let follower = lock(&state.inflight).get(&key).cloned();
-    if let Some(mut rx) = follower {
-        let body: Option<Arc<Value>> = match rx.wait_for(|v| v.is_some()).await {
-            Ok(v) => (*v).clone(),
-            Err(_) => None,
-        };
-        return match body {
-            Some(body) => respond::json(StatusCode::OK, &body, None),
-            None => unavailable("llm_unavailable"),
-        };
-    }
-
-    let (tx, rx) = watch::channel::<Option<Arc<Value>>>(None);
-    lock(&state.inflight).insert(key.clone(), rx);
+    // Check and insert under one lock: a waiter gets the existing receiver, else this request leads.
+    let role = match lock(&state.inflight).entry(key.clone()) {
+        Entry::Occupied(slot) => Err(slot.get().clone()),
+        Entry::Vacant(slot) => {
+            let (tx, rx) = watch::channel::<Option<Arc<Value>>>(None);
+            slot.insert(rx);
+            Ok(tx)
+        }
+    };
+    let tx = match role {
+        Ok(tx) => tx,
+        Err(mut rx) => {
+            let body: Option<Arc<Value>> = match rx.wait_for(|v| v.is_some()).await {
+                Ok(v) => (*v).clone(),
+                Err(_) => None,
+            };
+            return match body {
+                Some(body) => respond::json(StatusCode::OK, &body, None),
+                None => unavailable("llm_unavailable"),
+            };
+        }
+    };
     let _guard = InflightGuard {
         state: &state,
         key: key.clone(),
