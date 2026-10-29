@@ -12,10 +12,12 @@ enum WatchForecastPresentation {
         return known.count == upcoming.count ? known : []
     }
 
-    /// "72°", or "—" when the value is missing.
-    static func degrees(_ value: Double?) -> String {
+    /// "72°", or "—" when the value is missing. The API gives Fahrenheit; convert
+    /// to the phone's unit and round like its `displayTemperature` (half rounds up).
+    static func degrees(_ value: Double?, unit: String? = RadarShared.current()?.temperatureUnit) -> String {
         guard let value, value.isFinite else { return "—" }
-        return "\(Int(value.rounded()))°"
+        let shown = unit == "celsius" ? (value - 32) * 5 / 9 : value
+        return "\(Int((shown + 0.5).rounded(.down)))°"
     }
 
     private static let dayParser: DateFormatter = {

@@ -41,6 +41,11 @@ struct PresentationChecks {
         let decoded = try! JSONDecoder().decode(Forecast.self, from: Data(json.utf8))
         precondition(WatchForecastPresentation.degrees(decoded.current.temperature_2m) == "—")
         precondition(WatchForecastPresentation.degrees(decoded.daily.temperature_2m_min[0]) == "50°")
+        // The phone's unit applies: 50°F is 10°C, -2.5°C rounds up like Math.round, missing stays "—".
+        precondition(WatchForecastPresentation.degrees(50, unit: "celsius") == "10°")
+        precondition(WatchForecastPresentation.degrees(27.5, unit: "celsius") == "-2°")
+        precondition(WatchForecastPresentation.degrees(50, unit: "fahrenheit") == "50°")
+        precondition(WatchForecastPresentation.degrees(nil, unit: "celsius") == "—")
         let gappy = Forecast.Minutely(time: ["2026-09-08T19:30", "2026-09-08T19:45", "2026-09-08T20:00", "2026-09-08T20:15"],
                                       precipitation: [0, nil, 0, 0])
         precondition(WatchForecastPresentation.nextHour(gappy, currentTime: "2026-09-08T19:30").isEmpty)

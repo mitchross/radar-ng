@@ -16,6 +16,8 @@ struct RadarShared: Decodable {
 
     let serverUrl: String
     let palette: String
+    /// "fahrenheit" or "celsius"; the forecast API always returns Fahrenheit. Absent from older phones.
+    let temperatureUnit: String?
     let location: Location?
 
     static let appGroup = "group.com.vanillax.radar-ng"
