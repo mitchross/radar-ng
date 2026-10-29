@@ -2419,7 +2419,6 @@ dependencies = [
  "radar-debug",
  "radar-ingest",
  "radar-worker",
- "serde_json",
  "tokio",
  "tracing",
 ]
@@ -2480,7 +2479,6 @@ dependencies = [
  "tempfile",
  "temporalio-client",
  "temporalio-common",
- "thiserror",
  "tokio",
  "tower",
  "tower-http",
@@ -2537,7 +2535,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "hex",
- "pathfinding",
  "rusqlite",
  "rustix",
  "serde",
@@ -2626,7 +2623,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
- "uuid",
 ]
 
 [[package]]
