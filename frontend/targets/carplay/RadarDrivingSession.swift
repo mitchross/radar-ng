@@ -123,8 +123,7 @@ final class RadarDrivingSession: NSObject, AVSpeechSynthesizerDelegate {
 
     func tileFailed(for frame: RadarAPI.Frame) {
         guard self.frame == frame else { return }
-        self.frame = nil
-        radarMessage = "Radar unavailable"
+        radarMessage = "Radar incomplete"
         publish()
     }
 

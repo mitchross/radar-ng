@@ -84,13 +84,13 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
         let shared = RadarShared.current()
         if let city = shared?.chosenCity { return CLLocationCoordinate2D(latitude: city.lat, longitude: city.lon) }
         if let location { return location }
-        if let last = shared?.location { return CLLocationCoordinate2D(latitude: last.lat, longitude: last.lon) }
+        if let last = shared?.recentPhoneFix { return CLLocationCoordinate2D(latitude: last.lat, longitude: last.lon) }
         return Self.fallback
     }
 
     private var fallbackNotice: String {
         if location != nil { return "Using last known location" }
-        return RadarShared.current()?.location != nil ? "Using iPhone's location" : "Showing Grand Rapids"
+        return RadarShared.current()?.recentPhoneFix != nil ? "Using iPhone's location" : "Showing Grand Rapids"
     }
 
     private func requestLocationIfNeeded() {

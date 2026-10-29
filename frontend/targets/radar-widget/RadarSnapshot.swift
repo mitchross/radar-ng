@@ -16,7 +16,7 @@ enum RadarSnapshot {
             return await load(at: location.coordinate)
         }
         // No fix of our own: the phone app's last fix is better than nothing.
-        if let last = shared?.location {
+        if let last = shared?.recentPhoneFix {
             return await load(at: CLLocationCoordinate2D(latitude: last.lat, longitude: last.lon))
         }
         return locator.isAuthorized
