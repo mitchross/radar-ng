@@ -391,6 +391,104 @@ fn drv_03_stride_is_a_power_of_two_within_the_cap_using_floor_division() {
     );
 }
 
+/// The pre-B2 `.bin` bytes: copy the whole grid, flip rows, sort columns, then decimate.
+fn full_copy_bin_bytes(
+    data: &[f32],
+    lats: &[f64],
+    lons: &[f64],
+    stride: usize,
+    nan_fill: bool,
+) -> Vec<u8> {
+    let (h, w) = (lats.len(), lons.len());
+    let mut data = data.to_vec();
+    if lats[0] < lats[h - 1] {
+        for r in 0..h / 2 {
+            for c in 0..w {
+                data.swap(r * w + c, (h - 1 - r) * w + c);
+            }
+        }
+    }
+    if lons.iter().copied().fold(f64::NEG_INFINITY, f64::max) > 180.0 {
+        let shifted: Vec<f64> = lons
+            .iter()
+            .map(|&l| if l > 180.0 { l - 360.0 } else { l })
+            .collect();
+        let mut order: Vec<usize> = (0..w).collect();
+        order.sort_by(|&a, &b| shifted[a].partial_cmp(&shifted[b]).unwrap());
+        let mut reordered = Vec::new();
+        for r in 0..h {
+            for &c in &order {
+                reordered.push(data[r * w + c]);
+            }
+        }
+        data = reordered;
+    }
+    let mut out = Vec::new();
+    for r in (0..h).step_by(stride) {
+        for c in (0..w).step_by(stride) {
+            let v = data[r * w + c];
+            let v = if nan_fill && v.is_nan() {
+                FILL_SENTINEL as f32
+            } else {
+                v
+            };
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    out
+}
+
+#[test]
+fn decimated_bin_is_byte_identical_to_the_full_copy_path() {
+    // Odd and even heights, ascending and descending latitudes, wrapped and plain longitudes, and
+    // strides of 1, 2 and 4, with a NaN in the data to cover the sentinel rewrite.
+    for (h, w, asc_lat, wrap_lon, cap) in [
+        (9usize, 13usize, true, true, 20usize),
+        (9, 13, false, true, 20),
+        (10, 12, true, false, 30),
+        (10, 12, false, false, 7),
+        (7, 5, true, true, 1000),
+    ] {
+        let data: Vec<f32> = (0..h * w)
+            .map(|i| if i == 17 { f32::NAN } else { i as f32 * 0.37 })
+            .collect();
+        let lats: Vec<f64> = (0..h)
+            .map(|i| {
+                let v = 50.0 - i as f64;
+                if asc_lat { -v } else { v }
+            })
+            .collect();
+        let lons: Vec<f64> = (0..w)
+            .map(|i| {
+                let v = 200.0 + i as f64;
+                // Ranges across 180 so the shift and column sort both do work.
+                if wrap_lon {
+                    v + 100.0 * (i % 2) as f64 - 60.0
+                } else {
+                    v - 300.0
+                }
+            })
+            .collect();
+        let mut stride = 1usize;
+        while (h / stride) * (w / stride) > cap {
+            stride *= 2;
+        }
+        let root = tempfile::tempdir().unwrap();
+        let cfg = GridConfig::with_dir(root.path());
+        let input = GridInput {
+            max_cells: Some(cap),
+            fill: f64::NAN,
+            ..GridInput::new(&data, &lats, &lons, "dBZ")
+        };
+        let path = write_grid(&cfg, "radar", TS0, &input).unwrap().unwrap();
+        assert_eq!(
+            std::fs::read(path).unwrap(),
+            full_copy_bin_bytes(&data, &lats, &lons, stride, true),
+            "h={h} w={w} asc_lat={asc_lat} wrap_lon={wrap_lon} stride={stride}"
+        );
+    }
+}
+
 #[test]
 fn drv_04_nan_becomes_sentinel_only_when_fill_is_nan() {
     let root = tempfile::tempdir().unwrap();

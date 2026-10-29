@@ -27,7 +27,8 @@ const RUN: &str = "20260715_12";
 const VALID_F01: &str = "2026-07-15T13:00:00+00:00";
 
 struct Harness {
-    root: TempDir,
+    /// Held so the directory outlives the test.
+    _root: TempDir,
     paths: Paths,
     s3: common::FakeS3,
     ctx: IngestCtx,
@@ -47,7 +48,7 @@ async fn harness(palettes: &[&str], enabled: &[&str]) -> Harness {
     cfg.hrrr_enabled_layers = enabled.iter().map(|s| s.to_string()).collect();
     let ctx = IngestCtx::new(cfg, None).unwrap();
     Harness {
-        root,
+        _root: root,
         paths,
         s3,
         ctx,
@@ -156,9 +157,8 @@ fn restamp(dir: &Path, edit: impl FnOnce(&mut PyramidIdentity)) {
 async fn h1_h2_refc_required_and_hour_renders() {
     let h = harness(&["classic"], &["radar-hrrr", "temperature"]).await;
     let pals = load_hrrr_palettes(&["classic".into()]);
-    let grib = h.root.path().join("fixture.grib2");
-    std::fs::write(&grib, common::hrrr_grib()).unwrap();
-    let rendered = process_hour_sync(&h.ctx.cfg, &grib, RUN, VALID_F01, &pals).unwrap();
+    let rendered =
+        process_hour_sync(&h.ctx.cfg, &common::hrrr_grib(), RUN, VALID_F01, &pals).unwrap();
     assert!(
         rendered.iter().any(|l| l == "temperature"),
         "rendered: {rendered:?}"
@@ -170,9 +170,14 @@ async fn h1_h2_refc_required_and_hour_renders() {
     );
 
     // Message 1 (REFC) is 519 bytes; from offset 519 the file starts at the TMP message.
-    let no_refc = h.root.path().join("no_refc.grib2");
-    std::fs::write(&no_refc, &common::hrrr_grib()[519..]).unwrap();
-    let err = process_hour_sync(&h.ctx.cfg, &no_refc, RUN, VALID_F01, &pals).unwrap_err();
+    let err = process_hour_sync(
+        &h.ctx.cfg,
+        &common::hrrr_grib()[519..],
+        RUN,
+        VALID_F01,
+        &pals,
+    )
+    .unwrap_err();
     assert!(
         format!("{err:#}").contains("required HRRR variable refc"),
         "{err:#}"
@@ -184,9 +189,8 @@ async fn h1_h2_refc_required_and_hour_renders() {
 async fn full_pipeline_renders_fixture_layers_and_dumps() {
     let h = harness(&["classic"], &["radar-hrrr", "temperature", "wind"]).await;
     let pals = load_hrrr_palettes(&["classic".into()]);
-    let grib = h.root.path().join("all.grib2");
-    std::fs::write(&grib, common::hrrr_grib()).unwrap();
-    let rendered = process_hour_sync(&h.ctx.cfg, &grib, RUN, VALID_F01, &pals).unwrap();
+    let rendered =
+        process_hour_sync(&h.ctx.cfg, &common::hrrr_grib(), RUN, VALID_F01, &pals).unwrap();
     assert!(rendered.iter().any(|l| l == "temperature"), "{rendered:?}");
     assert!(rendered.iter().any(|l| l == "wind"), "{rendered:?}");
     assert!(has_grid_dump(&h, "temperature"), "temperature grid dump");

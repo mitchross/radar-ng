@@ -210,23 +210,18 @@ pub fn write_grid_with(
             "non-finite latitude or longitude".into(),
         ));
     }
-    let mut data: Vec<f32> = input.data.to_vec();
     let mut lats: Vec<f64> = input.lats.to_vec();
     let mut lons: Vec<f64> = input.lons.to_vec();
 
     // Latitude orientation: store north first. Only the endpoints are compared.
-    if lats[0] < lats[h - 1] {
-        for r in 0..h / 2 {
-            let (a, b) = (r * w, (h - 1 - r) * w);
-            for c in 0..w {
-                data.swap(a + c, b + c);
-            }
-        }
+    let flip_rows = lats[0] < lats[h - 1];
+    if flip_rows {
         lats.reverse();
     }
 
     // Longitude normalization: shift values above 180 and sort columns ascending.
     let max_lon = lons.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let mut col_order: Option<Vec<usize>> = None;
     if max_lon > 180.0 {
         for lon in lons.iter_mut() {
             if *lon > 180.0 {
@@ -235,15 +230,8 @@ pub fn write_grid_with(
         }
         let mut order: Vec<usize> = (0..w).collect();
         order.sort_by(|&a, &b| lons[a].partial_cmp(&lons[b]).expect("finite longitudes"));
-        let reordered_lons: Vec<f64> = order.iter().map(|&i| lons[i]).collect();
-        let mut reordered = Vec::with_capacity(h * w);
-        for r in 0..h {
-            for &c in &order {
-                reordered.push(data[r * w + c]);
-            }
-        }
-        lons = reordered_lons;
-        data = reordered;
+        lons = order.iter().map(|&i| lons[i]).collect();
+        col_order = Some(order);
     }
 
     // Stride decimation to the cell cap. The loop condition uses floor division, as the Python does.
@@ -256,15 +244,19 @@ pub fn write_grid_with(
     while (h / stride) * (w / stride) > cell_limit {
         stride *= 2;
     }
-    if stride > 1 {
-        let (new_h, new_w) = (h.div_ceil(stride), w.div_ceil(stride));
-        let mut decimated = Vec::with_capacity(new_h * new_w);
-        for r in (0..h).step_by(stride) {
-            for c in (0..w).step_by(stride) {
-                decimated.push(data[r * w + c]);
-            }
+    let (new_h, new_w) = (h.div_ceil(stride), w.div_ceil(stride));
+
+    // Build the stored grid straight from the input. Stored cell (r, c) is input cell
+    // (src_row(r), src_col(c)), so the flip and the column sort need no full-size copy.
+    let mut data: Vec<f32> = Vec::with_capacity(new_h * new_w);
+    for r in (0..h).step_by(stride) {
+        let src_row = (if flip_rows { h - 1 - r } else { r }) * w;
+        for c in (0..w).step_by(stride) {
+            let src_col = col_order.as_ref().map_or(c, |order| order[c]);
+            data.push(input.data[src_row + src_col]);
         }
-        data = decimated;
+    }
+    if stride > 1 {
         lats = lats.iter().step_by(stride).copied().collect();
         lons = lons.iter().step_by(stride).copied().collect();
         h = new_h;

@@ -2,7 +2,7 @@
 //! variables, render every layer that has a palette, and write the grid dumps. Runs on the blocking pool.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use radar_geo::{Crs, Grid, GridGeo};
 use radar_grib::decode::{DecodedMessage, find_message};
@@ -244,13 +244,12 @@ fn grid_of(values: Vec<f32>, template: &Grid) -> Grid {
 /// rendered, in pipeline order.
 pub fn process_hour_sync(
     cfg: &IngestConfig,
-    grib: &Path,
+    bytes: &[u8],
     run_id: &str,
     valid: &str,
     palettes: &[Palette],
 ) -> anyhow::Result<Vec<String>> {
-    let bytes = std::fs::read(grib)?;
-    let refc = extract(&bytes, HrrrVar::Refc).ok_or_else(|| {
+    let refc = extract(bytes, HrrrVar::Refc).ok_or_else(|| {
         anyhow::anyhow!("required HRRR variable refc is missing from downloaded GRIB")
     })?;
     let GridGeo::Projected { crs, x, y, .. } = &refc.grid.geo else {
@@ -266,6 +265,20 @@ pub fn process_hour_sync(
         let resampled = resampler.resample(data);
         safe_dump(cfg, layer, valid, &resampled, &lats_t, &lons_t, unit);
     };
+
+    // Fields used by more than one layer are decoded once, and only when a layer needs them.
+    let t2m_msg = (enabled("temperature") || enabled("feels-like"))
+        .then(|| extract(bytes, HrrrVar::T2m))
+        .flatten();
+    let rh2m_msg = (enabled("humidity") || enabled("feels-like"))
+        .then(|| extract(bytes, HrrrVar::Rh2m))
+        .flatten();
+    let u10_msg = (enabled("feels-like") || enabled("wind"))
+        .then(|| extract(bytes, HrrrVar::U10))
+        .flatten();
+    let v10_msg = (enabled("feels-like") || enabled("wind"))
+        .then(|| extract(bytes, HrrrVar::V10))
+        .flatten();
 
     let mut rendered = Vec::new();
     // radar-hrrr (always on).
@@ -284,7 +297,7 @@ pub fn process_hour_sync(
     }
 
     if enabled("temperature")
-        && let Some(t2m) = extract(&bytes, HrrrVar::T2m)
+        && let Some(t2m) = &t2m_msg
     {
         let vals: Vec<f32> = t2m
             .grid
@@ -308,7 +321,7 @@ pub fn process_hour_sync(
         }
     }
     if enabled("dewpoint")
-        && let Some(d) = extract(&bytes, HrrrVar::Dpt2m)
+        && let Some(d) = extract(bytes, HrrrVar::Dpt2m)
     {
         let vals: Vec<f32> = d
             .grid
@@ -325,7 +338,7 @@ pub fn process_hour_sync(
         }
     }
     if enabled("humidity")
-        && let Some(rh) = extract(&bytes, HrrrVar::Rh2m)
+        && let Some(rh) = &rh2m_msg
         && render_layer(
             cfg, "humidity", run_id, valid, &rh.grid, palettes, "humidity", false,
         )?
@@ -334,12 +347,7 @@ pub fn process_hour_sync(
         dump("humidity", &rh.grid.values, "%");
     }
     if enabled("feels-like")
-        && let (Some(t2m), Some(rh), Some(u), Some(v)) = (
-            extract(&bytes, HrrrVar::T2m),
-            extract(&bytes, HrrrVar::Rh2m),
-            extract(&bytes, HrrrVar::U10),
-            extract(&bytes, HrrrVar::V10),
-        )
+        && let (Some(t2m), Some(rh), Some(u), Some(v)) = (&t2m_msg, &rh2m_msg, &u10_msg, &v10_msg)
     {
         let vals: Vec<f32> = t2m
             .grid
@@ -368,7 +376,7 @@ pub fn process_hour_sync(
         }
     }
     if enabled("cape")
-        && let Some(cape) = extract(&bytes, HrrrVar::Cape)
+        && let Some(cape) = extract(bytes, HrrrVar::Cape)
         && render_layer(
             cfg, "cape", run_id, valid, &cape.grid, palettes, "cape", false,
         )?
@@ -377,7 +385,7 @@ pub fn process_hour_sync(
         dump("cape", &cape.grid.values, "J/kg");
     }
     if enabled("wind")
-        && let (Some(u), Some(v)) = (extract(&bytes, HrrrVar::U10), extract(&bytes, HrrrVar::V10))
+        && let (Some(u), Some(v)) = (&u10_msg, &v10_msg)
     {
         let u_mph: Vec<f32> = u.grid.values.iter().map(|&c| units::ms_to_mph(c)).collect();
         let v_mph: Vec<f32> = v.grid.values.iter().map(|&c| units::ms_to_mph(c)).collect();
@@ -405,7 +413,7 @@ pub fn process_hour_sync(
         }
     }
     if enabled("precip-accum")
-        && let Some(apcp) = extract(&bytes, HrrrVar::Apcp)
+        && let Some(apcp) = extract(bytes, HrrrVar::Apcp)
     {
         let vals: Vec<f32> = apcp
             .grid
@@ -429,7 +437,7 @@ pub fn process_hour_sync(
         }
     }
     if enabled("cloud")
-        && let Some(tcdc) = extract(&bytes, HrrrVar::Tcdc)
+        && let Some(tcdc) = extract(bytes, HrrrVar::Tcdc)
         && render_layer(
             cfg,
             "cloud",
@@ -452,7 +460,7 @@ pub fn process_hour_sync(
             HrrrVar::Cicep,
         ]
         .into_iter()
-        .map(|v| extract(&bytes, v))
+        .map(|v| extract(bytes, v))
         .collect();
         if flags.iter().any(|f| f.is_some()) {
             let len = src_h * src_w;

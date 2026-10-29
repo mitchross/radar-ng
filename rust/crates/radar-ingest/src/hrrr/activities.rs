@@ -144,25 +144,14 @@ pub async fn process_forecast_hour(
         hrrr::fetch_hour(&ctx.hrrr_s3, init, fhr_u32, &needed),
     )
     .await?;
-    let (bytes, full_file) = match fetched {
+    let bytes = match fetched {
         Fetched::Pending => {
             tracing::info!(run_id = %run_id, fhr, "hour_pending");
             return Ok(pending_result(fhr, started, valid));
         }
         Fetched::NoMatchingFields => return Ok(pending_result(fhr, started, valid)),
-        Fetched::Data { bytes, full_file } => (bytes, full_file),
+        Fetched::Data { bytes, .. } => bytes,
     };
-    let name = if full_file {
-        format!("hrrr_f{fhr:02}.grib2")
-    } else {
-        format!("hrrr_f{fhr:02}_subset.grib2")
-    };
-    let grib: PathBuf = scratch.path().join(name);
-    let write_path = grib.clone();
-    heartbeat::blocking(HRRR_BEAT, hb, details.clone(), move || {
-        std::fs::write(&write_path, &bytes)
-    })
-    .await?;
 
     hb(serde_json::json!({"phase": "render", "fhr": fhr, "run_id": run_id}));
     let render_cfg = cfg.clone();
@@ -176,7 +165,7 @@ pub async fn process_forecast_hour(
         move || {
             process_hour_sync(
                 &render_cfg,
-                &grib,
+                &bytes,
                 &render_run,
                 &render_valid,
                 &render_palettes,
