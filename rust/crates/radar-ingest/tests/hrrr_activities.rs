@@ -27,7 +27,8 @@ const RUN: &str = "20260715_12";
 const VALID_F01: &str = "2026-07-15T13:00:00+00:00";
 
 struct Harness {
-    root: TempDir,
+    /// Held so the directory outlives the test.
+    _root: TempDir,
     paths: Paths,
     s3: common::FakeS3,
     ctx: IngestCtx,
@@ -47,7 +48,7 @@ async fn harness(palettes: &[&str], enabled: &[&str]) -> Harness {
     cfg.hrrr_enabled_layers = enabled.iter().map(|s| s.to_string()).collect();
     let ctx = IngestCtx::new(cfg, None).unwrap();
     Harness {
-        root,
+        _root: root,
         paths,
         s3,
         ctx,
