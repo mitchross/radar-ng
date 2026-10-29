@@ -2,7 +2,7 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
 import type { LayerType, RadarFrame } from "../../types/weather";
 import { LAYERS } from "../../lib/constants";
-import { RasterFrameCarousel, type CarouselFrameSpec } from "./RasterFrameCarousel";
+import { RasterFrameCarousel, WEATHER_ANCHOR_ID, type CarouselFrameSpec } from "./RasterFrameCarousel";
 import { rasterCarouselView } from "../../lib/packed";
 
 interface Props {
@@ -43,6 +43,7 @@ export function WeatherLayerOverlay({ layerId, opacity = 0.7, isPacked }: Props)
       opacity={view && !view.visible ? 0 : opacity}
       minZoom={layerConfig.minZoom}
       specFor={specFor}
+      beforeId={WEATHER_ANCHOR_ID}
     />
   );
 }

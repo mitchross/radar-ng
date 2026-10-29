@@ -78,6 +78,34 @@ describe("satellite overlay", () => {
   });
 });
 
+describe("weather anchor keeps radar under warnings, storms and the pin", () => {
+  it.each(["components/map/RadarOverlay.tsx", "components/map/WeatherLayerOverlay.tsx"])(
+    "%s passes the weather anchor as beforeId",
+    (rel) => {
+      expect(read(rel)).toContain("beforeId={WEATHER_ANCHOR_ID}");
+    },
+  );
+
+  it("mounts the anchor after the weather slots and before every overlay", () => {
+    const radar = read("app/(tabs)/radar.tsx");
+    const anchor = radar.indexOf("<WeatherAnchor />");
+    expect(anchor).toBeGreaterThan(radar.indexOf("<WeatherLayerOverlay"));
+    expect(anchor).toBeLessThan(radar.indexOf("<OutlookOverlay"));
+    expect(anchor).toBeLessThan(radar.indexOf("<WarningsOverlay"));
+    expect(anchor).toBeLessThan(radar.indexOf("<StormCellsOverlay"));
+    expect(anchor).toBeLessThan(radar.indexOf("<LayerLocationMarker"));
+  });
+});
+
+describe("home mini-map", () => {
+  it("puts the frame key in the source and layer ids, not just the React key", () => {
+    const source = read("components/home/RadarMiniMap.tsx");
+    expect(source).toContain("id={`home-radar-source-${frameKey}`}");
+    expect(source).toContain("key={frameKey}");
+    expect(source).toContain("id={`home-radar-layer-${frameKey}`}");
+  });
+});
+
 describe("map overlays keep a constant native child count", () => {
   it.each([
     "components/map/AlertPolygon.tsx",
