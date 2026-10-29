@@ -98,6 +98,18 @@ Apple Distribution certificate with its private key, and provisioning profiles f
 Watch bundle IDs (upstream: `com.vanillax.radar-ng` and `com.vanillax.radar-ng.watch`; forks set
 their own, see [FORKING.md](../../FORKING.md)).
 
+### TestFlight from CI
+
+If a self-hosted Mac runner is set up, the `build · ios` workflow can upload straight to TestFlight:
+
+```bash
+gh workflow run build-ios.yml --ref master -f scheme=radarng -f testflight=true
+```
+
+This needs the app record in App Store Connect and an App Store Connect API key on the Mac with at
+least the App Manager role. The build then appears in the TestFlight app for internal testers.
+Without `testflight=true`, the run attaches the IPA as an `ipa` artifact instead.
+
 ## iOS extras: CarPlay + Apple Watch
 
 The repo ships a native Watch radar/forecast app and an experimental CarPlay map

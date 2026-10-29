@@ -17,6 +17,7 @@
       "icon": "./assets/expo.icon",
       "infoPlist": {
         "CFBundleDisplayName": "Radar NG",
+        "ITSAppUsesNonExemptEncryption": false,
         "NSLocalNetworkUsageDescription": "Radar NG connects to a weather server on your local network when you configure one."
       }
     },
