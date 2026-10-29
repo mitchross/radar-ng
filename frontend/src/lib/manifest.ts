@@ -155,9 +155,23 @@ export function parseSelfHostedManifest(value: unknown): SelfHostedManifest {
     fail("schema_version");
   }
 
+  // A layer this client can't read (say, a kind a newer server added) is
+  // dropped so the rest still renders; only a manifest with nothing usable throws.
+  const layers: Record<string, unknown> = {};
+  let dropped = false;
   for (const [layerName, layer] of Object.entries(value.layers)) {
     if (!isNonEmptyString(layerName, 64)) fail("layers");
-    validateLayer(layer, `layers.${layerName}`);
+    try {
+      validateLayer(layer, `layers.${layerName}`);
+      layers[layerName] = layer;
+    } catch (error) {
+      if (!(error instanceof ManifestValidationError)) throw error;
+      dropped = true;
+    }
+  }
+  if (dropped) {
+    if (Object.keys(layers).length === 0) fail("layers");
+    return { ...value, layers } as unknown as SelfHostedManifest;
   }
 
   return value as unknown as SelfHostedManifest;
