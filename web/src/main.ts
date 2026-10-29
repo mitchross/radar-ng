@@ -1274,14 +1274,14 @@ async function boot() {
   if (rainAlerts.enabled) void rainAlerts.connect();
   if (state.wind) setOverlay("wind", true);
   void renderForecast();
-  window.setInterval(refreshManifest, MANIFEST_POLL_MS);
+  startPeriodic(() => void refreshManifest(), MANIFEST_POLL_MS);
   // Keep "Now" and the radar age honest between manifest polls.
-  window.setInterval(() => {
+  startPeriodic(() => {
     renderTimeline();
     renderRadarStatus();
   }, 30_000);
-  window.setInterval(() => void renderBriefing(), 10 * 60_000);
-  window.setInterval(() => void renderNextHour(), 60_000);
+  startPeriodic(() => void renderBriefing(), 10 * 60_000);
+  startPeriodic(() => void renderNextHour(), 60_000);
   startPeriodic(() => void renderForecast(true), FORECAST_REFRESH_MS);
   startPeriodic(() => void renderAlerts(), ALERTS_REFRESH_MS);
 }
