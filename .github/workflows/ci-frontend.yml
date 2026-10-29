@@ -46,15 +46,16 @@ jobs:
       - name: Test
         run: bun run test -- --runInBand
 
-      - name: Expo doctor
-        run: bunx expo-doctor
-
-      - name: SDK-pinned versions
-        run: bunx expo install --check
-
       # Both production bundles must build; nothing here needs a native toolchain.
+      # They run before the doctor checks so a broken bundle always shows up.
       - name: Export iOS bundle
         run: bunx expo export --platform ios --output-dir dist/ios
 
       - name: Export Android bundle
         run: bunx expo export --platform android --output-dir dist/android
+
+      - name: Expo doctor
+        run: bunx expo-doctor
+
+      - name: SDK-pinned versions
+        run: bunx expo install --check
