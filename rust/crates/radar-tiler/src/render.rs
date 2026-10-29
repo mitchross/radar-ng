@@ -529,6 +529,9 @@ struct Scratch {
     encoder: IndexedTileEncoder,
     tail: Vec<u8>,
     file: Vec<u8>,
+    /// Last `(z, tx)` whose directory exists under every staged root, so a column of tiles
+    /// creates it once instead of once per tile and palette.
+    column: Option<(u32, u32)>,
 }
 
 impl Scratch {
@@ -540,6 +543,7 @@ impl Scratch {
             encoder: IndexedTileEncoder::new(level),
             tail: Vec::new(),
             file: Vec::new(),
+            column: None,
         }
     }
 }
@@ -657,15 +661,19 @@ impl<'a> FrameJob<'a> {
         let t = tile as u32;
         s.encoder
             .encode_tail(&s.classes, tile, tile, self.depth, &mut s.tail)?;
+        let new_column = s.column != Some((job.z, job.tx));
         for (root, (plte, trns)) in roots.iter().zip(palettes) {
             s.file.clear();
             s.file.extend_from_slice(&header_bytes(t, t, self.depth));
             append_palette_chunks(&mut s.file, plte, trns);
             s.file.extend_from_slice(&s.tail);
             let dir = root.join(job.z.to_string()).join(job.tx.to_string());
-            fs::create_dir_all(&dir)?;
+            if new_column {
+                fs::create_dir_all(&dir)?;
+            }
             fs::write(dir.join(format!("{}.png", job.ty)), &s.file)?;
         }
+        s.column = Some((job.z, job.tx));
         Ok(())
     }
 }
