@@ -71,9 +71,30 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # One tag for all three images: the highest vX.Y.Z on any of them, plus one patch.
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Next version from the registry
+        id: ver
+        env:
+          EXPLICIT: ${{ github.event.inputs.version }}
+        run: |
+          # The Rust rewrite starts the v2 line. Never publish below it.
+          # GHCR names are lowercase; repository_owner keeps the account's casing.
+          version=$(bash .github/scripts/next-semver.sh "${GITHUB_REPOSITORY_OWNER,,}" v2.0.0 \
+            radar-ng-tile-server radar-ng-temporal-worker radar-ng-open-meteo-worker)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
   publish:
     name: publish (${{ matrix.image }})
-    needs: binary
+    needs: [binary, version]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -106,42 +127,6 @@ jobs:
           name: radar
           path: dist
 
-      - name: Compute next semver from registry
-        id: ver
-        env:
-          IMAGE: ${{ matrix.image }}
-          EXPLICIT: ${{ github.event.inputs.version }}
-        run: |
-          set -euo pipefail
-          # The Rust rewrite starts the v2 line. Never publish below it.
-          FLOOR="v2.0.0"
-          if [ -n "$EXPLICIT" ]; then
-            NEXT="$EXPLICIT"
-          else
-            TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${{ env.IMAGE_OWNER }}/${IMAGE}:pull" | jq -r .token)
-            LATEST=$(curl -s -H "Authorization: Bearer $TOKEN" "https://ghcr.io/v2/${{ env.IMAGE_OWNER }}/${IMAGE}/tags/list" \
-              | jq -r '.tags[]?' \
-              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-              | sort -V \
-              | tail -1 \
-              || true)
-            if [ -z "${LATEST:-}" ]; then
-              NEXT="$FLOOR"
-            else
-              STRIPPED=${LATEST#v}
-              MAJOR=${STRIPPED%%.*}
-              REST=${STRIPPED#*.}
-              MINOR=${REST%%.*}
-              PATCH=${REST#*.}
-              NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
-            fi
-          fi
-          if [ "$(printf '%s\n%s\n' "$NEXT" "$FLOOR" | sort -V | head -1)" != "$FLOOR" ]; then
-            NEXT="$FLOOR"
-          fi
-          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "Calculated version: $NEXT"
-
       - uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
@@ -159,7 +144,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
-            type=raw,value=${{ steps.ver.outputs.version }}
+            type=raw,value=${{ needs.version.outputs.version }}
 
       - name: Build and push
         id: build
@@ -181,6 +166,6 @@ jobs:
 
       - name: Published reference
         run: |
-          ref="ghcr.io/${{ env.IMAGE_OWNER }}/${{ matrix.image }}:${{ steps.ver.outputs.version }}@${{ steps.build.outputs.digest }}"
+          ref="ghcr.io/${{ env.IMAGE_OWNER }}/${{ matrix.image }}:${{ needs.version.outputs.version }}@${{ steps.build.outputs.digest }}"
           echo "::notice title=published::$ref"
           echo "Published \`$ref\`" >> "$GITHUB_STEP_SUMMARY"
