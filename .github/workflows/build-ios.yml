@@ -9,6 +9,11 @@ on:
         required: true
         default: radarng
         type: string
+      testflight:
+        description: Upload to TestFlight instead of attaching the IPA
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -53,11 +58,17 @@ jobs:
         run: bash scripts/preflight-ios-release.sh
 
       - name: Write export options
+        env:
+          TESTFLIGHT: ${{ inputs.testflight }}
         run: |
           plutil -create xml1 ExportOptions.plist
           plutil -insert method -string app-store-connect ExportOptions.plist
           plutil -insert signingStyle -string automatic ExportOptions.plist
           plutil -insert teamID -string "$(node -p "require('./identity').appleTeamId")" ExportOptions.plist
+          # destination=upload makes the export step itself upload to App Store Connect (TestFlight).
+          if [ "$TESTFLIGHT" = "true" ]; then
+            plutil -insert destination -string upload ExportOptions.plist
+          fi
 
       - name: Archive and export
         working-directory: frontend/ios
@@ -66,7 +77,8 @@ jobs:
           EXPORT_OPTIONS: ../ExportOptions.plist
         run: ~/bin/ios-build "$SCHEME" build
 
-      - uses: actions/upload-artifact@v7
+      - if: ${{ !inputs.testflight }}
+        uses: actions/upload-artifact@v7
         with:
           name: ipa
           path: frontend/ios/build/*.ipa
