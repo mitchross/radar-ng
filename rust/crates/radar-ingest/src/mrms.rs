@@ -149,14 +149,11 @@ pub async fn process_frame(
         fetch_precip_flag(ctx, &key),
     );
     let (ts_fetch, gz) = fetched?;
-    let gz_path: PathBuf = scratch.path().join("mrms.grib2.gz");
-    let decode_path = gz_path.clone();
     let decoded: Decoded = heartbeat::blocking(
         DOWNLOAD_BEAT,
         hb,
         serde_json::json!({"phase": "download", "key": key}),
         move || -> anyhow::Result<Decoded> {
-            std::fs::write(&decode_path, &gz)?;
             let grid = gmrms::decode_gz(&gz)?;
             Ok(Decoded { grid })
         },

@@ -82,10 +82,11 @@ async fn pack_real_hrrr_hours() {
         }
         let valid = valid_time(init, fhr);
         let mut seconds = [0.0; 2];
+        let bytes = std::fs::read(&grib).unwrap();
         let mut layers = Vec::new();
         for (i, cfg) in [&raster, &packed].into_iter().enumerate() {
             let started = Instant::now();
-            layers = process_hour_sync(cfg, &grib, &run, &valid, &palettes).unwrap();
+            layers = process_hour_sync(cfg, &bytes, &run, &valid, &palettes).unwrap();
             seconds[i] = started.elapsed().as_secs_f64();
         }
         println!(
