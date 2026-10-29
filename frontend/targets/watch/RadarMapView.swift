@@ -1,16 +1,15 @@
 import SwiftUI
 import CoreLocation
 
-/// Self-hosted MRMS radar over a native Apple map snapshot, centered on the user.
+/// Self-hosted MRMS radar over a native Apple map snapshot, centered on the place the forecast shows.
 /// watchOS has no MKTileOverlay, so slippy-map tiles are composited by hand:
-/// only visible radar tiles are layered over the snapshot, offset so the
-/// user's location sits at screen center.
+/// only visible radar tiles are layered over the snapshot, offset so that
+/// place sits at screen center.
 struct RadarMapView: View {
     @EnvironmentObject var store: WatchStore
     @State private var zoom: Double = 7
     @State private var failedTiles: Set<String> = []
 
-    private let fallback = CLLocationCoordinate2D(latitude: 42.9634, longitude: -85.6681)
     private let tileSize: CGFloat = 256
 
     var body: some View {
@@ -20,15 +19,13 @@ struct RadarMapView: View {
     }
 
     private func radarMap(at now: Date) -> some View {
-        let coord = store.location ?? fallback
+        let coord = store.displayLocation
         let maxZoom = max(1, min(store.radarFrame?.maxZoom ?? 7, 7))
         let z = max(1, min(Int(zoom.rounded()), maxZoom))
         let n = 1 << z
-        let xf = Double(n) * (coord.longitude + 180) / 360
+        let (xf, yf) = Self.tilePoint(coord, n: n)
         let latitude = min(85.0511, max(-85.0511, coord.latitude))
-        let latRad = latitude * .pi / 180
         let covered = (20...55).contains(coord.latitude) && (-130 ... -60).contains(coord.longitude)
-        let yf = Double(n) * (1 - log(tan(latRad) + 1 / cos(latRad)) / .pi) / 2
 
         return GeometryReader { geo in
             let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
@@ -57,11 +54,14 @@ struct RadarMapView: View {
                         }
                     }
                 }
-                if store.location != nil {
-                Circle()
-                    .fill(.blue)
-                    .frame(width: 9, height: 9)
-                    .overlay(Circle().stroke(.white, lineWidth: 1.5))
+                if let here = store.location {
+                    let dot = Self.tilePoint(here, n: n)
+                    Circle()
+                        .fill(.blue)
+                        .frame(width: 9, height: 9)
+                        .overlay(Circle().stroke(.white, lineWidth: 1.5))
+                        .position(x: center.x + CGFloat(dot.x - xf) * tileSize,
+                                  y: center.y + CGFloat(dot.y - yf) * tileSize)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -82,6 +82,13 @@ struct RadarMapView: View {
         .onChange(of: store.radarFrame?.maxZoom) { _, maxZoom in
             zoom = min(zoom, Double(maxZoom ?? 7))
         }
+    }
+
+    /// Fractional slippy-map tile coordinates of `coord` at the zoom with `n` tiles per side.
+    private static func tilePoint(_ coord: CLLocationCoordinate2D, n: Int) -> (x: Double, y: Double) {
+        let latRad = min(85.0511, max(-85.0511, coord.latitude)) * .pi / 180
+        return (Double(n) * (coord.longitude + 180) / 360,
+                Double(n) * (1 - log(tan(latRad) + 1 / cos(latRad)) / .pi) / 2)
     }
 
     @ViewBuilder

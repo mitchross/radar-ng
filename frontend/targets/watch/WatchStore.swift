@@ -10,6 +10,8 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var location: CLLocationCoordinate2D?
+    /// Where the forecast and the radar map are centered; see `displayCoordinate()`.
+    @Published var displayLocation = WatchStore.fallback
     @Published var radarFrame: WatchRadarFrame?
     @Published var radarErrorMessage: String?
     @Published var isRadarLoading = false
@@ -22,7 +24,7 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var locationRevision = 0
     private var pendingLocationRefresh = false
     private let clManager = CLLocationManager()
-    private let fallback = CLLocationCoordinate2D(latitude: 42.9634, longitude: -85.6681)
+    private static let fallback = CLLocationCoordinate2D(latitude: 42.9634, longitude: -85.6681)
 
     override init() {
         super.init()
@@ -50,6 +52,7 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         let revision = locationRevision
         let coord = displayCoordinate()
+        displayLocation = coord
         async let forecastResult = Self.capture { try await WatchAPI.fetchForecast(lat: coord.latitude, lon: coord.longitude) }
         async let alertResult = Self.capture { try await WatchAPI.fetchAlerts(lat: coord.latitude, lon: coord.longitude) }
         async let radarResult = Self.capture { try await WatchAPI.fetchLatestRadarFrame() }
@@ -82,7 +85,7 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
         if let city = shared?.chosenCity { return CLLocationCoordinate2D(latitude: city.lat, longitude: city.lon) }
         if let location { return location }
         if let last = shared?.location { return CLLocationCoordinate2D(latitude: last.lat, longitude: last.lon) }
-        return fallback
+        return Self.fallback
     }
 
     private var fallbackNotice: String {
@@ -147,6 +150,7 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
             self.lastLocation = fix
             self.location = coord
             self.locationNotice = nil
+            self.displayLocation = self.displayCoordinate()
             if previous == nil || CLLocation(latitude: previous!.latitude, longitude: previous!.longitude)
                 .distance(from: CLLocation(latitude: coord.latitude, longitude: coord.longitude)) > 2000 {
                 self.locationRevision += 1
