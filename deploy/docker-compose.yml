@@ -287,6 +287,8 @@ services:
       # Code default is 900 (radar-api/src/config.rs).
       - FORECAST_TTL_S=${FORECAST_TTL_S:-900}
       - BASEMAP_PMTILES=/basemap/basemap.pmtiles
+      # Same contact the workers send (x-worker-env); NWS rejects anonymous clients.
+      - NWS_USER_AGENT=${NWS_USER_AGENT:-(radar-ng, you@example.com)}
     volumes:
       - tiles:/data/tiles:ro
       - grids:/data/grids:ro

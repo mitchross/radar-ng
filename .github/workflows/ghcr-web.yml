@@ -44,32 +44,11 @@ jobs:
       - name: Compute next semver from registry
         if: github.event_name != 'pull_request'
         id: ver
+        env:
+          EXPLICIT: ${{ github.event.inputs.version }}
         run: |
-          set -euo pipefail
-          IMAGE="radar-ng-web"
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            NEXT="${{ github.event.inputs.version }}"
-          else
-            TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${{ env.IMAGE_OWNER }}/${IMAGE}:pull" | jq -r .token)
-            LATEST=$(curl -s -H "Authorization: Bearer $TOKEN" "https://ghcr.io/v2/${{ env.IMAGE_OWNER }}/${IMAGE}/tags/list" \
-              | jq -r '.tags[]?' \
-              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-              | sort -V \
-              | tail -1 \
-              || true)
-            if [ -z "${LATEST:-}" ]; then
-              NEXT="v0.1.0"
-            else
-              STRIPPED=${LATEST#v}
-              MAJOR=${STRIPPED%%.*}
-              REST=${STRIPPED#*.}
-              MINOR=${REST%%.*}
-              PATCH=${REST#*.}
-              NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
-            fi
-          fi
-          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "Calculated version: $NEXT"
+          version=$(bash .github/scripts/next-semver.sh "$IMAGE_OWNER" v0.1.0 radar-ng-web)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v4
 

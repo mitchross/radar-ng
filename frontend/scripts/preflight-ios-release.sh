@@ -81,7 +81,8 @@ if os.path.exists(ent_path):
 # ordinary release means App Review sees background modes for features it cannot
 # see (guideline 2.5.4).
 if carplay != "1":
-    modes = info.get("UIBackgroundModes") or []
+    # expo-background-task adds fetch/processing to every build; only CarPlay adds these.
+    modes = [m for m in info.get("UIBackgroundModes") or [] if m in ("location", "audio")]
     if modes:
         fail(
             "UIBackgroundModes present ("
