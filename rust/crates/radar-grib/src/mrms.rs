@@ -96,10 +96,20 @@ fn filter_grib(keys: Vec<String>) -> Vec<String> {
         .collect()
 }
 
+/// How long after UTC midnight yesterday's prefix is still listed next to today's, so the last files
+/// of yesterday are not missed while today's prefix has only just started to fill.
+const MIDNIGHT_LIST_WINDOW: Duration = Duration::minutes(10);
+
+/// True when `now` is within [`MIDNIGHT_LIST_WINDOW`] after UTC midnight.
+fn in_midnight_window(now: DateTime<Utc>) -> bool {
+    now.time().signed_duration_since(NaiveTime::MIN) < MIDNIGHT_LIST_WINDOW
+}
+
 /// Lists the MRMS keys for the most recent UTC day (Python `_list_recent_files_sync`).
 ///
-/// Lists `{prefix}/{YYYYMMDD}` for `now`'s UTC date. When that yields no `.grib2.gz` keys, yesterday's
-/// prefix is listed instead. The result is sorted ascending by key (the S3 listing order).
+/// Lists `{prefix}/{YYYYMMDD}` for `now`'s UTC date. Yesterday's prefix is listed as well when today's
+/// yields no `.grib2.gz` keys, or when `now` is within the first 10 minutes after UTC midnight. The
+/// result is merged, sorted ascending by key (the S3 listing order) and deduplicated.
 pub async fn list_recent_keys(
     s3: &S3Client,
     prefix: &str,
@@ -110,16 +120,17 @@ pub async fn list_recent_keys(
         s3.list_all(&format!("{prefix}/{today}"), LIST_TIMEOUT)
             .await?,
     );
-    if keys.is_empty() {
+    if keys.is_empty() || in_midnight_window(now) {
         let yesterday = (now - chrono::Duration::days(1))
             .format("%Y%m%d")
             .to_string();
-        keys = filter_grib(
+        keys.extend(filter_grib(
             s3.list_all(&format!("{prefix}/{yesterday}"), LIST_TIMEOUT)
                 .await?,
-        );
+        ));
     }
     keys.sort();
+    keys.dedup();
     Ok(keys)
 }
 
@@ -183,6 +194,16 @@ mod tests {
             extract_timestamp("x/MRMS_A_20261001-235958.grib2.gz").unwrap(),
             "2026-10-01T23:59:58+00:00"
         );
+    }
+
+    #[test]
+    fn midnight_window_covers_only_the_first_ten_minutes_of_the_utc_day() {
+        use chrono::TimeZone;
+        let at = |h, m, s| Utc.with_ymd_and_hms(2026, 10, 15, h, m, s).unwrap();
+        assert!(in_midnight_window(at(0, 0, 0)));
+        assert!(in_midnight_window(at(0, 9, 59)));
+        assert!(!in_midnight_window(at(0, 10, 0)));
+        assert!(!in_midnight_window(at(23, 59, 59)));
     }
 
     #[test]

@@ -8,6 +8,7 @@
 //! on a `watch` channel. Followers wait on that channel. The leader drops its sender when done, so a
 //! follower sees `None` (unavailable) if the leader failed or was cancelled.
 
+use std::collections::hash_map::Entry;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -69,6 +70,9 @@ const EARTH_RADIUS_KM: f64 = 6371.0;
 
 /// The incoming-storm search radius in kilometres.
 const STORM_RADIUS_KM: f64 = 12.0;
+
+/// Kilometres per hour to miles per hour, the factor the web and app use for their tracked-storm speed bound.
+const KMH_TO_MPH: f64 = 0.621371;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -263,7 +267,11 @@ pub fn incoming_storm(storms: &Value, lat: f64, lon: f64) -> Option<Value> {
             .get("track_history")
             .and_then(Value::as_array)
             .map_or(0, Vec::len);
-        let tracked = history >= 3 && float_field(props, "tracking_confidence", 0.0) >= 0.4;
+        // Same test as the web and app: a history-backed fit moving 3 to 90 mph.
+        let speed_mph = float_field(&vector, "speed_kmh", 0.0) * KMH_TO_MPH;
+        let tracked = history >= 3
+            && float_field(props, "tracking_confidence", 0.0) >= 0.4
+            && (3.0..=90.0).contains(&speed_mph);
         for minutes in (0..=60i64).step_by(5) {
             if minutes > 0 && !tracked {
                 break;
@@ -629,20 +637,28 @@ pub async fn get_briefing(State(state): State<AppState>, uri: Uri) -> Response {
     }
 
     // One LLM call per area, however many requests ask at once.
-    let follower = lock(&state.inflight).get(&key).cloned();
-    if let Some(mut rx) = follower {
-        let body: Option<Arc<Value>> = match rx.wait_for(|v| v.is_some()).await {
-            Ok(v) => (*v).clone(),
-            Err(_) => None,
-        };
-        return match body {
-            Some(body) => respond::json(StatusCode::OK, &body, None),
-            None => unavailable("llm_unavailable"),
-        };
-    }
-
-    let (tx, rx) = watch::channel::<Option<Arc<Value>>>(None);
-    lock(&state.inflight).insert(key.clone(), rx);
+    // Check and insert under one lock: a waiter gets the existing receiver, else this request leads.
+    let role = match lock(&state.inflight).entry(key.clone()) {
+        Entry::Occupied(slot) => Err(slot.get().clone()),
+        Entry::Vacant(slot) => {
+            let (tx, rx) = watch::channel::<Option<Arc<Value>>>(None);
+            slot.insert(rx);
+            Ok(tx)
+        }
+    };
+    let tx = match role {
+        Ok(tx) => tx,
+        Err(mut rx) => {
+            let body: Option<Arc<Value>> = match rx.wait_for(|v| v.is_some()).await {
+                Ok(v) => (*v).clone(),
+                Err(_) => None,
+            };
+            return match body {
+                Some(body) => respond::json(StatusCode::OK, &body, None),
+                None => unavailable("llm_unavailable"),
+            };
+        }
+    };
     let _guard = InflightGuard {
         state: &state,
         key: key.clone(),
@@ -793,6 +809,32 @@ mod tests {
         assert_eq!(hit["peak_dbz"], json!(57));
         assert_eq!(hit["speed_mph"], json!(25));
         assert!(hit["minutes"].as_i64().expect("minutes") > 0);
+    }
+
+    #[test]
+    fn storm_with_speed_outside_web_bound_is_not_tracked() {
+        let storm = |speed_kmh: f64| {
+            json!({"features": [{
+                "geometry": {"type": "Point", "coordinates": [-85.0, 43.0]},
+                "properties": {
+                    "track_history": [[0, -85.1, 42.9], [0, -85.05, 42.95], [0, -85.0, 43.0]],
+                    "tracking_confidence": 0.9,
+                    "tracking_vector": {"east_kmh": 0, "north_kmh": -speed_kmh, "speed_kmh": speed_kmh}
+                }
+            }]})
+        };
+        // About 13 km south of the cell. Any tracked storm moving 4 km/h or more gets within 12 km
+        // inside the hour, so only the speed bound separates these. Web and app draw a track only
+        // for 3 to 90 mph.
+        assert!(incoming_storm(&storm(40.0), 42.88, -85.0).is_some());
+        assert!(
+            incoming_storm(&storm(4.0), 42.88, -85.0).is_none(),
+            "about 2.5 mph is too slow"
+        );
+        assert!(
+            incoming_storm(&storm(160.0), 42.88, -85.0).is_none(),
+            "about 99 mph is too fast"
+        );
     }
 
     #[test]
