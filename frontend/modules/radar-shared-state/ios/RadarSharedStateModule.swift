@@ -13,12 +13,28 @@ public class RadarSharedStateModule: Module {
 
     Function("publish") { (json: String) in
       guard let defaults = UserDefaults(suiteName: Self.appGroup) else { return }
-      if defaults.string(forKey: Self.key) != json {
+      let stored = defaults.string(forKey: Self.key)
+      if stored != json {
         defaults.set(json, forKey: Self.key)
-        WidgetCenter.shared.reloadAllTimelines()
+        // A new fix at the same place only changes `location.at`; no widget needs a reload for that.
+        let before = stored.flatMap(Self.withoutFixTime)
+        if before == nil || before != Self.withoutFixTime(json) {
+          WidgetCenter.shared.reloadAllTimelines()
+        }
       }
       WatchLink.shared.send(json)
     }
+  }
+
+  /// The payload with `location.at` removed, or nil if it isn't a JSON object.
+  private static func withoutFixTime(_ json: String) -> NSDictionary? {
+    guard let data = json.data(using: .utf8),
+          var object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+    if var location = object["location"] as? [String: Any] {
+      location["at"] = nil
+      object["location"] = location
+    }
+    return object as NSDictionary
   }
 }
 

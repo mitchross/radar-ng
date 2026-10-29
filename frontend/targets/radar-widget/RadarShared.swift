@@ -12,6 +12,8 @@ struct RadarShared: Decodable {
         let lat: Double
         let lon: Double
         let label: String?
+        /// When the phone took the "device" fix, in milliseconds since 1970. Absent from older phones.
+        let at: Double?
     }
 
     let serverUrl: String
@@ -52,4 +54,14 @@ struct RadarShared: Decodable {
     }
 
     var chosenCity: Location? { location?.mode == "city" ? location : nil }
+
+    /// A phone fix older than this is no longer a fair stand-in for where the user is.
+    static let maxPhoneFixAge: TimeInterval = 60 * 60
+
+    /// The phone's last fix, unless it is too old. A payload with no `at` is trusted as before.
+    var recentPhoneFix: Location? {
+        guard let location else { return nil }
+        guard let at = location.at else { return location }
+        return Date().timeIntervalSince1970 - at / 1000 > Self.maxPhoneFixAge ? nil : location
+    }
 }
