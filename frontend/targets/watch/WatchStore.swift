@@ -22,7 +22,7 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var requestedLocation = false
     private var lastLocation: CLLocation?
     private var locationRevision = 0
-    private var pendingLocationRefresh = false
+    private var pendingRefresh = false
     private let clManager = CLLocationManager()
     private static let fallback = CLLocationCoordinate2D(latitude: 42.9634, longitude: -85.6681)
 
@@ -33,14 +33,14 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     func refresh() async {
-        guard !isLoading else { return }
+        guard !isLoading else { pendingRefresh = true; return }
         isLoading = true
         isRadarLoading = true
         defer {
             isLoading = false
             isRadarLoading = false
-            if pendingLocationRefresh {
-                pendingLocationRefresh = false
+            if pendingRefresh {
+                pendingRefresh = false
                 Task { await self.refresh() }
             }
         }
@@ -157,11 +157,7 @@ final class WatchStore: NSObject, ObservableObject, CLLocationManagerDelegate {
                 self.forecast = nil
                 self.alerts = []
                 self.updatedAt = nil
-                if self.isLoading {
-                    self.pendingLocationRefresh = true
-                } else {
-                    await self.refresh()
-                }
+                await self.refresh()
             }
         }
     }
