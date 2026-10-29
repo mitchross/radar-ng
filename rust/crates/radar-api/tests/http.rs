@@ -797,7 +797,6 @@ async fn partial_forecast_is_refetched_until_current_fields_are_complete() {
         "wind_gusts_10m",
         "dew_point_2m",
         "surface_pressure",
-        "precipitation",
     ];
     for field in fields {
         for missing in [false, true] {
@@ -862,6 +861,34 @@ async fn partial_forecast_is_refetched_until_current_fields_are_complete() {
             );
         }
     }
+}
+
+/// `current.precipitation` is requested but no client reads it, so a null there is cached.
+#[tokio::test]
+async fn null_unread_current_field_is_cached() {
+    let calls = counter();
+    let om_calls = calls.clone();
+    let base = mock(Router::new().route(
+        "/v1/forecast",
+        get(move || {
+            let calls = om_calls.clone();
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                let mut body = open_meteo_body();
+                body["current"]["precipitation"] = Value::Null;
+                Json(body)
+            }
+        }),
+    ))
+    .await;
+    let env = Env::new();
+    let app = env.app(|c| c.open_meteo_base = format!("{base}/v1/forecast"));
+    for _ in 0..2 {
+        let (status, headers, _) = get_json(&app, "/api/forecast/42.96/-85.67").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(header_str(&headers, "cache-control"), "public, max-age=900");
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

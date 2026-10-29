@@ -40,10 +40,6 @@ pub const FLAG_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_se
 /// `PALETTES`, skipping missing names with a `palette_missing` warning. Falls back to `classic` when
 /// nothing loads. Duplicate names are dropped (first occurrence wins) because the publisher needs
 /// distinct output directories.
-pub fn load_mrms_palettes(names: &[String]) -> Vec<(String, ColorTable)> {
-    load_reflectivity_tables(names)
-}
-
 pub(crate) fn load_reflectivity_tables(names: &[String]) -> Vec<(String, ColorTable)> {
     let mut seen = BTreeSet::new();
     let mut out = Vec::new();
@@ -99,11 +95,6 @@ pub async fn list_unprocessed_keys(
     })
 }
 
-/// Output of the blocking decode step.
-struct Decoded {
-    grid: Grid,
-}
-
 /// `mrms_process_frame` (spec §12.1). Returns `rendered == false` for incomplete frames (D2 replicated).
 pub async fn process_frame(
     ctx: &IngestCtx,
@@ -118,7 +109,7 @@ pub async fn process_frame(
     let cfg = ctx.cfg.clone();
     let layer = input.layer_name.clone();
     let key = input.key.clone();
-    let tables = load_mrms_palettes(&cfg.palettes);
+    let tables = load_reflectivity_tables(&cfg.palettes);
     let all_palettes: BTreeSet<String> = tables.iter().map(|(n, _)| n.clone()).collect();
 
     let hint = gmrms::timestamp_hint(&key).to_string();
@@ -149,17 +140,13 @@ pub async fn process_frame(
         fetch_precip_flag(ctx, &key),
     );
     let (ts_fetch, gz) = fetched?;
-    let decoded: Decoded = heartbeat::blocking(
+    let mut grid: Grid = heartbeat::blocking(
         DOWNLOAD_BEAT,
         hb,
         serde_json::json!({"phase": "download", "key": key}),
-        move || -> anyhow::Result<Decoded> {
-            let grid = gmrms::decode_gz(&gz)?;
-            Ok(Decoded { grid })
-        },
+        move || gmrms::decode_gz(&gz),
     )
     .await?;
-    let mut grid = decoded.grid;
     gmrms::ensure_south_up(&mut grid);
     let timestamp = ts_fetch;
     let (grid, types) = match flag {
