@@ -4,8 +4,8 @@
 //! use the rounded values. Concurrent misses for one cell share one upstream request. The 200 body
 //! is the Open-Meteo JSON, unchanged, cached encoded. Failures are
 //! `502 {"error":"upstream_unavailable"}` with **no** `Cache-Control`. A 200 whose body is not JSON
-//! is also a 502 (defect D5 fix; Python returned 500). Missing or null requested current fields
-//! bypass the cache and return `no-store`, so partial model syncs do not delay fresh data.
+//! is also a 502 (defect D5 fix; Python returned 500). Missing or null current fields that clients
+//! read (every requested one except `precipitation`) bypass the cache and return `no-store`, so partial model syncs do not delay fresh data.
 
 use std::time::Duration;
 
@@ -136,14 +136,24 @@ async fn fetch(state: &AppState, glat: f64, glon: f64) -> Result<Bytes, Forecast
         return Err(ForecastError::Upstream);
     };
     let encoded = respond::encode(&data);
-    if CURRENT.split(',').any(|field| {
-        data.get("current")
-            .and_then(|current| current.get(field))
-            .is_none_or(Value::is_null)
-    }) {
+    if !current_complete(&data) {
         return Err(ForecastError::NoData(encoded));
     }
     Ok(encoded)
+}
+
+/// Whether every `current` field a client reads is present and non-null. `precipitation` is
+/// requested in [`CURRENT`] (older app builds may read it) but no current client does, so a null
+/// there must not keep the response out of the cache.
+fn current_complete(data: &Value) -> bool {
+    CURRENT
+        .split(',')
+        .filter(|f| *f != "precipitation")
+        .all(|field| {
+            data.get("current")
+                .and_then(|current| current.get(field))
+                .is_some_and(|v| !v.is_null())
+        })
 }
 
 /// `GET /api/forecast/{lat}/{lon}`.
@@ -190,5 +200,19 @@ mod tests {
         assert_eq!(glat, 43.0);
         assert_eq!(glon, -85.7);
         assert_eq!(key, "43.0,-85.7");
+    }
+
+    #[test]
+    fn null_in_an_unread_current_field_is_still_complete() {
+        let mut data = serde_json::json!({"current": {
+            "temperature_2m": 61.4, "relative_humidity_2m": 70, "apparent_temperature": 60.2,
+            "weather_code": 61, "wind_speed_10m": 8.2, "wind_direction_10m": 0,
+            "wind_gusts_10m": 15.1, "dew_point_2m": 51.5, "surface_pressure": 1013.2,
+            "precipitation": null,
+        }});
+        assert!(current_complete(&data));
+        data["current"]["precipitation"] = Value::Null;
+        data["current"]["wind_gusts_10m"] = Value::Null;
+        assert!(!current_complete(&data));
     }
 }
