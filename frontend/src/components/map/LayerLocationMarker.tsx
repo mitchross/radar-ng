@@ -27,6 +27,7 @@ export function LayerLocationMarker({ inspecting = false }: { inspecting?: boole
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
+  const isPlaying = useWeatherStore((s) => s.isPlaying);
   const { label } = useActiveLocation();
   const { data: forecast } = useForecast();
 
@@ -56,7 +57,7 @@ export function LayerLocationMarker({ inspecting = false }: { inspecting?: boole
         lat: latitude as number,
         lon: longitude as number,
       }),
-    enabled: isAqLayer && frameTimestamp != null && latitude != null && longitude != null,
+    enabled: isAqLayer && !isPlaying && frameTimestamp != null && latitude != null && longitude != null,
     staleTime: 60_000,
   });
 

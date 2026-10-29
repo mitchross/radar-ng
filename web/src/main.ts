@@ -1183,7 +1183,9 @@ document.addEventListener("keydown", (e) => {
 
 // Click the map: an overlay feature if one is under the cursor, else the shown frame's value there.
 const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "260px" });
+let clickSeq = 0;
 map.on("click", async (e) => {
+  const click = ++clickSeq;
   const layers = overlays.clickable();
   const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers })[0] : undefined;
   if (hit) {
@@ -1201,6 +1203,7 @@ map.on("click", async (e) => {
   const { lat, lng } = e.lngLat;
   popup.setLngLat(e.lngLat).setHTML('<div class="readout"><small>Reading…</small></div>').addTo(map);
   const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng).catch(() => null);
+  if (click !== clickSeq) return; // a newer click owns the popup now
   track("point_inspected", { layer: state.layer, source: frame.source, has_value: value != null });
   const title = SOURCE_TITLE[frame.source] ?? (LAYERS.find((l) => l.id === state.layer)?.name ?? "").toUpperCase();
   let text = "No data here";

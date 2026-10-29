@@ -42,6 +42,18 @@ describe("parseSelfHostedManifest", () => {
     ).toBeDefined();
   });
 
+  it("drops a layer with an unknown frame kind and keeps the rest", () => {
+    const good = validManifest();
+    const badFrame = { timestamp: "2026-09-02T12:00:00Z", path: "2026-09-02T12:00:00Z", kind: "ensemble" };
+    const parsed = parseSelfHostedManifest({
+      ...good,
+      layers: { ...good.layers, future: { timestamps: [badFrame.timestamp], frames: [badFrame] } },
+    });
+    expect(Object.keys(parsed.layers)).toEqual(["radar"]);
+    expect(parsed.layers.radar).toEqual(good.layers.radar);
+    expect(parsed.updated_at).toBe(good.updated_at);
+  });
+
   it.each([
     ["missing layers", { tile_url_template: "/tiles", updated_at: "2026-09-02T12:01:00Z" }],
     [
