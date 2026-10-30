@@ -20,7 +20,7 @@
 # checkout instead (arm64 hosts such as Apple Silicon, or when you change the Rust code):
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build    # or ./up.sh --build
 # Or point at your own registry with RADAR_API_IMAGE / RADAR_WORKER_IMAGE / RADAR_OPEN_METEO_WORKER_IMAGE.
-# Upstream bumps the pins here together with deploy/kubernetes/base on each release.
+# Renovate keeps these pins (radar-ng's own images and the third-party ones) current.
 #
 # Optional Temporal Web UI (http://localhost:8233):
 #   docker compose --profile ui up -d
@@ -81,7 +81,7 @@ x-worker-healthcheck: &worker-healthcheck
 services:
   # --- Temporal (workflow engine) -----------------------------------------
   temporal-postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
     environment:
       POSTGRES_USER: temporal
       POSTGRES_PASSWORD: temporal
@@ -98,7 +98,7 @@ services:
   temporal:
     # Compose is a local stand-in. Production runs the cluster's Temporal server, which already
     # serves the Worker Deployments the production TWDs use. This image is for the local stack only.
-    image: temporalio/auto-setup:1.25.2
+    image: temporalio/auto-setup:1.25.2@sha256:b1edc1e20002d958c8182f2ae08dee877a125083683a627a44917683419ba6a8
     depends_on:
       temporal-postgres:
         condition: service_healthy
@@ -126,7 +126,7 @@ services:
 
   # Optional Web UI, enabled with `--profile ui`. Host port 8233 because the api owns 8080.
   temporal-ui:
-    image: temporalio/ui:2.31.2
+    image: temporalio/ui:2.31.2@sha256:28bb3ea5a6ea3e09f16b521f32ab727c96470f7f1e420c66a6cbfb02001a8aa2
     profiles: ["ui"]
     depends_on:
       - temporal
@@ -142,7 +142,7 @@ services:
   # Named volumes are created root-owned; the images run as uid 1000 (open-meteo: 999). This
   # one-shot chowns the volumes before anything else starts.
   volume-init:
-    image: busybox:1.36-musl
+    image: busybox:1.36-musl@sha256:3c6ae8008e2c2eedd141725c30b20d9c36b026eb796688f88205845ef17aa213
     user: "0:0"
     command:
       - sh
@@ -159,7 +159,7 @@ services:
   # --- Workers ---------------------------------------------------------------
   # Legacy role: all workflows on radar-ng. This worker also seeds the Schedules at boot. One seeder only, so leave SEED_SCHEDULES=1 on this service alone.
   worker:
-    image: ${RADAR_WORKER_IMAGE:-ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.9@sha256:1432031a17e5126eb591a4e0cb3e72f632283a45c3c190fe8cd7865dc51b64a9}
+    image: ${RADAR_WORKER_IMAGE:-ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.23@sha256:f8f11010e7575003c7e6660693a49b4a8cc34a1550c1aa9915b1ac062621135c}
     command: ["worker", "--role", "legacy"]
     environment:
       <<: *worker-env
@@ -180,7 +180,7 @@ services:
   # open-meteo role: the radar binary on the Open-Meteo image. Syncs GFS/HRRR model data into
   # openmeteo-data, which the open-meteo service serves. The `open-meteo` target of the same Dockerfile.
   open-meteo-worker:
-    image: ${RADAR_OPEN_METEO_WORKER_IMAGE:-ghcr.io/mitchross/radar-ng-open-meteo-worker:v2.0.9@sha256:1d7c2195d082a6872551d3d4cc5300d054a718a822839aa10d24b1bcce546f07}
+    image: ${RADAR_OPEN_METEO_WORKER_IMAGE:-ghcr.io/mitchross/radar-ng-open-meteo-worker:v2.0.23@sha256:761c4ef01dfafd3bd7bfe772b46bc7dd812bc0d053ee932bfba46630657fe01d}
     command: ["worker", "--role", "open-meteo"]
     environment:
       <<: *temporal-env
@@ -249,7 +249,7 @@ services:
   # The Rust api serves tiles, the manifest, the basemap (PMTiles and styles), and /api/*. The
   # Caddy and FastAPI sidecars are gone. The public endpoint is this service.
   api:
-    image: ${RADAR_API_IMAGE:-ghcr.io/mitchross/radar-ng-tile-server:v2.0.9@sha256:3981502164c2f366f123cad41378a956483247fe7015e1e104ab3703050424dc}
+    image: ${RADAR_API_IMAGE:-ghcr.io/mitchross/radar-ng-tile-server:v2.0.23@sha256:4558ea63bb0a6d63407b44c6400b89d389d1e3024b242ddab352ad69980d38e2}
     command: ["api"]
     ports:
       - "${TILE_SERVER_PORT:-8080}:8080"

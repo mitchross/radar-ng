@@ -24,10 +24,10 @@
 # Non-root: the image runs as uid 1000 so the pod securityContext (runAsUser 1000 / fsGroup 1000)
 # and the Dockerfile agree.
 
-ARG BUILDER_IMAGE=debian:bookworm-slim
-ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian12:latest
-ARG BUSYBOX_IMAGE=busybox:1.36-musl
-ARG ALPINE_IMAGE=alpine:3.22
+ARG BUILDER_IMAGE=debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3
+ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian12:latest@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa
+ARG BUSYBOX_IMAGE=busybox:1.36-musl@sha256:3c6ae8008e2c2eedd141725c30b20d9c36b026eb796688f88205845ef17aa213
+ARG ALPINE_IMAGE=alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
 ARG OPEN_METEO_IMAGE=ghcr.io/open-meteo/open-meteo:1.6.0@sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da
 # 1 runs the offline Temporal replay gate (every recorded Python history must replay on the Rust
 # workflows) before the binary is built. CI sets it to 0 only where the same gate already ran in an

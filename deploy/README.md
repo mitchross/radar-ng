@@ -21,7 +21,6 @@ Releases and post-release checks: [RUNBOOK.md](RUNBOOK.md).
 | `.env.example` | Compose settings; copy to `.env` |
 | `temporal-dev.yml` | Throwaway Temporal (Postgres, auto-setup, UI) for the worker integration tests |
 | `kubernetes/` | Kustomize base, optional components and examples for Kubernetes; see [kubernetes/README.md](kubernetes/README.md) |
-| `pin-images.sh` | Pins third-party base images in `deploy/` to their current digests |
 | `RUNBOOK.md` | What ships, release path, checks, Temporal notes, tile parity |
 
 ## Images
