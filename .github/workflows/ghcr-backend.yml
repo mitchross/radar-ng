@@ -57,6 +57,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
+          # Shared with ci-rust's `binary` job: same container, toolchain and release profile.
+          shared-key: bookworm-release
       # Every recorded Python history must replay on the Rust workflows before any tag is pushed.
       - name: Replay gate
         run: cargo test --release --locked -p radar-worker --test replay
