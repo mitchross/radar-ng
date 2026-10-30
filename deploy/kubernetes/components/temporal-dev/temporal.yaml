@@ -34,7 +34,7 @@ spec:
         - name: temporal
           # auto-setup creates the schema and the `default` namespace on first start (it retries
           # until Postgres is up).
-          image: docker.io/temporalio/auto-setup:1.25.2
+          image: docker.io/temporalio/auto-setup:1.25.2@sha256:b1edc1e20002d958c8182f2ae08dee877a125083683a627a44917683419ba6a8
           env:
             - { name: DB, value: postgres12 }
             - { name: DB_PORT, value: "5432" }
@@ -90,7 +90,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: temporal-ui
-          image: docker.io/temporalio/ui:2.31.2
+          image: docker.io/temporalio/ui:2.31.2@sha256:28bb3ea5a6ea3e09f16b521f32ab727c96470f7f1e420c66a6cbfb02001a8aa2
           env:
             - { name: TEMPORAL_ADDRESS, value: "temporal:7233" }
           ports:

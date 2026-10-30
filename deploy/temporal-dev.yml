@@ -13,7 +13,7 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
     container_name: radar-ng-temporal-pg
     environment:
       POSTGRES_USER: temporal
@@ -27,7 +27,7 @@ services:
       retries: 20
 
   temporal:
-    image: temporalio/auto-setup:1.25.2
+    image: temporalio/auto-setup:1.25.2@sha256:b1edc1e20002d958c8182f2ae08dee877a125083683a627a44917683419ba6a8
     container_name: radar-ng-temporal
     depends_on:
       postgres:
@@ -44,7 +44,7 @@ services:
       - "7233:7233"
 
   temporal-ui:
-    image: temporalio/ui:2.31.2
+    image: temporalio/ui:2.31.2@sha256:28bb3ea5a6ea3e09f16b521f32ab727c96470f7f1e420c66a6cbfb02001a8aa2
     container_name: radar-ng-temporal-ui
     depends_on:
       - temporal

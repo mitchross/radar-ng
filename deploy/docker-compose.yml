@@ -81,7 +81,7 @@ x-worker-healthcheck: &worker-healthcheck
 services:
   # --- Temporal (workflow engine) -----------------------------------------
   temporal-postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
     environment:
       POSTGRES_USER: temporal
       POSTGRES_PASSWORD: temporal
@@ -98,7 +98,7 @@ services:
   temporal:
     # Compose is a local stand-in. Production runs the cluster's Temporal server, which already
     # serves the Worker Deployments the production TWDs use. This image is for the local stack only.
-    image: temporalio/auto-setup:1.25.2
+    image: temporalio/auto-setup:1.25.2@sha256:b1edc1e20002d958c8182f2ae08dee877a125083683a627a44917683419ba6a8
     depends_on:
       temporal-postgres:
         condition: service_healthy
@@ -126,7 +126,7 @@ services:
 
   # Optional Web UI, enabled with `--profile ui`. Host port 8233 because the api owns 8080.
   temporal-ui:
-    image: temporalio/ui:2.31.2
+    image: temporalio/ui:2.31.2@sha256:28bb3ea5a6ea3e09f16b521f32ab727c96470f7f1e420c66a6cbfb02001a8aa2
     profiles: ["ui"]
     depends_on:
       - temporal
@@ -142,7 +142,7 @@ services:
   # Named volumes are created root-owned; the images run as uid 1000 (open-meteo: 999). This
   # one-shot chowns the volumes before anything else starts.
   volume-init:
-    image: busybox:1.36-musl
+    image: busybox:1.36-musl@sha256:3c6ae8008e2c2eedd141725c30b20d9c36b026eb796688f88205845ef17aa213
     user: "0:0"
     command:
       - sh

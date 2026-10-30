@@ -99,8 +99,8 @@ bookworm-built binary on the Open-Meteo base, so `radar --version` must run ther
 (`1000:1000`, `999:999`), the replay-gate label, the worker probe helpers, an api smoke run on empty
 data, and the Open-Meteo image contract.
 
-`deploy/pin-images.sh` pins the third-party base images in `deploy/` to their current digests
-(`--check` only prints). Review and commit the diff.
+Third-party base images in `deploy/` are pinned as `name:tag@sha256:<index digest>`. Renovate
+(`.github/renovate.json5`) bumps the tag and digest together.
 
 ## 7. Local stack
 

@@ -44,7 +44,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: postgres
-          image: docker.io/library/postgres:16-alpine
+          image: docker.io/library/postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
           env:
             # Throwaway credentials, same as deploy/docker-compose.yml. Only reachable in-cluster.
             - { name: POSTGRES_USER, value: temporal }
