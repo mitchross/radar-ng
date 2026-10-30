@@ -29,4 +29,12 @@ describe("formatReading", () => {
     expect(formatReading("precip-24h", reading(1.3405))).toBe("1.34 in");
     expect(formatReading("precip-24h", reading(0.004))).toBe("—");
   });
+  it("names PM2.5 with the same rule as the home Air Quality tile", () => {
+    const at = (value: number) => formatReading("air-quality", { ok: true, value, unit: "µg/m³", source: "grid" });
+    // 9.05 floors to 9.0 (AQI 50, Good); a raw `<= 9` check called it Moderate.
+    expect(at(9.05)).toBe("9 µg/m³ · Good");
+    expect(at(9.1)).toBe("9 µg/m³ · Moderate");
+    expect(at(35.45)).toBe("35 µg/m³ · Moderate");
+    expect(at(60)).toBe("60 µg/m³ · Unhealthy");
+  });
 });

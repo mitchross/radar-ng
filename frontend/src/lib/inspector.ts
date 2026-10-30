@@ -6,6 +6,7 @@ import type { LayerType } from "../types/weather";
 import { PRECISION, roundCoords } from "./coordinates";
 import { recordSpanError, trace } from "./telemetry";
 import { fetchRadarNowcast, fetchWithTimeout } from "./api";
+import { aqiCategory, usAqiFromPm25 } from "./airQuality";
 
 export interface InspectReading {
   ok: boolean;
@@ -115,7 +116,7 @@ export function formatReading(layer: LayerType, r: InspectReading): string {
   if (layer === "precip-accum" || layer === "precip-24h") return v < 0.01 ? "—" : `${v.toFixed(2)} in`;
   if (layer === "cloud") return `${Math.round(v)}%`;
   if (layer === "uv") return `UV ${Math.round(v)} · ${describeUV(v)}`;
-  if (layer === "air-quality") return `${Math.round(v)} µg/m³ · ${describePm25(v)}`;
+  if (layer === "air-quality") return `${Math.round(v)} µg/m³ · ${aqiCategory(usAqiFromPm25(v)).label}`;
   if (layer === "ozone") return `${Math.round(v)} ppb · ${describeOzone(v)}`;
   return `${v.toFixed(1)} ${r.unit}`.trim();
 }
@@ -128,16 +129,6 @@ function describeUV(uv: number): string {
   if (i <= 7) return "High";
   if (i <= 10) return "Very High";
   return "Extreme";
-}
-
-// EPA 2024 PM2.5 breakpoints (µg/m³) → AQI category.
-function describePm25(ugm3: number): string {
-  if (ugm3 <= 9) return "Good";
-  if (ugm3 <= 35.4) return "Moderate";
-  if (ugm3 <= 55.4) return "Sensitive";
-  if (ugm3 <= 125.4) return "Unhealthy";
-  if (ugm3 <= 225.4) return "Very Unhealthy";
-  return "Hazardous";
 }
 
 // 8-hour ozone breakpoints (ppb) → AQI category, applied to the hourly value.
