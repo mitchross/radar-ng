@@ -31,30 +31,16 @@ enum RadarSnapshot {
         do {
             // Read once: the manifest and its tiles must come from the same server.
             let server = RadarShared.serverURL
-            let manifest = try JSONDecoder().decode(Manifest.self,
-                from: await fetch(URL(string: "\(server)/api/manifest.json")!))
-            guard let layer = manifest.layers["radar"],
-                  let frame = layer.frames?.max(by: { $0.timestamp < $1.timestamp }),
-                  let observedAt = parseDate(frame.timestamp) else { throw SnapshotError.unavailable }
-            let palette = RadarShared.palette(among: frame.palettes ?? layer.palettes ?? [])
-            let image = try await render(coordinate, frame: frame, palette: palette, server: server)
+            let manifest = try await fetch(URL(string: "\(server)/api/manifest.json")!)
+            guard let frame = try RadarFrame.latest(inManifest: manifest),
+                  let observedAt = frame.observedAt else { throw SnapshotError.unavailable }
+            let image = try await render(coordinate, frame: frame, palette: frame.palette, server: server)
             return RadarEntry(date: .now, image: image, observedAt: observedAt,
-                              message: Date().timeIntervalSince(observedAt) > 900 ? "Older radar" : "Nearby · Snapshot")
+                              message: frame.isFresh() ? "Nearby · Snapshot" : "Older radar")
         } catch {
             // Missing tiles must not masquerade as dry conditions.
             return RadarEntry(date: .now, message: "Radar unavailable · Try later")
         }
-    }
-
-    private static let fractionalISO: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private static let plainISO = ISO8601DateFormatter()
-
-    static func parseDate(_ value: String) -> Date? {
-        fractionalISO.date(from: value) ?? plainISO.date(from: value)
     }
 
     private static func fetch(_ url: URL) async throws -> Data {
@@ -78,9 +64,8 @@ enum RadarSnapshot {
     /// Self-hosted basemap renderer (tileserver-gl over VersaTiles). Same style family as the phone.
     private static let basemap = "https://maps.vanillax.me/raster"
 
-    private static func render(_ coordinate: CLLocationCoordinate2D, frame: Frame, palette: String, server: String) async throws -> UIImage {
-        let zoom = min(max(frame.max_zoom ?? 7, 1), 7)
-        let count = 1 << zoom
+    private static func render(_ coordinate: CLLocationCoordinate2D, frame: RadarFrame, palette: String, server: String) async throws -> UIImage {
+        let zoom = min(max(frame.maxZoom ?? 7, 1), 7)
         let size = CGSize(width: 256, height: 190)
         // Web-mercator pixel space at `zoom` with 256-pt tiles; the image is centred on the fix.
         let center = worldPoint(coordinate, zoom: zoom)
@@ -100,8 +85,7 @@ enum RadarSnapshot {
         var requests: [(Int, Int, Task<Data?, Error>)] = []
         for x in Int(floor(origin.x / 256))...Int(floor((origin.x + size.width) / 256)) {
             for y in Int(floor(origin.y / 256))...Int(floor((origin.y + size.height) / 256)) {
-                guard (0..<count).contains(x), (0..<count).contains(y),
-                      let url = URL(string: "\(server)/tiles/radar/\(palette)/\(frame.path)/\(zoom)/\(x)/\(y).png") else { throw SnapshotError.unavailable }
+                guard let url = frame.tileURL(server: server, palette: palette, z: zoom, x: x, y: y) else { throw SnapshotError.unavailable }
                 requests.append((x, y, Task { try await fetchTile(url) }))
             }
         }
@@ -150,14 +134,6 @@ enum RadarSnapshot {
                        y: (1 - log(tan(latitude) + 1 / cos(latitude)) / .pi) / 2 * scale)
     }
 
-    private struct Manifest: Decodable { let layers: [String: Layer] }
-    private struct Layer: Decodable { let frames: [Frame]?; let palettes: [String]? }
-    private struct Frame: Decodable {
-        let timestamp: String
-        let path: String
-        let palettes: [String]?
-        let max_zoom: Int?
-    }
     private enum SnapshotError: Error { case unavailable }
 }
 

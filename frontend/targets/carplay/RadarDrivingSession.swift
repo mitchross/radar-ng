@@ -10,7 +10,7 @@ final class RadarDrivingSession: NSObject, AVSpeechSynthesizerDelegate {
     private(set) var phase = Phase.browsing
     private(set) var location: CLLocation?
     private(set) var locationMessage: String? = "Waiting for location"
-    private(set) var frame: RadarAPI.Frame?
+    private(set) var frame: RadarFrame?
     private(set) var radarMessage = "Loading radar"
     private(set) var routes: [MKRoute] = []
     private(set) var selectedRoute: MKRoute?
@@ -89,7 +89,7 @@ final class RadarDrivingSession: NSObject, AVSpeechSynthesizerDelegate {
     private func publish() { for action in Array(listeners.values) { action() } }
 
     private func tick() {
-        if let frame, let date = frame.observedAt, Date().timeIntervalSince(date) > 900 {
+        if let frame, let date = frame.observedAt, !frame.isFresh() {
             radarMessage = "Radar expired · \(date.formatted(date: .omitted, time: .shortened))"
         }
         if !hasUsableLocation {
@@ -111,7 +111,7 @@ final class RadarDrivingSession: NSObject, AVSpeechSynthesizerDelegate {
                 try Task.checkCancellation()
                 self.frame = next
                 let date = next.observedAt!
-                self.radarMessage = "\(Date().timeIntervalSince(date) > 900 ? "Older radar" : "Radar") · \(date.formatted(date: .omitted, time: .shortened))"
+                self.radarMessage = "\(next.isFresh() ? "Radar" : "Older radar") · \(date.formatted(date: .omitted, time: .shortened))"
             } catch {
                 guard !Task.isCancelled else { return }
                 self.frame = nil
@@ -121,7 +121,7 @@ final class RadarDrivingSession: NSObject, AVSpeechSynthesizerDelegate {
         }
     }
 
-    func tileFailed(for frame: RadarAPI.Frame) {
+    func tileFailed(for frame: RadarFrame) {
         guard self.frame == frame else { return }
         radarMessage = "Radar incomplete"
         publish()

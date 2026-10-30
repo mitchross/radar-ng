@@ -29,7 +29,7 @@ struct RadarProvider: TimelineProvider {
             // A future entry marks an old frame even if the next fetch is delayed.
             var entries = [entry]
             if let observedAt = entry.observedAt {
-                let staleAt = observedAt.addingTimeInterval(15 * 60)
+                let staleAt = observedAt.addingTimeInterval(RadarFrame.freshSeconds)
                 if staleAt > entry.date {
                     entries.append(RadarEntry(date: staleAt, image: entry.image,
                                               observedAt: observedAt, message: "Older radar"))

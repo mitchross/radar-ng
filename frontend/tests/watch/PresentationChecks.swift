@@ -12,21 +12,35 @@ struct PresentationChecks {
         precondition(WatchForecastPresentation.shortHour("2026-09-08T00:00") == "12a")
         precondition(WatchForecastPresentation.shortHour("2026-09-08T19:00") == "7p")
         precondition(WatchForecastPresentation.shortHour("bad") == "—")
-        let frame = WatchRadarFrame(timestamp: "2026-09-08T23:30:00Z", path: "2026-09-08T23:30:00+00:00", palette: "classic", maxZoom: 7)
+        func watchFrame(path: String, maxZoom: Int?) -> WatchRadarFrame {
+            WatchRadarFrame(frame: RadarFrame(timestamp: "2026-09-08T23:30:00Z", path: path, palettes: nil, maxZoom: maxZoom),
+                            palette: "classic")
+        }
+        let frame = watchFrame(path: "2026-09-08T23:30:00+00:00", maxZoom: 7)
         precondition(frame.tileURL(z: 7, x: 33, y: 47)?.absoluteString == "https://radar-ng-api.vanillax.me/tiles/radar/classic/2026-09-08T23:30:00+00:00/7/33/47.png")
-        let observed = WatchRadarFrame.date(frame.timestamp)!
+        let observed = RadarFrame.date(frame.timestamp)!
         precondition(frame.isFresh(at: observed.addingTimeInterval(899)))
         precondition(!frame.isFresh(at: observed.addingTimeInterval(901)))
         precondition(!frame.isFresh(at: observed.addingTimeInterval(-61)))
-        precondition(WatchRadarFrame.date("2026-09-08T23:30:00.000+00:00") == observed)
-        precondition(WatchRadarFrame.date("not-a-time") == nil)
+        precondition(RadarFrame.date("2026-09-08T23:30:00.000+00:00") == observed)
+        precondition(RadarFrame.date("not-a-time") == nil)
         precondition(frame.tileURL(z: 8, x: 33, y: 47) == nil)
         precondition(frame.tileURL(z: 7, x: -1, y: 47) == nil)
         precondition(frame.tileURL(z: 7, x: 33, y: 128) == nil)
-        let invalid = WatchRadarFrame(timestamp: frame.timestamp, path: "../other", palette: "classic", maxZoom: 7)
-        precondition(invalid.tileURL(z: 7, x: 33, y: 47) == nil)
-        let invalidZoom = WatchRadarFrame(timestamp: frame.timestamp, path: frame.path, palette: "classic", maxZoom: 0)
-        precondition(invalidZoom.tileURL(z: 1, x: 0, y: 0) == nil)
+        precondition(watchFrame(path: "../other", maxZoom: 7).tileURL(z: 7, x: 33, y: 47) == nil)
+        precondition(watchFrame(path: "a/b", maxZoom: 7).tileURL(z: 7, x: 33, y: 47) == nil)
+        let lowZoom = watchFrame(path: frame.path, maxZoom: 3)
+        precondition(lowZoom.tileURL(z: 3, x: 0, y: 0) != nil)
+        precondition(lowZoom.tileURL(z: 4, x: 0, y: 0) == nil)
+        // The newest frame wins by parsed time, not by string order: 19:00-05:00 is 00:00Z the next day.
+        let manifest = Data("""
+        {"layers": {"radar": {"palettes": ["vivid"], "frames": [
+          {"timestamp": "2026-09-08T23:30:00+00:00", "path": "2026-09-08T23:30:00+00:00"},
+          {"timestamp": "2026-09-08T19:00:00-05:00", "path": "2026-09-08T19:00:00-05:00", "max_zoom": 5},
+          {"timestamp": "2026-09-09T12:00:00+00:00", "path": "../x"}]}}}
+        """.utf8)
+        let latest = try! RadarFrame.latest(inManifest: manifest)!
+        precondition(latest.path == "2026-09-08T19:00:00-05:00" && latest.maxZoom == 5 && latest.palettes == ["vivid"])
         let alert = Alert(id: "1", event: "Test", headline: nil, severity: "Severe", areaDesc: "Test",
                           expires: frame.timestamp, effective: "2026-09-08T22:30:00Z", onset: nil, ends: nil)
         precondition(alert.isActive(at: observed.addingTimeInterval(-1)))

@@ -38,26 +38,10 @@ enum WatchAPI {
         let server = serverURL  // once: the frame's tiles must come from the server that listed it
         let url = URL(string: "\(server)/api/manifest.json")!
         let data = try await fetch(url)
-        let manifest = try JSONDecoder().decode(RadarManifest.self, from: data)
-
-        guard let layer = manifest.layers["radar"] else {
+        guard let frame = try RadarFrame.latest(inManifest: data) else {
             throw WatchAPIError.radarUnavailable
         }
-        let frame = layer.frames?.filter {
-            WatchRadarFrame.date($0.timestamp).map { $0.timeIntervalSinceNow <= 60 } == true
-        }.max { WatchRadarFrame.date($0.timestamp)! < WatchRadarFrame.date($1.timestamp)! }
-        guard let frame else {
-            throw WatchAPIError.radarUnavailable
-        }
-
-        let palette = RadarShared.palette(among: frame.palettes ?? layer.palettes ?? [])
-        return WatchRadarFrame(
-            timestamp: frame.timestamp,
-            path: frame.path,
-            palette: palette,
-            maxZoom: min(max(frame.maxZoom ?? 7, 1), 7),
-            server: server
-        )
+        return WatchRadarFrame(frame: frame, palette: frame.palette, server: server)
     }
 
     private static func fetch(_ url: URL) async throws -> Data {
@@ -103,58 +87,23 @@ enum WatchAPIError: LocalizedError {
     }
 }
 
+/// A manifest frame with the palette and server it was chosen for, so every tile
+/// of the frame comes from the server that listed it, in the palette picked then.
 struct WatchRadarFrame: Equatable {
-    let timestamp: String
-    let path: String
+    let frame: RadarFrame
     let palette: String
-    let maxZoom: Int
     var server = WatchAPI.serverURL
 
-    // Built once: these run inside filter/max over every manifest frame.
-    private static let fractionalISO: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private static let plainISO = ISO8601DateFormatter()
+    var timestamp: String { frame.timestamp }
+    var path: String { frame.path }
+    /// The zoom the radar is published to, within what the Watch map draws.
+    var maxZoom: Int { min(max(frame.maxZoom ?? 7, 1), 7) }
 
-    static func date(_ value: String) -> Date? {
-        fractionalISO.date(from: value) ?? plainISO.date(from: value)
-    }
-
-    func isFresh(at now: Date) -> Bool {
-        guard let date = Self.date(timestamp) else { return false }
-        return (-60...900).contains(now.timeIntervalSince(date))
-    }
+    func isFresh(at now: Date) -> Bool { frame.isFresh(at: now) }
 
     func tileURL(z: Int, x: Int, y: Int) -> URL? {
-        guard maxZoom >= 1, (1...min(maxZoom, 7)).contains(z), (0..<(1 << z)).contains(x), (0..<(1 << z)).contains(y),
-              !path.isEmpty, !palette.isEmpty,
-              path.allSatisfy({ $0.isLetter || $0.isNumber || "_:+-".contains($0) || $0 == "." }),
-              path != ".", path != "..",
-              palette.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else { return nil }
-        return URL(string: "\(server)/tiles/radar/\(palette)/\(path)/\(z)/\(x)/\(y).png")
-    }
-}
-
-private struct RadarManifest: Decodable {
-    let layers: [String: RadarLayer]
-}
-
-private struct RadarLayer: Decodable {
-    let frames: [RadarManifestFrame]?
-    let palettes: [String]?
-}
-
-private struct RadarManifestFrame: Decodable {
-    let timestamp: String
-    let path: String
-    let maxZoom: Int?
-    let palettes: [String]?
-
-    enum CodingKeys: String, CodingKey {
-        case timestamp, path, palettes
-        case maxZoom = "max_zoom"
+        guard z <= maxZoom else { return nil }
+        return frame.tileURL(server: server, palette: palette, z: z, x: x, y: y)
     }
 }
 
@@ -216,9 +165,9 @@ struct Alert: Decodable, Identifiable {
     /// Same window as the phone (src/lib/alertLifecycle.ts): from `effective`
     /// (or `onset`) until the earlier of `expires` and `ends`.
     func isActive(at now: Date) -> Bool {
-        guard let expiresAt = WatchRadarFrame.date(expires),
-              let startsAt = (effective ?? onset).flatMap(WatchRadarFrame.date) else { return false }
-        let endsAt = ends.flatMap(WatchRadarFrame.date).map { min($0, expiresAt) } ?? expiresAt
+        guard let expiresAt = RadarFrame.date(expires),
+              let startsAt = (effective ?? onset).flatMap(RadarFrame.date) else { return false }
+        let endsAt = ends.flatMap(RadarFrame.date).map { min($0, expiresAt) } ?? expiresAt
         return now >= startsAt && now < endsAt
     }
 }

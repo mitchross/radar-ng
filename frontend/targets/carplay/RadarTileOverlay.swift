@@ -1,7 +1,7 @@
 import MapKit
 
 final class RadarTileOverlay: MKTileOverlay {
-    let frame: RadarAPI.Frame
+    let frame: RadarFrame
     /// Identifies CarPlay traffic in server logs; the scene shares the app's process.
     static let userAgent = "RadarNG-CarPlay/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")"
     let palette: String
@@ -11,9 +11,9 @@ final class RadarTileOverlay: MKTileOverlay {
     /// Optional diagnostics receive the exact tile data delivered to MapKit.
     var onTileLoaded: ((MKTileOverlayPath, Data) -> Void)?
 
-    init(frame: RadarAPI.Frame) {
+    init(frame: RadarFrame) {
         self.frame = frame
-        self.palette = RadarShared.palette(among: frame.palettes ?? [])
+        self.palette = frame.palette
         super.init(urlTemplate: nil)
         canReplaceMapContent = false
         tileSize = CGSize(width: 256, height: 256)
@@ -25,11 +25,13 @@ final class RadarTileOverlay: MKTileOverlay {
 
     override func url(forTilePath path: MKTileOverlayPath) -> URL {
         // Radar NG publishes XYZ tiles; the old IEM feed required inverted Y.
-        URL(string: "\(server)/tiles/radar/\(palette)/\(frame.path)/\(path.z)/\(path.x)/\(path.y).png")!
+        // loadTile only asks for zooms 1...7; MapKit may still ask for the URL of an overzoomed
+        // tile it never fetches, so fall back to the server root rather than crash.
+        frame.tileURL(server: server, palette: palette, z: path.z, x: path.x, y: path.y) ?? URL(string: server)!
     }
 
     override func loadTile(at path: MKTileOverlayPath, result: @escaping (Data?, Error?) -> Void) {
-        let level = min(path.z, min(7, max(4, frame.max_zoom ?? 7)))
+        let level = min(path.z, min(7, max(4, frame.maxZoom ?? 7)))
         let factor = 1 << (path.z - level)
         let source = MKTileOverlayPath(x: path.x / factor, y: path.y / factor,
                                        z: level, contentScaleFactor: path.contentScaleFactor)

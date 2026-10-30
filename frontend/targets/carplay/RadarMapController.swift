@@ -6,7 +6,7 @@ import UIKit
 final class RadarMapController: UIViewController {
     let mapView = MKMapView()
     let driving: RadarDrivingSession
-    var onRadarTileLoaded: ((RadarAPI.Frame, MKTileOverlayPath, Data) -> Void)?
+    var onRadarTileLoaded: ((RadarFrame, MKTileOverlayPath, Data) -> Void)?
     private let dashboard: Bool
     private weak var interfaceController: CPInterfaceController?
     private var observer: UUID?
@@ -91,8 +91,7 @@ final class RadarMapController: UIViewController {
     }
 
     private func sync() {
-        if let frame = driving.frame, radarVisible,
-           Date().timeIntervalSince(frame.observedAt ?? .distantPast) <= 900 {
+        if let frame = driving.frame, radarVisible, frame.isFresh() {
             if radarOverlay?.frame != frame {
                 if let radarOverlay { mapView.removeOverlay(radarOverlay) }
                 let overlay = RadarTileOverlay(frame: frame)

@@ -46,13 +46,14 @@ struct RouteProgressChecks {
         precondition(!RadarRouteProgress.accepts(fix(age: 30, accuracy: 10), now: now))
         precondition(!RadarRouteProgress.accepts(fix(age: 1, accuracy: -1), now: now))
         precondition(!RadarRouteProgress.accepts(fix(age: 1, accuracy: 100), now: now))
-        let valid = RadarAPI.Frame(timestamp: ISO8601DateFormatter().string(from: now),
-                                  path: "2026-09-21T04:04:06+00:00", palettes: ["classic"], max_zoom: 7)
+        let valid = RadarFrame(timestamp: ISO8601DateFormatter().string(from: now),
+                               path: "2026-09-21T04:04:06+00:00", palettes: ["classic"], maxZoom: 7)
         precondition(valid.isValid)
-        let traversal = RadarAPI.Frame(timestamp: valid.timestamp, path: "../private", palettes: nil, max_zoom: nil)
+        let traversal = RadarFrame(timestamp: valid.timestamp, path: "../private", palettes: nil, maxZoom: nil)
         precondition(!traversal.isValid)
-        let future = RadarAPI.Frame(timestamp: ISO8601DateFormatter().string(from: now.addingTimeInterval(600)),
-                                   path: valid.path, palettes: nil, max_zoom: nil)
+        precondition(!RadarFrame(timestamp: valid.timestamp, path: "a/b", palettes: nil, maxZoom: nil).isValid)
+        let future = RadarFrame(timestamp: ISO8601DateFormatter().string(from: now.addingTimeInterval(600)),
+                                path: valid.path, palettes: nil, maxZoom: nil)
         precondition(!future.isValid)
         print("PASS: route projection, loop protection, GPS validity, radar frame validation")
     }
