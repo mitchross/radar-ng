@@ -64,9 +64,6 @@ spec:
             - { name: SEED_SCHEDULES, value: "1" }
             - { name: TEMPORAL_GRACEFUL_SHUTDOWN_S, value: "175" }
             - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "4" }
-            - { name: TILE_DIR, value: /data/tiles }
-            - { name: GRID_DIR, value: /data/grids }
-            - { name: STATE_DIR, value: /data/state }
           # The worker touches /tmp/worker-alive every 30 s, independent of Temporal.
           livenessProbe:
             exec:

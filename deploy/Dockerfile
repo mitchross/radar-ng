@@ -101,9 +101,6 @@ COPY --from=glyphs /glyphs/ /srv/basemap/fonts/
 ENV LISTEN_ADDR=0.0.0.0:8080 \
     STYLE_DIR=/srv/basemap/styles \
     BASEMAP_ROOT=/srv/basemap \
-    TILE_DIR=/data/tiles \
-    GRID_DIR=/data/grids \
-    STATE_DIR=/data/state \
     LOG_LEVEL=info
 
 LABEL io.radar-ng.replay-gate="rust-offline-replay" \

@@ -76,9 +76,6 @@ spec:
             - { name: SKIP_SCHEDULE_SEED, value: "1" }
             # Slots cover 2 frames x 2 layers plus list/mark.
             - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "6" }
-            - { name: TILE_DIR, value: /data/tiles }
-            - { name: GRID_DIR, value: /data/grids }
-            - { name: STATE_DIR, value: /data/state }
           livenessProbe:
             exec:
               command: [sh, -c, "test $(find /tmp/worker-alive -mmin -3)"]
@@ -174,9 +171,6 @@ spec:
             - { name: SKIP_SCHEDULE_SEED, value: "1" }
             # One nowcast run at a time; a second doubles peak memory and starves the first.
             - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "1" }
-            - { name: TILE_DIR, value: /data/tiles }
-            - { name: GRID_DIR, value: /data/grids }
-            - { name: STATE_DIR, value: /data/state }
           livenessProbe:
             exec:
               command: [sh, -c, "test $(find /tmp/worker-alive -mmin -3)"]
@@ -272,9 +266,6 @@ spec:
             - { name: SKIP_SCHEDULE_SEED, value: "1" }
             # Fan-out is 4 forecast hours at a time, so 4 slots is the whole budget.
             - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "4" }
-            - { name: TILE_DIR, value: /data/tiles }
-            - { name: GRID_DIR, value: /data/grids }
-            - { name: STATE_DIR, value: /data/state }
           livenessProbe:
             exec:
               command: [sh, -c, "test $(find /tmp/worker-alive -mmin -3)"]
@@ -371,9 +362,6 @@ spec:
             - { name: SEED_SCHEDULES, value: "1" }
             # Lightning holds one slot ~50 min/h; air quality, tropical and cleanup share the rest.
             - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "4" }
-            - { name: TILE_DIR, value: /data/tiles }
-            - { name: GRID_DIR, value: /data/grids }
-            - { name: STATE_DIR, value: /data/state }
           livenessProbe:
             exec:
               command: [sh, -c, "test $(find /tmp/worker-alive -mmin -3)"]
@@ -469,9 +457,6 @@ spec:
             - { name: SKIP_SCHEDULE_SEED, value: "1" }
             # Small HTTP/JSON activities only; storm watches read grids, never write tiles.
             - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "8" }
-            - { name: TILE_DIR, value: /data/tiles }
-            - { name: GRID_DIR, value: /data/grids }
-            - { name: STATE_DIR, value: /data/state }
           livenessProbe:
             exec:
               command: [sh, -c, "test $(find /tmp/worker-alive -mmin -3)"]

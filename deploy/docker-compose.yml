@@ -42,9 +42,6 @@ x-temporal-env: &temporal-env
 # radar-ng manifests (temporal-workers/configmap-temporal-config.yaml).
 x-worker-env: &worker-env
   <<: *temporal-env
-  TILE_DIR: /data/tiles
-  GRID_DIR: /data/grids
-  STATE_DIR: /data/state
   TEMPORAL_GRACEFUL_SHUTDOWN_S: "25"
   SKIP_SCHEDULE_SEED: ${SKIP_SCHEDULE_SEED:-0}
   PALETTES: ${PALETTES:-classic,muted,vivid}
@@ -166,7 +163,6 @@ services:
     command: ["worker", "--role", "legacy"]
     environment:
       <<: *worker-env
-      WORKER_ROLE: legacy
       SEED_SCHEDULES: "1"
     depends_on:
       temporal:
@@ -188,7 +184,6 @@ services:
     command: ["worker", "--role", "open-meteo"]
     environment:
       <<: *temporal-env
-      WORKER_ROLE: open-meteo
       TEMPORAL_GRACEFUL_SHUTDOWN_S: "25"
       OPENMETEO_BIN: /app/openmeteo-api
       OPENMETEO_DATA_DIR: /app/data
@@ -304,7 +299,6 @@ services:
   #   command: ["worker", "--role", "mrms"]
   #   environment:
   #     <<: *worker-env
-  #     WORKER_ROLE: mrms
   #     USE_ISOLATED_TASK_QUEUES: "1"
   #   depends_on:
   #     temporal:
