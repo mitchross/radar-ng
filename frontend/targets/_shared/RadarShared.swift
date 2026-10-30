@@ -2,8 +2,8 @@ import Foundation
 
 /// What the phone app shares with its extensions (src/lib/sharedState.ts).
 /// The widget and CarPlay read the App Group; the Watch reads what
-/// WatchConnectivity delivered into its own defaults. This file is kept
-/// identical in targets/radar-widget, targets/carplay and targets/watch.
+/// WatchConnectivity delivered into its own defaults. This is the only copy:
+/// @bacons/apple-targets links targets/_shared into the app and every target.
 struct RadarShared: Decodable {
     struct Location: Decodable {
         /// "city": a place the user chose; show it instead of local GPS.

@@ -10,7 +10,8 @@ const path = require("path");
 const CARPLAY_SRC = "targets/carplay";
 
 // Every Swift file in targets/carplay is copied and compiled, so a new file
-// needs no list entry and a renamed one cannot be skipped.
+// needs no list entry and a renamed one cannot be skipped. RadarShared.swift is
+// not here: @bacons/apple-targets links targets/_shared into the app itself.
 const carPlayFiles = (projectRoot) => {
   const files = fs
     .readdirSync(path.join(projectRoot, CARPLAY_SRC))

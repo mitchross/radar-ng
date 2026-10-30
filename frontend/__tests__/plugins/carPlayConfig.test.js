@@ -149,4 +149,7 @@ test("CarPlay builds compile every Swift file in targets/carplay", () => {
   plugin({}).xcodeMod({ modResults: proj, modRequest: { projectName: "radarng", projectRoot: root } });
   expect(expected.length).toBeGreaterThan(0);
   expect(added).toEqual(expected);
+  // RadarShared.swift is in targets/_shared, which apple-targets already links into the
+  // app; adding it here too would compile it twice.
+  expect(added).not.toContain("RadarShared.swift");
 });

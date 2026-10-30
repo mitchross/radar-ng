@@ -13,15 +13,13 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
-const SHARED = ["targets/radar-widget", "targets/carplay", "targets/watch"].map((t) => `${t}/RadarShared.swift`);
+const SHARED = "targets/_shared/RadarShared.swift";
 
 /** Each rule rewrites one `static let name = "…"` literal. */
 function rules(identity) {
   return [
-    ...SHARED.flatMap((file) => [
-      { file, name: "appGroup", value: identity.appGroup },
-      { file, name: "defaultServer", value: identity.defaultServerUrl },
-    ]),
+    { file: SHARED, name: "appGroup", value: identity.appGroup },
+    { file: SHARED, name: "defaultServer", value: identity.defaultServerUrl },
     { file: "modules/radar-shared-state/ios/RadarSharedStateModule.swift", name: "appGroup", value: identity.appGroup },
     { file: "targets/watch/WatchAPI.swift", name: "rasterURL", value: identity.basemapRasterUrl },
     { file: "targets/radar-widget/RadarSnapshot.swift", name: "basemap", value: identity.basemapRasterUrl },
@@ -30,7 +28,7 @@ function rules(identity) {
 
 // Simulator-only checks that spell out URLs built from the constants above.
 const DERIVED = [
-  { file: "tests/watch/PresentationChecks.swift", from: { file: SHARED[2], name: "defaultServer" }, key: "defaultServerUrl" },
+  { file: "tests/watch/PresentationChecks.swift", from: { file: SHARED, name: "defaultServer" }, key: "defaultServerUrl" },
   { file: "tests/watch/PresentationChecks.swift", from: { file: "targets/watch/WatchAPI.swift", name: "rasterURL" }, key: "basemapRasterUrl" },
 ];
 

@@ -126,7 +126,7 @@ test("the sync script rewrites every Swift constant for a fork", () => {
   });
   const leftovers = swift.filter((f) => /vanillax/.test(fs.readFileSync(path.join(tmp, f), "utf8")));
   expect(leftovers).toEqual([]);
-  const shared = fs.readFileSync(path.join(tmp, "targets/watch/RadarShared.swift"), "utf8");
+  const shared = fs.readFileSync(path.join(tmp, "targets/_shared/RadarShared.swift"), "utf8");
   expect(shared).toContain('static let appGroup = "group.com.example.radar"');
   expect(shared).toContain('static let defaultServer = "https://radar.example.com"');
   fs.rmSync(tmp, { recursive: true, force: true });
