@@ -206,7 +206,6 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   const typedLayer = useManifestQuery().data?.layers[activeLayer]?.precip_type === true;
   const typeRamps = typedLayer ? precipTypeRamps(palettes, palette) : null;
   const chrome = useMapChromeInsets();
-  const timelineMode = useWeatherStore((s) => s.timelineMode);
   // Scalars, not the frame array: the card re-renders only when the tag can
   // change, not on every playback tick.
   const frameSource = useWeatherStore((s) => s.frames[s.currentFrameIndex]?.source ?? null);
@@ -218,7 +217,7 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   // user is sitting on: past = OBSERVED, near-future = NOWCAST, far-future
   // = FORECAST (HRRR). Other layers are statically tagged.
   let source = LAYER_SOURCE[activeLayer] ?? "Now";
-  if ((activeLayer === "radar" || activeLayer === "radar-hrrr") && timelineMode === "forecast") {
+  if (activeLayer === "radar" || activeLayer === "radar-hrrr") {
     if (frameSource === "nowcast") source = "Soon";
     else if (frameSource === "radar-hrrr" || frameSource === "radar-gfs") source = "Later";
     else source = "Now";

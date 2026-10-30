@@ -49,7 +49,6 @@ export default function NowcastScreen() {
   const viewMode = useWeatherStore((s) => s.viewMode);
   const setViewMode = useWeatherStore((s) => s.setViewMode);
   const setActiveLayer = useWeatherStore((s) => s.setActiveLayer);
-  const setTimelineMode = useWeatherStore((s) => s.setTimelineMode);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
   const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
   const {
@@ -82,11 +81,10 @@ export default function NowcastScreen() {
   const nowMs = useNow(60_000);
   const openMotionRadar = useCallback(() => {
     setActiveLayer("radar");
-    setTimelineMode("forecast");
     setCurrentFrameIndex(-1);
     setIsPlaying(!reducedMotion);
     router.push("/radar");
-  }, [reducedMotion, router, setActiveLayer, setCurrentFrameIndex, setIsPlaying, setTimelineMode]);
+  }, [reducedMotion, router, setActiveLayer, setCurrentFrameIndex, setIsPlaying]);
 
   const presentation = getForecastScreenState({
     data: forecast,

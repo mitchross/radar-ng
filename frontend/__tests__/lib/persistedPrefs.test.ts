@@ -4,7 +4,6 @@ import {
   parsePlaybackFps,
   parsePalette,
   parseServerUrl,
-  parseTimelineMode,
   parseViewMode,
 } from "../../src/lib/persistedPrefs";
 
@@ -12,7 +11,6 @@ describe("persisted pref parsers", () => {
   it("accept known values verbatim", () => {
     expect(parseMapStyle("satellite")).toBe("satellite");
     expect(parsePalette("vivid")).toBe("vivid");
-    expect(parseTimelineMode("current")).toBe("current");
     expect(parseViewMode("advanced")).toBe("advanced");
   });
 
@@ -22,7 +20,6 @@ describe("persisted pref parsers", () => {
     expect(parseMapStyle("midnight")).toBe("light");
     expect(parseMapStyle("")).toBe("light");
     expect(parsePalette("nexrad")).toBe("classic");
-    expect(parseTimelineMode("past")).toBe("forecast");
     expect(parseViewMode("expert")).toBe("simple");
   });
 

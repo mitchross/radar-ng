@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, Palette, TimelineMode } from "../types/weather";
+import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, Palette } from "../types/weather";
 import type { LocationMode, SelectedPlace } from "../types/location";
 import { DEFAULTS, RADAR, SELF_HOSTED } from "../lib/constants";
 import { getString, setString } from "../lib/storage";
@@ -7,7 +7,6 @@ import {
   parseMapStyle,
   parsePalette,
   parseServerUrl,
-  parseTimelineMode,
   parseViewMode,
   parseOpacity,
   parsePlaybackFps,
@@ -48,7 +47,6 @@ interface WeatherState {
   temperatureUnit: TemperatureUnit;
   mapStyle: MapStyle;
   activePalette: Palette;
-  timelineMode: TimelineMode;
   // Power-user overlays — off by default. Lightning + storm-cell dots
   // overwhelm the radar view for casual users; opt-in via this flag.
   extrasVisible: boolean;
@@ -83,7 +81,6 @@ interface WeatherState {
   setTemperatureUnit: (unit: TemperatureUnit) => void;
   setMapStyle: (style: MapStyle) => void;
   setActivePalette: (palette: Palette) => void;
-  setTimelineMode: (mode: TimelineMode) => void;
   toggleExtras: () => void;
   setSatelliteVisible: (on: boolean) => void;
   setAiNarration: (on: boolean) => void;
@@ -169,7 +166,6 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   activePalette: parsePalette(getString("activePalette", "classic")),
   // Default to "forecast" so the timeline shows past + nowcast + HRRR future
   // as one merged stream out of the box. Less UI to flip, less to explain.
-  timelineMode: parseTimelineMode(getString("timelineMode", "forecast")),
   extrasVisible: getString("extrasVisible", "0") === "1",
   satelliteVisible: getString("satelliteVisible", "0") === "1",
   aiNarration: getString("aiNarration", "1") === "1",
@@ -294,10 +290,6 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setActivePalette: (palette) => {
     setString("activePalette", palette);
     set({ activePalette: palette });
-  },
-  setTimelineMode: (mode) => {
-    setString("timelineMode", mode);
-    set({ timelineMode: mode });
   },
   toggleExtras: () => set((s) => {
     const next = !s.extrasVisible;
