@@ -21,9 +21,7 @@ import {
   fetchBriefing,
   fetchManifest,
   forecastHourLabel,
-  forecastTimeMs,
   iconSvg,
-  isNightAt,
   readPoint,
   reversePlace,
   searchPlaces,
@@ -33,6 +31,7 @@ import {
 } from "./weather";
 import { WindLayer } from "./wind";
 import { SatelliteLayer } from "./satellite";
+import { forecastTimeMs, isNightAt } from "./shared/forecastTime";
 import { satelliteFrames } from "./shared/satellite";
 import { PackedRadarLayer, type PackedFrameRef } from "./packed/layer";
 import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast";
