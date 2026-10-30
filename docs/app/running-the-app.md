@@ -80,6 +80,12 @@ cd frontend
 bun run ios:ipa
 ```
 
+Unless `IOS_BUILD_RUN` is set, the script first regenerates `frontend/ios` (clean prebuild plus
+`pod install`) with a clock-based build number, `10.<hours since epoch>.<minute*10>`. CI uses the same clock
+(`10.<hours>.<minute*10 + attempt>`), so local and CI uploads both sort by build time and App Store
+Connect accepts either. Set `IOS_BUILD_RUN` yourself to
+build the project you already prebuilt.
+
 The output lands at `artifacts/ios/export-debugging/radarng.ipa`. It's a `Release` Xcode
 archive/export that embeds the JS bundle (`main.jsbundle`) and
 `Payload/radarng.app/Watch/radar-ngWatch.app`, so the installed app needs no Metro server.

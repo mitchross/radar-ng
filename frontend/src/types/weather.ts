@@ -135,8 +135,11 @@ export interface SelfHostedManifest {
     packed?: unknown;
     /** MRMS layers: frames are colored by precipitation type (rain, snow, mix). */
     precip_type?: boolean;
+    /** The `/api/palettes` color key that colors this layer; older servers omit it. */
+    palette_key?: string;
   }>;
-  tile_url_template: string;
+  /** Unused by this app; still sent for builds that require it. */
+  tile_url_template?: string;
   updated_at: string;
 }
 

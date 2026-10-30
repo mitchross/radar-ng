@@ -21,8 +21,6 @@ use thiserror::Error;
 pub const MANIFEST_SCHEMA_VERSION: i64 = 2;
 /// Tile URL template (spec §3.1).
 pub const TILE_URL_TEMPLATE: &str = "/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png";
-/// Legacy tile URL template (spec §3.1).
-pub const TILE_URL_TEMPLATE_LEGACY: &str = "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png";
 /// File name of the manifest inside the state directory.
 pub const MANIFEST_FILE: &str = "manifest.json";
 /// Lock sidecar for read-modify-write of the manifest.
@@ -73,8 +71,6 @@ pub struct Manifest {
     pub schema_version: i64,
     /// [`TILE_URL_TEMPLATE`] unless the file said otherwise.
     pub tile_url_template: String,
-    /// [`TILE_URL_TEMPLATE_LEGACY`] unless the file said otherwise.
-    pub tile_url_template_legacy: String,
     /// ISO-8601 UTC time of the last write.
     pub updated_at: String,
     /// Unknown top-level keys, preserved.
@@ -168,7 +164,6 @@ impl Manifest {
             layers: BTreeMap::new(),
             schema_version: MANIFEST_SCHEMA_VERSION,
             tile_url_template: TILE_URL_TEMPLATE.to_string(),
-            tile_url_template_legacy: TILE_URL_TEMPLATE_LEGACY.to_string(),
             updated_at: isoformat_utc(&now),
             extra: Map::new(),
         }
@@ -227,17 +222,13 @@ pub fn parse_manifest_value(value: Value, now: DateTime<Utc>) -> Result<Manifest
             .ok_or_else(|| malformed("\"schema_version\" is not an integer"))?,
     };
     let tile_url_template = take_string_or(&mut root, "tile_url_template", TILE_URL_TEMPLATE)?;
-    let tile_url_template_legacy = take_string_or(
-        &mut root,
-        "tile_url_template_legacy",
-        TILE_URL_TEMPLATE_LEGACY,
-    )?;
+    // Nothing reads it any more; drop it from files written by older releases on the next write.
+    root.remove("tile_url_template_legacy");
     let updated_at = take_string_or(&mut root, "updated_at", &isoformat_utc(&now))?;
     Ok(Manifest {
         layers,
         schema_version,
         tile_url_template,
-        tile_url_template_legacy,
         updated_at,
         extra: root,
     })

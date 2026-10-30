@@ -8,7 +8,6 @@
 //! - `/basemap/imagery/{z}/{x}/{y}.jpg`: USGS imagery proxy with a moka cache (Caddy did not cache).
 //! - `/basemap/tiles/{z}/{x}/{y}.mvt`: vector tiles read straight from the `.pmtiles` archive.
 //!   This replaces the go-pmtiles sidecar.
-//! - `/api/basemap/style/{name}`: style JSON with its origin-relative URLs made absolute.
 //!
 //! Every static-lane response that is an error (status 400 or higher) is rewritten by
 //! [`static_error_override`], as Caddy's `handle_errors` did: `Cache-Control: no-store` and a text
@@ -30,12 +29,10 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use pmtiles::{AsyncBackend, AsyncPmTilesReader, BackendResponse, PmtError, PmtResult, TileCoord};
-use serde_json::{Value, json};
 use tower::{ServiceBuilder, ServiceExt};
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
-use crate::prefetch::request_base;
 use crate::respond;
 use crate::state::{AppState, CachedImagery};
 use crate::upstream;
@@ -576,93 +573,6 @@ async fn proxy_vector_tile(state: &AppState, z: u8, x: u32, y: u32) -> Response 
     (fetched.status, headers, fetched.body).into_response()
 }
 
-/// The origin for relative URLs in a style: `X-Forwarded-Proto` (or `http`) and `X-Forwarded-Host`
-/// (or `Host`).
-fn style_origin(headers: &HeaderMap) -> String {
-    let base = request_base(headers);
-    let host = headers
-        .get("x-forwarded-host")
-        .and_then(|v| v.to_str().ok())
-        .filter(|h| !h.is_empty());
-    match host {
-        Some(host) => {
-            let proto = base.split("://").next().unwrap_or("http");
-            format!("{proto}://{host}")
-        }
-        None => base,
-    }
-}
-
-/// Rewrite origin-relative `sources.*.tiles[i]`, `glyphs` and `sprite` to absolute URLs.
-pub fn rewrite_origin(style: &mut Value, origin: &str) {
-    if let Some(sources) = style.get_mut("sources").and_then(Value::as_object_mut) {
-        for source in sources.values_mut() {
-            let Some(tiles) = source.get_mut("tiles").and_then(Value::as_array_mut) else {
-                continue;
-            };
-            for tile in tiles.iter_mut() {
-                let rewritten = tile
-                    .as_str()
-                    .filter(|s| s.starts_with('/'))
-                    .map(|s| format!("{origin}{s}"));
-                if let Some(url) = rewritten {
-                    *tile = json!(url);
-                }
-            }
-        }
-    }
-    for key in ["glyphs", "sprite"] {
-        let rewritten = style
-            .get(key)
-            .and_then(Value::as_str)
-            .filter(|s| s.starts_with('/'))
-            .map(|s| format!("{origin}{s}"));
-        if let Some(url) = rewritten {
-            style[key] = json!(url);
-        }
-    }
-}
-
-/// `GET /api/basemap/style/{name}` (spec 5.13). No `Cache-Control` and no CORS header.
-pub async fn get_basemap_style(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(name): Path<String>,
-) -> Response {
-    // Starlette decodes %2F before routing, so an encoded slash never reaches this handler.
-    if name.contains('/') {
-        return respond::detail(StatusCode::NOT_FOUND, "Not Found");
-    }
-    let alnum = !name.is_empty() && name.chars().all(char::is_alphanumeric);
-    if !alnum
-        && name != "positron"
-        && name != "dark-matter"
-        && (name.contains("..") || name.contains('\\'))
-    {
-        return respond::detail(StatusCode::BAD_REQUEST, "invalid style name");
-    }
-    let path: PathBuf = state.config.style_dir.join(format!("{name}.json"));
-    let exists_path = path.clone();
-    let exists = tokio::task::spawn_blocking(move || exists_path.is_file())
-        .await
-        .unwrap_or(false);
-    if !exists {
-        return respond::detail(StatusCode::NOT_FOUND, "style not found");
-    }
-    let read = tokio::task::spawn_blocking(move || read_style(&path)).await;
-    let mut style = match read {
-        Ok(Ok(style)) => style,
-        _ => return respond::internal_error(),
-    };
-    rewrite_origin(&mut style, &style_origin(&headers));
-    respond::json(StatusCode::OK, &style, None)
-}
-
-fn read_style(path: &FsPath) -> Result<Value, ()> {
-    let text = std::fs::read_to_string(path).map_err(|_| ())?;
-    serde_json::from_str(&text).map_err(|_| ())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -678,29 +588,6 @@ mod tests {
         assert_eq!(imagery_parts("01", "1", "2.jpg"), None);
         assert_eq!(imagery_parts("3", "x", "2.jpg"), None);
         assert_eq!(imagery_parts("3", "1", "2.png"), None);
-    }
-
-    #[test]
-    fn style_origin_rewrites_only_relative_urls() {
-        let mut style = json!({
-            "sources": {"base": {"type": "vector", "tiles": ["/basemap/tiles/{z}/{x}/{y}.mvt", "https://other/x"]}},
-            "glyphs": "/basemap/fonts/{fontstack}/{range}.pbf",
-            "sprite": "https://cdn.example/sprite",
-        });
-        rewrite_origin(&mut style, "https://radar.example");
-        assert_eq!(
-            style["sources"]["base"]["tiles"][0],
-            json!("https://radar.example/basemap/tiles/{z}/{x}/{y}.mvt")
-        );
-        assert_eq!(
-            style["sources"]["base"]["tiles"][1],
-            json!("https://other/x")
-        );
-        assert_eq!(
-            style["glyphs"],
-            json!("https://radar.example/basemap/fonts/{fontstack}/{range}.pbf")
-        );
-        assert_eq!(style["sprite"], json!("https://cdn.example/sprite"));
     }
 
     #[tokio::test]

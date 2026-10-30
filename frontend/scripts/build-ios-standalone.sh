@@ -22,6 +22,22 @@ DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${BUILD_ROOT}/DerivedData}"
 TEAM_ID="${TEAM_ID:-$(node -e "process.stdout.write(require('./identity').appleTeamId || '')")}"
 QUIET="${QUIET:-1}"
 
+# CI and local builds share one clock: 10.<hours since epoch>.<minute*10 + n>, where CI's n is the
+# run attempt (1-9) and a local build's n is 0 (.github/workflows/build-ios.yml). Build numbers then
+# sort by build time, whichever machine made them, so App Store Connect accepts both. CFBundleVersion
+# is up to three period-separated integers compared left to right
+# (https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleversion);
+# hours since epoch (~500k) stays well inside Launch Services' 21-bit second field.
+# Prebuild is what writes the build number into the app, widget and Watch targets, so regenerate the
+# native project the way CI does. Set IOS_BUILD_RUN yourself to skip this and use the project you prebuilt.
+if [[ -z "${IOS_BUILD_RUN:-}" ]]; then
+  t=$(date -u +%s)
+  export IOS_BUILD_RUN="$((t / 3600)).$(( (t % 3600) / 60 * 10 ))"
+  echo "==> Prebuild (local build number: app.json buildNumber + .${IOS_BUILD_RUN})"
+  bunx expo prebuild --platform ios --clean --no-install
+  (cd ios && RUBYOPT="-r$PWD/../scripts/cocoapods_xcodeproj_object_version_70${RUBYOPT:+ $RUBYOPT}" pod install)
+fi
+
 if [[ ! -d "$WORKSPACE" ]]; then
   echo "Workspace not found: $WORKSPACE" >&2
   echo "Run from frontend after ios has been generated." >&2

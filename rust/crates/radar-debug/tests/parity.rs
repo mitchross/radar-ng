@@ -459,7 +459,6 @@ fn manifest(frames: &[(&str, &str)], extra_key: Option<&str>) -> String {
     serde_json::json!({
         "schema_version": 2,
         "tile_url_template": "/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png",
-        "tile_url_template_legacy": "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
         "updated_at": "2026-10-14T06:05:00+00:00",
         "layers": {"radar": {
             "frames": frames,

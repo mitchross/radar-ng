@@ -34,6 +34,16 @@ describe("serverLegend", () => {
     expect(observed.stops[0].label).toBe("8+");
   });
 
+  it("uses the palette key the server sends, and the local map without one", () => {
+    expect(serverLegend(palettes, "classic", "temperature", 7, "dewpoint")!.stops).toEqual(
+      serverLegend(palettes, "classic", "dewpoint")!.stops,
+    );
+    expect(serverLegend(palettes, "classic", "temperature", 7, undefined)).toEqual(
+      serverLegend(palettes, "classic", "temperature"),
+    );
+    expect(serverLegend(palettes, "classic", "temperature", 7, "no_such_key")).toBeNull();
+  });
+
   it("builds rain, snow and mix ramps from the reflectivity table", () => {
     const ramps = precipTypeRamps(palettes, "classic")!;
     expect(ramps.map((r) => r.label)).toEqual(["Rain", "Snow", "Mix"]);

@@ -51,6 +51,14 @@ describe("layerLegend", () => {
     expect(observed.labels).toEqual(["0.01", "8+"]);
   });
 
+  it("uses the palette key the server sends, and the local map without one", () => {
+    const sent = layerLegend(palettes, "classic", "temperature", "dewpoint")!;
+    expect(sent.gradient).toBe(layerLegend(palettes, "classic", "dewpoint")!.gradient);
+    expect(sent.gradient).not.toBe(layerLegend(palettes, "classic", "temperature")!.gradient);
+    expect(layerLegend(palettes, "classic", "temperature", undefined)).toEqual(layerLegend(palettes, "classic", "temperature"));
+    expect(layerLegend(palettes, "classic", "temperature", "no_such_key")).toBeNull();
+  });
+
   it("returns null when the server tables are missing or the layer has none", () => {
     expect(layerLegend(null, "classic", "temperature")).toBeNull();
     expect(layerLegend(palettes, "classic", "air-quality")).toBeNull();

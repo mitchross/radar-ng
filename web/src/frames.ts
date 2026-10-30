@@ -3,7 +3,7 @@
  * the app (frontend/src/hooks/useManifest.ts, lib/playbackSequence.ts) so the
  * web and app loops visit the same frames.
  */
-import type { PackedMeta } from "./packed/format";
+export { offsetLabel } from "./shared/offsetLabel";
 
 export interface ManifestFrame {
   timestamp: string;
@@ -12,7 +12,7 @@ export interface ManifestFrame {
 }
 
 export interface Manifest {
-  layers: Record<string, { frames?: ManifestFrame[]; timestamps?: string[]; packed?: PackedMeta; precip_type?: boolean }>;
+  layers: Record<string, { frames?: ManifestFrame[]; timestamps?: string[]; packed?: unknown; precip_type?: boolean; palette_key?: string }>;
 }
 
 export type FrameSource = "radar" | "nowcast" | "radar-hrrr" | "radar-gfs" | string;
@@ -139,11 +139,3 @@ export function refreshKeepTime(current: Frame | undefined, live: Frame | undefi
   return current.time;
 }
 
-/** "Now", "+45m", "−4h". */
-export function offsetLabel(frameSec: number, nowSec: number): string {
-  const min = Math.round((frameSec - nowSec) / 60);
-  if (Math.abs(min) <= 5) return "Now";
-  const sign = min > 0 ? "+" : "−";
-  const abs = Math.abs(min);
-  return abs < 90 ? `${sign}${abs}m` : `${sign}${Math.round(abs / 60)}h`;
-}

@@ -42,6 +42,12 @@ describe("parseSelfHostedManifest", () => {
     ).toBeDefined();
   });
 
+  it("does not require tile_url_template, but rejects an empty one", () => {
+    const { tile_url_template: _omitted, ...without } = validManifest();
+    expect(parseSelfHostedManifest(without)).toEqual(without);
+    expect(() => parseSelfHostedManifest({ ...without, tile_url_template: "" })).toThrow();
+  });
+
   it("drops a layer with an unknown frame kind and keeps the rest", () => {
     const good = validManifest();
     const badFrame = { timestamp: "2026-09-02T12:00:00Z", path: "2026-09-02T12:00:00Z", kind: "ensemble" };

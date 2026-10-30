@@ -67,7 +67,7 @@ Legend: sync = `def` (threadpool); async = `async def`. "CC" = Cache-Control on 
 | 11 | GET | `/api/tropical` | `tropical` | sync | 200 | none | `public, max-age=180` |
 | 12 | GET | `/api/livez` | `livez` | async | 200 `{"status":"ok"}` | none | none |
 | 13 | GET | `/api/health` | `health` | sync | 200 ok / 503 degraded | 503 `manifest unavailable` (HTTPException body) | none |
-| 14 | GET | `/api/basemap/style/{name}` | `get_basemap_style` | sync | 200 style JSON | 400 `invalid style name`, 404 `style not found` | none |
+| 14 | GET | `/api/basemap/style/{name}` | `get_basemap_style` | sync | **Removed in the Rust backend (#242): no client called it.** | | |
 | 15 | GET | `/api/metrics` | `metrics` | sync | 200 text | 503 `manifest unavailable` | none |
 | 16 | GET | `/api/alerts` | `get_alerts` | async | 200 NWS body | 422, 502 (no-store) | `public, max-age=60` |
 | 17 | GET | `/api/alerts/map` | `get_map_alerts` | async | 200 FeatureCollection | 502 (no-store) | `public, max-age=60` |
@@ -522,6 +522,9 @@ HTTP 200 if status == "ok" else 503
 - No Cache-Control. [V]
 
 ### 5.13 `GET /api/basemap/style/{name}` (sync)
+> **Removed from the Rust backend in #242.** No shipped client called it (the app rewrites origins itself
+> with `absolutizeStyle`, the web radar loads `/basemap/styles/*.json` directly). Kept below as history.
+
 **Name check** [R]:
 ```
 if not name.isalnum() and name not in ("positron", "dark-matter"):

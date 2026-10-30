@@ -1,8 +1,17 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { LAYER_PALETTE_KEY } from "./serverPalettes";
+import { LAYER_PALETTE_KEY, layerPaletteKey } from "./serverPalettes";
 
 const rust = (path: string) => readFileSync(new URL(`../../../rust/crates/${path}`, import.meta.url), "utf8");
+
+describe("layerPaletteKey", () => {
+  it("prefers the key the server sends and falls back to the local map for older servers", () => {
+    expect(layerPaletteKey("temperature", "air_temp")).toBe("air_temp");
+    expect(layerPaletteKey("temperature")).toBe("temperature");
+    expect(layerPaletteKey("temperature", "")).toBe("temperature");
+    expect(layerPaletteKey("unknown", null)).toBeUndefined();
+  });
+});
 
 describe("LAYER_PALETTE_KEY", () => {
   it("is pinned, so changing it is deliberate", () => {

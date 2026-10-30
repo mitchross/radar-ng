@@ -201,9 +201,11 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
 export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   const palette = useWeatherStore((s) => s.activePalette);
   const { data: palettes } = useServerPalettes();
-  const legend = serverLegend(palettes, palette, activeLayer) ?? LEGENDS[activeLayer] ?? LEGENDS.radar;
+  const manifestLayer = useManifestQuery().data?.layers[activeLayer];
+  const legend =
+    serverLegend(palettes, palette, activeLayer, 7, manifestLayer?.palette_key) ?? LEGENDS[activeLayer] ?? LEGENDS.radar;
   // The server colors observed radar by precipitation type when the layer says so.
-  const typedLayer = useManifestQuery().data?.layers[activeLayer]?.precip_type === true;
+  const typedLayer = manifestLayer?.precip_type === true;
   const typeRamps = typedLayer ? precipTypeRamps(palettes, palette) : null;
   const chrome = useMapChromeInsets();
   // Scalars, not the frame array: the card re-renders only when the tag can

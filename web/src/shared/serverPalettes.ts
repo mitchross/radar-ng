@@ -26,6 +26,8 @@ export type ServerPalettes = Partial<Record<ServerPaletteId, Record<string, Colo
 /**
  * Map layer id to palette key, as the server's HRRR `layer_color_key` and MRMS QPE map them
  * (rust/crates/radar-ingest/src/hrrr/state.rs). A layer missing here has no server legend.
+ * Fallback only: current servers send each layer's key as `palette_key` in the manifest
+ * (see {@link layerPaletteKey}); this map serves older servers.
  */
 export const LAYER_PALETTE_KEY: Readonly<Record<string, string>> = {
   temperature: "temperature",
@@ -37,3 +39,8 @@ export const LAYER_PALETTE_KEY: Readonly<Record<string, string>> = {
   cloud: "cloud_cover",
   uv: "uv_index",
 };
+
+/** The palette key of a layer: the server's manifest `palette_key` when it sends one, else the local map. */
+export function layerPaletteKey(layer: string, serverKey?: string | null): string | undefined {
+  return serverKey || LAYER_PALETTE_KEY[layer];
+}

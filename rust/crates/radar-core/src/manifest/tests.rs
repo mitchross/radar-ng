@@ -115,6 +115,22 @@ fn man_05_replace_with_empty_list_drops_layer() {
 }
 
 #[test]
+fn the_dropped_legacy_template_is_stripped_from_older_files() {
+    let m = parse_manifest_value(
+        json!({
+            "layers": {},
+            "tile_url_template_legacy": "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
+        }),
+        now(),
+    )
+    .unwrap();
+    assert!(m.extra.is_empty());
+    let out = serde_json::to_value(&m).unwrap();
+    assert!(out.get("tile_url_template_legacy").is_none());
+    assert_eq!(out["tile_url_template"], TILE_URL_TEMPLATE);
+}
+
+#[test]
 fn man_06_missing_file_reads_as_empty() {
     let dir = tempfile::tempdir().unwrap();
     let m = read_manifest(dir.path()).unwrap();

@@ -222,7 +222,6 @@ pub fn manifest_layer(times: &[DateTime<Utc>]) -> Value {
         "title": "GOES GeoColor satellite",
         "kind": "satellite",
         "tile_url_template": "/tiles/satellite/{path}/{z}/{x}/{y}.png",
-        "attribution": "NASA GIBS, NOAA GOES-East and GOES-West",
     })
 }
 

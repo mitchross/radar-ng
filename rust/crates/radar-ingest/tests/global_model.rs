@@ -287,6 +287,7 @@ async fn uv_converts_to_index_and_keeps_night_hours_as_empty_frames() {
     );
     let manifest = read_manifest(&h.paths.state_dir).unwrap();
     assert_eq!(manifest.layers["uv"].frames.len(), 2);
+    assert_eq!(manifest.layers["uv"].extra["palette_key"], "uv_index");
 }
 
 #[tokio::test]

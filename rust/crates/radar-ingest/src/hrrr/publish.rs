@@ -88,6 +88,8 @@ pub fn publish_run(
         let mut metadata = serde_json::Map::new();
         metadata.insert("title".into(), title.into());
         metadata.insert("kind".into(), "model_guidance".into());
+        // Clients pick the legend table by this key instead of mapping layer ids themselves.
+        metadata.insert("palette_key".into(), key.into());
         metadata.insert("run_id".into(), run_id.into());
         metadata.insert("complete".into(), complete.into());
         match packed.and_then(|paths| packed_value(paths, &layer, &frames)) {

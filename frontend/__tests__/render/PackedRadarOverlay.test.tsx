@@ -102,7 +102,6 @@ const META = parsePackedMeta({
   cols: 2,
   max_slots: 24,
   color_key: "reflectivity",
-  categorical: false,
   scale: 0.5,
   offset: -32,
   url_template: "/tiles/packed/{layer}/{bucket}/{z}/{x}/{y}.png?v={v}",
@@ -110,7 +109,7 @@ const META = parsePackedMeta({
 })!;
 
 const packed: PackedFrames = {
-  locations: [{ layer: "radar", bucket: "B", v: 7, slot: 4, meta: META, lutKey: "k", channel: 1, x0: 512, y0: 0 }],
+  locations: [{ layer: "radar", bucket: "B", v: 7, slot: 4, slots: 5, meta: META, lutKey: "k", channel: 1, x0: 512, y0: 0 }],
   isPacked: [true],
   luts: { k: buildLut({ ranges: [{ min: 5, max: 75, rgba: [0, 200, 0, 200] }], no_data_below: 5 }, 0.5, -32) },
 };
