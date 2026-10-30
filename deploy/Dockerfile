@@ -93,13 +93,12 @@ FROM ${RUNTIME_IMAGE} AS runtime
 COPY --from=busybox /out/ /usr/local/bin/
 COPY --from=radar /out/radar /usr/local/bin/radar
 
-# Bundled styles and fonts, read by the api (STYLE_DIR / BASEMAP_ROOT). Root-owned and
+# Bundled styles and fonts, read by the api (BASEMAP_ROOT). Root-owned and
 # world-readable, so the non-root user only reads them.
 COPY rust/assets/basemap/styles/ /srv/basemap/styles/
 COPY --from=glyphs /glyphs/ /srv/basemap/fonts/
 
 ENV LISTEN_ADDR=0.0.0.0:8080 \
-    STYLE_DIR=/srv/basemap/styles \
     BASEMAP_ROOT=/srv/basemap \
     LOG_LEVEL=info
 

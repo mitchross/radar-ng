@@ -24,8 +24,6 @@ pub struct Config {
     pub grid_dir: PathBuf,
     /// `STATE_DIR`, holds manifest, storms, lightning, tropical, nowcast files and push tokens.
     pub state_dir: PathBuf,
-    /// `STYLE_DIR`, used by `/api/basemap/style/{name}`. Default `/srv/basemap/styles`.
-    pub style_dir: PathBuf,
     /// `BASEMAP_ROOT`, the static root for `/basemap/styles/*` and `/basemap/fonts/*`
     /// (Caddy's `root * /srv/basemap`). Default `/srv/basemap`.
     pub basemap_root: PathBuf,
@@ -141,7 +139,6 @@ impl Config {
             tile_dir: env::path_var("TILE_DIR", "/data/tiles"),
             grid_dir: env::path_var("GRID_DIR", "/data/grids"),
             state_dir: env::path_var("STATE_DIR", "/data/state"),
-            style_dir: env::path_var("STYLE_DIR", "/srv/basemap/styles"),
             basemap_root: env::path_var("BASEMAP_ROOT", "/srv/basemap"),
             pmtiles_path: env::path_var("BASEMAP_PMTILES", "/data/basemap.pmtiles"),
             pmtiles_recheck_s: pos_u64("BASEMAP_PMTILES_RECHECK_S", 10)?,
@@ -218,7 +215,6 @@ impl Config {
             tile_dir,
             grid_dir,
             state_dir,
-            style_dir: PathBuf::from("/srv/basemap/styles"),
             basemap_root: PathBuf::from("/srv/basemap"),
             pmtiles_path: PathBuf::from("/data/basemap.pmtiles"),
             pmtiles_recheck_s: 10,

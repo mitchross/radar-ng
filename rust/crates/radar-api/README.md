@@ -50,7 +50,6 @@ Every `/api` route is a GET (`/api/livez` included). A GET-only route answers HE
 | GET | `/api/tropical` | `files::get_tropical` | Passthrough of tropical data |
 | GET | `/api/livez` | `health::get_livez` | Exempt from rate limit and access log |
 | GET | `/api/health` | `health::get_health` | 200 ok or 503 degraded, with reasons |
-| GET | `/api/basemap/style/{name}` | `basemap::get_basemap_style` | Style with origin rewritten |
 | GET | `/api/metrics` | `health::get_metrics` | Prometheus text |
 | GET | `/api/alerts` | `places::get_alerts` | NWS point alerts |
 | GET | `/api/alerts/map` | `places::get_alerts_map` | Shaped alert features, 3-dp cache key |
@@ -183,7 +182,7 @@ Other differences:
 ## Configuration
 
 Environment variables (see `src/config.rs`): `LISTEN_ADDR`, `TILE_DIR`, `GRID_DIR`, `STATE_DIR`,
-`STYLE_DIR`, `BASEMAP_ROOT`, `BASEMAP_PMTILES`, `BASEMAP_PMTILES_RECHECK_S`, `BASEMAP_TILES_UPSTREAM`,
+`BASEMAP_ROOT`, `BASEMAP_PMTILES`, `BASEMAP_PMTILES_RECHECK_S`, `BASEMAP_TILES_UPSTREAM`,
 `OPEN_METEO_BASE`, `MRMS_MAX_AGE_S`,
 `FORECAST_TTL_S`, `FORECAST_CACHE_MAX_BYTES` (64 MiB), `NOWCAST_POINT_CACHE_MAX_BYTES` (16 MiB),
 `WIND_CACHE_MAX_BYTES` (32 MiB), `ALERTS_TTL_S`, `ALERTS_CACHE_MAX_BYTES` (16 MiB), `NWS_POINTS_URL`,

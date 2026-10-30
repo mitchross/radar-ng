@@ -59,7 +59,6 @@ impl Env {
     fn config(&self, tweak: impl FnOnce(&mut Config)) -> Config {
         let mut cfg =
             Config::defaults_for(self.path("state"), self.path("grid"), self.path("tiles"));
-        cfg.style_dir = self.path("styles");
         cfg.basemap_root = self.path("basemap");
         cfg.pmtiles_path = self.path("basemap.pmtiles");
         cfg.rate_limit_burst = 100_000.0;
@@ -566,51 +565,6 @@ async fn vector_tiles_come_from_the_pmtiles_archive() {
     let (empty, _, empty_body) = send(&app, get_req("/basemap/tiles/1/0/0.mvt")).await;
     assert_eq!(empty, StatusCode::NO_CONTENT);
     assert!(empty_body.is_empty());
-}
-
-#[tokio::test]
-async fn style_rewrites_relative_urls_and_rejects_bad_names() {
-    let env = Env::new();
-    write_json(
-        &env.path("styles/positron.json"),
-        &json!({
-            "version": 8,
-            "sources": {"base": {"type": "vector", "tiles": ["/basemap/tiles/{z}/{x}/{y}.mvt"]}},
-            "glyphs": "/basemap/fonts/{fontstack}/{range}.pbf",
-            "sprite": "https://cdn.example/sprite",
-        }),
-    );
-    let app = env.app(|_| {});
-    let req = Request::builder()
-        .uri("/api/basemap/style/positron")
-        .header("x-forwarded-proto", "https")
-        .header(header::HOST, "radar.example")
-        .body(Body::empty())
-        .expect("req");
-    let (status, headers, body) = send(&app, req).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(headers.get(header::CACHE_CONTROL).is_none());
-    assert!(headers.get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
-    let style: Value = serde_json::from_slice(&body).expect("json");
-    assert_eq!(
-        style["sources"]["base"]["tiles"][0],
-        json!("https://radar.example/basemap/tiles/{z}/{x}/{y}.mvt")
-    );
-    assert_eq!(
-        style["glyphs"],
-        json!("https://radar.example/basemap/fonts/{fontstack}/{range}.pbf")
-    );
-    assert_eq!(style["sprite"], json!("https://cdn.example/sprite"));
-
-    let (bad, _, bad_body) = get_json(&app, "/api/basemap/style/a..b").await;
-    assert_eq!(bad, StatusCode::BAD_REQUEST);
-    assert_eq!(bad_body, json!({"detail": "invalid style name"}));
-    let (missing, _, missing_body) = get_json(&app, "/api/basemap/style/missing").await;
-    assert_eq!(missing, StatusCode::NOT_FOUND);
-    assert_eq!(missing_body, json!({"detail": "style not found"}));
-    let (encoded, _, encoded_body) = get_json(&app, "/api/basemap/style/a%2Fb").await;
-    assert_eq!(encoded, StatusCode::NOT_FOUND);
-    assert_eq!(encoded_body, json!({"detail": "Not Found"}));
 }
 
 // ---------------------------------------------------------------------------------------------
