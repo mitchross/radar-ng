@@ -144,7 +144,10 @@ function validateLayer(value: unknown, path: string): void {
 export function parseSelfHostedManifest(value: unknown): SelfHostedManifest {
   if (!isRecord(value)) fail("root");
   if (!isRecord(value.layers)) fail("layers");
-  if (!isNonEmptyString(value.tile_url_template)) fail("tile_url_template");
+  // Nothing reads it (tile URLs are built from the frame path), and the server may stop sending it.
+  if (value.tile_url_template !== undefined && !isNonEmptyString(value.tile_url_template)) {
+    fail("tile_url_template");
+  }
   if (!isTimestamp(value.updated_at)) fail("updated_at");
   if (
     value.schema_version !== undefined &&

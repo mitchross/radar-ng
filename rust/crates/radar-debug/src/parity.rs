@@ -1252,12 +1252,6 @@ fn compare_manifests(python: &Path, rust: &Path, opts: &CompareOptions) -> Optio
             py.tile_url_template, rs.tile_url_template
         ));
     }
-    if py.tile_url_template_legacy != rs.tile_url_template_legacy {
-        report.top_level.push(format!(
-            "tile_url_template_legacy: python {:?}, rust {:?}",
-            py.tile_url_template_legacy, rs.tile_url_template_legacy
-        ));
-    }
     let (top_py, top_rs) = key_diff(&py.extra, &rs.extra);
     for k in top_py {
         report

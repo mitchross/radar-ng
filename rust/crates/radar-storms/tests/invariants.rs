@@ -538,7 +538,6 @@ fn v2_manifest_reads_back_unchanged() {
     let doc = json!({
         "schema_version": 2,
         "tile_url_template": "/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png",
-        "tile_url_template_legacy": "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
         "updated_at": "2026-07-10T12:00:00+00:00",
         "layers": {"radar": {
             "frames": [{"timestamp": "2026-07-10T12:00:00+00:00", "path": "run1", "palettes": ["classic"]}],

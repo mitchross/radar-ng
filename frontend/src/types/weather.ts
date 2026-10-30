@@ -136,7 +136,8 @@ export interface SelfHostedManifest {
     /** MRMS layers: frames are colored by precipitation type (rain, snow, mix). */
     precip_type?: boolean;
   }>;
-  tile_url_template: string;
+  /** Unused by this app; still sent for builds that require it. */
+  tile_url_template?: string;
   updated_at: string;
 }
 

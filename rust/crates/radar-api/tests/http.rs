@@ -171,7 +171,6 @@ fn manifest(radar_latest: Option<&str>, nowcast: Option<(&str, &str)>) -> Value 
         "schema_version": 2,
         "layers": layers,
         "tile_url_template": "/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png",
-        "tile_url_template_legacy": "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
         "updated_at": "2026-10-13T12:00:00+00:00",
     })
 }
