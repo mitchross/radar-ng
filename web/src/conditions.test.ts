@@ -8,7 +8,7 @@ import {
   getCumulusCondition,
   rainHeadline,
 } from "./shared/conditions";
-import { isNightAt } from "./weather";
+import { conditionOf, isNightAt } from "./weather";
 
 describe("rainHeadline", () => {
   it("says the fact first, then a nudge", () => {
@@ -43,6 +43,24 @@ describe("hero headline", () => {
     expect(CONDITION_HEADLINES[getCumulusCondition(73, false)]).toBe("Snow's falling");
     expect(CONDITION_HEADLINES[getCumulusCondition(45, false)]).toBe("Fog. Take it slow");
     expect(CONDITION_HEADLINES[getCumulusCondition(null, false)]).toBe("Conditions unavailable");
+  });
+});
+
+describe("icon and headline agree", () => {
+  it("shows a partly cloudy icon under the cloudy headline for WMO code 1", () => {
+    expect(CONDITION_HEADLINES[getCumulusCondition(1, false)]).toBe("Clouds, mostly");
+    expect(conditionOf(1)).toBe("partly");
+    expect(conditionOf(2)).toBe("partly");
+  });
+
+  it("derives the icon from the shared WMO mapping", () => {
+    expect(conditionOf(0)).toBe("clear");
+    expect(conditionOf(3)).toBe("cloudy");
+    expect(conditionOf(null)).toBe("cloudy");
+    expect(conditionOf(45)).toBe("fog");
+    expect(conditionOf(61)).toBe("rain");
+    expect(conditionOf(73)).toBe("snow");
+    expect(conditionOf(95)).toBe("storm");
   });
 });
 

@@ -8,21 +8,15 @@ import { longRangeFrames } from "../lib/playbackSequence";
 import type { RadarFrame, SelfHostedManifest } from "../types/weather";
 
 /**
- * Builds the frame list for the active layer + timeline mode.
+ * Builds the frame list for the active layer.
  *
- *   mode=current  → past MRMS only (radar/radar-hrrr fall back to radar
- *                   since MRMS is the observation source)
- *   mode=forecast → past MRMS (last hour) + nowcast (0..+60min) + HRRR (+1h..+48h)
- *                   + GFS (after the last HRRR frame, to +72h)
+ * Radar/radar-hrrr: past MRMS (last hour) + nowcast (0..+60min) + HRRR (+1h..+48h)
+ * + GFS (after the last HRRR frame, to +72h).
  *
  * Non-radar layers (temperature/wind/cape/precip-type) always source from
  * their own HRRR series since we don't observe them in real time.
  */
-function buildSelfHostedFrames(
-  manifest: SelfHostedManifest,
-  layer: string,
-  mode: "current" | "forecast",
-): RadarFrame[] {
+function buildSelfHostedFrames(manifest: SelfHostedManifest, layer: string): RadarFrame[] {
   const toFrames = (layerKey: string, source?: RadarFrame["source"]): RadarFrame[] => {
     const entry = manifest.layers[layerKey];
     if (!entry) return [];
@@ -48,9 +42,6 @@ function buildSelfHostedFrames(
   const nowSec = Math.floor(Date.now() / 1000);
 
   if (layer === "radar" || layer === "radar-hrrr") {
-    if (mode === "current") {
-      return toFrames("radar", "radar");
-    }
     const past = toFrames("radar", "radar").filter((f) => f.time <= nowSec);
     const nowcast = toFrames("nowcast", "nowcast").filter((f) => f.time > nowSec && f.time <= nowSec + 60 * 60);
     const hrrr = toFrames("radar-hrrr", "radar-hrrr").filter((f) => f.time > nowSec + 60 * 60);
@@ -122,16 +113,14 @@ export function useManifestQuery() {
 /** Manifest query + writes the active layer's frame list into the store. Mount once (radar tab). */
 export function useManifest() {
   const setFrameTimeline = useWeatherStore((s) => s.setFrameTimeline);
-  const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
-  const timelineMode = useWeatherStore((s) => s.timelineMode);
 
   const query = useManifestQuery();
 
   const frames = useMemo(
-    () => (query.data ? buildSelfHostedFrames(query.data, activeLayer, timelineMode) : []),
-    [query.data, activeLayer, timelineMode],
+    () => (query.data ? buildSelfHostedFrames(query.data, activeLayer) : []),
+    [query.data, activeLayer],
   );
 
   useEffect(() => {
@@ -143,13 +132,18 @@ export function useManifest() {
   // Some navigation actions intentionally publish -1 as a request to snap to
   // now. Read the latest store value so a manifest update handled by the
   // atomic transaction above cannot be overwritten by a stale effect closure.
+  // Subscribe to the store rather than the hook so playback ticks don't re-render the screen.
   useEffect(() => {
     if (frames.length === 0) return;
-    const index = useWeatherStore.getState().currentFrameIndex;
-    if (index < 0 || index >= frames.length) {
-      setCurrentFrameIndex(pickNowFrameIndex(frames));
-    }
-  }, [frames, currentFrameIndex, setCurrentFrameIndex]);
+    const snapToNow = () => {
+      const index = useWeatherStore.getState().currentFrameIndex;
+      if (index < 0 || index >= frames.length) {
+        setCurrentFrameIndex(pickNowFrameIndex(frames));
+      }
+    };
+    snapToNow();
+    return useWeatherStore.subscribe(snapToNow);
+  }, [frames, setCurrentFrameIndex]);
 
   return query;
 }

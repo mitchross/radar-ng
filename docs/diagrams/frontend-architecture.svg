@@ -79,7 +79,7 @@
   <text x="454" y="242" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">zustand — single source of truth</text>
   <text x="454" y="262" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">frames · currentFrameIndex · isPlaying</text>
   <text x="454" y="278" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">playbackWindow — timeline zoom range</text>
-  <text x="454" y="294" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">activeLayer · palette · timelineMode</text>
+  <text x="454" y="294" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">activeLayer · palette</text>
   <text x="454" y="310" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">serverUrl · radarOpacity · extrasVisible</text>
   <text x="454" y="326" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">viewMode simple / advanced</text>
 

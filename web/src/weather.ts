@@ -3,6 +3,8 @@
  * Every request is same-origin (see vite.config.ts); nothing leaves the stack.
  */
 
+import { getCumulusCondition, type CumulusCondition } from "./shared/conditions";
+
 export interface Forecast {
   /** Seconds east of UTC at the location; `hourly.time` etc. are wall times there with no offset. */
   utc_offset_seconds?: number;
@@ -182,26 +184,18 @@ export function aqiLabel(aqi: number): string {
 
 export type Condition = "clear" | "partly" | "cloudy" | "fog" | "rain" | "snow" | "storm";
 
-export function conditionOf(code: number | null): Condition {
-  if (code == null) return "cloudy";
-  if (code <= 1) return "clear";
-  if (code === 2) return "partly";
-  if (code === 3) return "cloudy";
-  if (code === 45 || code === 48) return "fog";
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "snow";
-  if (code >= 95) return "storm";
-  return "rain";
-}
-
-export const CONDITION_LABEL: Record<Condition, string> = {
-  clear: "Clear",
-  partly: "Partly cloudy",
-  cloudy: "Cloudy",
-  fog: "Fog",
-  rain: "Rain",
-  snow: "Snow",
-  storm: "Thunderstorms",
+const ICON_OF_SKY: Record<CumulusCondition, Condition> = {
+  clearDay: "clear", clearNight: "clear", cloudy: "cloudy", rain: "rain",
+  storm: "storm", snow: "snow", fog: "fog", unknown: "cloudy",
 };
+
+/**
+ * Icon for a WMO code, from the same mapping as the headline (getCumulusCondition).
+ * Like the app's getIconKind, codes 1 and 2 are partly cloudy (the web has no moon icon).
+ */
+export function conditionOf(code: number | null): Condition {
+  return code === 1 || code === 2 ? "partly" : ICON_OF_SKY[getCumulusCondition(code, false)];
+}
 
 const CLOUD = '<path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18z" fill="#aab3c8"/>';
 const SUN = (cx: number, cy: number, r: number) =>
