@@ -3,8 +3,6 @@ import UIKit
 
 @MainActor
 enum RadarSnapshot {
-    private static var server: String { RadarShared.serverURL }
-
     static func load() async -> RadarEntry {
         let shared = RadarShared.current()
         // A city chosen in the app wins over the widget's own GPS.
@@ -31,13 +29,15 @@ enum RadarSnapshot {
             return RadarEntry(date: .now, message: "Radar covers the continental US")
         }
         do {
+            // Read once: the manifest and its tiles must come from the same server.
+            let server = RadarShared.serverURL
             let manifest = try JSONDecoder().decode(Manifest.self,
                 from: await fetch(URL(string: "\(server)/api/manifest.json")!))
             guard let layer = manifest.layers["radar"],
                   let frame = layer.frames?.max(by: { $0.timestamp < $1.timestamp }),
                   let observedAt = parseDate(frame.timestamp) else { throw SnapshotError.unavailable }
             let palette = RadarShared.palette(among: frame.palettes ?? layer.palettes ?? [])
-            let image = try await render(coordinate, frame: frame, palette: palette)
+            let image = try await render(coordinate, frame: frame, palette: palette, server: server)
             return RadarEntry(date: .now, image: image, observedAt: observedAt,
                               message: Date().timeIntervalSince(observedAt) > 900 ? "Older radar" : "Nearby · Snapshot")
         } catch {
@@ -78,7 +78,7 @@ enum RadarSnapshot {
     /// Self-hosted basemap renderer (tileserver-gl over VersaTiles). Same style family as the phone.
     private static let basemap = "https://maps.vanillax.me/raster"
 
-    private static func render(_ coordinate: CLLocationCoordinate2D, frame: Frame, palette: String) async throws -> UIImage {
+    private static func render(_ coordinate: CLLocationCoordinate2D, frame: Frame, palette: String, server: String) async throws -> UIImage {
         let zoom = min(max(frame.max_zoom ?? 7, 1), 7)
         let count = 1 << zoom
         let size = CGSize(width: 256, height: 190)

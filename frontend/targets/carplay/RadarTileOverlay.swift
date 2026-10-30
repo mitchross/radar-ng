@@ -5,6 +5,8 @@ final class RadarTileOverlay: MKTileOverlay {
     /// Identifies CarPlay traffic in server logs; the scene shares the app's process.
     static let userAgent = "RadarNG-CarPlay/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")"
     let palette: String
+    /// Read once so every tile of this overlay comes from one server.
+    private let server = RadarAPI.serverURL
     var onFailure: (() -> Void)?
     /// Optional diagnostics receive the exact tile data delivered to MapKit.
     var onTileLoaded: ((MKTileOverlayPath, Data) -> Void)?
@@ -23,7 +25,7 @@ final class RadarTileOverlay: MKTileOverlay {
 
     override func url(forTilePath path: MKTileOverlayPath) -> URL {
         // Radar NG publishes XYZ tiles; the old IEM feed required inverted Y.
-        URL(string: "\(RadarAPI.serverURL)/tiles/radar/\(palette)/\(frame.path)/\(path.z)/\(path.x)/\(path.y).png")!
+        URL(string: "\(server)/tiles/radar/\(palette)/\(frame.path)/\(path.z)/\(path.x)/\(path.y).png")!
     }
 
     override func loadTile(at path: MKTileOverlayPath, result: @escaping (Data?, Error?) -> Void) {
