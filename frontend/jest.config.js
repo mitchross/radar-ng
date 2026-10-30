@@ -44,6 +44,9 @@ const render = {
     ],
   },
   testMatch: ["**/*.test.tsx"],
+  // Shared files under ../web/src/shared are workletized by this preset and need its runtime helpers,
+  // which only resolve from here.
+  modulePaths: ["<rootDir>/node_modules"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
