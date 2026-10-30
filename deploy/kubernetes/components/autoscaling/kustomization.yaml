@@ -1,9 +1,7 @@
-# HPA, PodDisruptionBudget and VPA for the serving tier.
+# VPAs for the serving tier.
 # The VPA objects need the Vertical Pod Autoscaler CRDs and controller; delete vpa.yaml from
 # this list (in your copy) if you don't run VPA.
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 resources:
-  - hpa.yaml
-  - pdb.yaml
   - vpa.yaml

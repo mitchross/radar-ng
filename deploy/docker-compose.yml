@@ -53,8 +53,8 @@ x-worker-env: &worker-env
   TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS: ${TEMPORAL_MAX_CONCURRENT_ACTIVITY_TASK_POLLS:-1}
   FORECAST_HOURS: ${FORECAST_HOURS:-18}
   EXTENDED_FORECAST_HOURS: ${EXTENDED_FORECAST_HOURS:-48}
-  # HRRR secondary layers: wind, rain total, precip type, temperature, clouds.
-  HRRR_ENABLED_LAYERS: ${HRRR_ENABLED_LAYERS:-radar-hrrr,wind,precip-accum,precip-type,temperature,cloud}
+  # HRRR secondary layers: wind, rain total, precip type, temperature, feels like, dew point, clouds.
+  HRRR_ENABLED_LAYERS: ${HRRR_ENABLED_LAYERS:-radar-hrrr,wind,precip-accum,precip-type,temperature,feels-like,dewpoint,cloud}
   # MRMS observed 24-hour precipitation layer (precip-24h).
   MRMS_QPE_24H_ENABLED: ${MRMS_QPE_24H_ENABLED:-1}
   NOWCAST_HORIZON_MIN: ${NOWCAST_HORIZON_MIN:-60}
@@ -229,9 +229,8 @@ services:
 
   # --- Basemap bootstrap (one-shot) -------------------------------------------
   # The api serves basemap.pmtiles directly (BASEMAP_PMTILES). The go-pmtiles sidecar is gone.
-  # The download goes to basemap.pmtiles.partial, and basemap-publish renames it over the served path (F6).
+  # The script writes a temp file and renames it over the served path (F6), so the api never sees a half-written archive.
   # The api reopens the archive when its file identity changes, so a rename takes effect without a restart.
-  # Writing the served path in place would expose a half-written archive, so do not do that.
   # build.protomaps.com serves date-stamped builds (YYYYMMDD.pmtiles), about 6 days of retention,
   # and no `latest` alias. The script (shared with the Kubernetes init container) walks back from
   # today to the newest build, verifies the go-pmtiles download by sha256, extracts the bbox to a temp
@@ -249,16 +248,6 @@ services:
     volumes:
       - basemap-data:/data
       - ./kubernetes/base/fetch-basemap.sh:/opt/scripts/fetch-basemap.sh:ro
-    restart: "no"
-
-  # Kept so older instructions still work: basemap-bootstrap now publishes atomically by itself, so this
-  # only moves a leftover .partial from the old two-step flow, and otherwise does nothing.
-  basemap-publish:
-    image: docker.io/library/alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
-    profiles: ["bootstrap"]
-    command: ["sh", "-c", "if [ -f /data/basemap.pmtiles.partial ]; then mv -f /data/basemap.pmtiles.partial /data/basemap.pmtiles; else echo 'nothing to publish (basemap-bootstrap already did)'; fi"]
-    volumes:
-      - basemap-data:/data
     restart: "no"
 
   # --- Public API ------------------------------------------------------------

@@ -14,7 +14,7 @@ deploy/kubernetes/
     gateway-api/        publish the api with a Gateway API HTTPRoute
     monitoring/         Prometheus Operator ServiceMonitor, PodMonitor and alert rules
     worker-controller/  production-style workers: five role pools via the Temporal Worker Controller
-    autoscaling/        HPA, PodDisruptionBudget, VPA
+    autoscaling/        VPA
   examples/
     minimal/            base + temporal-dev: the one-command try-out
     production/         base + worker-controller + gateway-api + monitoring + autoscaling
@@ -208,8 +208,7 @@ disks, Longhorn's default) is RWO: a volume can be attached to **one node** at a
 - the worker has a `podAffinity` that puts it on the tile-server's node (already set up);
 - every Deployment uses `strategy: Recreate`, so the old pod lets go of the volume before the new
   one starts (otherwise the rollout hangs on a Multi-Attach error);
-- the tile-server stays at **one replica**. That's why `components/autoscaling` keeps the HPA at
-  `maxReplicas: 1`.
+- the tile-server stays at **one replica**. That's why `components/autoscaling` has no HPA.
 
 On a single-node cluster none of this matters. If your class is **ReadWriteMany** (NFS, CephFS,
 Longhorn RWX), change `accessModes` to `ReadWriteMany` for those three PVCs and you can drop the
@@ -244,7 +243,7 @@ adds:
 | `worker-controller` | Replaces the single `legacy` worker with five role pools (`mrms`, `nowcast`, `hrrr`, `aux`, `alerts`) on their own task queues. Each release is smoke-tested (`RadarDeploymentSmokeWorkflow`) before it takes work. The `aux` pool seeds the Schedules. | [Temporal Worker Controller](https://github.com/temporalio/temporal-worker-controller) and its CRDs; a Temporal server with Worker Deployment (versioning) support. Set the address in `connection.yaml` and `TEMPORAL_ADDRESS`. |
 | `gateway-api` / `ingress` | Publishes the api | see above |
 | `monitoring` | Scrapes the api (`/api/metrics`) and every worker (`:9464/metrics`), plus alert rules for stale radar, failed syncs, missing pollers, full volumes | Prometheus Operator CRDs (kube-prometheus-stack). If your Prometheus selects by label, add it in your overlay. |
-| `autoscaling` | HPA (held at 1 replica, see [Storage](#storage)), a PDB that doesn't block node drains, memory-only VPAs | VPA CRDs and controller for `vpa.yaml` |
+| `autoscaling` | Memory-only VPAs (no HPA or PDB: the tile-server stays at one replica, see [Storage](#storage)) | VPA CRDs and controller for `vpa.yaml` |
 
 More on sizing, probes and Schedules: [docs/self-host/kubernetes.md](../../docs/self-host/kubernetes.md).
 The owner's live manifests, for reference:

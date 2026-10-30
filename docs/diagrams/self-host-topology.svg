@@ -79,19 +79,12 @@
   <text x="568" y="259" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#c2603a">:8080 — only exposed port</text>
   <text x="556" y="290" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">verify: curl localhost:8080/api/health · first radar frame ~2 min after boot</text>
 
-  <rect x="540" y="330" width="430" height="96" rx="12" fill="#ffffff" stroke="#eee6d8" stroke-width="1.5"/>
-  <rect x="540" y="332" width="3" height="92" rx="1.5" fill="#2e8b6f"/>
-  <text x="556" y="354" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap-publish — one shot</text>
-  <text x="556" y="372" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">renames basemap.pmtiles.partial → basemap.pmtiles</text>
-  <text x="556" y="390" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">the api reopens the archive after the rename</text>
-  <text x="556" y="406" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">blank map = archive missing → run both steps once</text>
-
-  <rect x="540" y="442" width="430" height="110" rx="12" fill="#ffffff" stroke="#2e8b6f" stroke-opacity="0.5" stroke-width="1.5" stroke-dasharray="5 4"/>
-  <text x="556" y="466" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap-bootstrap — one shot</text>
-  <text x="556" y="486" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">pmtiles extract $BASEMAP_PMTILES_URL --bbox=CONUS</text>
-  <text x="556" y="504" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">range-reads ~9 GB of the 120 GB planet build</text>
-  <rect x="556" y="516" width="150" height="18" rx="9" fill="#2e8b6f" fill-opacity="0.12"/>
-  <text x="564" y="529" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#2e8b6f">docker compose run --rm</text>
+  <rect x="540" y="330" width="430" height="110" rx="12" fill="#ffffff" stroke="#2e8b6f" stroke-opacity="0.5" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="556" y="354" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#211f1b">basemap-bootstrap — one shot</text>
+  <text x="556" y="374" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">pmtiles extract $BASEMAP_PMTILES_URL --bbox=CONUS</text>
+  <text x="556" y="392" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#5d574d">range-reads ~9 GB of the 120 GB planet build</text>
+  <rect x="556" y="404" width="150" height="18" rx="9" fill="#2e8b6f" fill-opacity="0.12"/>
+  <text x="564" y="417" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#2e8b6f">docker compose run --rm</text>
 
   <text x="540" y="600" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">boot order: postgres → temporal (healthy) → workers · everything</text>
   <text x="540" y="616" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#8c857a">else restarts until its dependencies answer — no manual sequencing</text>
