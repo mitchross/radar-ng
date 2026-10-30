@@ -96,7 +96,6 @@ export function WindParticlesOverlay({
 }
 
 function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
-  const enabled = true;
   const { width, height } = useWindowDimensions();
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   // The field is hourly, so select the hour: this canvas re-renders once an
@@ -105,12 +104,7 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
     const ts = s.frames[s.currentFrameIndex]?.timestamp;
     return ts ? hourKey(ts) : null;
   });
-  const shouldFetch =
-    enabled &&
-    (activeLayer === "wind" ||
-      activeLayer === "air-quality" ||
-      activeLayer === "radar" ||
-      activeLayer === "radar-hrrr");
+  const shouldFetch = activeLayer === "wind" || activeLayer === "air-quality";
   const { data: fieldData } = useWindField(shouldFetch ? timestamp : null);
   const field: WindField | null =
     fieldData && fieldData.ok ? (fieldData as WindField) : null;
@@ -154,7 +148,7 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
   // eslint-disable-next-line react-hooks/immutability -- UI-thread particle buffer
   useFrameCallback(() => {
     "worklet";
-    if (!enabled || !field) return;
+    if (!field) return;
     const { lonMin, lonMax, latMin, latMax } = seedBox(field, camera, width, height);
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const age = particles.ages[i] + 1;
@@ -232,7 +226,7 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
   const pathFast = useDerivedValue(() => paths.get()[2]);
   const pathExtreme = useDerivedValue(() => paths.get()[3]);
 
-  if (!enabled || !field) return null;
+  if (!field) return null;
 
   return (
     <Canvas

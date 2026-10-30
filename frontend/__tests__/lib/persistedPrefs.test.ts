@@ -1,5 +1,4 @@
 import {
-  parseMapProjection,
   parseMapStyle,
   parseOpacity,
   parsePlaybackFps,
@@ -12,7 +11,6 @@ import {
 describe("persisted pref parsers", () => {
   it("accept known values verbatim", () => {
     expect(parseMapStyle("satellite")).toBe("satellite");
-    expect(parseMapProjection("globe")).toBe("globe");
     expect(parsePalette("vivid")).toBe("vivid");
     expect(parseTimelineMode("current")).toBe("current");
     expect(parseViewMode("advanced")).toBe("advanced");
@@ -23,7 +21,6 @@ describe("persisted pref parsers", () => {
     // MAP_STYLES_SELFHOSTED[undefined].startsWith → red screen at WeatherMap mount.
     expect(parseMapStyle("midnight")).toBe("light");
     expect(parseMapStyle("")).toBe("light");
-    expect(parseMapProjection("mercator")).toBe("flat");
     expect(parsePalette("nexrad")).toBe("classic");
     expect(parseTimelineMode("past")).toBe("forecast");
     expect(parseViewMode("expert")).toBe("simple");

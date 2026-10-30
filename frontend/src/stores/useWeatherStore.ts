@@ -1,10 +1,9 @@
 import { create } from "zustand";
-import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, MapProjection, Palette, TimelineMode } from "../types/weather";
+import type { RadarFrame, TemperatureUnit, MapStyle, LayerType, Palette, TimelineMode } from "../types/weather";
 import type { LocationMode, SelectedPlace } from "../types/location";
 import { DEFAULTS, RADAR, SELF_HOSTED } from "../lib/constants";
 import { getString, setString } from "../lib/storage";
 import {
-  parseMapProjection,
   parseMapStyle,
   parsePalette,
   parseServerUrl,
@@ -48,7 +47,6 @@ interface WeatherState {
   activeLayer: LayerType;
   temperatureUnit: TemperatureUnit;
   mapStyle: MapStyle;
-  mapProjection: MapProjection;
   activePalette: Palette;
   timelineMode: TimelineMode;
   // Power-user overlays — off by default. Lightning + storm-cell dots
@@ -84,7 +82,6 @@ interface WeatherState {
   setFastRadar: (on: boolean) => void;
   setTemperatureUnit: (unit: TemperatureUnit) => void;
   setMapStyle: (style: MapStyle) => void;
-  setMapProjection: (projection: MapProjection) => void;
   setActivePalette: (palette: Palette) => void;
   setTimelineMode: (mode: TimelineMode) => void;
   toggleExtras: () => void;
@@ -169,7 +166,6 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   // Persisted strings are parsed, not cast: a stale/garbage value would otherwise
   // index MAP_STYLES_SELFHOSTED[undefined] and throw at WeatherMap mount.
   mapStyle: parseMapStyle(getString("mapStyle", "light")),
-  mapProjection: parseMapProjection(getString("mapProjection", "flat")),
   activePalette: parsePalette(getString("activePalette", "classic")),
   // Default to "forecast" so the timeline shows past + nowcast + HRRR future
   // as one merged stream out of the box. Less UI to flip, less to explain.
@@ -294,10 +290,6 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setMapStyle: (style) => {
     setString("mapStyle", style);
     set({ mapStyle: style });
-  },
-  setMapProjection: (projection) => {
-    setString("mapProjection", projection);
-    set({ mapProjection: projection });
   },
   setActivePalette: (palette) => {
     setString("activePalette", palette);

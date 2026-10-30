@@ -108,7 +108,6 @@ export interface NWSAlert {
 export type TemperatureUnit = "fahrenheit" | "celsius";
 export type WindUnit = "mph" | "kmh";
 export type MapStyle = "light" | "dark" | "satellite";
-export type MapProjection = "flat" | "globe";
 export type Palette = "classic" | "vivid" | "muted";
 export type TimelineMode = "current" | "forecast";
 
