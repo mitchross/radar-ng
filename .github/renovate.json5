@@ -12,6 +12,39 @@
   enabledManagers: [
     'bun',
     'github-actions',
+    'cargo',
+    'dockerfile',
+    'docker-compose',
+    'kubernetes',
+    'custom.regex',
+  ],
+  // The kubernetes manager has no default file patterns, and temporal-dev.yml is not named like a
+  // compose file, so both are listed here.
+  kubernetes: {
+    managerFilePatterns: [
+      '/^deploy/kubernetes/.+\\.ya?ml$/',
+    ],
+  },
+  'docker-compose': {
+    managerFilePatterns: [
+      '/(^|/)(docker-)?compose[^/]*\\.ya?ml$/',
+      '/^deploy/temporal-dev\\.ya?ml$/',
+    ],
+  },
+  // docker-compose.yml pins radar-ng's own images as ${RADAR_*_IMAGE:-name:tag@sha256:...}, which
+  // the docker-compose manager does not read.
+  customManagers: [
+    {
+      customType: 'regex',
+      description: 'Image defaults inside ${VAR:-name:tag@digest} in the Compose file.',
+      managerFilePatterns: [
+        '/^deploy/docker-compose\\.yml$/',
+      ],
+      matchStrings: [
+        '\\$\\{[A-Z_]+:-(?<depName>[^:}\\s]+):(?<currentValue>[^@}\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})\\}',
+      ],
+      datasourceTemplate: 'docker',
+    },
   ],
   packageRules: [
     {
@@ -74,10 +107,34 @@
       automerge: false,
     },
     {
-      description: 'Wait for new npm and PyPI releases to age before proposing them.',
+      description: 'Group routine container image tag and digest updates (Dockerfile, Compose, Kubernetes) into one review.',
+      matchManagers: [
+        'dockerfile',
+        'docker-compose',
+        'kubernetes',
+        'custom.regex',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+        'digest',
+        'pin',
+        'pinDigest',
+      ],
+      groupName: 'container images',
+      automerge: false,
+    },
+    {
+      description: 'Rust crate updates are never automerged.',
+      matchManagers: [
+        'cargo',
+      ],
+      automerge: false,
+    },
+    {
+      description: 'Wait for new npm releases to age before proposing them.',
       matchDatasources: [
         'npm',
-        'pypi',
       ],
       minimumReleaseAge: '3 days',
     },

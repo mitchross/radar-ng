@@ -20,7 +20,7 @@
 # checkout instead (arm64 hosts such as Apple Silicon, or when you change the Rust code):
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build    # or ./up.sh --build
 # Or point at your own registry with RADAR_API_IMAGE / RADAR_WORKER_IMAGE / RADAR_OPEN_METEO_WORKER_IMAGE.
-# Upstream bumps the pins here together with deploy/kubernetes/base on each release.
+# Renovate keeps these pins (radar-ng's own images and the third-party ones) current.
 #
 # Optional Temporal Web UI (http://localhost:8233):
 #   docker compose --profile ui up -d
@@ -159,7 +159,7 @@ services:
   # --- Workers ---------------------------------------------------------------
   # Legacy role: all workflows on radar-ng. This worker also seeds the Schedules at boot. One seeder only, so leave SEED_SCHEDULES=1 on this service alone.
   worker:
-    image: ${RADAR_WORKER_IMAGE:-ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.9@sha256:1432031a17e5126eb591a4e0cb3e72f632283a45c3c190fe8cd7865dc51b64a9}
+    image: ${RADAR_WORKER_IMAGE:-ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.23@sha256:f8f11010e7575003c7e6660693a49b4a8cc34a1550c1aa9915b1ac062621135c}
     command: ["worker", "--role", "legacy"]
     environment:
       <<: *worker-env
@@ -180,7 +180,7 @@ services:
   # open-meteo role: the radar binary on the Open-Meteo image. Syncs GFS/HRRR model data into
   # openmeteo-data, which the open-meteo service serves. The `open-meteo` target of the same Dockerfile.
   open-meteo-worker:
-    image: ${RADAR_OPEN_METEO_WORKER_IMAGE:-ghcr.io/mitchross/radar-ng-open-meteo-worker:v2.0.9@sha256:1d7c2195d082a6872551d3d4cc5300d054a718a822839aa10d24b1bcce546f07}
+    image: ${RADAR_OPEN_METEO_WORKER_IMAGE:-ghcr.io/mitchross/radar-ng-open-meteo-worker:v2.0.23@sha256:761c4ef01dfafd3bd7bfe772b46bc7dd812bc0d053ee932bfba46630657fe01d}
     command: ["worker", "--role", "open-meteo"]
     environment:
       <<: *temporal-env
@@ -249,7 +249,7 @@ services:
   # The Rust api serves tiles, the manifest, the basemap (PMTiles and styles), and /api/*. The
   # Caddy and FastAPI sidecars are gone. The public endpoint is this service.
   api:
-    image: ${RADAR_API_IMAGE:-ghcr.io/mitchross/radar-ng-tile-server:v2.0.9@sha256:3981502164c2f366f123cad41378a956483247fe7015e1e104ab3703050424dc}
+    image: ${RADAR_API_IMAGE:-ghcr.io/mitchross/radar-ng-tile-server:v2.0.23@sha256:4558ea63bb0a6d63407b44c6400b89d389d1e3024b242ddab352ad69980d38e2}
     command: ["api"]
     ports:
       - "${TILE_SERVER_PORT:-8080}:8080"
