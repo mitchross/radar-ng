@@ -406,6 +406,16 @@ async fn open_archive(state: &AppState) -> Option<Arc<AsyncPmTilesReader<FileBac
     let mut slot = state.pmtiles.lock().await;
     let path = state.config.pmtiles_path.clone();
     let recheck = Duration::from_secs(state.config.pmtiles_recheck_s);
+    let proxying = !state.config.basemap_tiles_upstream.is_empty();
+    if slot.is_none() && proxying {
+        let missing = *state
+            .pmtiles_missing
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if missing.is_some_and(|at| at.elapsed() < recheck) {
+            return None;
+        }
+    }
     if let Some(open) = slot.as_mut() {
         if open.checked.elapsed() < recheck {
             return Some(open.reader.clone());
@@ -427,7 +437,24 @@ async fn open_archive(state: &AppState) -> Option<Arc<AsyncPmTilesReader<FileBac
         Ok(fresh) => {
             let reader = fresh.reader.clone();
             *slot = Some(fresh);
+            *state
+                .pmtiles_missing
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
             Some(reader)
+        }
+        Err(_) if slot.is_none() && proxying && !path.exists() => {
+            // No archive file with an upstream to proxy to is a normal setup, not an error. Say so once, then
+            // look again only after the recheck interval, so a file that appears later is still picked up.
+            let mut missing = state
+                .pmtiles_missing
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if missing.is_none() {
+                tracing::warn!(path = %path.display(), "basemap archive file not found; proxying /basemap/tiles to the upstream");
+            }
+            *missing = Some(Instant::now());
+            None
         }
         Err(err) => {
             tracing::error!(path = %path.display(), "basemap archive unavailable: {err}");

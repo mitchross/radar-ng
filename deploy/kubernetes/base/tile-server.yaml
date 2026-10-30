@@ -48,12 +48,6 @@ spec:
             - configMapRef:
                 name: radar-ng-settings
           env:
-            - name: TILE_DIR
-              value: /data/tiles
-            - name: GRID_DIR
-              value: /data/grids
-            - name: STATE_DIR
-              value: /data/state
             - name: OPEN_METEO_BASE
               value: http://open-meteo:8080/v1/forecast
             - name: BASEMAP_TILES_UPSTREAM

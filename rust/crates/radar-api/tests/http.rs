@@ -2116,6 +2116,51 @@ async fn basemap_tiles_proxy_to_go_pmtiles_when_no_local_archive() {
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 }
 
+/// O7: a missing archive file with an upstream set proxies without retrying `open` on every request. The file
+/// is looked for again only after the recheck interval, so one that appears later is still picked up.
+#[tokio::test]
+async fn missing_archive_with_an_upstream_is_rechecked_only_after_the_interval() {
+    let upstream = Router::new().route(
+        "/basemap/{z}/{x}/{ymvt}",
+        get(|| async { b"upstream".to_vec() }),
+    );
+    let base = mock(upstream).await;
+    let env = Env::new();
+    let archive = env.path("basemap.pmtiles");
+
+    // A long interval: the file that appears is not looked for yet.
+    let app = env.app(|c| {
+        c.basemap_tiles_upstream = base.clone();
+        c.pmtiles_recheck_s = 3600;
+    });
+    let (first, _, body) = send(&app, get_req("/basemap/tiles/0/0/0.mvt")).await;
+    assert_eq!(
+        (first, body.as_slice()),
+        (StatusCode::OK, b"upstream".as_slice())
+    );
+    write_one_tile_archive(&archive, b"local-archive");
+    let (second, _, body) = send(&app, get_req("/basemap/tiles/0/0/0.mvt")).await;
+    assert_eq!(
+        (second, body.as_slice()),
+        (StatusCode::OK, b"upstream".as_slice())
+    );
+
+    // No wait: the next request after the file appears serves it.
+    std::fs::remove_file(&archive).expect("remove");
+    let app = env.app(|c| {
+        c.basemap_tiles_upstream = base.clone();
+        c.pmtiles_recheck_s = 0;
+    });
+    let (miss, _, _) = send(&app, get_req("/basemap/tiles/0/0/0.mvt")).await;
+    assert_eq!(miss, StatusCode::OK);
+    write_one_tile_archive(&archive, b"local-archive");
+    let (third, _, body) = send(&app, get_req("/basemap/tiles/0/0/0.mvt")).await;
+    assert_eq!(
+        (third, body.as_slice()),
+        (StatusCode::OK, b"local-archive".as_slice())
+    );
+}
+
 // ---------------------------------------------------------------------------------------------
 // Satellite (NASA GIBS)
 // ---------------------------------------------------------------------------------------------
