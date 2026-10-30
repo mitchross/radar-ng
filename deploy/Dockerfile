@@ -4,8 +4,8 @@
 #   --target worker       ghcr.io/mitchross/radar-ng-temporal-worker  (CMD: radar worker; role from WORKER_ROLE)
 #   --target open-meteo   ghcr.io/mitchross/radar-ng-open-meteo-worker (Open-Meteo base + radar; CMD: radar worker --role open-meteo)
 #
-# Each target is a drop-in for the Python image of the same name: same port, same env names, same
-# uid, and the probe helpers the cluster manifests exec (`sh`, `find`, `test` from busybox).
+# Each target keeps the contract the deployments rely on: port, env names, uid, and the probe
+# helpers the cluster manifests exec (`sh`, `find`, `test` from busybox).
 #
 # Build context is the repository root (it reads rust/ only):
 #   docker build -f deploy/Dockerfile --target api -t radar-ng-tile-server:local .
@@ -21,8 +21,8 @@
 #   RUNTIME_IMAGE    distroless cc-debian12 matches the builder's glibc; no shell, no package manager
 #   busybox          static musl build, used only for container healthchecks (wget / test)
 #
-# Non-root: the image runs as uid 1000 (same as the Python api and worker images) so the
-# pod securityContext (runAsUser 1000 / fsGroup 1000) and the Dockerfile agree.
+# Non-root: the image runs as uid 1000 so the pod securityContext (runAsUser 1000 / fsGroup 1000)
+# and the Dockerfile agree.
 
 ARG BUILDER_IMAGE=debian:bookworm-slim
 ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian12:latest
@@ -30,8 +30,8 @@ ARG BUSYBOX_IMAGE=busybox:1.36-musl
 ARG ALPINE_IMAGE=alpine:3.22
 ARG OPEN_METEO_IMAGE=ghcr.io/open-meteo/open-meteo:1.6.0@sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da
 # 1 runs the offline Temporal replay gate (every recorded Python history must replay on the Rust
-# workflows) before the binary is built, like the Python image's RUN replay gate. CI sets it to 0
-# only where the same gate already ran in an earlier step.
+# workflows) before the binary is built. CI sets it to 0 only where the same gate already ran in an
+# earlier step.
 ARG REPLAY_GATE=1
 # `build` compiles radar here. The publish workflow compiles it once on the runner (with a cargo
 # cache) and passes RADAR_FROM=prebuilt plus `--build-context radar-bin=<dir holding radar>`.
@@ -112,7 +112,7 @@ LABEL io.radar-ng.replay-gate="rust-offline-replay" \
 USER 1000:1000
 ENTRYPOINT ["/usr/local/bin/radar"]
 
-# Temporal worker: the role comes from WORKER_ROLE (default legacy), as with the Python image.
+# Temporal worker: the role comes from WORKER_ROLE (default legacy).
 FROM runtime AS worker
 EXPOSE 9464
 CMD ["worker"]

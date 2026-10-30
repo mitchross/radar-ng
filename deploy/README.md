@@ -66,8 +66,8 @@ commented block at the end of `docker-compose.yml` shows that layout for compose
 
 ## Behaviour worth knowing
 
-- **Readiness is `/api/livez`, not `/api/health`.** `/api/health` returns 503 when radar data is stale,
-  which would drain every replica during an ingest outage.
+- **Readiness is a TCP check on port 8080, not `/api/health`.** `/api/health` returns 503 when radar
+  data is stale, which would drain every replica during an ingest outage. Liveness is `/api/livez`.
 - **Basemap.** The api serves `BASEMAP_PMTILES` itself and rechecks its file identity every
   `BASEMAP_PMTILES_RECHECK_S` (default 10), so renaming a new archive over it takes effect without a
   restart. Never write the served path in place. With no local archive, `/basemap/tiles/*` is proxied
