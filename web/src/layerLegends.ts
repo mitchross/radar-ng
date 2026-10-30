@@ -34,7 +34,7 @@ export function layerLegend(
 ): LayerLegend | null {
   const spec = LAYER_TABLES[layer];
   const key = layerPaletteKey(layer, serverKey);
-  const ranges = spec && key && (palettes?.[palette] ?? palettes?.classic)?.[key]?.ranges;
+  const ranges = key ? (palettes?.[palette] ?? palettes?.classic)?.[key]?.ranges : undefined;
   if (!spec || !ranges?.length) return null;
   const label = (v: number) => fmt(spec.whole ? Math.ceil(v) : v);
   const lo = ranges[0].min;

@@ -59,7 +59,7 @@ export function serverLegend(
 ): ServerLegend | null {
   const spec = LAYER_TABLES[layer];
   const key = layerPaletteKey(layer, serverKey);
-  const ranges = spec && key && (palettes?.[palette] ?? palettes?.classic)?.[key]?.ranges;
+  const ranges = key ? (palettes?.[palette] ?? palettes?.classic)?.[key]?.ranges : undefined;
   if (!spec || !ranges || ranges.length < 2) return null;
   // Every band when it fits; otherwise an even sample that keeps the first and last band.
   const n = Math.min(maxStops, ranges.length);
