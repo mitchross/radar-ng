@@ -23,7 +23,7 @@ Re-exported from `src/lib.rs`:
 | `detect_change`, `sample_window`, `ChangeEvent`, `ChangeKind`, `FrameSample`, `WatchConfig` | `watch` | Storm-watch sampling and change classification. |
 | `StormsError` | `error` | `Config`, `InvalidGrid`, `Manifest`, `Io`, `Json`. |
 
-The `watch` module (`pub mod watch`) also exposes `compare_radar_frames`, `detect_storm_change`, and `latest_radar_meta`. The `prefetch` module exposes `read_manifest_value` as the local manifest reader.
+The `watch` module (`pub mod watch`) also exposes `compare_radar_frames`, `detect_storm_change`, and `latest_radar_meta`. The `prefetch` module exposes `read_manifest_value`, radar-core's manifest reader as a JSON value.
 
 ## Defect fixes (PLAN.md)
 
@@ -56,7 +56,7 @@ Other behaviour changes or decisions:
 - **Kuhn-Munkres ties.** Integer costs at 1 mm resolution can break ties differently from scipy's `linear_sum_assignment`. Only exact ties are affected. No golden case hits one.
 - **Counter key.** `next_cell_id` is a key in `storms.json` that the Python writer did not have.
 - **Style URL in radar-api.** The prefetch plan resolves the nowcast path correctly. The radar-api `style.json` builder must also read the manifest frame `path`, or D1 is fixed only in the plan.
-- **Manifest reader.** `read_manifest_value` is a minimal local reader. `// TODO(integration)` marks where radar-core replaces it.
+- **Manifest reader.** `read_manifest_value` wraps radar-core's `read_manifest` and returns it as JSON, so a structurally invalid layer or frame fails closed too.
 - **Naive timestamps.** Treating them as UTC is a policy choice. A naive timestamp from a non-UTC writer would be misread.
 - **Single-row or single-column grids.** Spacing cannot be measured from one sample, so the detector uses fixed fallback spacing (1 km latitude, 0.01 degrees longitude). No golden case covers this.
 

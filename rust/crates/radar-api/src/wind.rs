@@ -5,6 +5,9 @@
 //! are read whole. Samples are taken on a stride so the output is about 240 by 120, and each
 //! channel is scaled to `-128..126` with NaN as `-128`.
 //!
+//! The newest-timestamp listing is cached for `MANIFEST_TTL`, and concurrent misses for one
+//! timestamp share one compute.
+//!
 //! Defect fixes (spec 16): D18, a `v` grid whose dimensions differ from `u`, or a data file too
 //! short for its metadata, answers `grid_read_failed`. It no longer raises (500).
 
@@ -198,13 +201,17 @@ pub fn wind_field(state: &AppState, raw_timestamp: &str) -> WindOutcome {
     let pair_present = u_dir.join(format!("{ts}.meta.json")).exists()
         && v_dir.join(format!("{ts}.meta.json")).exists();
     if ts.eq_ignore_ascii_case("latest") || !pair_present {
-        let common: BTreeSet<String> = meta_stems(&u_dir)
-            .intersection(&meta_stems(&v_dir))
-            .cloned()
-            .collect();
-        match common.iter().next_back() {
-            Some(last) => ts = last.clone(),
-            None => {
+        // One directory listing per TTL, shared by concurrent requests. "No grids" is not cached.
+        let newest = state.wind_latest.try_get_with((), || {
+            let common: BTreeSet<String> = meta_stems(&u_dir)
+                .intersection(&meta_stems(&v_dir))
+                .cloned()
+                .collect();
+            common.into_iter().next_back().ok_or(())
+        });
+        match newest {
+            Ok(last) => ts = last,
+            Err(_) => {
                 return WindOutcome {
                     body: respond::encode(
                         &json!({ "ok": false, "reason": "grid_missing", "timestamp": raw_timestamp }),
@@ -214,25 +221,19 @@ pub fn wind_field(state: &AppState, raw_timestamp: &str) -> WindOutcome {
             }
         }
     }
-    if let Some(hit) = state.wind_cache.get(&ts) {
-        return WindOutcome {
-            body: hit,
-            cacheable: true,
-        };
-    }
     let u_meta = u_dir.join(format!("{ts}.meta.json"));
     let v_meta = v_dir.join(format!("{ts}.meta.json"));
-    match compute(&u_meta, &v_meta, &ts) {
-        Ok(body) => {
-            let body = respond::encode(&body);
-            state.wind_cache.insert(ts, body.clone());
-            WindOutcome {
-                body,
-                cacheable: true,
-            }
-        }
+    // Concurrent misses for one timestamp share one compute; a failure is not cached.
+    let body = state.wind_cache.try_get_with(ts.clone(), || {
+        compute(&u_meta, &v_meta, &ts).map(|body| respond::encode(&body))
+    });
+    match body {
+        Ok(body) => WindOutcome {
+            body,
+            cacheable: true,
+        },
         Err(reason) => WindOutcome {
-            body: respond::encode(&json!({ "ok": false, "reason": reason })),
+            body: respond::encode(&json!({ "ok": false, "reason": *reason })),
             cacheable: false,
         },
     }
@@ -269,6 +270,51 @@ mod tests {
         assert_eq!(scale(1.0, 0.0, 1.0), 127);
         // 0.5 * 254 - 127 = 0 exactly; ties to even.
         assert_eq!(scale(0.5, 0.0, 1.0), 0);
+    }
+
+    fn write_grid(dir: &Path, ts: &str) {
+        std::fs::create_dir_all(dir).unwrap();
+        let bin: Vec<u8> = [1.0_f32, 2.0, 3.0, 4.0]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
+        std::fs::write(dir.join(format!("{ts}.bin")), bin).unwrap();
+        let meta = json!({"height": 2, "width": 2, "lat_min": 40.0, "lat_max": 42.0,
+            "lon_min": -86.0, "lon_max": -83.0, "data_file": format!("{ts}.bin")});
+        std::fs::write(dir.join(format!("{ts}.meta.json")), meta.to_string()).unwrap();
+    }
+
+    #[test]
+    fn concurrent_misses_share_one_compute_and_one_listing() {
+        let dir = tempfile::tempdir().unwrap();
+        let grid = dir.path().join("grid");
+        write_grid(&grid.join("wind_u"), "2026-10-13T12:00:00+00:00");
+        write_grid(&grid.join("wind_v"), "2026-10-13T12:00:00+00:00");
+        let config = crate::config::Config::defaults_for(
+            dir.path().join("state"),
+            grid.clone(),
+            dir.path().join("tiles"),
+        );
+        let state = AppState::new(config).unwrap();
+        let barrier = std::sync::Barrier::new(8);
+        let bodies: Vec<Bytes> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        wind_field(&state, "latest").body
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        // A compute per miss would encode 8 separate bodies; one compute shares a single buffer.
+        assert!(bodies.iter().all(|b| b.as_ptr() == bodies[0].as_ptr()));
+        // The "latest" stamp is remembered, so a newer grid is not seen until the TTL ends.
+        write_grid(&grid.join("wind_u"), "2026-10-13T13:00:00+00:00");
+        write_grid(&grid.join("wind_v"), "2026-10-13T13:00:00+00:00");
+        let again = wind_field(&state, "latest");
+        assert_eq!(again.body.as_ptr(), bodies[0].as_ptr());
     }
 
     #[test]

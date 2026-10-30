@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 chrono.workspace = true
 pathfinding.workspace = true
+radar-core.workspace = true
 rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true
