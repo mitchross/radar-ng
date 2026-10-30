@@ -14,12 +14,12 @@ import {
   tileCover,
   tileScreenRect,
   worldPixel,
-  type PackedColorTable,
 } from "../../src/lib/packed";
+import type { ColorTable } from "../../../web/src/shared/serverPalettes";
 
 const classic = JSON.parse(
   readFileSync(join(__dirname, "../../../rust/crates/radar-tiler/assets/classic.json"), "utf8"),
-) as Record<string, PackedColorTable>;
+) as Record<string, ColorTable>;
 
 const rgbaAt = (lut: Uint8Array, q: number) => Array.from(lut.slice(q * 4, q * 4 + 4));
 
@@ -87,7 +87,7 @@ describe("buildLut", () => {
   });
 
   it("lets a later overlapping range win and leaves gaps transparent", () => {
-    const table: PackedColorTable = {
+    const table: ColorTable = {
       ranges: [
         { min: 0, max: 10, rgba: [1, 2, 3, 4] },
         { min: 5, max: 8, rgba: [9, 9, 9, 9] },
@@ -103,7 +103,7 @@ describe("buildLut", () => {
   });
 
   it("defaults no_data_below to -999", () => {
-    const table: PackedColorTable = { ranges: [{ min: -2000, max: 2000, rgba: [5, 5, 5, 5] }] };
+    const table: ColorTable = { ranges: [{ min: -2000, max: 2000, rgba: [5, 5, 5, 5] }] };
     expect(rgbaAt(buildLut(table, 1, -1001), 1)).toEqual([0, 0, 0, 0]); // -1000
     expect(rgbaAt(buildLut(table, 1, -1000), 1)).toEqual([5, 5, 5, 5]); // -999
   });
@@ -301,7 +301,7 @@ describe("model layers (HRRR, AQM)", () => {
   const palette = (id: string) =>
     JSON.parse(readFileSync(join(__dirname, `../../../rust/crates/radar-tiler/assets/${id}.json`), "utf8")) as Record<
       string,
-      Required<PackedColorTable>
+      Required<ColorTable>
     >;
   // The server's table (docs/reference/packed-tiles.md): [scale, offset, floor] and the band edges it cannot hit.
   const TABLE: Record<string, [number, number, number, number[]]> = {

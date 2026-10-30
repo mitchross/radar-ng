@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { layerLegend, uvCategory, type ServerPalettes } from "./layerLegends";
+import { layerLegend, uvCategory } from "./layerLegends";
+import type { ServerPalettes } from "./shared/serverPalettes";
 
 const table = (id: string) =>
   JSON.parse(readFileSync(new URL(`../../rust/crates/radar-tiler/assets/${id}.json`, import.meta.url), "utf8"));

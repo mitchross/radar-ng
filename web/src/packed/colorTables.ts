@@ -2,9 +2,8 @@
  * The tile renderer's color tables, from `/api/palettes` ({palette: {color_key: table}}).
  * Until (or unless) that answers, reflectivity falls back to the bands in palettes.ts.
  */
-import type { ServerPalettes } from "../layerLegends";
 import { PALETTES, type Band, type PaletteId } from "../palettes";
-import type { ColorTable } from "./format";
+import type { ColorTable, ServerPalettes } from "../shared/serverPalettes";
 
 export type { ServerPalettes };
 

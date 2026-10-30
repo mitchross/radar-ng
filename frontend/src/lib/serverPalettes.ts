@@ -3,31 +3,20 @@
  * legend shows exactly the colors on the map.
  */
 import type { LayerType, Palette } from "../types/weather";
+import { LAYER_PALETTE_KEY, type ColorRange, type ServerPalettes } from "../../../web/src/shared/serverPalettes";
 
-export interface ColorRange {
-  min: number;
-  max: number;
-  rgba: [number, number, number, number];
-}
-export interface ColorTable {
-  unit?: string;
-  ranges: ColorRange[];
-  /** Reflectivity only: snow and mix ramps; `ranges` is rain. */
-  types?: Partial<Record<"snow" | "mix", { ranges: ColorRange[] }>>;
-}
-export type ServerPalettes = Partial<Record<Palette, Record<string, ColorTable>>>;
+export type { ColorRange, ColorTable, ServerPalettes } from "../../../web/src/shared/serverPalettes";
 
-/** Layer to palette key, as the server's HRRR `layer_color_key` and MRMS QPE map them. */
-const LAYER_TABLES: Partial<Record<LayerType, { key: string; title: string; unit: string; whole?: boolean }>> = {
-  temperature: { key: "temperature", title: "Temperature", unit: "°F" },
-  "feels-like": { key: "temperature", title: "Feels Like", unit: "°F" },
-  dewpoint: { key: "dewpoint", title: "Dew Point", unit: "°F" },
-  wind: { key: "wind_speed", title: "Wind", unit: "mph" },
-  "precip-accum": { key: "precip_accum", title: "Rain Total", unit: "in" },
-  "precip-24h": { key: "precip_accum", title: "Past 24 Hr", unit: "in" },
-  cloud: { key: "cloud_cover", title: "Clouds", unit: "%" },
+const LAYER_TABLES: Partial<Record<LayerType, { title: string; unit: string; whole?: boolean }>> = {
+  temperature: { title: "Temperature", unit: "°F" },
+  "feels-like": { title: "Feels Like", unit: "°F" },
+  dewpoint: { title: "Dew Point", unit: "°F" },
+  wind: { title: "Wind", unit: "mph" },
+  "precip-accum": { title: "Rain Total", unit: "in" },
+  "precip-24h": { title: "Past 24 Hr", unit: "in" },
+  cloud: { title: "Clouds", unit: "%" },
   // Band edges sit halfway between whole index values (0.5, 2.5, ...); label the whole values.
-  uv: { key: "uv_index", title: "UV Index", unit: "WHO", whole: true },
+  uv: { title: "UV Index", unit: "WHO", whole: true },
 };
 
 export interface ServerLegend {
@@ -67,7 +56,7 @@ export function serverLegend(
   maxStops = 7,
 ): ServerLegend | null {
   const spec = LAYER_TABLES[layer];
-  const ranges = spec && (palettes?.[palette] ?? palettes?.classic)?.[spec.key]?.ranges;
+  const ranges = spec && (palettes?.[palette] ?? palettes?.classic)?.[LAYER_PALETTE_KEY[layer]]?.ranges;
   if (!spec || !ranges || ranges.length < 2) return null;
   // Every band when it fits; otherwise an even sample that keeps the first and last band.
   const n = Math.min(maxStops, ranges.length);

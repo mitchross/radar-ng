@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PaletteId } from "../palettes";
+import type { ColorTable } from "../shared/serverPalettes";
 import { colorTable, fallbackTable } from "./colorTables";
 import {
   atlasSize,
@@ -12,7 +13,6 @@ import {
   tileCover,
   tileMatrix,
   usablePacked,
-  type ColorTable,
   type PackedMeta,
 } from "./format";
 

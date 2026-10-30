@@ -2,6 +2,7 @@
  * Packed data tiles v1 and v2 (docs/reference/packed-tiles.md): manifest types and the pure math the
  * WebGL layer needs. Nothing here touches the DOM or GL, so all of it is unit-tested.
  */
+import type { ColorRange, ColorTable } from "../shared/serverPalettes";
 
 export interface PackedBucket {
   id: string;
@@ -31,20 +32,6 @@ export interface PackedMeta {
 export interface PackedTypes {
   stride: number;
   classes: string[];
-}
-
-export interface ColorRange {
-  min: number;
-  max: number;
-  rgba: [number, number, number, number];
-}
-
-export interface ColorTable {
-  unit?: string;
-  ranges: ColorRange[];
-  no_data_below?: number;
-  /** Ramps of the other precipitation classes (reflectivity); `ranges` is rain. */
-  types?: Record<string, { ranges: ColorRange[] }>;
 }
 
 const validTypes = (t: PackedTypes | undefined) => Boolean(t && t.stride > 0 && t.stride <= 256 && Array.isArray(t.classes) && t.classes.length > 0);
