@@ -5,7 +5,10 @@ name: ci · rust
 #   lint-test   fmt, clippy -D warnings, cargo test --workspace (includes the offline Temporal replay gate)
 #   temporal    radar-worker integration tests against a throwaway Temporal server
 #   live-noaa   the newest real MRMS and HRRR files decoded and rendered (rust/scripts/live-noaa-check.sh)
-#   images      every image target builds; glibc floor, image users, api smoke run, open-meteo contract
+#   binary      release `radar` built once on Bookworm with a cargo cache (shared with ghcr-backend)
+#   images      every image target builds from that binary; glibc floor, image users, api smoke run,
+#               open-meteo contract. The in-Docker source build runs only when the Dockerfile or
+#               toolchain changed (or on manual runs), because its cargo cache mount is not kept on CI.
 
 on:
   pull_request:
@@ -105,7 +108,48 @@ jobs:
           key: live-noaa
       - run: rust/scripts/live-noaa-check.sh
 
+  # Same build as ghcr-backend's `binary` job, sharing its cargo cache, so PRs and master reuse
+  # compiled dependencies instead of rebuilding all of them inside Docker.
+  binary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Bookworm glibc (2.36) matches the distroless runtime; the Ubuntu runner's glibc is newer.
+    container: debian:bookworm-slim
+    env:
+      CARGO_TERM_COLOR: never
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Build tools
+        working-directory: /
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git zstd gcc libc6-dev make pkg-config protobuf-compiler libprotobuf-dev
+      - uses: actions/checkout@v7
+      # Default toolchain, not just the rust/ override: rust-cache runs `rustc -vV` from the repo root.
+      - name: Rust toolchain (rust/rust-toolchain.toml)
+        run: |
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal \
+            --default-toolchain "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          shared-key: bookworm-release
+      - name: Build radar
+        run: |
+          cargo build --release --locked -p radar
+          install -D -m 0755 target/release/radar ../dist/radar
+      - uses: actions/upload-artifact@v7
+        with:
+          name: radar
+          path: dist/radar
+          retention-days: 1
+          if-no-files-found: error
+
   images:
+    needs: binary
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
@@ -114,15 +158,41 @@ jobs:
       OM: radar-ng-open-meteo-worker:ci
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          name: radar
+          path: dist
       - uses: docker/setup-buildx-action@v4
-      - name: Build the three targets
+      - name: Build the three targets from the CI binary
         run: |
           set -euo pipefail
           for t in api:$API worker:$WORKER open-meteo:$OM; do
-            # lint-test already runs the replay gate.
-            docker buildx build --load -f deploy/Dockerfile --target "${t%%:*}" -t "${t#*:}" --build-arg REPLAY_GATE=0 \
-              --cache-from type=gha,scope=ci-rust --cache-to type=gha,mode=max,scope=ci-rust .
+            docker buildx build --load -f deploy/Dockerfile --target "${t%%:*}" -t "${t#*:}" \
+              --build-arg RADAR_FROM=prebuilt --build-context radar-bin=dist \
+              --cache-from type=gha,scope=ci-rust-prebuilt --cache-to type=gha,mode=max,scope=ci-rust-prebuilt .
           done
+      # The default (RADAR_FROM=build) path is what Compose users run. Its cargo cache mount is lost
+      # between CI runs, so a full compile only happens when something it depends on changed.
+      - name: Did the in-Docker build inputs change?
+        id: src
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ] || [ -z "$BASE" ] \
+            || ! git cat-file -e "$BASE^{commit}" 2>/dev/null \
+            || ! git diff --quiet "$BASE" HEAD -- deploy/Dockerfile deploy/Dockerfile.dockerignore rust/rust-toolchain.toml; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: In-Docker source build (api)
+        if: steps.src.outputs.build == 'true'
+        run: |
+          # lint-test already runs the replay gate.
+          docker buildx build -f deploy/Dockerfile --target api --build-arg REPLAY_GATE=0 \
+            --cache-from type=gha,scope=ci-rust --cache-to type=gha,mode=max,scope=ci-rust .
       - name: Image users and replay-gate label
         run: |
           set -euo pipefail
