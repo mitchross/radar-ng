@@ -9,7 +9,7 @@ import { RAIN_END_IN_HR, RAIN_START_IN_HR } from "./rainAlerts";
 export type NowcastPoint = Pick<RadarNowcastPoint, "lead_minutes" | "precipitation_mm_h">;
 
 /** Expand the server's five-minute MRMS samples into a per-minute series in inches/hour. */
-export function interpolateNowcast(points: NowcastPoint[], horizon = 60): number[] {
+export function interpolateNowcast<P extends NowcastPoint>(points: P[], horizon = 60): number[] {
   const ordered = points.filter((p) => p.lead_minutes != null).sort((a, b) => a.lead_minutes! - b.lead_minutes!);
   if (!ordered.length) return Array.from({ length: horizon }, () => 0);
   const anchors = [
