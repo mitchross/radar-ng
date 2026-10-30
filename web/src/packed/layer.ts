@@ -12,10 +12,10 @@ import {
   buildLut,
   locateFrame,
   packedTileUrl,
+  parsePackedMeta,
   slotAddress,
   tileCover,
   tileMatrix,
-  usablePacked,
   type FrameLocation,
   type PackedMeta,
   type TileId,
@@ -130,9 +130,12 @@ export class PackedRadarLayer implements CustomLayerInterface {
   // ---------- public API ----------
 
   /** Reads `layers.<layer>.packed` from a manifest; unusable metadata is ignored. */
-  setManifest(manifest: { layers: Record<string, { packed?: PackedMeta }> } | null) {
+  setManifest(manifest: { layers: Record<string, { packed?: unknown }> } | null) {
     const metas: Record<string, PackedMeta> = {};
-    for (const [layer, entry] of Object.entries(manifest?.layers ?? {})) if (usablePacked(entry.packed)) metas[layer] = entry.packed;
+    for (const [layer, entry] of Object.entries(manifest?.layers ?? {})) {
+      const meta = parsePackedMeta(entry.packed);
+      if (meta) metas[layer] = meta;
+    }
     this.metas = metas;
     this.index = new Map();
     this.schedule();

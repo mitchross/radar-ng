@@ -40,7 +40,6 @@ const META = {
   cols: 2,
   max_slots: 24,
   color_key: "reflectivity",
-  categorical: false,
   scale: 0.5,
   offset: -32,
   url_template: "/tiles/packed/{layer}/{bucket}/{z}/{x}/{y}.png?v={v}",
@@ -127,11 +126,11 @@ describe("slotAddress", () => {
 
 describe("locateFrame", () => {
   it("finds a frame's bucket, version and slot by timestamp", () => {
-    expect(locateFrame(META, "2026-10-15T18:32:38+00:00")).toEqual({ bucket: "2026-10-15T18:30:00Z", v: 7, slot: 1 });
+    expect(locateFrame(META, "2026-10-15T18:32:38+00:00")).toEqual({ bucket: "2026-10-15T18:30:00Z", v: 7, slot: 1, slots: 2 });
   });
 
   it("matches the same instant written with Z", () => {
-    expect(locateFrame(META, "2026-10-15T18:00:38Z")).toEqual({ bucket: "2026-10-15T18:00:00Z", v: 15, slot: 0 });
+    expect(locateFrame(META, "2026-10-15T18:00:38Z")).toEqual({ bucket: "2026-10-15T18:00:00Z", v: 15, slot: 0, slots: 2 });
   });
 
   it("returns null for frames without a slot", () => {

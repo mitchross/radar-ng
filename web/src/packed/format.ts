@@ -1,76 +1,24 @@
 /**
- * Packed data tiles v1 and v2 (docs/reference/packed-tiles.md): manifest types and the pure math the
- * WebGL layer needs. Nothing here touches the DOM or GL, so all of it is unit-tested.
+ * Packed data tiles v1 and v2 (docs/reference/packed-tiles.md): the web-only pure math the WebGL layer
+ * needs. The manifest types, parser, LUT and slot helpers are shared with the app in `shared/packed`.
+ * Nothing here touches the DOM or GL, so all of it is unit-tested.
  */
-import type { ColorRange, ColorTable } from "../shared/serverPalettes";
+import { slotAddress, type PackedLocation } from "../shared/packed";
 
-export interface PackedBucket {
-  id: string;
-  /** Bucket version; it goes into the tile URL so every update is a new URL. */
-  v: number;
-  /** Slot timestamps, the same strings as the layer's `frames[].timestamp`. */
-  slots: string[];
-}
+export {
+  buildLut,
+  classRanges,
+  locateFrame,
+  parsePackedMeta,
+  slotAddress,
+  type PackedBucket,
+  type PackedMeta,
+  type PackedTypes,
+  type SlotAddress,
+} from "../shared/packed";
 
-export interface PackedMeta {
-  version: number;
-  tile_size: number;
-  min_zoom: number;
-  max_zoom: number;
-  cols: number;
-  max_slots: number;
-  color_key: string;
-  categorical: boolean;
-  scale: number;
-  offset: number;
-  url_template: string;
-  buckets: PackedBucket[];
-  /** v2 only: code = class * stride + q, with classes such as ["rain", "snow", "mix"]. */
-  types?: PackedTypes;
-}
-
-export interface PackedTypes {
-  stride: number;
-  classes: string[];
-}
-
-const validTypes = (t: PackedTypes | undefined) => Boolean(t && t.stride > 0 && t.stride <= 256 && Array.isArray(t.classes) && t.classes.length > 0);
-
-/** True when the client can draw this metadata: v1, or v2 with typed codes; continuous values. */
-export function usablePacked(meta: PackedMeta | undefined): meta is PackedMeta {
-  if (!meta || meta.categorical || !(meta.tile_size > 0) || !(meta.cols > 0) || !Array.isArray(meta.buckets)) return false;
-  return meta.version === 1 ? !meta.types : meta.version === 2 && validTypes(meta.types);
-}
-
-/** The ranges a precipitation class draws with: `ranges` for the first class (rain), else its ramp. */
-export function classRanges(table: ColorTable, types: PackedTypes | undefined, cls: number): ColorRange[] {
-  if (!types || cls === 0) return table.ranges;
-  return table.types?.[types.classes[cls]]?.ranges ?? table.ranges;
-}
-
-/**
- * 256 x 1 RGBA table, straight (not premultiplied) alpha. Entry q colors `offset + q * scale`;
- * with `types`, entry `class * stride + q` colors q with that class's ramp.
- */
-export function buildLut(table: ColorTable | undefined, scale: number, offset: number, types?: PackedTypes): Uint8Array {
-  const lut = new Uint8Array(256 * 4);
-  if (!table) return lut;
-  const noDataBelow = table.no_data_below ?? -999;
-  const stride = types ? types.stride : 256;
-  for (let code = 1; code < 256; code++) {
-    const cls = Math.floor(code / stride);
-    const q = code % stride;
-    if (q === 0 || (types && cls >= types.classes.length)) continue;
-    // Round off float noise (0.05 * 20 = 1.0000000000000002) so band edges compare exactly.
-    const value = Math.round((offset + q * scale) * 1e6) / 1e6;
-    // The server applies no_data_below to the rain ramp only.
-    if (cls === 0 && value < noDataBelow) continue;
-    let hit: ColorRange | undefined;
-    for (const r of classRanges(table, types, cls)) if (value >= r.min && value < r.max) hit = r;
-    if (hit) lut.set(hit.rgba, code * 4);
-  }
-  return lut;
-}
+/** A frame's place in a bucket (the shared `PackedLocation`, kept under its old name for the layer code). */
+export type FrameLocation = PackedLocation;
 
 /**
  * The server's quantization; 0 means no data. A `floor` below `offset + scale` stores the values
@@ -80,20 +28,6 @@ export function quantize(value: number, scale: number, offset: number, floor = o
   if (Number.isNaN(value) || value < floor) return 0;
   const q = Math.floor((value - offset) / scale);
   return Math.max(1, Math.min(q, 255));
-}
-
-export interface SlotAddress {
-  block: number;
-  /** 0 = R, 1 = G, 2 = B. */
-  channel: number;
-  /** Top-left pixel of the slot's block in the atlas. */
-  x0: number;
-  y0: number;
-}
-
-export function slotAddress(slot: number, cols = 2, tile = 512): SlotAddress {
-  const block = Math.floor(slot / 3);
-  return { block, channel: slot % 3, x0: (block % cols) * tile, y0: Math.floor(block / cols) * tile };
 }
 
 /** Atlas pixel size for a bucket with `slots` slots. */
@@ -119,30 +53,6 @@ export function extractSlot(pixels: Uint8Array, width: number, height: number, c
     }
   }
   return out;
-}
-
-export interface FrameLocation {
-  bucket: string;
-  v: number;
-  slot: number;
-  /** The bucket's slot count in this manifest; a tile fetched for it holds at least these slots. */
-  slots: number;
-}
-
-export function locateFrame(meta: PackedMeta | undefined, timestamp: string): FrameLocation | null {
-  if (!meta) return null;
-  for (const b of meta.buckets) {
-    const slot = b.slots.indexOf(timestamp);
-    if (slot >= 0 && slot < meta.max_slots) return { bucket: b.id, v: b.v, slot, slots: b.slots.length };
-  }
-  // The spec promises identical strings; fall back to the instant in case the offset is spelled differently.
-  const t = Date.parse(timestamp);
-  if (Number.isNaN(t)) return null;
-  for (const b of meta.buckets) {
-    const slot = b.slots.findIndex((s) => Date.parse(s) === t);
-    if (slot >= 0 && slot < meta.max_slots) return { bucket: b.id, v: b.v, slot, slots: b.slots.length };
-  }
-  return null;
 }
 
 export interface TileId {
@@ -172,6 +82,7 @@ export const tileZoom = (zoom: number, minZoom: number, maxZoom: number) => Math
  * 512-px tiles covering `bounds` at clamp(floor(zoom), min, max). Longitudes past the
  * antimeridian clamp to the world edge, so world copies are not drawn. A cover larger than
  * `maxTiles` (a pitched view) steps down a zoom until it fits or reaches `minZoom`.
+ * (The app's `tileCover` takes a camera and screen instead, so the two are not shared.)
  */
 export function tileCover(bounds: Bounds, zoom: number, minZoom: number, maxZoom: number, maxTiles = Infinity): TileId[] {
   let z = tileZoom(zoom, minZoom, maxZoom);

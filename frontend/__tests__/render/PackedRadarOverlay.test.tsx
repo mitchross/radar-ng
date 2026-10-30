@@ -102,7 +102,6 @@ const META = parsePackedMeta({
   cols: 2,
   max_slots: 24,
   color_key: "reflectivity",
-  categorical: false,
   scale: 0.5,
   offset: -32,
   url_template: "/tiles/packed/{layer}/{bucket}/{z}/{x}/{y}.png?v={v}",

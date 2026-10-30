@@ -82,11 +82,5 @@ export function positionOf(seq: readonly number[], frames: readonly TimedFrame[]
   return best;
 }
 
-/** "-4h", "+45m", "+17h": a frame's offset from now for axis labels. */
-export function offsetLabel(frameSec: number, nowSec: number): string {
-  const min = Math.round((frameSec - nowSec) / 60);
-  if (Math.abs(min) < 1) return "Now";
-  const sign = min > 0 ? "+" : "−";
-  const abs = Math.abs(min);
-  return abs < 90 ? `${sign}${abs}m` : `${sign}${Math.round(abs / 60)}h`;
-}
+/** "-4h", "+45m", "+17h": a frame's offset from now for axis labels; "Now" within 5 minutes, like the web. */
+export { offsetLabel } from "../../../web/src/shared/offsetLabel";

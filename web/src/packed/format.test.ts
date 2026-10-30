@@ -12,7 +12,7 @@ import {
   slotAddress,
   tileCover,
   tileMatrix,
-  usablePacked,
+  parsePackedMeta,
   type PackedMeta,
 } from "./format";
 
@@ -29,7 +29,6 @@ const meta = (over: Partial<PackedMeta> = {}): PackedMeta => ({
   cols: 2,
   max_slots: 24,
   color_key: "reflectivity",
-  categorical: false,
   scale: 0.5,
   offset: -32,
   url_template: "/tiles/packed/{layer}/{bucket}/{z}/{x}/{y}.png?v={v}",
@@ -65,10 +64,10 @@ describe("typed codes (v2)", () => {
   });
 
   it("accepts v2 only with types, and v1 only without", () => {
-    expect(usablePacked(meta({ version: 2, types }))).toBe(true);
-    expect(usablePacked(meta({ version: 2 }))).toBe(false);
-    expect(usablePacked(meta({ version: 1, types }))).toBe(false);
-    expect(usablePacked(meta({ version: 2, types: { stride: 0, classes: [] } }))).toBe(false);
+    expect(parsePackedMeta(meta({ version: 2, types }))?.types).toEqual(types);
+    expect(parsePackedMeta(meta({ version: 2 }))).toBeNull();
+    expect(parsePackedMeta(meta({ version: 1, types }))).toBeNull();
+    expect(parsePackedMeta(meta({ version: 2, types: { stride: 0, classes: [] } }))).toBeNull();
   });
 
   it("gives the reflectivity fallback table snow and mix ramps", () => {
@@ -223,11 +222,15 @@ describe("locateFrame", () => {
     expect(locateFrame(undefined, "2026-10-15T18:32:38+00:00")).toBeNull();
   });
 
-  it("accepts only v1 continuous metadata", () => {
-    expect(usablePacked(meta())).toBe(true);
-    expect(usablePacked(meta({ categorical: true }))).toBe(false);
-    expect(usablePacked(meta({ version: 2 }))).toBe(false);
-    expect(usablePacked(undefined)).toBe(false);
+  it("parses only metadata this client can draw, with the app's checks", () => {
+    expect(parsePackedMeta(meta())?.buckets).toHaveLength(2);
+    expect(parsePackedMeta({ ...meta(), categorical: true })).toBeNull();
+    expect(parsePackedMeta(meta({ version: 2 }))).toBeNull();
+    expect(parsePackedMeta(undefined)).toBeNull();
+    // The strict checks the web parser used to skip: tile size and bucket shape.
+    expect(parsePackedMeta(meta({ tile_size: 256 }))).toBeNull();
+    expect(parsePackedMeta(meta({ buckets: [{ id: "x", v: 1, slots: new Array(25).fill("t") }] }))).toBeNull();
+    expect(parsePackedMeta({ ...meta(), buckets: [{ id: "x", v: "1", slots: [] }] })).toBeNull();
   });
 });
 
