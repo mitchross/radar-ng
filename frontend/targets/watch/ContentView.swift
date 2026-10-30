@@ -34,7 +34,7 @@ struct ForecastPage: View {
                     if let f = store.forecast {
                         CurrentCard(current: f.current)
                         NowcastCard(minutely: f.minutely_15, currentTime: f.current.time)
-                        HourlyRow(hourly: f.hourly, currentTime: f.current.time)
+                        HourlyRow(hourly: f.hourly, daily: f.daily, currentTime: f.current.time)
                         DailyList(daily: f.daily)
                     } else if store.isLoading {
                         ProgressView().padding(.top, 30)
@@ -108,6 +108,7 @@ struct NowcastCard: View {
 
 struct HourlyRow: View {
     let hourly: Forecast.Hourly
+    let daily: Forecast.Daily
     let currentTime: String
     var body: some View {
         let items = zip(hourly.time, zip(hourly.temperature_2m, hourly.weather_code))
@@ -117,7 +118,7 @@ struct HourlyRow: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, triple in
                     VStack(spacing: 2) {
                         Text(WatchForecastPresentation.shortHour(triple.0)).font(.caption2).foregroundStyle(.secondary)
-                        Image(systemName: triple.1.1.map { WeatherCodes.sfSymbol($0) } ?? "questionmark.circle")
+                        Image(systemName: triple.1.1.map { WeatherCodes.sfSymbol($0, night: WeatherCodes.isNight(triple.0, daily: daily)) } ?? "questionmark.circle")
                             .font(.footnote)
                         Text(WatchForecastPresentation.degrees(triple.1.0)).font(.caption2)
                     }
@@ -187,9 +188,22 @@ enum WeatherCodes {
         default: return "—"
         }
     }
-    static func sfSymbol(_ c: Int) -> String {
+    /// Open-Meteo sends wall time at the forecast location ("2026-10-11T14:00") for
+    /// both hours and sunrise/sunset, so plain string comparison orders them. Like
+    /// the phone, fall back to a 06:00-20:00 day when the day has no sun times.
+    static func isNight(_ time: String, daily: Forecast.Daily) -> Bool {
+        if let i = daily.time.firstIndex(of: String(time.prefix(10))),
+           let sunrises = daily.sunrise, let sunsets = daily.sunset,
+           sunrises.indices.contains(i), sunsets.indices.contains(i),
+           let dawn = sunrises[i], let dusk = sunsets[i] {
+            return time < dawn || time > dusk
+        }
+        let hour = Int(time.dropFirst(11).prefix(2)) ?? 12
+        return hour < 6 || hour >= 20
+    }
+    static func sfSymbol(_ c: Int, night: Bool = false) -> String {
         switch c {
-        case 0: return "sun.max.fill"
+        case 0: return night ? "moon.stars.fill" : "sun.max.fill"
         case 1,2: return "cloud.sun.fill"
         case 3: return "cloud.fill"
         case 45,48: return "cloud.fog.fill"

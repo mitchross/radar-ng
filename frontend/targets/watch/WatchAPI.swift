@@ -140,7 +140,6 @@ private struct RadarManifest: Decodable {
 
 private struct RadarLayer: Decodable {
     let frames: [RadarManifestFrame]?
-    let latest: String?
     let palettes: [String]?
 }
 
@@ -169,7 +168,6 @@ struct Forecast: Decodable {
     struct Current: Decodable {
         let time: String
         let temperature_2m: Double?
-        let apparent_temperature: Double?
         let weather_code: Int?
         let wind_speed_10m: Double?
         let relative_humidity_2m: Double?
@@ -185,6 +183,9 @@ struct Forecast: Decodable {
         let temperature_2m_max: [Double?]
         let temperature_2m_min: [Double?]
         let weather_code: [Int?]
+        // Optional so a forecast saved before these were decoded still loads.
+        let sunrise: [String?]?
+        let sunset: [String?]?
     }
     struct Minutely: Decodable {
         let time: [String]

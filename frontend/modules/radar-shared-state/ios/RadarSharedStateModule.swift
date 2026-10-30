@@ -42,15 +42,27 @@ public class RadarSharedStateModule: Module {
 /// gets it on its next launch even when it isn't reachable now.
 final class WatchLink: NSObject, WCSessionDelegate {
   static let shared = WatchLink()
+  /// `send` runs on the JS thread and the delegate on WCSession's queue; both
+  /// hop here, so `pending` and `activating` are only touched on this queue.
+  private let queue = DispatchQueue(label: "radarng.watchlink")
   private var pending: String?
+  private var activating = false
 
   func send(_ json: String) {
     guard WCSession.isSupported() else { return }
+    queue.async { self.deliver(json) }
+  }
+
+  /// Must run on `queue`.
+  private func deliver(_ json: String) {
     let session = WCSession.default
     if session.delegate == nil { session.delegate = self }
     guard session.activationState == .activated else {
       pending = json
-      session.activate()
+      if !activating {
+        activating = true
+        session.activate()
+      }
       return
     }
     guard session.isPaired, session.isWatchAppInstalled else { return }
@@ -58,11 +70,21 @@ final class WatchLink: NSObject, WCSessionDelegate {
   }
 
   func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
-    guard state == .activated, let json = pending else { return }
-    pending = nil
-    send(json)
+    queue.async {
+      // A failed activation can be retried by the next publish.
+      self.activating = false
+      guard state == .activated, let json = self.pending else { return }
+      self.pending = nil
+      self.deliver(json)
+    }
   }
 
   func sessionDidBecomeInactive(_ session: WCSession) {}
-  func sessionDidDeactivate(_ session: WCSession) { session.activate() }
+  func sessionDidDeactivate(_ session: WCSession) {
+    queue.async {
+      guard !self.activating else { return }
+      self.activating = true
+      session.activate()
+    }
+  }
 }

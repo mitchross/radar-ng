@@ -52,10 +52,6 @@ module.exports = ({ config: input }) => {
     plugins,
     ios: {
       ...config.ios,
-      entitlements: {
-        ...config.ios?.entitlements,
-        "com.apple.developer.carplay-maps": true,
-      },
       infoPlist: {
         ...config.ios?.infoPlist,
         UIBackgroundModes: [
