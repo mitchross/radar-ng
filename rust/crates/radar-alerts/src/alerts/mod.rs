@@ -196,12 +196,10 @@ pub struct WatchCenter {
     pub lng: f64,
 }
 
-/// Temporal access that [`signal_matching_storm_watches`] needs. The worker crate implements it with the Temporal
-/// client.
-///
-/// TODO(integration): the worker crate implements this over the Temporal client (list running `WatchStormWorkflow`
-/// executions, query `getCurrentState`, signal `alertMatchSignal`). No Temporal types appear in this crate. Any error from one watch is logged and skipped. An error from [`WatchSignaler::list_running_watches`]
-/// fails the whole call.
+/// Temporal access that [`signal_matching_storm_watches`] needs. The worker crate implements it as
+/// `TemporalWatchSignaler` in `radar-worker/src/temporal_io.rs` (list running `WatchStormWorkflow` executions, query
+/// `getCurrentState`, signal `alertMatchSignal`). No Temporal types appear in this crate. Any error from one watch is
+/// logged and skipped. An error from [`WatchSignaler::list_running_watches`] fails the whole call.
 #[async_trait::async_trait]
 pub trait WatchSignaler: Send + Sync {
     /// Workflow IDs of every running `WatchStormWorkflow`. The implementation pages through the results.

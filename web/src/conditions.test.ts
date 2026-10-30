@@ -8,7 +8,8 @@ import {
   getCumulusCondition,
   rainHeadline,
 } from "./shared/conditions";
-import { conditionOf, isNightAt } from "./weather";
+import { isNightAt } from "./shared/forecastTime";
+import { conditionOf } from "./weather";
 
 describe("rainHeadline", () => {
   it("says the fact first, then a nudge", () => {

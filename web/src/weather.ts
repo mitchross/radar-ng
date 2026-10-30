@@ -4,6 +4,7 @@
  */
 
 import { getCumulusCondition, type CumulusCondition } from "./shared/conditions";
+import { forecastTimeMs } from "./shared/forecastTime";
 
 export interface Forecast {
   /** Seconds east of UTC at the location; `hourly.time` etc. are wall times there with no offset. */
@@ -56,15 +57,6 @@ const round = (v: number, dp: number) => Number(v.toFixed(dp));
 
 export const fetchManifest = (signal?: AbortSignal) => json<import("./frames").Manifest>("/api/manifest.json", signal);
 
-const WALL_TIME = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/;
-
-/** Open-Meteo wall time at the location → epoch ms. Falls back to the browser zone without an offset. */
-export function forecastTimeMs(value: string, utcOffsetSeconds?: number): number {
-  const m = utcOffsetSeconds == null ? null : WALL_TIME.exec(value);
-  if (!m || utcOffsetSeconds == null) return Date.parse(value);
-  return Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0)) - utcOffsetSeconds * 1000;
-}
-
 /** "3pm" in the location's zone, not the browser's. */
 export function forecastHourLabel(value: string, utcOffsetSeconds?: number): string {
   if (utcOffsetSeconds == null) return new Date(value).toLocaleTimeString([], { hour: "numeric" }).replace(" ", "").toLowerCase();
@@ -72,18 +64,6 @@ export function forecastHourLabel(value: string, utcOffsetSeconds?: number): str
   if (h === 0) return "12am";
   if (h === 12) return "12pm";
   return h < 12 ? `${h}am` : `${h - 12}pm`;
-}
-
-/** Night at the location: outside that day's sunrise–sunset, else 20:00–06:00. Mirrors the app's isNightAt. */
-export function isNightAt(atMs: number, daily: Pick<Forecast["daily"], "time" | "sunrise" | "sunset">, utcOffsetSeconds?: number): boolean {
-  const offset = utcOffsetSeconds ?? -new Date(atMs).getTimezoneOffset() * 60;
-  const wall = new Date(atMs + offset * 1000);
-  const i = daily.time.indexOf(wall.toISOString().slice(0, 10));
-  const rise = i >= 0 && daily.sunrise[i] ? forecastTimeMs(daily.sunrise[i], utcOffsetSeconds) : NaN;
-  const set = i >= 0 && daily.sunset[i] ? forecastTimeMs(daily.sunset[i], utcOffsetSeconds) : NaN;
-  if (Number.isFinite(rise) && Number.isFinite(set)) return atMs < rise || atMs > set;
-  const hour = wall.getUTCHours();
-  return hour < 6 || hour >= 20;
 }
 
 export const fetchForecast = (lat: number, lon: number, signal?: AbortSignal) =>

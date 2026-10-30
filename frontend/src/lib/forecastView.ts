@@ -5,6 +5,7 @@
  * "normal" pressure.
  */
 import { getIconKind, type IconKind } from "./cumulusTheme";
+import { forecastTimeMs, isNightAt as isNightAtMs, sunTimesMs, wallClock as wallClockMs } from "./forecastTime";
 import { describeNowcastSkill } from "./nowcastSkill";
 import { interpolateRadarNowcast } from "./radarNowcast";
 import { getNowcastVerdict } from "./weatherPresentation";
@@ -14,58 +15,28 @@ import type { OpenMeteoResponse, RadarNowcastResponse, TemperatureUnit } from ".
 type Daily = OpenMeteoResponse["daily"];
 type Minutely = NonNullable<OpenMeteoResponse["minutely_15"]>;
 
-const WALL_TIME = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/;
-
-/**
- * Open-Meteo returns wall time at the forecast location with no offset
- * ("2026-10-11T14:00"). `new Date()` would read it in the device zone, which
- * shifts a chosen city in another zone by the zone difference. Without an
- * offset (old cached responses), fall back to the device zone as before.
- */
+/** Open-Meteo wall time at the forecast location → Date (parsing lives in forecastTime). Null when missing or unparseable. */
 export function parseLocationTime(value: string | null | undefined, utcOffsetSeconds?: number): Date | null {
   if (!value) return null;
-  const m = utcOffsetSeconds == null ? null : WALL_TIME.exec(value);
-  const d = m
-    ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0)) - (utcOffsetSeconds as number) * 1000)
-    : new Date(value);
-  return Number.isFinite(d.getTime()) ? d : null;
+  const ms = forecastTimeMs(value, utcOffsetSeconds);
+  return Number.isFinite(ms) ? new Date(ms) : null;
 }
 
-/** The instant shifted so its UTC fields read as wall time at the location. */
 function wallClock(at: Date, utcOffsetSeconds?: number): { hour: number; dateKey: string } {
-  if (utcOffsetSeconds == null) {
-    return {
-      hour: at.getHours(),
-      dateKey: `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`,
-    };
-  }
-  const w = new Date(at.getTime() + utcOffsetSeconds * 1000);
-  return {
-    hour: w.getUTCHours(),
-    dateKey: `${w.getUTCFullYear()}-${String(w.getUTCMonth() + 1).padStart(2, "0")}-${String(w.getUTCDate()).padStart(2, "0")}`,
-  };
+  return wallClockMs(at.getTime(), utcOffsetSeconds);
 }
 
 /** Sunrise/sunset for the location's calendar day that contains `at`, or nulls. */
 export function sunTimesFor(daily: Daily, at: Date, utcOffsetSeconds?: number): { sunrise: Date | null; sunset: Date | null } {
-  const index = daily.time.indexOf(wallClock(at, utcOffsetSeconds).dateKey);
-  if (index < 0) return { sunrise: null, sunset: null };
+  const { sunrise, sunset } = sunTimesMs(daily, at.getTime(), utcOffsetSeconds);
   return {
-    sunrise: parseLocationTime(daily.sunrise[index], utcOffsetSeconds),
-    sunset: parseLocationTime(daily.sunset[index], utcOffsetSeconds),
+    sunrise: Number.isFinite(sunrise) ? new Date(sunrise) : null,
+    sunset: Number.isFinite(sunset) ? new Date(sunset) : null,
   };
 }
 
-/**
- * Night for the hour's own day, not today's. Tomorrow 8 AM compared against
- * today's sunset used to read as night. Without sun times, fall back to a
- * fixed 06:00–20:00 day rather than guessing from today.
- */
 export function isNightAt(at: Date, daily: Daily, utcOffsetSeconds?: number): boolean {
-  const { sunrise, sunset } = sunTimesFor(daily, at, utcOffsetSeconds);
-  if (sunrise && sunset) return at < sunrise || at > sunset;
-  const { hour } = wallClock(at, utcOffsetSeconds);
-  return hour < 6 || hour >= 20;
+  return isNightAtMs(at.getTime(), daily, utcOffsetSeconds);
 }
 
 /** Index of the first hourly entry at or after "now" (with a 30-minute grace). */
