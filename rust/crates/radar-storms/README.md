@@ -35,7 +35,7 @@ Each fix was reproduced in the Python source first. The golden fixtures record t
 
 Other behaviour changes or decisions:
 
-- **D5, empty frames.** Python writes a short payload (no `threshold_dbz`, `cell_count`, or `tracking_vectors`) when no pixel reaches the threshold. The Rust writer keeps that shape. A frame where every component is filtered out by `min_pixels` keeps the full shape, as Python does. `next_cell_id` is written on every payload so the counter survives empty frames. Covered by `invariants::empty_frame_keeps_the_python_short_shape_and_the_counter` and `invariants::components_all_filtered_by_size_keep_the_full_shape`.
+- **D5, empty frames.** Python writes a short payload (no `threshold_dbz` or `cell_count`) when no pixel reaches the threshold. The Rust writer keeps that shape. A frame where every component is filtered out by `min_pixels` keeps the full shape, as Python does. `next_cell_id` is written on every payload so the counter survives empty frames. Covered by `invariants::empty_frame_keeps_the_python_short_shape_and_the_counter` and `invariants::components_all_filtered_by_size_keep_the_full_shape`.
 - **D6 and D16, naive timestamps.** A timestamp with no offset is read as UTC. Mixed naive and aware timestamps do not crash. Covered by `invariants::mixed_naive_and_aware_timestamps_do_not_crash`.
 - **D7, manifest without layers.** A manifest that is not an object, has no `layers`, or cannot be parsed returns `StormsError::Manifest` and fails closed. A missing manifest file is read as empty. Covered by `invariants::d7_manifest_without_layers_fails_closed`.
 - **D8, durability.** The `storms.json` temp file is fsynced before the rename, and the directory is fsynced after it. `EINVAL` on the directory fsync is ignored.

@@ -10,15 +10,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 
 use crate::config::StormConfig;
-use crate::doc::{CellFeature, StormsDoc, TrackingVectorEntry};
+use crate::doc::{CellFeature, StormsDoc};
 use crate::geo::{KM_PER_DEG_LAT, KM_PER_DEG_LON_EQUATOR};
 use crate::grid::Grid;
 use crate::label::{Component, label_components};
 use crate::numeric::radians;
 use crate::tracking::{Candidate, assign_tracking};
-
-/// Prediction leads written to every payload.
-pub const PREDICTION_MINUTES: [i64; 3] = [0, 5, 10];
 
 /// Detect and track storm cells in one frame, using the current wall clock for `generated_at`.
 ///
@@ -103,26 +100,15 @@ fn build_doc(
             timestamp: timestamp.to_owned(),
             threshold_dbz: None,
             cell_count: None,
-            prediction_minutes: PREDICTION_MINUTES.to_vec(),
-            tracking_vectors: None,
             next_cell_id,
         };
     }
-    let tracking_vectors = features
-        .iter()
-        .map(|f| TrackingVectorEntry {
-            cell_id: f.properties.cell_id,
-            vector: f.properties.tracking_vector,
-        })
-        .collect::<Vec<_>>();
     StormsDoc {
         kind: "FeatureCollection".to_owned(),
         generated_at: wall_now,
         timestamp: timestamp.to_owned(),
         threshold_dbz: Some(cfg.threshold_dbz),
         cell_count: Some(features.len()),
-        prediction_minutes: PREDICTION_MINUTES.to_vec(),
-        tracking_vectors: Some(tracking_vectors),
         features,
         next_cell_id,
     }

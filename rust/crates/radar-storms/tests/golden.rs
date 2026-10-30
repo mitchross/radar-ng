@@ -54,19 +54,26 @@ fn storms_detect_matches_python_chains() {
                 exp = replace_cell_id(&exp, 3, 4);
             }
             // generated_at is wall-clock in Python (forced to 0.0 in the fixture); next_cell_id is new.
+            // The fixture still has Python's top-level `prediction_minutes` and `tracking_vectors`;
+            // nothing reads them, so the port no longer writes them (C16).
             assert_json_close(
                 &actual,
                 &exp,
                 &format!("{name}[{i}]"),
                 false,
-                &["generated_at", "next_cell_id"],
+                &[
+                    "generated_at",
+                    "next_cell_id",
+                    "prediction_minutes",
+                    "tracking_vectors",
+                ],
             );
             // The counter (D3) is on every payload; the full shape is on non-empty frames.
             assert!(
                 actual.get("next_cell_id").is_some(),
                 "{name}[{i}] missing next_cell_id"
             );
-            for key in ["threshold_dbz", "cell_count", "tracking_vectors"] {
+            for key in ["threshold_dbz", "cell_count"] {
                 assert!(actual.get(key).is_some(), "{name}[{i}] missing {key}");
             }
             prev = Some(actual);
@@ -74,17 +81,12 @@ fn storms_detect_matches_python_chains() {
     }
 }
 
-/// Rewrite `cell_id` values of `old` to `new` in every place a payload stores them.
+/// Rewrite `cell_id` values of `old` to `new` in the features of a payload.
 fn replace_cell_id(doc: &Value, old: i64, new: i64) -> Value {
     let mut out = doc.clone();
     for feature in out["features"].as_array_mut().unwrap() {
         if feature["properties"]["cell_id"] == json!(old) {
             feature["properties"]["cell_id"] = json!(new);
-        }
-    }
-    for entry in out["tracking_vectors"].as_array_mut().unwrap() {
-        if entry["cell_id"] == json!(old) {
-            entry["cell_id"] = json!(new);
         }
     }
     out
