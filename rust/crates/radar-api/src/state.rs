@@ -162,6 +162,9 @@ pub struct Inner {
     pub temporal: AsyncMutex<Option<temporalio_client::Client>>,
     /// The basemap archive, opened on first use and reopened when the file is replaced (F6).
     pub pmtiles: AsyncMutex<Option<crate::basemap::OpenArchive>>,
+    /// When the archive file was last found missing while an upstream is set. Requests proxy without
+    /// retrying `open` until the recheck interval passes. `None` once the archive opens.
+    pub pmtiles_missing: Mutex<Option<Instant>>,
     /// SQLite push-token store under `STATE_DIR`.
     pub push_tokens: PushTokenStore,
 }
@@ -283,6 +286,7 @@ impl AppState {
             satellite_domain: crate::satellite::DomainCache::default(),
             temporal: AsyncMutex::new(None),
             pmtiles: AsyncMutex::new(None),
+            pmtiles_missing: Mutex::new(None),
             push_tokens: PushTokenStore::new(config.state_dir.clone()),
             config,
         };
