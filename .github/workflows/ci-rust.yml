@@ -11,13 +11,17 @@ on:
   pull_request:
     paths:
       - 'rust/**'
-      - 'deploy/**'
+      - 'deploy/Dockerfile'
+      - 'deploy/Dockerfile.dockerignore'
+      - 'deploy/temporal-dev.yml'
       - '.github/workflows/ci-rust.yml'
   push:
     branches: [master]
     paths:
       - 'rust/**'
-      - 'deploy/**'
+      - 'deploy/Dockerfile'
+      - 'deploy/Dockerfile.dockerignore'
+      - 'deploy/temporal-dev.yml'
       - '.github/workflows/ci-rust.yml'
   workflow_dispatch: {}
 
