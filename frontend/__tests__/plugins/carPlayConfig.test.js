@@ -23,12 +23,13 @@ test("ordinary iPhone builds retain their provisioning and background behavior",
   expect(configure({ config })).toEqual(configure.withIdentity(config));
 });
 
-test("CarPlay builds request navigation and preserve unrelated entitlements", () => {
+test("CarPlay builds add background modes and preserve unrelated entitlements", () => {
   process.env.RADAR_CARPLAY = "1";
   const config = baseConfig();
   const output = configure({ config });
+  // The carplay-maps entitlement comes from plugins/withCarPlayScene.js (tested below).
   expect(output.ios.entitlements).toEqual({
-    "aps-environment": "development", "com.apple.developer.carplay-maps": true,
+    "aps-environment": "development",
     // identity.js always supplies the App Group (app.json no longer carries it).
     "com.apple.security.application-groups": [appGroup],
   });
@@ -130,4 +131,22 @@ test("CarPlay builds copy and compile the CarPlay sources", () => {
   expect(config.dangerousMod[0]).toBe("ios");
   expect(typeof config.dangerousMod[1]).toBe("function");
   expect(typeof config.xcodeMod).toBe("function");
+});
+
+test("CarPlay builds compile every Swift file in targets/carplay", () => {
+  process.env.RADAR_CARPLAY = "1";
+  const fs = require("fs");
+  const path = require("path");
+  const root = path.join(__dirname, "../..");
+  const expected = fs.readdirSync(path.join(root, "targets/carplay")).filter((f) => f.endsWith(".swift")).sort();
+  const added = [];
+  const proj = {
+    findPBXGroupKey: () => "group",
+    getFirstTarget: () => ({ uuid: "target" }),
+    addSourceFile: (f) => added.push(f),
+  };
+  const plugin = require("../../plugins/withCarPlayScene");
+  plugin({}).xcodeMod({ modResults: proj, modRequest: { projectName: "radarng", projectRoot: root } });
+  expect(expected.length).toBeGreaterThan(0);
+  expect(added).toEqual(expected);
 });

@@ -8,21 +8,20 @@ const fs = require("fs");
 const path = require("path");
 
 const CARPLAY_SRC = "targets/carplay";
-const CARPLAY_FILES = [
-  "RadarCarPlaySceneDelegate.swift",
-  "RadarCarPlayDashboardSceneDelegate.swift",
-  "RadarMapController.swift",
-  "RadarDrivingSession.swift",
-  "RadarManeuverFactory.swift",
-  "RadarRouteProgress.swift",
-  "RadarTileOverlay.swift",
-  "RadarLocationManager.swift",
-  "RadarAPI.swift",
-  "RadarShared.swift",
-];
 
-// app.config.js enables the navigation entitlement with RADAR_CARPLAY=1.
-// The signing profile must contain Apple's matching approved capability.
+// Every Swift file in targets/carplay is copied and compiled, so a new file
+// needs no list entry and a renamed one cannot be skipped.
+const carPlayFiles = (projectRoot) => {
+  const files = fs
+    .readdirSync(path.join(projectRoot, CARPLAY_SRC))
+    .filter((f) => f.endsWith(".swift"))
+    .sort();
+  if (files.length === 0) throw new Error(`No CarPlay Swift sources in ${CARPLAY_SRC}`);
+  return files;
+};
+
+// This plugin adds the navigation entitlement with RADAR_CARPLAY=1 (and removes
+// it otherwise). The signing profile must contain Apple's matching approved capability.
 const carPlayEnabled = () => process.env.RADAR_CARPLAY === "1";
 
 // The iPhone window scene is Expo's: from SDK 58 prebuild generates
@@ -84,10 +83,8 @@ function withCarPlayFiles(config) {
       const iosAppName = c.modRequest.projectName;
       const destDir = path.join(iosRoot, iosAppName, "CarPlay");
       fs.mkdirSync(destDir, { recursive: true });
-      for (const f of CARPLAY_FILES) {
-        const src = path.join(projectRoot, CARPLAY_SRC, f);
-        const dst = path.join(destDir, f);
-        if (fs.existsSync(src)) fs.copyFileSync(src, dst);
+      for (const f of carPlayFiles(projectRoot)) {
+        fs.copyFileSync(path.join(projectRoot, CARPLAY_SRC, f), path.join(destDir, f));
       }
       return c;
     },
@@ -108,7 +105,7 @@ function withCarPlayPbxproj(config) {
       proj.addToPbxGroup(groupKey, mainGroup);
     }
     const target = proj.getFirstTarget().uuid;
-    for (const f of CARPLAY_FILES) {
+    for (const f of carPlayFiles(c.modRequest.projectRoot)) {
       proj.addSourceFile(f, { target }, groupKey);
     }
     return c;
