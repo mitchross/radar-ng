@@ -38,8 +38,8 @@ its next-hour precipitation uses four upcoming 15-minute samples, not the first
 60 samples from midnight. Missing data and location fallback are explicitly labeled.
 Forecast and radar use the Radar API; Watch alerts still use NWS directly.
 Location refreshes reject stale/inaccurate fixes, discard weather responses for a
-previous location, and label the fallback or last-known location. Missing high-zoom
-radar tiles fall back to a cropped lower-resolution tile from the same frame.
+previous location, and label the fallback or last-known location. A missing radar
+tile (404) means no precipitation there and draws nothing.
 Loading/failure states are visible; radar older than 15 minutes is hidden. Expired
 alerts are omitted and failed alert requests are labelled unavailable.
 
@@ -74,7 +74,7 @@ with route guidance; Apple's driving-task category does not permit custom maps.
 The current implementation includes destination search, MapKit driving routes,
 route alternatives, turn instructions, voice prompts, GPS-loss handling, rerouting,
 and a Dashboard map sharing the active journey. Radar uses Radar NG's timestamped
-MRMS tiles; missing high-zoom tiles fall back to the same frame's parent tile.
+MRMS tiles; a missing tile (404) means no precipitation, and CarPlay zooms past the top published zoom crop that zoom's tile.
 This is development code, not yet verified in an actual CarPlay session or vehicle.
 Travel times during a journey are approximate, derived from MapKit's route estimate.
 

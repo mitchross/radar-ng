@@ -5,6 +5,8 @@ final class RadarTileOverlay: MKTileOverlay {
     /// Identifies CarPlay traffic in server logs; the scene shares the app's process.
     static let userAgent = "RadarNG-CarPlay/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")"
     let palette: String
+    /// Read once so every tile of this overlay comes from one server.
+    private let server = RadarAPI.serverURL
     var onFailure: (() -> Void)?
     /// Optional diagnostics receive the exact tile data delivered to MapKit.
     var onTileLoaded: ((MKTileOverlayPath, Data) -> Void)?
@@ -23,7 +25,7 @@ final class RadarTileOverlay: MKTileOverlay {
 
     override func url(forTilePath path: MKTileOverlayPath) -> URL {
         // Radar NG publishes XYZ tiles; the old IEM feed required inverted Y.
-        URL(string: "\(RadarAPI.serverURL)/tiles/radar/\(palette)/\(frame.path)/\(path.z)/\(path.x)/\(path.y).png")!
+        URL(string: "\(server)/tiles/radar/\(palette)/\(frame.path)/\(path.z)/\(path.x)/\(path.y).png")!
     }
 
     override func loadTile(at path: MKTileOverlayPath, result: @escaping (Data?, Error?) -> Void) {
@@ -31,10 +33,10 @@ final class RadarTileOverlay: MKTileOverlay {
         let factor = 1 << (path.z - level)
         let source = MKTileOverlayPath(x: path.x / factor, y: path.y / factor,
                                        z: level, contentScaleFactor: path.contentScaleFactor)
-        load(source, requested: path, onlyNotFound: true, result: result)
+        load(source, requested: path, result: result)
     }
 
-    private func load(_ path: MKTileOverlayPath, requested: MKTileOverlayPath, onlyNotFound: Bool,
+    private func load(_ path: MKTileOverlayPath, requested: MKTileOverlayPath,
                       result: @escaping (Data?, Error?) -> Void) {
         var request = URLRequest(url: url(forTilePath: path))
         request.timeoutInterval = 8
@@ -62,16 +64,11 @@ final class RadarTileOverlay: MKTileOverlay {
                     return
                 }
             }
-            // Sparse high-zoom coverage is backed by the same observation's
-            // lower-resolution tile. The tiler writes no file for a tile without
-            // precipitation, so 404 at every level means clear; any other
-            // failure still reports rather than silently turning clear.
-            let stillOnlyNotFound = onlyNotFound && notFound
-            if path.z > 4, let self {
-                let parent = MKTileOverlayPath(x: path.x / 2, y: path.y / 2,
-                                               z: path.z - 1, contentScaleFactor: path.contentScaleFactor)
-                self.load(parent, requested: requested, onlyNotFound: stillOnlyNotFound, result: result)
-            } else if stillOnlyNotFound {
+            // The tiler writes no file for a tile without precipitation, and a
+            // frame is listed only after every zoom is published, so 404 means
+            // clear. Overzoom is cropped from the top published zoom (loadTile).
+            // Any other failure still reports rather than silently turning clear.
+            if notFound {
                 result(nil, nil)  // clear: nothing to draw
             } else {
                 DispatchQueue.main.async { self?.onFailure?() }

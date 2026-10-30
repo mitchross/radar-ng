@@ -35,7 +35,8 @@ enum WatchAPI {
     }
 
     static func fetchLatestRadarFrame() async throws -> WatchRadarFrame {
-        let url = URL(string: "\(serverURL)/api/manifest.json")!
+        let server = serverURL  // once: the frame's tiles must come from the server that listed it
+        let url = URL(string: "\(server)/api/manifest.json")!
         let data = try await fetch(url)
         let manifest = try JSONDecoder().decode(RadarManifest.self, from: data)
 
@@ -54,7 +55,8 @@ enum WatchAPI {
             timestamp: frame.timestamp,
             path: frame.path,
             palette: palette,
-            maxZoom: min(max(frame.maxZoom ?? 7, 1), 7)
+            maxZoom: min(max(frame.maxZoom ?? 7, 1), 7),
+            server: server
         )
     }
 
@@ -106,6 +108,7 @@ struct WatchRadarFrame: Equatable {
     let path: String
     let palette: String
     let maxZoom: Int
+    var server = WatchAPI.serverURL
 
     // Built once: these run inside filter/max over every manifest frame.
     private static let fractionalISO: ISO8601DateFormatter = {
@@ -130,7 +133,7 @@ struct WatchRadarFrame: Equatable {
               path.allSatisfy({ $0.isLetter || $0.isNumber || "_:+-".contains($0) || $0 == "." }),
               path != ".", path != "..",
               palette.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else { return nil }
-        return URL(string: "\(WatchAPI.serverURL)/tiles/radar/\(palette)/\(path)/\(z)/\(x)/\(y).png")
+        return URL(string: "\(server)/tiles/radar/\(palette)/\(path)/\(z)/\(x)/\(y).png")
     }
 }
 

@@ -210,35 +210,23 @@ private struct TileImage: View {
             image = nil
             failed = false
             // The tiler writes no file for a tile without precipitation, so 404
-            // means clear. A 404 can also mean the zoom exceeds the product's
-            // coverage, so try the same frame's parent tiles first; only when
-            // every level is 404 is the area clear. Other failures still report.
-            var onlyNotFound = true
-            for level in stride(from: z, through: min(4, z), by: -1) {
+            // means clear. A frame is listed only after every zoom is published,
+            // so there is no coarser tile to fall back to. Other failures report.
+            guard let url = frame.tileURL(z: z, x: x, y: y) else { return }
+            do {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 8
+                let (data, response) = try await URLSession.shared.data(for: request)
                 guard !Task.isCancelled else { return }
-                let factor = 1 << (z - level)
-                guard let url = frame.tileURL(z: level, x: x / factor, y: y / factor) else { continue }
-                do {
-                    var request = URLRequest(url: url)
-                    request.timeoutInterval = 8
-                    let (data, response) = try await URLSession.shared.data(for: request)
-                    guard !Task.isCancelled else { return }
-                    let status = (response as? HTTPURLResponse)?.statusCode
-                    if status != 404 { onlyNotFound = false }
-                    guard status == 200, let decoded = UIImage(data: data)?.cgImage else { continue }
-                    let size = CGFloat(decoded.width) / CGFloat(factor)
-                    let rect = CGRect(x: CGFloat(x % factor) * size, y: CGFloat(y % factor) * size,
-                                      width: size, height: size)
-                    if let crop = decoded.cropping(to: rect) {
-                        image = UIImage(cgImage: crop)
-                        return
-                    }
-                } catch {
-                    if Task.isCancelled { return }
-                    onlyNotFound = false
+                let status = (response as? HTTPURLResponse)?.statusCode
+                if status == 404 { return }  // clear: no precipitation here
+                if status == 200, let decoded = UIImage(data: data) {
+                    image = decoded
+                    return
                 }
+            } catch {
+                if Task.isCancelled { return }
             }
-            if onlyNotFound { return }  // clear: no precipitation at any level
             failed = true
             reportFailure(requestKey, true)
         }
