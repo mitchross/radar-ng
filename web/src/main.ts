@@ -38,7 +38,7 @@ import { PackedRadarLayer, type PackedFrameRef } from "./packed/layer";
 import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast";
 import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition } from "./shared/conditions";
 import { describeNowcastSkill } from "./shared/nowcastSkill";
-import { RAIN_ALERT_LEAD_OPTIONS } from "./shared/rainAlerts";
+import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
 import { startPeriodic } from "./refresh";
@@ -796,7 +796,7 @@ async function renderNextHour() {
   const headline = nextHourHeadline(minutes);
   const peak = Math.max(0.1, ...minutes);
   // Same call to action as the app's rain banner: rain within the hour and alerts not on yet.
-  const offerAlerts = !rainAlerts.enabled && rainAlerts.supported && minutes.some((v) => v > 0.08);
+  const offerAlerts = !rainAlerts.enabled && rainAlerts.supported && minutes.some((v) => v > RAIN_START_IN_HR);
   el.hidden = false;
   el.innerHTML =
     `<div class="section-label">NEXT HOUR</div>` +

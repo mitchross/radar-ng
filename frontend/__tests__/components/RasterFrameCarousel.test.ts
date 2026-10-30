@@ -37,13 +37,17 @@ describe("RasterFrameCarousel contracts", () => {
 });
 
 describe("raster overlays share the carousel", () => {
+  it("RasterOverlay renders through RasterFrameCarousel and reads the store playback window", () => {
+    const source = read("components/map/RasterOverlay.tsx");
+    expect(source).toContain("<RasterFrameCarousel");
+    expect(source).not.toContain("<RasterSource");
+    expect(source).toContain("s.playbackWindow");
+  });
+
   it.each(["components/map/RadarOverlay.tsx", "components/map/WeatherLayerOverlay.tsx"])(
-    "%s renders through RasterFrameCarousel and reads the store playback window",
+    "%s renders through RasterOverlay",
     (rel) => {
-      const source = read(rel);
-      expect(source).toContain("<RasterFrameCarousel");
-      expect(source).not.toContain("<RasterSource");
-      expect(source).toContain("s.playbackWindow");
+      expect(read(rel)).toContain("<RasterOverlay");
     },
   );
 
@@ -79,12 +83,9 @@ describe("satellite overlay", () => {
 });
 
 describe("weather anchor keeps radar under warnings, storms and the pin", () => {
-  it.each(["components/map/RadarOverlay.tsx", "components/map/WeatherLayerOverlay.tsx"])(
-    "%s passes the weather anchor as beforeId",
-    (rel) => {
-      expect(read(rel)).toContain("beforeId={WEATHER_ANCHOR_ID}");
-    },
-  );
+  it("RasterOverlay passes the weather anchor as beforeId", () => {
+    expect(read("components/map/RasterOverlay.tsx")).toContain("beforeId={WEATHER_ANCHOR_ID}");
+  });
 
   it("mounts the anchor after the weather slots and before every overlay", () => {
     const radar = read("app/(tabs)/radar.tsx");
