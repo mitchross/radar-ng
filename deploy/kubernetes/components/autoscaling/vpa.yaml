@@ -14,8 +14,7 @@ spec:
     minReplicas: 1
   resourcePolicy:
     containerPolicies:
-      # The HPA scales on CPU utilization (a percentage of the CPU request).
-      # VPA must not move that denominator; this policy is memory-only.
+      # Memory-only: leave the CPU request alone.
       - containerName: "*"
         controlledResources: ["memory"]
         controlledValues: RequestsOnly
