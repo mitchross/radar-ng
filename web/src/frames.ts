@@ -12,7 +12,7 @@ export interface ManifestFrame {
 }
 
 export interface Manifest {
-  layers: Record<string, { frames?: ManifestFrame[]; timestamps?: string[]; packed?: PackedMeta; precip_type?: boolean }>;
+  layers: Record<string, { frames?: ManifestFrame[]; timestamps?: string[]; packed?: PackedMeta; precip_type?: boolean; palette_key?: string }>;
 }
 
 export type FrameSource = "radar" | "nowcast" | "radar-hrrr" | "radar-gfs" | string;

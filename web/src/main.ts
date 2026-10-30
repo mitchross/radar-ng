@@ -588,7 +588,7 @@ function renderLegend() {
     }
     return;
   }
-  const table = layerLegend(serverPalettes, state.palette, state.layer);
+  const table = layerLegend(serverPalettes, state.palette, state.layer, state.manifest?.layers[state.layer]?.palette_key);
   if (table) {
     el.hidden = false;
     el.innerHTML =

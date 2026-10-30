@@ -85,6 +85,7 @@ pub fn layer_metadata() -> Map<String, Value> {
         "title": "MRMS observed precipitation, past 24 hours",
         "kind": "observation",
         "unit": "in",
+        "palette_key": QPE_COLOR_KEY,
     }))
 }
 
@@ -285,5 +286,6 @@ mod tests {
         assert_eq!(frame.extra["unit"], "in");
         assert_eq!(frame.extra["max_zoom"], 7);
         assert_eq!(layer_metadata()["unit"], "in");
+        assert_eq!(layer_metadata()["palette_key"], "precip_accum");
     }
 }

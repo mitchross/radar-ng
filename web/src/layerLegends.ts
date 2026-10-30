@@ -3,7 +3,7 @@
  * so the legend shows exactly the colors on the map.
  */
 import type { PaletteId } from "./palettes";
-import { LAYER_PALETTE_KEY, type ColorRange, type ServerPalettes } from "./shared/serverPalettes";
+import { layerPaletteKey, type ColorRange, type ServerPalettes } from "./shared/serverPalettes";
 
 const LAYER_TABLES: Record<string, { title: string; unit: string; whole?: boolean }> = {
   temperature: { title: "Temperature", unit: "°F" },
@@ -25,9 +25,16 @@ export interface LayerLegend {
 
 const fmt = (v: number) => String(Number(v.toFixed(2)));
 
-export function layerLegend(palettes: ServerPalettes | null, palette: PaletteId, layer: string): LayerLegend | null {
+/** `serverKey` is the manifest layer's `palette_key`; older servers omit it and the local map is used. */
+export function layerLegend(
+  palettes: ServerPalettes | null,
+  palette: PaletteId,
+  layer: string,
+  serverKey?: string | null,
+): LayerLegend | null {
   const spec = LAYER_TABLES[layer];
-  const ranges = spec && (palettes?.[palette] ?? palettes?.classic)?.[LAYER_PALETTE_KEY[layer]]?.ranges;
+  const key = layerPaletteKey(layer, serverKey);
+  const ranges = spec && key && (palettes?.[palette] ?? palettes?.classic)?.[key]?.ranges;
   if (!spec || !ranges?.length) return null;
   const label = (v: number) => fmt(spec.whole ? Math.ceil(v) : v);
   const lo = ranges[0].min;

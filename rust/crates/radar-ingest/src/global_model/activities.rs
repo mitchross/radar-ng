@@ -244,6 +244,7 @@ pub fn publish_run_sync(
     let metadata = serde_json::json!({
         "title": product.title(),
         "kind": "model_guidance",
+        "palette_key": product.color_key(),
         "run_id": run_id,
         "complete": prefix.len() == hours.len(),
     });

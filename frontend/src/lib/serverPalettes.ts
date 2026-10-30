@@ -3,7 +3,7 @@
  * legend shows exactly the colors on the map.
  */
 import type { LayerType, Palette } from "../types/weather";
-import { LAYER_PALETTE_KEY, type ColorRange, type ServerPalettes } from "../../../web/src/shared/serverPalettes";
+import { layerPaletteKey, type ColorRange, type ServerPalettes } from "../../../web/src/shared/serverPalettes";
 
 export type { ColorRange, ColorTable, ServerPalettes } from "../../../web/src/shared/serverPalettes";
 
@@ -54,9 +54,12 @@ export function serverLegend(
   palette: Palette,
   layer: LayerType,
   maxStops = 7,
+  /** The manifest layer's `palette_key`; older servers omit it and the local map is used. */
+  serverKey?: string | null,
 ): ServerLegend | null {
   const spec = LAYER_TABLES[layer];
-  const ranges = spec && (palettes?.[palette] ?? palettes?.classic)?.[LAYER_PALETTE_KEY[layer]]?.ranges;
+  const key = layerPaletteKey(layer, serverKey);
+  const ranges = spec && key && (palettes?.[palette] ?? palettes?.classic)?.[key]?.ranges;
   if (!spec || !ranges || ranges.length < 2) return null;
   // Every band when it fits; otherwise an even sample that keeps the first and last band.
   const n = Math.min(maxStops, ranges.length);

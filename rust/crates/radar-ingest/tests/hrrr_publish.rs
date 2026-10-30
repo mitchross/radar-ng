@@ -52,6 +52,7 @@ fn h6_complete_run_publishes_run_scoped_frames() {
     let m = read_manifest(dir.path()).unwrap();
     let layer = &m.layers["radar-hrrr"];
     assert_eq!(layer.extra["complete"], true);
+    assert_eq!(layer.extra["palette_key"], "reflectivity");
     assert_eq!(layer.extra["run_id"], "20260715_12");
     let paths: Vec<&str> = layer.frames.iter().map(|f| f.path.as_str()).collect();
     assert_eq!(
