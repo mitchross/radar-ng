@@ -482,33 +482,22 @@ fn manifest_err(reason: &str) -> StormsError {
 
 /// Read and validate `state_dir/manifest.json` for prefetch (spec-shared 3.4 and D7).
 ///
-/// A missing file is an empty manifest. A file that does not parse, is not an
-/// object, or has no `layers` object is an error, so callers never plan from a
-/// half-read or wiped manifest.
+/// This is radar-core's `read_manifest`, as a JSON value. A missing file is an empty
+/// manifest. A file that does not parse or is structurally invalid is an error, so
+/// callers never plan from a half-read or wiped manifest.
 ///
 /// # Errors
 /// Returns [`StormsError::Manifest`] for unusable content and [`StormsError::Io`]
 /// for read failures other than "not found".
-// TODO(integration): replace with radar-core's manifest reader once it is available;
-// it owns the v1 to v2 migration and the manifest.lock semantics.
 pub fn read_manifest_value(state_dir: &Path) -> Result<Value, StormsError> {
-    let path = state_dir.join("manifest.json");
-    let bytes = match std::fs::read(&path) {
-        Ok(b) => b,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(serde_json::json!({"schema_version": 2, "layers": {}}));
-        }
-        Err(err) => return Err(err.into()),
-    };
-    let value: Value = serde_json::from_slice(&bytes).map_err(|e| StormsError::Manifest {
-        path: path.clone(),
-        reason: e.to_string(),
+    let manifest = radar_core::manifest::read_manifest(state_dir).map_err(|err| match err {
+        radar_core::manifest::ManifestError::Io(io) => StormsError::Io(io),
+        other => StormsError::Manifest {
+            path: radar_core::manifest::manifest_path(state_dir),
+            reason: other.to_string(),
+        },
     })?;
-    manifest_layers(&value).map_err(|_| StormsError::Manifest {
-        path: path.clone(),
-        reason: "not an object with a layers object".into(),
-    })?;
-    Ok(value)
+    Ok(serde_json::to_value(&manifest)?)
 }
 
 /// Build the plan from the state directory: validate the manifest, then plan.

@@ -533,6 +533,25 @@ fn d7_manifest_without_layers_fails_closed() {
 }
 
 #[test]
+fn v2_manifest_reads_back_unchanged() {
+    let dir = tempfile::tempdir().unwrap();
+    let doc = json!({
+        "schema_version": 2,
+        "tile_url_template": "/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png",
+        "tile_url_template_legacy": "/tiles/{layer}/{timestamp}/{z}/{x}/{y}.png",
+        "updated_at": "2026-07-10T12:00:00+00:00",
+        "layers": {"radar": {
+            "frames": [{"timestamp": "2026-07-10T12:00:00+00:00", "path": "run1", "palettes": ["classic"]}],
+            "timestamps": ["2026-07-10T12:00:00+00:00"],
+            "latest": "2026-07-10T12:00:00+00:00",
+            "palettes": ["classic"],
+        }},
+    });
+    fs::write(dir.path().join("manifest.json"), doc.to_string()).unwrap();
+    assert_eq!(read_manifest_value(dir.path()).unwrap(), doc);
+}
+
+#[test]
 fn no_selected_storm_gives_the_four_key_shape() {
     let storms = json!({"type": "FeatureCollection", "features": [], "timestamp": "2026-07-10T12:00:00+00:00"});
     let manifest = json!({"layers": {}});
