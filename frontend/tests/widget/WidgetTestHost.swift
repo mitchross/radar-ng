@@ -28,9 +28,9 @@ struct WidgetTestHost: App {
             }
             .padding().preferredColorScheme(.dark)
             .task {
-                precondition(RadarSnapshot.parseDate("2026-09-09T01:10:05+00:00") != nil)
-                precondition(RadarSnapshot.parseDate("2026-09-09T01:10:05.123Z") != nil)
-                precondition(RadarSnapshot.parseDate("invalid") == nil)
+                precondition(RadarFrame.date("2026-09-09T01:10:05+00:00") != nil)
+                precondition(RadarFrame.date("2026-09-09T01:10:05.123Z") != nil)
+                precondition(RadarFrame.date("invalid") == nil)
                 let outside = await RadarSnapshot.load(at: CLLocationCoordinate2D(latitude: 51.5, longitude: 0))
                 precondition(outside.image == nil)
                 let start = Date()

@@ -25,7 +25,7 @@ private final class ReviewModel: ObservableObject {
     var mapSpan: Double { Double(environment["RADAR_REVIEW_MAP_METERS"] ?? "2200") ?? 2200 }
     private var requiresRadar: Bool { environment["RADAR_REVIEW_REQUIRE_RADAR"] == "1" }
     private var loadedTiles: [String: Int] = [:]
-    private var loadedFrame: RadarAPI.Frame?
+    private var loadedFrame: RadarFrame?
     private var maneuvers: [CPManeuver] = []
     private var observation: UUID?
     private var records: [[String: Any]] = []
@@ -178,7 +178,7 @@ private final class ReviewModel: ObservableObject {
 
     }
 
-    func recordRadarTile(frame: RadarAPI.Frame, path: MKTileOverlayPath, data: Data) {
+    func recordRadarTile(frame: RadarFrame, path: MKTileOverlayPath, data: Data) {
         guard frame == driving.frame, let image = UIImage(data: data)?.cgImage else { return }
         if loadedFrame != frame { loadedTiles.removeAll(); loadedFrame = frame }
         let width = image.width, height = image.height
@@ -203,7 +203,7 @@ private struct ReviewMap: UIViewControllerRepresentable {
     let driving: RadarDrivingSession
     let coordinate: CLLocationCoordinate2D?
     let span: Double
-    let onTileLoaded: (RadarAPI.Frame, MKTileOverlayPath, Data) -> Void
+    let onTileLoaded: (RadarFrame, MKTileOverlayPath, Data) -> Void
     func makeUIViewController(context: Context) -> RadarMapController {
         let controller = RadarMapController(dashboard: true, driving: driving)
         controller.onRadarTileLoaded = onTileLoaded

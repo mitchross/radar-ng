@@ -171,7 +171,7 @@ struct RadarMapView: View {
     }
 
     private static func ageLabel(_ timestamp: String, now: Date) -> String {
-        guard let date = WatchRadarFrame.date(timestamp) else { return "Radar time unknown" }
+        guard let date = RadarFrame.date(timestamp) else { return "Radar time unknown" }
         let minutes = max(0, Int(now.timeIntervalSince(date) / 60))
         return minutes < 1 ? "Radar now" : "Radar \(minutes)m ago"
     }
