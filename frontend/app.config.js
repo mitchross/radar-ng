@@ -28,7 +28,8 @@ function withIdentity(config) {
   };
 }
 
-// CI sets IOS_BUILD_RUN ("<run>.<attempt>") so each IPA gets a unique build number;
+// CI and build-ios-standalone.sh set IOS_BUILD_RUN ("<hours since epoch>.<minute*10 + n>") so each IPA
+// gets a unique, time-ordered build number;
 // prebuild copies ios.buildNumber into the widget and Watch targets.
 function withBuildRun(config) {
   const run = process.env.IOS_BUILD_RUN;

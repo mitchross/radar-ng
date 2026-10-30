@@ -26,13 +26,18 @@ jobs:
   ipa:
     runs-on: [self-hosted, ios]
     timeout-minutes: 60
-    env:
-      IOS_BUILD_RUN: ${{ github.run_number }}.${{ github.run_attempt }}
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
+
+      # Build number 10.<hours since epoch>.<minute*10 + attempt>, the same clock
+      # build-ios-standalone.sh uses, so CI and local uploads always sort by time.
+      - name: Set build number
+        run: |
+          t=$(date -u +%s)
+          echo "IOS_BUILD_RUN=$((t / 3600)).$(( (t % 3600) / 60 * 10 + (${{ github.run_attempt }} > 9 ? 9 : ${{ github.run_attempt }}) ))" >> "$GITHUB_ENV"
 
       - name: Install locked dependencies
         run: bun install --frozen-lockfile

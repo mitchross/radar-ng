@@ -47,8 +47,8 @@ if [[ "$ALLOW_BETA" != "1" ]] && printf '%s' "$ACTIVE_DEVELOPER_DIR" | tr '[:upp
 fi
 
 APP_VERSION="$(node -e "process.stdout.write(require('./app.json').expo.version)")"
-# app.config.js appends IOS_BUILD_RUN (CI's run.attempt, or build-ios-standalone.sh's local
-# 9000.<minutes>) to the build number; expect the same here.
+# app.config.js appends IOS_BUILD_RUN (<hours since epoch>.<minute*10 + n>, set by CI or by
+# build-ios-standalone.sh) to the build number; expect the same here.
 BUILD_NUMBER="$(node -e "process.stdout.write(String(require('./app.json').expo.ios.buildNumber))")${IOS_BUILD_RUN:+.$IOS_BUILD_RUN}"
 BUNDLE_ID="$(node -e "process.stdout.write(require('./identity').bundleId)")"
 
