@@ -13,6 +13,7 @@ final class RadarMapController: UIViewController {
     private var radarOverlay: RadarTileOverlay?
     private var routeOverlay: MKPolyline?
     private var template: CPMapTemplate?
+    private var buttonState: ButtonState?
     private var trip: CPTrip?
     private var navigation: CPNavigationSession?
     private var maneuvers: [CPManeuver] = []
@@ -63,6 +64,7 @@ final class RadarMapController: UIViewController {
             mapButton("minus") { [weak self] in self?.zoom(1.6) },
             mapButton("hand.draw") { [weak self] in self?.template?.showPanningInterface(animated: true) },
         ]
+        buttonState = nil  // a new template has no buttons yet
         updateButtons()
         return result
     }
@@ -147,8 +149,20 @@ final class RadarMapController: UIViewController {
                                          width: size.width, height: size.height), animated: true)
     }
 
+    /// What the bar buttons show. They are rebuilt only when this changes: publish() runs on every fix and tick.
+    private struct ButtonState: Equatable {
+        let phase: RadarDrivingSession.Phase
+        let status: String
+        let muted: Bool
+        let panning: Bool
+    }
+
     private func updateButtons() {
         guard let template else { return }
+        let state = ButtonState(phase: driving.phase, status: driving.locationMessage ?? driving.radarMessage,
+                                muted: driving.muted, panning: template.isPanningInterfaceVisible)
+        guard state != buttonState else { return }
+        buttonState = state
         if template.isPanningInterfaceVisible {
             template.leadingNavigationBarButtons = [CPBarButton(title: "Done") { [weak self] _ in
                 self?.template?.dismissPanningInterface(animated: true)
@@ -161,9 +175,8 @@ final class RadarMapController: UIViewController {
                 self?.template?.hideTripPreviews(); self?.driving.endNavigation()
             }]
         } else { template.leadingNavigationBarButtons = [search] }
-        let status = driving.locationMessage ?? driving.radarMessage
         template.trailingNavigationBarButtons = [
-            CPBarButton(title: status) { [weak self] _ in self?.showRadarStatus() },
+            CPBarButton(title: state.status) { [weak self] _ in self?.showRadarStatus() },
             CPBarButton(image: UIImage(systemName: driving.muted ? "speaker.slash" : "speaker.wave.2")!) { [weak self] _ in
                 self?.driving.muted.toggle()
             },
