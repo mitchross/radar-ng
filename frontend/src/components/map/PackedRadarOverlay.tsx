@@ -41,6 +41,7 @@ import {
 } from "../../lib/packed";
 import type { PackedFrameLocation, PackedFrames } from "../../hooks/usePackedFrames";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { createTileCache, type LoadResult } from "./packedTileCache";
 import type { SharedCamera } from "./WindParticlesOverlay";
 
 const SKSL = `
@@ -63,50 +64,16 @@ half4 main(float2 pos) {
 
 /** Decoded atlas bytes kept in memory; prefetch stops short of it. */
 const CACHE_BUDGET_BYTES = 192 * 1024 * 1024;
-const MAX_IN_FLIGHT = 6;
-const ERROR_RETRY_MS = 30_000;
-/** Also bounds the small 204/error entries that every bucket version adds. */
-const MAX_ENTRIES = 2000;
 
-type Entry =
-  | { state: "loading" }
-  | { state: "empty" }
-  | { state: "error"; at: number }
-  | { state: "ready"; image: SkImage; shader: SkShader; height: number; bytes: number };
-
-/** Module-level so tiles survive a remount (tab switch, layer toggle). Map order = LRU order. */
-const cache = new Map<string, Entry>();
-/** layer/bucket/z/x/y → URL of the newest ready version, for showing an older `v` while a new one loads. */
-const newestReady = new Map<string, string>();
-let cachedBytes = 0;
-let wanted: string[] = [];
-let wantedSet = new Set<string>();
-/** Wanted URL → its newestReady key. */
-let wantedKeys = new Map<string, string>();
-let inFlight = 0;
-const listeners = new Set<() => void>();
+interface Decoded {
+  image: SkImage;
+  shader: SkShader;
+}
 
 const zoomRangeKey = (loc: PackedFrameLocation) => `${loc.meta.min_zoom}|${loc.meta.max_zoom}`;
 const tileKey = (layer: string, bucket: string, t: TileId) => `${layer}/${bucket}/${t.z}/${t.x}/${t.y}`;
 
-function touch(url: string, entry: Entry) {
-  cache.delete(url);
-  cache.set(url, entry);
-}
-
-function evict() {
-  for (const [url, entry] of cache) {
-    if (cachedBytes <= CACHE_BUDGET_BYTES && cache.size <= MAX_ENTRIES) return;
-    if (entry.state === "loading" || wantedSet.has(url)) continue;
-    if (entry.state === "ready") {
-      if (cachedBytes <= CACHE_BUDGET_BYTES) continue;
-      cachedBytes -= entry.bytes;
-    }
-    cache.delete(url);
-  }
-}
-
-function decode(buf: ArrayBuffer): { image: SkImage; shader: SkShader } | null {
+function decode(buf: ArrayBuffer): Decoded | null {
   const lazy = Skia.Image.MakeImageFromEncoded(Skia.Data.fromBytes(new Uint8Array(buf)));
   if (!lazy) return null;
   // Decode now on the JS thread, not on the first draw mid-animation.
@@ -118,45 +85,25 @@ function decode(buf: ArrayBuffer): { image: SkImage; shader: SkShader } | null {
   return { image, shader };
 }
 
-async function load(url: string, key: string) {
-  inFlight++;
-  try {
-    const res = await fetchWithTimeout(url);
-    if (res.status === 204) {
-      cache.set(url, { state: "empty" });
-    } else if (!res.ok) {
-      cache.set(url, { state: "error", at: Date.now() });
-    } else {
-      const decoded = decode(await res.arrayBuffer());
-      if (!decoded) {
-        cache.set(url, { state: "error", at: Date.now() });
-      } else {
-        const bytes = decoded.image.width() * decoded.image.height() * 4;
-        cache.set(url, { state: "ready", ...decoded, height: decoded.image.height(), bytes });
-        newestReady.set(key, url);
-        cachedBytes += bytes;
-      }
-    }
-  } catch {
-    cache.set(url, { state: "error", at: Date.now() });
-  } finally {
-    inFlight--;
-    evict();
-    listeners.forEach((l) => l());
-    pump();
-  }
+async function loadTile(url: string): Promise<LoadResult<Decoded>> {
+  const res = await fetchWithTimeout(url);
+  if (res.status === 204) return { kind: "empty" };
+  if (!res.ok) return { kind: "error" };
+  const decoded = decode(await res.arrayBuffer());
+  if (!decoded) return { kind: "error" };
+  const { image } = decoded;
+  return { kind: "ready", handle: decoded, height: image.height(), bytes: image.width() * image.height() * 4 };
 }
 
-/** Start wanted loads in priority order, at most MAX_IN_FLIGHT at a time. */
-function pump() {
-  for (const url of wanted) {
-    if (inFlight >= MAX_IN_FLIGHT) return;
-    const entry = cache.get(url);
-    if (entry && !(entry.state === "error" && Date.now() - entry.at > ERROR_RETRY_MS)) continue;
-    cache.set(url, { state: "loading" });
-    void load(url, wantedKeys.get(url) ?? url);
-  }
-}
+/** Module-level so tiles survive a remount (tab switch, layer toggle). */
+const tiles = createTileCache<Decoded>({
+  budgetBytes: CACHE_BUDGET_BYTES,
+  maxInFlight: 6,
+  errorRetryMs: 30_000,
+  maxEntries: 2000,
+  now: Date.now,
+  load: loadTile,
+});
 
 /** Rough decoded size of a bucket's atlas, from its slot count. */
 function atlasBytes(slots: number, cols: number): number {
@@ -189,10 +136,10 @@ interface DrawItem {
 
 function readyFor(url: string | undefined, y0: number) {
   if (!url) return null;
-  const entry = cache.get(url);
+  const entry = tiles.get(url);
   // An older version can be shorter than this slot's block; clamp sampling would smear its edge.
   if (entry?.state !== "ready" || entry.height < y0 + PACKED_TILE_SIZE) return null;
-  touch(url, entry);
+  tiles.touch(url, entry);
   return entry;
 }
 
@@ -222,12 +169,7 @@ function ActivePackedRadar({ packed, camera, opacity: layerOpacity }: Props) {
   const [loadedTick, bumpLoaded] = useReducer((n: number) => n + 1, 0);
   const [view, setView] = useState<CoverView | null>(null);
 
-  useEffect(() => {
-    listeners.add(bumpLoaded);
-    return () => {
-      listeners.delete(bumpLoaded);
-    };
-  }, []);
+  useEffect(() => tiles.subscribe(bumpLoaded), []);
 
   useEffect(() => {
     opacity.set(radarOpacity);
@@ -327,10 +269,7 @@ function ActivePackedRadar({ packed, camera, opacity: layerOpacity }: Props) {
         keys.set(url, tileKey(loc.layer, loc.bucket, t));
       }
     });
-    wanted = urls;
-    wantedSet = new Set(urls);
-    wantedKeys = keys;
-    pump();
+    tiles.setWanted(urls, keys);
     // urlFor and coverFor only read serverUrl and covers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packed.locations, playbackWindow, currentFrameIndex, covers, serverUrl]);
@@ -346,20 +285,20 @@ function ActivePackedRadar({ packed, camera, opacity: layerOpacity }: Props) {
     for (const t of coverFor(current)) {
       const base = { lut, dz: t.z, dx: t.x, dy: t.y, x0: current.x0, y0: current.y0, channel: current.channel };
       const exactUrl = urlFor(current, t);
-      if (cache.get(exactUrl)?.state === "empty") continue;
-      const own = readyFor(exactUrl, current.y0) ?? readyFor(newestReady.get(tileKey(current.layer, current.bucket, t)), current.y0);
+      if (tiles.get(exactUrl)?.state === "empty") continue;
+      const own = readyFor(exactUrl, current.y0) ?? readyFor(tiles.newestReadyUrl(tileKey(current.layer, current.bucket, t)), current.y0);
       if (own) {
-        out.push({ ...base, atlas: own.shader, sz: t.z, sx: t.x, sy: t.y });
+        out.push({ ...base, atlas: own.handle.shader, sz: t.z, sx: t.x, sy: t.y });
         continue;
       }
       for (let z = t.z - 1; z >= current.meta.min_zoom; z--) {
         const shift = t.z - z;
         const a = { z, x: t.x >> shift, y: t.y >> shift };
         const parentUrl = urlFor(current, a);
-        if (cache.get(parentUrl)?.state === "empty") break;
-        const parent = readyFor(parentUrl, current.y0) ?? readyFor(newestReady.get(tileKey(current.layer, current.bucket, a)), current.y0);
+        if (tiles.get(parentUrl)?.state === "empty") break;
+        const parent = readyFor(parentUrl, current.y0) ?? readyFor(tiles.newestReadyUrl(tileKey(current.layer, current.bucket, a)), current.y0);
         if (parent) {
-          out.push({ ...base, atlas: parent.shader, sz: a.z, sx: a.x, sy: a.y });
+          out.push({ ...base, atlas: parent.handle.shader, sz: a.z, sx: a.x, sy: a.y });
           break;
         }
       }
