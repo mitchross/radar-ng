@@ -11,7 +11,7 @@
 //!   answers 304 with an empty body, `ETag` and `Cache-Control`.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
@@ -89,21 +89,22 @@ fn fallback_or_503(state: &AppState, reason: &str) -> Result<Arc<Value>, Respons
 /// # Errors
 /// Returns the 503 response when no manifest can be read.
 pub async fn cached_manifest(state: &AppState) -> Result<Arc<ManifestSnapshot>, Response> {
-    if let Some((expires, snap)) = lock(&state.manifest).clone()
-        && Instant::now() < expires
-    {
-        return Ok(snap);
-    }
-    let value = crate::satellite::with_layer(state, build_manifest(state).await?).await;
-    let encoded = respond::encode(&value);
-    let etag = etag_of(&encoded);
-    let snap = Arc::new(ManifestSnapshot {
-        value,
-        encoded,
-        etag,
-    });
-    *lock(&state.manifest) = Some((Instant::now() + MANIFEST_TTL, snap.clone()));
-    Ok(snap)
+    // `try_get_with` makes concurrent misses share one read; a failed read is not cached.
+    state
+        .manifest
+        .try_get_with((), async {
+            let value = build_manifest(state).await.map_err(|_| ())?;
+            let value = crate::satellite::with_layer(state, value).await;
+            let encoded = respond::encode(&value);
+            let etag = etag_of(&encoded);
+            Ok::<_, ()>(Arc::new(ManifestSnapshot {
+                value,
+                encoded,
+                etag,
+            }))
+        })
+        .await
+        .map_err(|_| respond::detail(StatusCode::SERVICE_UNAVAILABLE, "manifest unavailable"))
 }
 
 /// `GET /api/manifest.json`.
@@ -157,6 +158,31 @@ mod tests {
         let e = etag_of(b"{}");
         assert!(e.starts_with('"') && e.ends_with('"'));
         assert_eq!(e.len(), 26);
+    }
+
+    #[tokio::test]
+    async fn concurrent_misses_share_one_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("manifest.json"),
+            r#"{"schema_version": 2, "layers": {}}"#,
+        )
+        .unwrap();
+        let mut config = crate::config::Config::defaults_for(
+            dir.path().to_path_buf(),
+            dir.path().to_path_buf(),
+            dir.path().to_path_buf(),
+        );
+        config.gibs_wmts_base = String::new();
+        let state = AppState::new(config).unwrap();
+        let snaps = futures::future::join_all((0..16).map(|_| cached_manifest(&state))).await;
+        let first = snaps[0].as_ref().ok().unwrap();
+        // A load per miss would build 16 snapshots; one load hands every caller the same one.
+        assert!(
+            snaps
+                .iter()
+                .all(|s| Arc::ptr_eq(s.as_ref().ok().unwrap(), first))
+        );
     }
 
     #[test]

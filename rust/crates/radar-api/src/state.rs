@@ -5,8 +5,9 @@
 //! cache-wide time-to-live (entries expire `ttl` after insertion, and a hit does not extend it,
 //! matching the Python `(insert_time, body)` tuples). Response caches hold the encoded body and
 //! are bounded by bytes. Caches filled from an upstream are `moka::future` caches, so concurrent
-//! misses for one key make one upstream call. The manifest and skill snapshots are single entries
-//! behind a `Mutex`, and no lock is ever held across an `.await`.
+//! misses for one key make one upstream call. The manifest snapshot and the wind "latest" stamp are
+//! single-entry caches that load once per miss. The skill snapshot is a single entry behind a
+//! `Mutex`, and no lock is ever held across an `.await`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -118,8 +119,8 @@ pub struct Inner {
     pub storm_cfg: StormConfig,
     /// Nowcast skill-log settings.
     pub skill_cfg: SkillConfig,
-    /// Single-entry manifest snapshot with its expiry.
-    pub manifest: Mutex<Option<(Instant, Arc<ManifestSnapshot>)>>,
+    /// Single-entry manifest snapshot (TTL `MANIFEST_TTL`). Concurrent misses share one read.
+    pub manifest: AsyncCache<(), Arc<ManifestSnapshot>>,
     /// Last successfully read manifest, served when a read fails.
     pub manifest_last_good: Mutex<Option<Arc<Value>>>,
     /// Single-entry skill summary, re-read only when the skill log changes.
@@ -128,6 +129,8 @@ pub struct Inner {
     pub forecast_cache: AsyncCache<String, Bytes>,
     /// Wind-field responses by resolved timestamp (TTL 300 s).
     pub wind_cache: Cache<String, Bytes>,
+    /// The newest timestamp present in both wind grids, one entry (TTL `MANIFEST_TTL`).
+    pub wind_latest: Cache<(), String>,
     /// Nowcast point bodies (without `skill`) by `(run_id, lat3, lon3)`. No TTL.
     pub nowcast_cache: Cache<(String, String, String), Bytes>,
     /// The national NWS alert feed, one entry (TTL `ALERTS_TTL_S`).
@@ -221,7 +224,10 @@ impl AppState {
             metrics: Metrics::default(),
             storm_cfg,
             skill_cfg,
-            manifest: Mutex::new(None),
+            manifest: AsyncCache::builder()
+                .max_capacity(1)
+                .time_to_live(crate::manifest::MANIFEST_TTL)
+                .build(),
             manifest_last_good: Mutex::new(None),
             skill: Mutex::new(None),
             forecast_cache: AsyncCache::builder()
@@ -233,6 +239,10 @@ impl AppState {
                 .max_capacity(config.wind_cache_max_bytes)
                 .weigher(|k: &String, v: &Bytes| weight(k.len() + v.len()))
                 .time_to_live(ttl(300))
+                .build(),
+            wind_latest: Cache::builder()
+                .max_capacity(1)
+                .time_to_live(crate::manifest::MANIFEST_TTL)
                 .build(),
             nowcast_cache: Cache::builder()
                 .max_capacity(config.nowcast_point_cache_max_bytes)
