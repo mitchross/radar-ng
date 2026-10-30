@@ -45,6 +45,7 @@ use crate::wind;
 /// Route templates, used for the redirect check and to recognize API paths.
 pub const ROUTE_TEMPLATES: &[&str] = &[
     "/api/manifest.json",
+    "/api/palettes",
     "/api/forecast/{lat}/{lon}",
     "/api/inspect/{layer}/{timestamp}/{lat}/{lon}",
     "/api/nowcast/skill",
@@ -61,6 +62,7 @@ pub const ROUTE_TEMPLATES: &[&str] = &[
     "/api/metrics",
     "/api/alerts",
     "/api/alerts/map",
+    "/api/outlooks",
     "/api/geocode",
     "/api/reverse-geocode",
     "/api/briefing",

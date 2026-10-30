@@ -20,17 +20,18 @@ for open-meteo. Worker probes read `/tmp/worker-alive` and `/tmp/temporal-health
 busybox `sh`, `find` and `test` for the exec probes.
 
 The api serves `/basemap/tiles/*` from a local archive when `BASEMAP_PMTILES` exists, and otherwise
-proxies to `BASEMAP_TILES_UPSTREAM` (default `http://basemap:8081`). The cluster uses the proxy, with
-the go-pmtiles `basemap` Deployment in the GitOps repo.
+proxies to `BASEMAP_TILES_UPSTREAM` (default `http://basemap:8081`). The reference manifests in
+`kubernetes/` set that upstream and run a go-pmtiles `basemap` Deployment; a cluster whose api pod
+has the archive at `BASEMAP_PMTILES` serves it locally and never uses the proxy.
 
 ## 2. Release path
 
 1. Merge to `radar-ng` `master` with `ci-rust.yml` green: fmt, clippy, tests (including the offline
    replay gate), Temporal integration tests, the live-NOAA check, and all three image builds with their
    smoke runs.
-2. `ghcr-temporal-worker.yml`, `ghcr-tile-server.yml` and `ghcr-open-meteo-worker.yml` push the next
-   semver (`:vX.Y.Z`, never below v2.0.0), `:sha-…` and `:latest`. Each run prints the published
-   `tag@digest` in its summary. The worker image build runs the replay gate again.
+2. `ghcr-backend.yml` compiles the `radar` binary once and pushes all three images at the next
+   semver (`:vX.Y.Z`, never below v2.0.0), `:sha-…` and `:latest`. Each image's run prints the
+   published `tag@digest` in its summary. The replay gate runs once, before the binary is built.
 3. Bump the `image:` tag and `@sha256` digest in `talos-argocd-proxmox` by PR, on every line listed in
    section 1 (Renovate may open it). Cluster CI validates it.
 4. Merge it. Argo CD syncs `my-apps-radar-ng`.

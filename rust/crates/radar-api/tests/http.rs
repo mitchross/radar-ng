@@ -1782,6 +1782,19 @@ async fn unmatched_head_redirect_and_fallback_shapes() {
     assert_eq!(pb, b"404 Not Found");
 }
 
+/// C17: every GET route in the router gets the trailing-slash redirect, including the two that
+/// were missing from `ROUTE_TEMPLATES`.
+#[tokio::test]
+async fn trailing_slash_redirects_palettes_and_outlooks() {
+    let env = Env::new();
+    let app = env.app(|_| {});
+    for path in ["/api/palettes", "/api/outlooks"] {
+        let (status, headers, _) = send(&app, get_req(&format!("{path}/?v=2"))).await;
+        assert_eq!(status, StatusCode::TEMPORARY_REDIRECT, "{path}/");
+        assert_eq!(header_str(&headers, "location"), format!("{path}?v=2"));
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Review regressions (F1, F7, F10)
 // ---------------------------------------------------------------------------------------------

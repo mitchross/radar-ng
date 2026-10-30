@@ -1,10 +1,12 @@
 //! Serialized shape of `storms.json` (spec-shared 6.10).
 //!
 //! Field order matches Python's dict insertion order, so the compact writer
-//! produces the same key sequence. Python writes a short shape (no threshold,
-//! count or tracking vectors) when no component reaches the threshold at all. That
-//! shape is kept as-is. `next_cell_id` is the one addition on every payload: it
-//! is the monotonic counter that fixes defect D3 and is ignored by existing readers.
+//! produces the same key sequence. Python writes a short shape (no threshold or
+//! count) when no component reaches the threshold at all. That shape is kept
+//! as-is. `next_cell_id` is the one addition on every payload: it is the
+//! monotonic counter that fixes defect D3 and is ignored by existing readers.
+//! Python's top-level `prediction_minutes` and `tracking_vectors` are no longer
+//! written: nothing reads them.
 
 use serde::Serialize;
 
@@ -26,11 +28,6 @@ pub struct StormsDoc {
     /// Number of features. Omitted in the short shape.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cell_count: Option<usize>,
-    /// Prediction leads, always `[0, 5, 10]`.
-    pub prediction_minutes: Vec<i64>,
-    /// One entry per feature. Omitted in the short shape.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tracking_vectors: Option<Vec<TrackingVectorEntry>>,
     /// Next unused cell id. Never decreases across frames (D3 fix).
     pub next_cell_id: i64,
 }
@@ -100,14 +97,4 @@ pub struct PredictedBbox {
     pub lead_minutes: i64,
     /// `[west, south, east, north]`, each rounded to 6 dp.
     pub bbox: [f64; 4],
-}
-
-/// Entry of `tracking_vectors`: the cell id followed by the motion fields.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct TrackingVectorEntry {
-    /// Cell id.
-    pub cell_id: i64,
-    /// `east_kmh`, `north_kmh`, `speed_kmh`, `bearing_deg`.
-    #[serde(flatten)]
-    pub vector: TrackingVector,
 }

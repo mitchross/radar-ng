@@ -101,7 +101,7 @@ fn stm01_tracking_keeps_cell_id_and_predicts_three_bboxes() {
         p["predicted_bboxes"][2]["bbox"][0].as_f64().unwrap()
             > p["predicted_bboxes"][0]["bbox"][0].as_f64().unwrap()
     );
-    assert_eq!(second["tracking_vectors"].as_array().unwrap().len(), 1);
+    assert!(second.get("tracking_vectors").is_none());
 }
 
 #[test]
@@ -280,7 +280,6 @@ fn empty_frame_keeps_the_python_short_shape_and_the_counter() {
             "features",
             "generated_at",
             "next_cell_id",
-            "prediction_minutes",
             "timestamp",
             "type"
         ]
@@ -308,7 +307,6 @@ fn components_all_filtered_by_size_keep_the_full_shape() {
     );
     assert_eq!(doc["cell_count"], json!(0));
     assert_eq!(doc["threshold_dbz"], json!(40.0));
-    assert_eq!(doc["tracking_vectors"], json!([]));
 }
 
 #[test]
