@@ -16,54 +16,8 @@ export function getForecastScreenState(input: {
   return { kind: "error", stale: false };
 }
 
-export type NowcastVerdict =
-  | { kind: "unavailable" }
-  | { kind: "dry" }
-  | { kind: "light" }
-  | { kind: "raining"; peakMinute: number; endMinute: number }
-  | {
-      kind: "starting";
-      startMinute: number;
-      peakMinute: number;
-      endMinute: number;
-    };
-
-export function getNowcastVerdict(
-  values: number[] | undefined,
-): NowcastVerdict {
-  if (!values?.length) return { kind: "unavailable" };
-
-  const startMinute = values.findIndex((value) => value > 0.08);
-  if (startMinute < 0) return { kind: values.some((value) => value > 0) ? "light" : "dry" };
-
-  const peakMinute = values.reduce(
-    (best, value, index) => (value > values[best] ? index : best),
-    0,
-  );
-  let endMinute = values.length - 1;
-  while (endMinute > startMinute && values[endMinute] <= 0.05) {
-    endMinute -= 1;
-  }
-
-  return startMinute === 0
-    ? { kind: "raining", peakMinute, endMinute }
-    : { kind: "starting", startMinute, peakMinute, endMinute };
-}
-
-export function describeNowcast(verdict: NowcastVerdict): string {
-  switch (verdict.kind) {
-    case "unavailable":
-      return "Next hour precipitation forecast unavailable.";
-    case "dry":
-      return "No rain expected for the next hour.";
-    case "light":
-      return "Light precipitation possible during the next hour.";
-    case "raining":
-      return `Raining now, peaks at ${verdict.peakMinute} minutes, and ends near ${verdict.endMinute} minutes.`;
-    case "starting":
-      return `Rain starts in ${verdict.startMinute} minutes, peaks at ${verdict.peakMinute} minutes, and ends near ${verdict.endMinute} minutes.`;
-  }
-}
+export { describeNowcast, getNowcastVerdict } from "../../../web/src/shared/nowcastVerdict";
+export type { NowcastVerdict } from "../../../web/src/shared/nowcastVerdict";
 
 export function getAlertsScreenState(input: {
   data: { features: readonly unknown[] } | undefined;
