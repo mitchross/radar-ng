@@ -4,6 +4,7 @@
  * A packed tile is an RGB PNG atlas of quantized frames (3 slots per pixel). The overlay colors a
  * slot through a 256 x 1 lookup table, so playback changes a uniform instead of fetching tiles.
  */
+import type { ColorRange, ColorTable } from "../../../web/src/shared/serverPalettes";
 import type { PlaybackWindow } from "./radarCarousel";
 
 export const PACKED_TILE_SIZE = 512;
@@ -35,20 +36,6 @@ export interface PackedMeta {
 export interface PackedTypes {
   stride: number;
   classes: string[];
-}
-
-export interface PackedColorRange {
-  min: number;
-  max: number;
-  rgba: [number, number, number, number] | number[];
-}
-
-/** One color key of `/api/palettes`. */
-export interface PackedColorTable {
-  ranges?: PackedColorRange[];
-  no_data_below?: number;
-  /** Ramps of the other precipitation classes (reflectivity); `ranges` is rain. */
-  types?: Record<string, { ranges?: PackedColorRange[] } | undefined>;
 }
 
 const DEFAULT_NO_DATA_BELOW = -999;
@@ -92,7 +79,7 @@ function parseTypes(value: unknown): PackedTypes | null {
 }
 
 /** The ranges a precipitation class draws with: `ranges` for the first class (rain), else its ramp. */
-export function classRanges(table: PackedColorTable, types: PackedTypes | undefined, cls: number): PackedColorRange[] {
+export function classRanges(table: ColorTable, types: PackedTypes | undefined, cls: number): ColorRange[] {
   const rain = table.ranges ?? [];
   if (!types || cls === 0) return rain;
   return table.types?.[types.classes[cls]]?.ranges ?? rain;
@@ -105,7 +92,7 @@ export function classRanges(table: PackedColorTable, types: PackedTypes | undefi
  * transparent. Ranges are half-open [min, max); a later overlapping range wins (the renderer's rules).
  */
 export function buildLut(
-  table: PackedColorTable | null | undefined,
+  table: ColorTable | null | undefined,
   scale: number,
   offset: number,
   types?: PackedTypes,
@@ -121,7 +108,7 @@ export function buildLut(
     // Round off float noise (0.05 * 20 = 1.0000000000000002) so band edges compare exactly.
     const value = Math.round((offset + q * scale) * 1e6) / 1e6;
     if (cls === 0 && value < noDataBelow) continue;
-    let rgba: PackedColorRange["rgba"] | null = null;
+    let rgba: ColorRange["rgba"] | null = null;
     for (const r of classRanges(table, types, cls)) {
       if (value >= r.min && value < r.max) rgba = r.rgba;
     }
@@ -209,7 +196,7 @@ export function buildPackedFrames(
   const metaFor = (layer: string): PackedMeta | null => {
     if (!metas.has(layer)) {
       const meta = parsePackedMeta(layers[layer]?.packed);
-      const table = meta ? (tables?.[meta.color_key] as PackedColorTable | undefined) : undefined;
+      const table = meta ? (tables?.[meta.color_key] as ColorTable | undefined) : undefined;
       // No table for the key: leave the layer on rasters rather than draw it blank.
       const usable = meta && table?.ranges?.length ? meta : null;
       if (usable && table) luts[lutKeyOf(usable)] ??= buildLut(table, usable.scale, usable.offset, usable.types);

@@ -10,7 +10,8 @@ import { buildFrames, isForecastSource, longZoomLabel, nowIndex, offsetLabel, pl
 import { escapeHtml } from "./html";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
 import { css, LEGEND_TICKS, PALETTES, typeRamps, type PaletteId } from "./palettes";
-import { fetchServerPalettes, layerLegend, uvCategory, type ServerPalettes } from "./layerLegends";
+import { fetchServerPalettes, layerLegend, uvCategory } from "./layerLegends";
+import type { ServerPalettes } from "./shared/serverPalettes";
 import {
   aqiLabel,
   conditionOf,
