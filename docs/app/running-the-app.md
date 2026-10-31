@@ -29,6 +29,10 @@ bun run ios          # build + install + launch on iOS simulator (macOS only)
 
 First native build takes a while (Gradle / CocoaPods); subsequent runs are incremental.
 
+### Fast radar and the radar engine
+
+**Settings → Fast radar (GPU)** draws radar (and HRRR / air-quality layers) from compact packed tiles. While it is on, **Radar engine** picks how: **Classic fast** (default) paints a Skia canvas over the map; **In-map** colors the same tiles on the GPU, saves them as PNGs in the app cache and lets MapLibre draw them, so warnings, storm cells and your pin stay above the radar. Details: [packed tiles](../reference/packed-tiles.md#clients). Both need a native rebuild to reach a phone.
+
 ### Radar playback kill switch
 
 Playback mounts five raster sources and swaps their opacity, so each frame's tiles load while hidden. If that misbehaves on a device, build the old single-source variant:

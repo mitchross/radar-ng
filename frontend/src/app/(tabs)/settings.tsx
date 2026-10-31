@@ -33,7 +33,7 @@ import type { SelfHostedManifest } from "../../types/weather";
 import { formatPlaceLabel } from "../../lib/locationLabel";
 import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { SELF_HOSTED } from "../../lib/constants";
-import { PLAYBACK_FPS_RANGE } from "../../lib/persistedPrefs";
+import { PLAYBACK_FPS_RANGE, RADAR_ENGINE_OPTIONS } from "../../lib/persistedPrefs";
 import { RAIN_ALERT_LEAD_OPTIONS, parseRainAlertLead } from "../../lib/rainAlerts";
 import { useRainAlertOptIn } from "../../hooks/useRainAlertOptIn";
 import { isCleartextToPublicHost } from "../../lib/networkSafety";
@@ -50,6 +50,7 @@ import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import { readingColumnStyle } from "../../lib/tabletLayout";
 import { SATELLITE_OVERLAY } from "../../components/map/radarLayers";
+import { clearInMapCache } from "../../components/map/inMapRadarEngine";
 
 type SourceKey = "radar" | "satellite" | "forecast" | "airquality" | "basemap" | "alerts";
 type SourceStatus = "healthy" | "stale" | "error" | "disabled";
@@ -84,6 +85,8 @@ export default function SettingsScreen() {
   const playbackSpeed = useWeatherStore((s) => s.playbackSpeed);
   const fastRadar = useWeatherStore((s) => s.fastRadar);
   const setFastRadar = useWeatherStore((s) => s.setFastRadar);
+  const radarEngine = useWeatherStore((s) => s.radarEngine);
+  const setRadarEngine = useWeatherStore((s) => s.setRadarEngine);
   const satelliteVisible = useWeatherStore((s) => s.satelliteVisible);
   const setSatelliteVisible = useWeatherStore((s) => s.setSatelliteVisible);
   const setPlaybackSpeed = useWeatherStore((s) => s.setPlaybackSpeed);
@@ -510,8 +513,33 @@ export default function SettingsScreen() {
               label="Fast radar (GPU)"
               sub="Colors radar on the GPU with no download per frame; turn off if radar looks wrong"
               value={fastRadar}
-              onChange={setFastRadar}
+              onChange={(on) => {
+                setFastRadar(on);
+                // The in-map engine's colored tiles are only useful while it can draw.
+                if (!on) clearInMapCache();
+              }}
             />
+            {fastRadar ? (
+              <>
+                <Sep />
+                <Row>
+                  <RowLeft
+                    title="Radar engine"
+                    sub="In-map keeps warnings, storm cells and your pin above the radar"
+                  />
+                  <Segmented
+                    options={RADAR_ENGINE_OPTIONS.map((o) => o.label)}
+                    selected={RADAR_ENGINE_OPTIONS.find((o) => o.value === radarEngine)?.label ?? ""}
+                    onSelect={(label) => {
+                      const next = RADAR_ENGINE_OPTIONS.find((o) => o.label === label);
+                      if (!next) return;
+                      setRadarEngine(next.value);
+                      if (next.value !== "in-map") clearInMapCache();
+                    }}
+                  />
+                </Row>
+              </>
+            ) : null}
             <Sep />
             <ToggleRow
               label={SATELLITE_OVERLAY.name}

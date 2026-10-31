@@ -12,7 +12,7 @@
  *   • EyedropperPin    (long-press map → readout)
  *   • TimelineBar      ("Reflectivity / Sunday, April 19 2026" header)
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { View, StyleSheet, Text, Pressable } from "react-native";
 import { useIsFocused, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -36,6 +36,8 @@ import type { StormCellInfo } from "../../lib/stormTracks";
 import { WindParticlesOverlay, useSharedCamera } from "../../components/map/WindParticlesOverlay";
 import { WeatherAnchor } from "../../components/map/RasterFrameCarousel";
 import { PackedRadarOverlay } from "../../components/map/PackedRadarOverlay";
+import { InMapPackedRadar } from "../../components/map/InMapPackedRadar";
+import { canRenderInMap } from "../../components/map/inMapRadarEngine";
 import { SatelliteOverlay } from "../../components/map/SatelliteOverlay";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { LayerLegendCard } from "../../components/map/LayerLegendCard";
@@ -108,6 +110,10 @@ export default function RadarScreen() {
   );
   // Radar frames with packed tiles draw on the GPU canvas; the rest stay MapLibre rasters.
   const packed = usePackedFrames();
+  // Fast radar's engine choice: the Skia canvas over the map (default) or tiles inside it. The
+  // in-map engine needs an offscreen Skia surface; without one the canvas overlay draws.
+  const radarEngine = useWeatherStore((s) => s.radarEngine);
+  const inMap = useMemo(() => radarEngine === "in-map" && canRenderInMap(), [radarEngine]);
   const layerOpacity = FIXED_LAYER_OPACITY[activeLayer] ?? radarOpacity;
   // Particles also run over the air-quality heatmap (the IQAir Earth look):
   // the wind field is what carries the smoke plume, so seeing it flow over
@@ -140,6 +146,8 @@ export default function RadarScreen() {
           <WeatherLayerOverlay key={activeLayer} layerId={activeLayer} opacity={layerOpacity} isPacked={packed?.isPacked} />
         )}
         {/* Radar and weather slots insert under this; everything after it draws above them. */}
+        {/* In-map engine: packed frames as raster sources, inserted under the anchor like the classic ones. */}
+        {inMap && packed ? <InMapPackedRadar packed={packed} opacity={layerOpacity} camera={camera} /> : null}
         <WeatherAnchor />
         {/* Always mounted: each overlay renders an empty collection / hidden pin when
             it has nothing to show, so the map's native child count never churns. */}
@@ -152,7 +160,7 @@ export default function RadarScreen() {
         <LayerLocationMarker inspecting={pinned != null} />
         <EyedropperPin pinned={pinned} readout={inspect.readout} />
       </WeatherMap>
-      {packed ? <PackedRadarOverlay packed={packed} camera={camera} opacity={layerOpacity} /> : null}
+      {packed && !inMap ? <PackedRadarOverlay packed={packed} camera={camera} opacity={layerOpacity} /> : null}
 
       {/* The tab bar is hidden on this full-screen route, so this is the way back. */}
       <MapChromeSurface

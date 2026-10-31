@@ -10,113 +10,28 @@
  * Mercator with 512-pt tiles (MapLibre's zoom), screen center = camera center. Bearing rotates
  * the drawing around the center; the radar screen disables pitch while this overlay is on.
  */
-import {
-  AlphaType,
-  Canvas,
-  ColorType,
-  FilterMode,
-  MipmapMode,
-  Picture,
-  Skia,
-  TileMode,
-  type SkImage,
-  type SkShader,
-  type SkSize,
-} from "@shopify/react-native-skia";
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { Canvas, Picture, Skia, type SkShader, type SkSize } from "@shopify/react-native-skia";
+import { useEffect, useMemo, useReducer } from "react";
 import { StyleSheet } from "react-native";
-import { useAnimatedReaction, useDerivedValue, useSharedValue } from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
+import { useDerivedValue, useSharedValue } from "react-native-reanimated";
 import { useIsFocused } from "expo-router";
 import { useAppActive } from "../../hooks/useAppActive";
-import { fetchWithTimeout } from "../../lib/api";
 import {
   bucketsInPlaybackOrder,
   PACKED_TILE_SIZE,
   packedTileUrl,
   playbackOrder,
   tileCover,
-  type PackedCamera,
   type TileId,
 } from "../../lib/packed";
 import type { PackedFrameLocation, PackedFrames } from "../../hooks/usePackedFrames";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { createTileCache, type LoadResult } from "./packedTileCache";
+import { atlasBytes, CACHE_BUDGET_BYTES, makeLutShaders, PACKED_SKSL, tiles } from "./packedGpu";
+import { packedZoomBounds, usePackedCoverView } from "./usePackedCoverView";
 import type { SharedCamera } from "./WindParticlesOverlay";
-
-const SKSL = `
-uniform shader atlas;
-uniform shader lut;
-uniform float2 tileOrigin;
-uniform float tileScale;
-uniform float2 blockOrigin;
-uniform float channel;
-uniform float tileSize;
-uniform float opacity;
-
-half4 main(float2 pos) {
-  float2 texel = clamp(floor((pos - tileOrigin) / tileScale), float2(0.0), float2(tileSize - 1.0));
-  float4 t = atlas.eval(blockOrigin + texel + 0.5);
-  float q = channel < 0.5 ? t.r : (channel < 1.5 ? t.g : t.b);
-  float4 c = lut.eval(float2(floor(q * 255.0 + 0.5) + 0.5, 0.5));
-  return half4(c * opacity);
-}`;
-
-/** Decoded atlas bytes kept in memory; prefetch stops short of it. */
-const CACHE_BUDGET_BYTES = 192 * 1024 * 1024;
-
-interface Decoded {
-  image: SkImage;
-  shader: SkShader;
-}
 
 const zoomRangeKey = (loc: PackedFrameLocation) => `${loc.meta.min_zoom}|${loc.meta.max_zoom}`;
 const tileKey = (layer: string, bucket: string, t: TileId) => `${layer}/${bucket}/${t.z}/${t.x}/${t.y}`;
-
-function decode(buf: ArrayBuffer): Decoded | null {
-  const lazy = Skia.Image.MakeImageFromEncoded(Skia.Data.fromBytes(new Uint8Array(buf)));
-  if (!lazy) return null;
-  // Decode now on the JS thread, not on the first draw mid-animation.
-  let image = lazy;
-  try {
-    image = lazy.makeNonTextureImage() ?? lazy;
-  } catch {}
-  const shader = image.makeShaderOptions(TileMode.Clamp, TileMode.Clamp, FilterMode.Nearest, MipmapMode.None);
-  return { image, shader };
-}
-
-async function loadTile(url: string): Promise<LoadResult<Decoded>> {
-  const res = await fetchWithTimeout(url);
-  if (res.status === 204) return { kind: "empty" };
-  if (!res.ok) return { kind: "error" };
-  const decoded = decode(await res.arrayBuffer());
-  if (!decoded) return { kind: "error" };
-  const { image } = decoded;
-  return { kind: "ready", handle: decoded, height: image.height(), bytes: image.width() * image.height() * 4 };
-}
-
-/** Module-level so tiles survive a remount (tab switch, layer toggle). */
-const tiles = createTileCache<Decoded>({
-  budgetBytes: CACHE_BUDGET_BYTES,
-  maxInFlight: 6,
-  errorRetryMs: 30_000,
-  maxEntries: 2000,
-  now: Date.now,
-  load: loadTile,
-});
-
-/** Rough decoded size of a bucket's atlas, from its slot count. */
-function atlasBytes(slots: number, cols: number): number {
-  const rows = Math.max(1, Math.ceil(Math.ceil(Math.max(1, slots) / 3) / cols));
-  return PACKED_TILE_SIZE * cols * PACKED_TILE_SIZE * rows * 4;
-}
-
-/** Camera and canvas size when the visible tile range last changed. */
-interface CoverView {
-  key: string;
-  camera: PackedCamera;
-  screen: { width: number; height: number };
-}
 
 interface DrawItem {
   atlas: SkShader;
@@ -167,7 +82,6 @@ function ActivePackedRadar({ packed, camera, opacity: layerOpacity }: Props) {
   const opacity = useSharedValue(radarOpacity);
   const drawItems = useSharedValue<DrawItem[]>([]);
   const [loadedTick, bumpLoaded] = useReducer((n: number) => n + 1, 0);
-  const [view, setView] = useState<CoverView | null>(null);
 
   useEffect(() => tiles.subscribe(bumpLoaded), []);
 
@@ -175,65 +89,12 @@ function ActivePackedRadar({ packed, camera, opacity: layerOpacity }: Props) {
     opacity.set(radarOpacity);
   }, [radarOpacity, opacity]);
 
-  const effect = useMemo(() => Skia.RuntimeEffect.Make(SKSL), []);
+  const effect = useMemo(() => Skia.RuntimeEffect.Make(PACKED_SKSL), []);
 
-  // One LUT image per (color key, quantization); the bytes are unpremultiplied RGBA.
-  const lutShaders = useMemo(() => {
-    const out: Record<string, SkShader> = {};
-    for (const [key, bytes] of Object.entries(packed.luts)) {
-      const image = Skia.Image.MakeImage(
-        { width: 256, height: 1, alphaType: AlphaType.Unpremul, colorType: ColorType.RGBA_8888 },
-        Skia.Data.fromBytes(bytes),
-        256 * 4,
-      );
-      if (image) {
-        out[key] = image.makeShaderOptions(TileMode.Clamp, TileMode.Clamp, FilterMode.Nearest, MipmapMode.None);
-      }
-    }
-    return out;
-  }, [packed.luts]);
+  const lutShaders = useMemo(() => makeLutShaders(packed.luts), [packed.luts]);
 
-  // Zoom bounds over every packed layer; a cover change at any of them re-runs the JS cover.
-  const zoomBounds = useMemo(() => {
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (const loc of packed.locations) {
-      if (!loc) continue;
-      lo = Math.min(lo, loc.meta.min_zoom);
-      hi = Math.max(hi, loc.meta.max_zoom);
-    }
-    return { lo, hi };
-  }, [packed.locations]);
-
-  // The worklet body is inlined (helpers across the worklet boundary have dropped calls).
-  useAnimatedReaction(
-    () => {
-      "worklet";
-      const s = size.get();
-      const zoom = camera.zoom.get();
-      const z = Math.max(zoomBounds.lo, Math.min(zoomBounds.hi, Math.floor(zoom)));
-      const world = 512 * Math.pow(2, zoom);
-      const latRad = Math.max(-1.4844, Math.min(1.4844, (camera.lat.get() * Math.PI) / 180));
-      const cx = ((camera.lon.get() + 180) / 360) * world;
-      const cy = (0.5 - Math.log(Math.tan(Math.PI / 4 + latRad / 2)) / (2 * Math.PI)) * world;
-      const rad = (camera.bearing.get() * Math.PI) / 180;
-      const hw = (s.width / 2) * Math.abs(Math.cos(rad)) + (s.height / 2) * Math.abs(Math.sin(rad));
-      const hh = (s.width / 2) * Math.abs(Math.sin(rad)) + (s.height / 2) * Math.abs(Math.cos(rad));
-      const tw = 512 * Math.pow(2, zoom - z);
-      const key = `${Math.floor(zoom)}|${z}|${Math.floor((cx - hw) / tw)}|${Math.floor((cx + hw) / tw)}|${Math.floor(
-        (cy - hh) / tw,
-      )}|${Math.floor((cy + hh) / tw)}|${s.width}x${s.height}`;
-      return {
-        key,
-        camera: { lon: camera.lon.get(), lat: camera.lat.get(), zoom, bearing: camera.bearing.get() },
-        screen: { width: s.width, height: s.height },
-      };
-    },
-    (next, prev) => {
-      if (next.key !== prev?.key) scheduleOnRN(setView, next);
-    },
-    [zoomBounds],
-  );
+  const zoomBounds = useMemo(() => packedZoomBounds(packed.locations), [packed.locations]);
+  const view = usePackedCoverView(camera, size, zoomBounds);
 
   // Tiles in view per layer zoom range, recomputed when the cover key changes.
   const covers = useMemo(() => {
