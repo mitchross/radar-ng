@@ -17,7 +17,6 @@ import {
   commitGen,
   diskBytes,
   expandCover,
-  frameDir,
   IN_MAP_MAX_BYTES,
   planGen,
   selectCapEvictions,
