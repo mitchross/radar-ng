@@ -1,5 +1,5 @@
 import {
-  decideInMapFallback,
+  decideRasterFallback,
   diagEventDue,
   errorMessage,
   formatInMapSummary,
@@ -17,30 +17,30 @@ import { privacySafeAttributes } from "../../src/lib/telemetryPrivacy";
 
 const base = { canRender: true, hasCover: true, waitedMs: 0, committedFrames: 0, verifyFailed: false };
 
-describe("decideInMapFallback", () => {
+describe("decideRasterFallback", () => {
   it("draws in-map while the first frame is still being written", () => {
-    expect(decideInMapFallback({ ...base, waitedMs: IN_MAP_BLANK_MS - 1 })).toBeNull();
+    expect(decideRasterFallback({ ...base, waitedMs: IN_MAP_BLANK_MS - 1 })).toBeNull();
   });
 
   it("falls back once 8 s pass with a cover and no committed frame", () => {
     expect(IN_MAP_BLANK_MS).toBe(8_000);
-    expect(decideInMapFallback({ ...base, waitedMs: IN_MAP_BLANK_MS })).toMatch(/no frame/);
+    expect(decideRasterFallback({ ...base, waitedMs: IN_MAP_BLANK_MS })).toMatch(/no frame/);
   });
 
   it("does not time out without tiles in view or once a frame has committed", () => {
-    expect(decideInMapFallback({ ...base, hasCover: false, waitedMs: 60_000 })).toBeNull();
-    expect(decideInMapFallback({ ...base, waitedMs: 60_000, committedFrames: 1 })).toBeNull();
+    expect(decideRasterFallback({ ...base, hasCover: false, waitedMs: 60_000 })).toBeNull();
+    expect(decideRasterFallback({ ...base, waitedMs: 60_000, committedFrames: 1 })).toBeNull();
   });
 
   it("falls back at once when a committed frame has no file, and when there is no surface", () => {
-    expect(decideInMapFallback({ ...base, committedFrames: 3, verifyFailed: true })).toMatch(/verify/);
-    expect(decideInMapFallback({ ...base, canRender: false })).toMatch(/surface/);
+    expect(decideRasterFallback({ ...base, committedFrames: 3, verifyFailed: true })).toMatch(/verify/);
+    expect(decideRasterFallback({ ...base, canRender: false })).toMatch(/surface/);
   });
 
   it("switches back to in-map once a frame commits and verifies", () => {
     const stuck = { ...base, waitedMs: 20_000 };
-    expect(decideInMapFallback(stuck)).not.toBeNull();
-    expect(decideInMapFallback({ ...stuck, committedFrames: 1 })).toBeNull();
+    expect(decideRasterFallback(stuck)).not.toBeNull();
+    expect(decideRasterFallback({ ...stuck, committedFrames: 1 })).toBeNull();
   });
 });
 
@@ -125,28 +125,28 @@ describe("telemetry", () => {
 
 describe("fallback edge cases", () => {
   it("names the 8 s reason exactly as Settings and telemetry show it", () => {
-    expect(decideInMapFallback({ ...base, waitedMs: IN_MAP_BLANK_MS })).toBe("no frame in 8s");
+    expect(decideRasterFallback({ ...base, waitedMs: IN_MAP_BLANK_MS })).toBe("no frame in 8s");
   });
 
   it("checks the surface first, then the verify result, then the timeout", () => {
     const everything = { canRender: false, hasCover: true, waitedMs: 60_000, committedFrames: 0, verifyFailed: true };
-    expect(decideInMapFallback(everything)).toBe("no offscreen surface");
-    expect(decideInMapFallback({ ...everything, canRender: true })).toBe("verify: no file on disk");
-    expect(decideInMapFallback({ ...everything, canRender: true, verifyFailed: false })).toBe("no frame in 8s");
+    expect(decideRasterFallback(everything)).toBe("no offscreen surface");
+    expect(decideRasterFallback({ ...everything, canRender: true })).toBe("verify: no file on disk");
+    expect(decideRasterFallback({ ...everything, canRender: true, verifyFailed: false })).toBe("no frame in 8s");
   });
 
   it("falls back on a missing file or surface even before any tiles are in view", () => {
-    expect(decideInMapFallback({ ...base, hasCover: false, verifyFailed: true })).toMatch(/verify/);
-    expect(decideInMapFallback({ ...base, hasCover: false, canRender: false })).toMatch(/surface/);
+    expect(decideRasterFallback({ ...base, hasCover: false, verifyFailed: true })).toMatch(/verify/);
+    expect(decideRasterFallback({ ...base, hasCover: false, canRender: false })).toMatch(/surface/);
   });
 
   it("draws in-map when the cover has just appeared, with or without frames", () => {
-    expect(decideInMapFallback({ ...base, waitedMs: 0 })).toBeNull();
-    expect(decideInMapFallback({ ...base, waitedMs: 0, committedFrames: 4 })).toBeNull();
+    expect(decideRasterFallback({ ...base, waitedMs: 0 })).toBeNull();
+    expect(decideRasterFallback({ ...base, waitedMs: 0, committedFrames: 4 })).toBeNull();
   });
 
   it("stays on in-map after the 8 s once any frame is committed", () => {
-    expect(decideInMapFallback({ ...base, waitedMs: IN_MAP_BLANK_MS * 10, committedFrames: 1 })).toBeNull();
+    expect(decideRasterFallback({ ...base, waitedMs: IN_MAP_BLANK_MS * 10, committedFrames: 1 })).toBeNull();
   });
 });
 

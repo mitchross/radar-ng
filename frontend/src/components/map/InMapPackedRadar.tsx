@@ -23,7 +23,7 @@ import { useSharedValue } from "react-native-reanimated";
 import { useIsFocused } from "expo-router";
 import { useAppActive } from "../../hooks/useAppActive";
 import type { PackedFrames } from "../../hooks/usePackedFrames";
-import { decideInMapFallback, IN_MAP_BLANK_MS, inMapStats, patchInMapStats } from "../../lib/inMapDiag";
+import { decideRasterFallback, IN_MAP_BLANK_MS, inMapStats, patchInMapStats } from "../../lib/inMapDiag";
 import { rootUri } from "../../lib/inMapRadarDisk";
 import { frameDir, frameKeyOf, lutHash, priorityOrder, slotSpec, type InMapSlotSpec } from "../../lib/inMapRadarTiles";
 import { PACKED_TILE_SIZE, packedTileUrl, playbackOrder, tileCover, type TileId } from "../../lib/packed";
@@ -43,7 +43,7 @@ interface Props {
   camera: SharedCamera;
   /** The active layer's raster opacity; defaults to the radar opacity setting. */
   opacity?: number;
-  /** Why the Classic fast overlay should draw instead (null: in-map draws). Needs a stable callback. */
+  /** Why the normal raster radar should draw instead (null: in-map draws). Needs a stable callback. */
   onFallback?: (reason: string | null) => void;
 }
 
@@ -158,7 +158,7 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity, onFall
   });
 
   // Safety net: never a blank radar. No verified frame in time, or a frame whose file is missing,
-  // hands the screen to the Classic fast overlay while the engine keeps trying.
+  // hands the screen to the normal raster radar while the engine keeps trying.
   const hasCover = !paused && [...covers.values()].some((c) => c.length > 0);
   const [waitedOut, setWaitedOut] = useState(false);
   useEffect(() => {
@@ -169,7 +169,7 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity, onFall
       setWaitedOut(false);
     };
   }, [hasCover]);
-  const fallback = decideInMapFallback({
+  const fallback = decideRasterFallback({
     canRender: canRenderInMap(),
     hasCover,
     waitedMs: waitedOut ? IN_MAP_BLANK_MS : 0,

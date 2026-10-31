@@ -93,7 +93,7 @@ function getSurface(): SkSurface | null {
   return surface;
 }
 
-/** False when no offscreen surface can be made; the caller falls back to the Skia canvas overlay. */
+/** False when no offscreen surface can be made; the caller falls back to the raster radar. */
 export const canRenderInMap = () => getSurface() != null;
 
 /** PNG bytes of the surface. Throws (and records what it got) when they are empty or not a PNG. */
@@ -265,7 +265,7 @@ export function createInMapEngine(onChange: () => void) {
     patchInMapStats({ verifyOk: exists });
     if (!exists) {
       recordInMapError("verify", "tile file missing after write");
-      onChange(); // the safety net re-checks whether to draw the Classic fast overlay
+      onChange(); // the safety net re-checks whether to draw the raster radar
     }
     return exists;
   }

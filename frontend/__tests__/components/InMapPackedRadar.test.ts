@@ -64,9 +64,13 @@ describe("radar screen engine wiring", () => {
     expect(screen).not.toContain("radarEngine");
   });
 
-  it("draws the Skia overlay instead while the in-map safety net has fired", () => {
+  it("draws the normal raster radar instead while the in-map safety net has fired", () => {
     expect(screen).toContain("onFallback={setInMapFallback}");
-    expect(read("components/map/InMapPackedRadar.tsx")).toContain("decideInMapFallback(");
+    expect(read("components/map/InMapPackedRadar.tsx")).toContain("decideRasterFallback(");
+    // The carousels only skip packed frames while In-map is drawing them.
+    expect(screen.match(/isPacked=\{inMapPacked\}/g)).toHaveLength(2);
+    expect(screen).toContain("const inMapPacked = packed && !inMapFallback ? packed.isPacked : undefined;");
+    expect(screen).not.toContain("PackedRadarOverlay");
   });
 });
 
