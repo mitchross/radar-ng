@@ -33,6 +33,14 @@ First native build takes a while (Gradle / CocoaPods); subsequent runs are incre
 
 **Settings → Fast radar (GPU)** draws radar (and HRRR / air-quality layers) from compact packed tiles. While it is on, **Radar engine** picks how: **Classic fast** (default) paints a Skia canvas over the map; **In-map** colors the same tiles on the GPU, saves them as PNGs in the app cache and lets MapLibre draw them, so warnings, storm cells and your pin stay above the radar. Details: [packed tiles](../reference/packed-tiles.md#clients). With In-map selected, Settings shows two small diagnostic lines under the row (frames, tiles, last error stage), and the app draws Classic fast instead if In-map has no frame after 8 seconds. Both need a native rebuild to reach a phone.
 
+### In-map simulator test
+
+1. Build and install on a booted iPhone simulator: `bun run ios` from `frontend/`, or the Release build the Maestro suite uses, `SIMULATOR_UDID=<udid> scripts/test-ios-simulator.sh` (add `SKIP_BUILD=1` to reuse the last build; it runs `.maestro/`).
+2. Pick a city with radar (Settings → search, e.g. Key West), keep **Fast radar (GPU)** on, set **Radar engine** to **In-map**, then open **Radar**. Switch back to **Classic fast** to compare; that wipes the In-map tile cache.
+3. Read the two lines under the engine row. Line 1: `In-map: <frames> frames · <tiles> tiles · <size> · <surface>`: frames committed right now, PNG tiles written since the cache was last cleared, bytes written, and GPU / CPU / no surface (`surface ?` = the engine has not made one yet). Line 2: `fallback: …` when Classic fast is drawing instead (no frame within 8 seconds, no file on disk after a write, or no offscreen surface), then `no errors` or `last error: <stage> <message>`, the map zoom against the zoom of the tiles written, and the PNG and first-file checks. The counts update a few times a second while tiles are written.
+4. The tiles are PNGs under the app's `Library/Caches/radar-inmap/` (`xcrun simctl get_app_container booted <bundle id> data`, then that path); about 370 files and 2.7 MB after a few frames is normal.
+5. A `StopAccessing … called <StopAccessing> too many times or URL isn't security-scoped` line in the simulator log for those `file://` tiles is a harmless iOS warning seen during working renders; judge by what is on screen and in the diagnostics lines.
+
 ### Radar playback kill switch
 
 Playback mounts five raster sources and swaps their opacity, so each frame's tiles load while hidden. If that misbehaves on a device, build the old single-source variant:
