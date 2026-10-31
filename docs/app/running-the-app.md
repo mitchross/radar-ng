@@ -31,7 +31,7 @@ First native build takes a while (Gradle / CocoaPods); subsequent runs are incre
 
 ### Fast radar and the radar engine
 
-**Settings → Fast radar (GPU)** draws radar (and HRRR / air-quality layers) from compact packed tiles. While it is on, **Radar engine** picks how: **Classic fast** (default) paints a Skia canvas over the map; **In-map** colors the same tiles on the GPU, saves them as PNGs in the app cache and lets MapLibre draw them, so warnings, storm cells and your pin stay above the radar. Details: [packed tiles](../reference/packed-tiles.md#clients). Both need a native rebuild to reach a phone.
+**Settings → Fast radar (GPU)** draws radar (and HRRR / air-quality layers) from compact packed tiles. While it is on, **Radar engine** picks how: **Classic fast** (default) paints a Skia canvas over the map; **In-map** colors the same tiles on the GPU, saves them as PNGs in the app cache and lets MapLibre draw them, so warnings, storm cells and your pin stay above the radar. Details: [packed tiles](../reference/packed-tiles.md#clients). With In-map selected, Settings shows two small diagnostic lines under the row (frames, tiles, last error stage), and the app draws Classic fast instead if In-map has no frame after 8 seconds. Both need a native rebuild to reach a phone.
 
 ### Radar playback kill switch
 
