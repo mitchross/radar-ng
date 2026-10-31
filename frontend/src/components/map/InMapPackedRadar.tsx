@@ -67,7 +67,7 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity }: Prop
 
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const zoomBounds = useMemo(() => packedZoomBounds(packed.locations), [packed.locations]);
-  const view = usePackedCoverView(camera, size, zoomBounds);
+  const view = usePackedCoverView(camera, size, zoomBounds, "round");
   const [settled, setSettled] = useState<CoverView | null>(null);
   useEffect(() => {
     if (!view) return;
@@ -91,7 +91,7 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity }: Prop
     for (const loc of packed.locations) {
       const key = loc ? `${loc.meta.min_zoom}|${loc.meta.max_zoom}` : "";
       if (!loc || out.has(key)) continue;
-      out.set(key, tileCover(settled.camera, settled.screen, loc.meta.min_zoom, loc.meta.max_zoom));
+      out.set(key, tileCover(settled.camera, settled.screen, loc.meta.min_zoom, loc.meta.max_zoom, "round"));
     }
     return out;
   }, [settled, packed.locations]);
