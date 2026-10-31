@@ -14,6 +14,11 @@ on:
         required: false
         default: false
         type: boolean
+      carplay:
+        description: Include CarPlay (needs the carplay-maps entitlement Apple granted this App ID)
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -26,6 +31,9 @@ jobs:
   ipa:
     runs-on: [self-hosted, ios]
     timeout-minutes: 60
+    env:
+      # app.config.js, the CarPlay plugin and the preflight all read this at prebuild time.
+      RADAR_CARPLAY: ${{ inputs.carplay && '1' || '0' }}
     defaults:
       run:
         working-directory: frontend
