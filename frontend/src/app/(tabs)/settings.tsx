@@ -33,7 +33,7 @@ import type { SelfHostedManifest } from "../../types/weather";
 import { formatPlaceLabel } from "../../lib/locationLabel";
 import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { SELF_HOSTED } from "../../lib/constants";
-import { PLAYBACK_FPS_RANGE } from "../../lib/persistedPrefs";
+import { PLAYBACK_FPS_RANGE, RADAR_ENGINE_OPTIONS } from "../../lib/persistedPrefs";
 import { RAIN_ALERT_LEAD_OPTIONS, parseRainAlertLead } from "../../lib/rainAlerts";
 import { useRainAlertOptIn } from "../../hooks/useRainAlertOptIn";
 import { isCleartextToPublicHost } from "../../lib/networkSafety";
@@ -84,6 +84,8 @@ export default function SettingsScreen() {
   const playbackSpeed = useWeatherStore((s) => s.playbackSpeed);
   const fastRadar = useWeatherStore((s) => s.fastRadar);
   const setFastRadar = useWeatherStore((s) => s.setFastRadar);
+  const radarEngine = useWeatherStore((s) => s.radarEngine);
+  const setRadarEngine = useWeatherStore((s) => s.setRadarEngine);
   const satelliteVisible = useWeatherStore((s) => s.satelliteVisible);
   const setSatelliteVisible = useWeatherStore((s) => s.setSatelliteVisible);
   const setPlaybackSpeed = useWeatherStore((s) => s.setPlaybackSpeed);
@@ -512,6 +514,25 @@ export default function SettingsScreen() {
               value={fastRadar}
               onChange={setFastRadar}
             />
+            {fastRadar ? (
+              <>
+                <Sep />
+                <Row>
+                  <RowLeft
+                    title="Radar engine"
+                    sub="In-map keeps warnings, storm cells and your pin above the radar"
+                  />
+                  <Segmented
+                    options={RADAR_ENGINE_OPTIONS.map((o) => o.label)}
+                    selected={RADAR_ENGINE_OPTIONS.find((o) => o.value === radarEngine)?.label ?? ""}
+                    onSelect={(label) => {
+                      const next = RADAR_ENGINE_OPTIONS.find((o) => o.label === label);
+                      if (next) setRadarEngine(next.value);
+                    }}
+                  />
+                </Row>
+              </>
+            ) : null}
             <Sep />
             <ToggleRow
               label={SATELLITE_OVERLAY.name}
