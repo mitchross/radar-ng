@@ -12,7 +12,7 @@ export type InMapSurfaceKind = "gpu" | "cpu" | "none" | "unknown";
 
 export interface InMapStats {
   surface: InMapSurfaceKind;
-  /** Frames (gens) committed since the process started. */
+  /** Frames (gens) committed right now: the size of the engine's disk index, so evicted frames drop out. */
   framesCommitted: number;
   tilesWritten: number;
   bytesWritten: number;
@@ -52,7 +52,7 @@ const initial = (): InMapStats => ({
   fallback: null,
 });
 
-/** The live stats object; mutate through the helpers below so listeners hear about it. */
+/** The live stats object; mutate only through the helpers below (never `inMapStats.x++`) so listeners hear about it. */
 export const inMapStats: InMapStats = initial();
 
 const listeners = new Set<() => void>();
@@ -84,10 +84,17 @@ export function patchInMapStats(patch: Partial<InMapStats>) {
   changed();
 }
 
-/** Back to the initial values (tests). */
+/** Count one tile written to disk. */
+export function recordInMapTile(bytes: number) {
+  inMapStats.tilesWritten++;
+  inMapStats.bytesWritten += bytes;
+  changed();
+}
+
+/** Back to the initial values: tests, and the engine's cache clear (the counters describe what is on disk). */
 export function resetInMapStats() {
   Object.assign(inMapStats, initial());
-  version++;
+  changed();
 }
 
 const MESSAGE_MAX = 120;

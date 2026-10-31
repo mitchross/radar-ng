@@ -12,7 +12,16 @@
  * a process wipes the directory, since the index of what is on disk is not persisted.
  */
 import { ImageFormat, Skia, type SkPaint, type SkRuntimeEffect, type SkShader, type SkSurface } from "@shopify/react-native-skia";
-import { hasPngSignature, inMapStats, patchInMapStats, recordInMapError, type InMapStage } from "../../lib/inMapDiag";
+import {
+  hasPngSignature,
+  inMapStats,
+  patchInMapStats,
+  recordInMapError,
+  recordInMapTile,
+  resetInMapStats,
+  type InMapStage,
+  type InMapSurfaceKind,
+} from "../../lib/inMapDiag";
 import { copyTile, deleteRelative, listFrames, verifyTile, wipeAll, writeTile } from "../../lib/inMapRadarDisk";
 import {
   commitGen,
@@ -61,6 +70,7 @@ export { inMapStats };
 const disk = new Map<string, FrameDisk>();
 let initialized = false;
 let surface: SkSurface | null | undefined;
+let surfaceKind: InMapSurfaceKind = "unknown";
 let emptyPng: Uint8Array | null = null;
 
 const zoomRangeKey = (loc: PackedFrameLocation) => `${loc.meta.min_zoom}|${loc.meta.max_zoom}`;
@@ -70,11 +80,13 @@ function getSurface(): SkSurface | null {
     try {
       const gpu = Skia.Surface.MakeOffscreen(PACKED_TILE_SIZE, PACKED_TILE_SIZE, { colorSpace: "srgb" });
       surface = gpu ?? Skia.Surface.Make(PACKED_TILE_SIZE, PACKED_TILE_SIZE);
-      patchInMapStats({ surface: gpu ? "gpu" : surface ? "cpu" : "none" });
+      surfaceKind = gpu ? "gpu" : surface ? "cpu" : "none";
+      patchInMapStats({ surface: surfaceKind });
       if (!surface) recordInMapError("surface", "no surface could be made");
     } catch (err) {
       surface = null;
-      patchInMapStats({ surface: "none" });
+      surfaceKind = "none";
+      patchInMapStats({ surface: surfaceKind });
       recordInMapError("surface", err);
     }
   }
@@ -135,7 +147,15 @@ export const getInMapDisk = (): ReadonlyMap<string, FrameDisk> => disk;
 /** Forget everything and delete it from disk (engine switched away, Fast radar turned off). */
 export function clearInMapCache() {
   disk.clear();
+  resetInMapStats();
+  // The surface outlives the cache, so keep reporting it.
+  patchInMapStats({ surface: surfaceKind });
   wipeAll();
+}
+
+/** `framesCommitted` is the number of frames in the disk index; call after every change to it. */
+function syncFrameCount() {
+  if (inMapStats.framesCommitted !== disk.size) patchInMapStats({ framesCommitted: disk.size });
 }
 
 export function createInMapEngine(onChange: () => void) {
@@ -219,6 +239,7 @@ export function createInMapEngine(onChange: () => void) {
     const keep = new Set(entries.filter((e) => e.rank <= rank).map((e) => e.key));
     const drop = selectCapEvictions(entries, IN_MAP_MAX_BYTES - needed, keep);
     for (const key of drop) disk.delete(key);
+    syncFrameCount();
     deleteRelative(drop);
     if (drop.length > 0) onChange();
     return totalBytes() + needed <= IN_MAP_MAX_BYTES;
@@ -295,14 +316,14 @@ export function createInMapEngine(onChange: () => void) {
         stage = "write";
         await writeTile(layer, frame.frameKey, plan.gen, t, bytes);
         written.set(tileKey(t), bytes.length);
-        inMapStats.tilesWritten++;
-        inMapStats.bytesWritten += bytes.length;
+        recordInMapTile(bytes.length);
         await sleep(YIELD_MS);
       }
       stage = "verify";
       if (!verifyGen(layer, frame, plan)) return "error";
       disk.set(frame.dir, commitGen(prev, plan, written));
-      patchInMapStats({ framesCommitted: inMapStats.framesCommitted + 1, writtenZoom: plan.want[0].z });
+      patchInMapStats({ writtenZoom: plan.want[0].z });
+      syncFrameCount();
       onChange();
       return "done";
     } catch (err) {
@@ -353,6 +374,7 @@ export function createInMapEngine(onChange: () => void) {
       const current = input;
       if (!current || stopped || running) return;
       for (const key of [...disk.keys()]) if (!current.allDirs.has(key)) disk.delete(key);
+      syncFrameCount();
       const keep = new Map<string, ReadonlySet<number>>();
       disk.forEach((d, key) => keep.set(key, new Set([d.gen])));
       if (activeGen) keep.set(activeGen.dir, new Set([...(keep.get(activeGen.dir) ?? []), activeGen.gen]));
