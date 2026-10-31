@@ -83,3 +83,7 @@ logs/
 CLAUDE.local.md
 AGENTS.local.md
 .claude/settings.local.json
+
+# Agent-managed worktrees (Claude Code, Hermes)
+.claude/worktrees/
+.worktrees/
