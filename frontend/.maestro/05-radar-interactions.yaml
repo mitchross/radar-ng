@@ -6,7 +6,10 @@ name: radar playback styles layers and foreground recovery
     permissions:
       all: deny
 - runFlow: common/dismiss-system-prompts.yaml
-- tapOn: "Radar"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Radar
 - extendedWaitUntil:
     visible: "Play radar animation"
     timeout: 30000
@@ -16,7 +19,8 @@ name: radar playback styles layers and foreground recovery
 - repeat:
     times: 5
     commands:
-      - tapOn: "48h radar timeline"
+      # The long range reads 48h or 72h, depending on how far the forecast frames reach.
+      - tapOn: "(48|72)h radar timeline"
       - tapOn: "1h radar timeline"
 - tapOn: "Pause radar animation"
 - tapOn: "Choose radar layer"

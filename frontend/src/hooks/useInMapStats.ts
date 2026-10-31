@@ -1,8 +1,13 @@
 import { useSyncExternalStore } from "react";
-import { formatInMapSummary, inMapStats, inMapStatsVersion, subscribeInMapStats } from "../lib/inMapDiag";
+import { formatInMapSummary, inMapStats, subscribeInMapStats } from "../lib/inMapDiag";
 
-/** The in-map engine's diagnostics as short lines for Settings; repaints as the stats change. */
+const summaryText = () => formatInMapSummary(inMapStats).join("\n");
+
+/**
+ * The in-map engine's diagnostics as short lines for Settings. The snapshot is the text itself, read
+ * from the live stats on every render and on every throttled notify, so a screen that mounts after
+ * the engine did its work shows the current values and one that stays mounted repaints as they change.
+ */
 export function useInMapSummary(): string[] {
-  useSyncExternalStore(subscribeInMapStats, inMapStatsVersion);
-  return formatInMapSummary(inMapStats);
+  return useSyncExternalStore(subscribeInMapStats, summaryText).split("\n");
 }

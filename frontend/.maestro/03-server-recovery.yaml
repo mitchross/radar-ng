@@ -6,7 +6,10 @@ name: unavailable server and recovery
     permissions:
       all: deny
 - runFlow: common/dismiss-system-prompts.yaml
-- tapOn: "Settings"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Settings
 - scrollUntilVisible:
     element: "Adv"
     direction: UP
@@ -26,12 +29,18 @@ name: unavailable server and recovery
     commands:
       - hideKeyboard
 - tapOn: "Save stack URL"
-- tapOn: "Home"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Home
 - extendedWaitUntil:
     visible: "Couldn’t load weather.*"
     timeout: 60000
 - takeScreenshot: server-unavailable
-- tapOn: "Settings"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Settings
 - scrollUntilVisible:
     element:
       id: "stack-url-input"
@@ -48,12 +57,18 @@ name: unavailable server and recovery
     commands:
       - hideKeyboard
 - tapOn: "Save stack URL"
-- tapOn: "Home"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Home
 - extendedWaitUntil:
     visible: "Choose weather location.*"
     timeout: 60000
 - takeScreenshot: server-recovered
-- tapOn: "Settings"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Settings
 - scrollUntilVisible:
     element: "Simple"
     direction: UP

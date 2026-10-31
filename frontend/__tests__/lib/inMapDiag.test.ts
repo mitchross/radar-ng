@@ -122,3 +122,69 @@ describe("telemetry", () => {
     expect(diagEventDue(61_000, 62_000, "write", seen)).toBe(true);
   });
 });
+
+describe("fallback edge cases", () => {
+  it("names the 8 s reason exactly as Settings and telemetry show it", () => {
+    expect(decideInMapFallback({ ...base, waitedMs: IN_MAP_BLANK_MS })).toBe("no frame in 8s");
+  });
+
+  it("checks the surface first, then the verify result, then the timeout", () => {
+    const everything = { canRender: false, hasCover: true, waitedMs: 60_000, committedFrames: 0, verifyFailed: true };
+    expect(decideInMapFallback(everything)).toBe("no offscreen surface");
+    expect(decideInMapFallback({ ...everything, canRender: true })).toBe("verify: no file on disk");
+    expect(decideInMapFallback({ ...everything, canRender: true, verifyFailed: false })).toBe("no frame in 8s");
+  });
+
+  it("falls back on a missing file or surface even before any tiles are in view", () => {
+    expect(decideInMapFallback({ ...base, hasCover: false, verifyFailed: true })).toMatch(/verify/);
+    expect(decideInMapFallback({ ...base, hasCover: false, canRender: false })).toMatch(/surface/);
+  });
+
+  it("draws in-map when the cover has just appeared, with or without frames", () => {
+    expect(decideInMapFallback({ ...base, waitedMs: 0 })).toBeNull();
+    expect(decideInMapFallback({ ...base, waitedMs: 0, committedFrames: 4 })).toBeNull();
+  });
+
+  it("stays on in-map after the 8 s once any frame is committed", () => {
+    expect(decideInMapFallback({ ...base, waitedMs: IN_MAP_BLANK_MS * 10, committedFrames: 1 })).toBeNull();
+  });
+});
+
+describe("summary with an error and a fallback", () => {
+  beforeEach(resetInMapStats);
+
+  it("puts the fallback first on the second line, then the error stage and message", () => {
+    patchInMapStats({ surface: "cpu", fallback: "no frame in 8s" });
+    recordInMapError("atlas-load", new Error("atlas download failed"));
+    const [first, second] = formatInMapSummary(inMapStats);
+    expect(first).toBe("In-map: 0 frames · 0 tiles · 0 KB · CPU");
+    expect(second).toBe("fallback: no frame in 8s · last error: atlas-load atlas download failed");
+  });
+
+  it("shows the latest error stage when several fail, and no errors after a reset", () => {
+    recordInMapError("encode", "empty");
+    recordInMapError("write", "disk full");
+    expect(formatInMapSummary(inMapStats)[1]).toBe("last error: write disk full");
+    resetInMapStats();
+    expect(formatInMapSummary(inMapStats)[1]).toBe("no errors");
+  });
+
+  it("reports no surface and a bad PNG next to the error", () => {
+    patchInMapStats({ surface: "none", lastPngBytes: 0, lastPngSignature: false });
+    recordInMapError("surface", "no surface could be made");
+    const [first, second] = formatInMapSummary(inMapStats);
+    expect(first).toContain("no surface");
+    expect(second).toBe("last error: surface no surface could be made · png 0 B bad");
+  });
+
+  it("sends the fallback and the error stage to telemetry and drops them on reset", () => {
+    patchInMapStats({ fallback: "verify: no file on disk" });
+    recordInMapError("verify", "tile file missing after write");
+    const attrs = inMapDiagAttributes(inMapStats, "error");
+    expect(attrs["inmap.fallback"]).toBe("verify: no file on disk");
+    expect(attrs["inmap.err_stage"]).toBe("verify");
+    expect(attrs["inmap.errors"]).toBe(1);
+    resetInMapStats();
+    expect(inMapDiagAttributes(inMapStats, "periodic")["inmap.fallback"]).toBeUndefined();
+  });
+});
