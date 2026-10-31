@@ -1,0 +1,31 @@
+appId: ${APP_ID}
+---
+# Opens a tab by its label (env TAB). The iOS tab bar minimizes while a screen is scrolled down
+# (minimizeBehavior "onScrollDown") and then shows only the selected tab's SF Symbol (house, cloud.rain,
+# exclamationmark.triangle or gearshape), so the labels are not on screen. Expand the bar first.
+- runFlow:
+    when:
+      platform: iOS
+      notVisible: "${TAB}"
+    commands:
+      - tapOn:
+          text: "gearshape.*"
+          optional: true
+      - tapOn:
+          text: "house.*"
+          optional: true
+      - tapOn:
+          text: "cloud.rain.*"
+          optional: true
+      - tapOn:
+          text: "exclamationmark.triangle.*"
+          optional: true
+      # Scrolling back up also expands it.
+      - runFlow:
+          when:
+            notVisible: "${TAB}"
+          commands:
+            - swipe:
+                direction: DOWN
+                duration: 300
+- tapOn: "${TAB}"

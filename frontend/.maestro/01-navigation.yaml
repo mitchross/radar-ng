@@ -14,19 +14,35 @@ name: fresh install and primary screens
     element: "Open full radar.*"
     direction: DOWN
 - takeScreenshot: home-radar-card
-- tapOn: "Nowcast"
+# Scrolling Home minimized the iOS tab bar; open-tab.yaml expands it before each tab tap.
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Nowcast
 - extendedWaitUntil:
     visible: "NEXT-HOUR PRECIPITATION"
     timeout: 30000
 - takeScreenshot: nowcast
-- tapOn: "Alerts"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Alerts
 - assertVisible: "Refresh weather alerts"
 - takeScreenshot: alerts
-- tapOn: "Settings"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Settings
 - assertVisible: "Search city"
 - takeScreenshot: settings
-- tapOn: "Home"
-- tapOn: "Radar"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Home
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Radar
 - extendedWaitUntil:
     visible: "Choose radar layer"
     timeout: 30000

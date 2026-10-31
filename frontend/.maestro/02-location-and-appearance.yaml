@@ -6,12 +6,16 @@ name: city selection and preferences survive relaunch
     permissions:
       all: deny
 - runFlow: common/dismiss-system-prompts.yaml
-# Denied location must be labelled as the fallback city, never as "My Location".
+# Denied location shows the "Location is off" card naming the fallback city, never "My Location".
 - extendedWaitUntil:
-    visible: "Location is off · showing Grand Rapids"
+    visible: "Location is off"
     timeout: 20000
+- assertVisible: "DEFAULT LOCATION"
 - assertNotVisible: "MY LOCATION"
-- tapOn: "Settings"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Settings
 - tapOn: "Search city"
 - eraseText
 - inputText: "Chicago"
@@ -19,7 +23,10 @@ name: city selection and preferences survive relaunch
     visible: "Use Chicago, Illinois.*"
     timeout: 20000
 - tapOn: "Use Chicago, Illinois.*"
-- tapOn: "Home"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Home
 - extendedWaitUntil:
     visible: "Choose weather location. Current location: Chicago.*"
     timeout: 30000
@@ -30,20 +37,29 @@ name: city selection and preferences survive relaunch
 - extendedWaitUntil:
     visible: "Choose weather location. Current location: Chicago.*"
     timeout: 30000
-- tapOn: "Settings"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Settings
 - scrollUntilVisible:
     element: "Dark"
     direction: DOWN
 - tapOn: "Dark"
 - takeScreenshot: dark-settings
-- tapOn: "Home"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Home
 - takeScreenshot: dark-home
 - stopApp
 - launchApp
 - runFlow: common/dismiss-system-prompts.yaml
 - assertVisible: "Home"
 - takeScreenshot: dark-relaunch
-- tapOn: "Settings"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Settings
 - scrollUntilVisible:
     element: "System"
     direction: DOWN

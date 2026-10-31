@@ -6,12 +6,18 @@ name: temperature units apply to Home and survive relaunch
     permissions:
       all: deny
 - runFlow: common/dismiss-system-prompts.yaml
-- tapOn: "Settings"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Settings
 - scrollUntilVisible:
     element: "°C"
     direction: DOWN
 - tapOn: "°C"
-- tapOn: "Home"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Home
 - extendedWaitUntil:
     visible: ".* degrees celsius"
     timeout: 30000
@@ -22,10 +28,16 @@ name: temperature units apply to Home and survive relaunch
 - extendedWaitUntil:
     visible: ".* degrees celsius"
     timeout: 30000
-- tapOn: "Settings"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Settings
 - scrollUntilVisible:
     element: "°F"
     direction: DOWN
 - tapOn: "°F"
-- tapOn: "Home"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Home
 - assertVisible: ".* degrees fahrenheit"
