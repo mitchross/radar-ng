@@ -4,15 +4,12 @@ import type { LocationMode, SelectedPlace } from "../types/location";
 import { DEFAULTS, RADAR, SELF_HOSTED } from "../lib/constants";
 import { getString, setString } from "../lib/storage";
 import {
-  DEFAULT_RADAR_ENGINE,
   parseMapStyle,
   parsePalette,
-  parseRadarEngine,
   parseServerUrl,
   parseViewMode,
   parseOpacity,
   parsePlaybackFps,
-  type RadarEngine,
   type ViewMode,
 } from "../lib/persistedPrefs";
 import type { AppearanceMode } from "../theme/weatherClearTheme";
@@ -46,8 +43,6 @@ interface WeatherState {
   radarOpacity: number;
   /** Draw radar frames that have packed tiles on the GPU (PackedRadarOverlay); off = PNG rasters. */
   fastRadar: boolean;
-  /** Which fast-radar engine draws: the Skia canvas over the map, or colored tiles inside it. Read only while fastRadar is on. */
-  radarEngine: RadarEngine;
   activeLayer: LayerType;
   temperatureUnit: TemperatureUnit;
   mapStyle: MapStyle;
@@ -83,7 +78,6 @@ interface WeatherState {
   setFocusBounds: (bounds: [number, number, number, number] | null) => void;
   setRadarOpacity: (opacity: number) => void;
   setFastRadar: (on: boolean) => void;
-  setRadarEngine: (engine: RadarEngine) => void;
   setTemperatureUnit: (unit: TemperatureUnit) => void;
   setMapStyle: (style: MapStyle) => void;
   setActivePalette: (palette: Palette) => void;
@@ -164,7 +158,6 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   focusBounds: null,
   radarOpacity: parseOpacity(getString("radarOpacity", String(RADAR.DEFAULT_OPACITY)), RADAR.DEFAULT_OPACITY),
   fastRadar: getString("fastRadar", "1") === "1",
-  radarEngine: parseRadarEngine(getString("radarEngine", DEFAULT_RADAR_ENGINE)),
   activeLayer: "radar" as LayerType,
   temperatureUnit: getString("temperatureUnit", "fahrenheit") === "celsius" ? "celsius" : "fahrenheit",
   // Persisted strings are parsed, not cast: a stale/garbage value would otherwise
@@ -285,10 +278,6 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setFastRadar: (on) => {
     setString("fastRadar", on ? "1" : "0");
     set({ fastRadar: on });
-  },
-  setRadarEngine: (engine) => {
-    setString("radarEngine", engine);
-    set({ radarEngine: engine });
   },
   setTemperatureUnit: (unit) => {
     setString("temperatureUnit", unit);

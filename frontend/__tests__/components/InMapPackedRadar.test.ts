@@ -1,12 +1,7 @@
 import { readFileSync } from "fs";
 import path from "path";
-import {
-  DEFAULT_RADAR_ENGINE,
-  parseRadarEngine,
-  RADAR_ENGINE_OPTIONS,
-} from "../../src/lib/persistedPrefs";
 import { useWeatherStore } from "../../src/stores/useWeatherStore";
-import { setString } from "../../src/lib/storage";
+import { getString } from "../../src/lib/storage";
 
 jest.mock("../../src/lib/storage", () => ({
   getString: jest.fn((_k: string, d: string) => d),
@@ -63,11 +58,10 @@ describe("InMapPackedRadar contracts", () => {
 describe("radar screen engine wiring", () => {
   const screen = read("app/(tabs)/radar.tsx");
 
-  it("mounts the in-map frames before the anchor and keeps the Skia overlay for the other engine", () => {
-    expect(screen.indexOf("<InMapPackedRadar")).toBeGreaterThan(0);
+  it("mounts the in-map frames before the anchor whenever fast radar has packed frames", () => {
+    expect(screen.indexOf("{packed ? <InMapPackedRadar")).toBeGreaterThan(0);
     expect(screen.indexOf("<InMapPackedRadar")).toBeLessThan(screen.indexOf("<WeatherAnchor />"));
-    expect(screen).toContain("{packed && (!inMap || inMapFallback) ? <PackedRadarOverlay");
-    expect(screen).toContain('radarEngine === "in-map"');
+    expect(screen).not.toContain("radarEngine");
   });
 
   it("draws the Skia overlay instead while the in-map safety net has fired", () => {
@@ -85,10 +79,14 @@ describe("in-map tile zoom and diagnostics wiring", () => {
     expect(read("components/map/PackedRadarOverlay.tsx")).not.toContain('"round"');
   });
 
-  it("shows the diagnostics under the Radar engine row only for In-map", () => {
+  it("shows the diagnostics under the Fast radar row, only while Fast radar is on", () => {
     const settings = read("app/(tabs)/settings.tsx");
-    expect(settings).toContain('radarEngine === "in-map" ? (');
-    expect(settings.indexOf("inMapSummary.map")).toBeGreaterThan(settings.indexOf('title="Radar engine"'));
+    const fast = settings.indexOf('label="Fast radar (GPU)"');
+    const diag = settings.indexOf("inMapSummary.map");
+    expect(fast).toBeGreaterThan(0);
+    expect(diag).toBeGreaterThan(fast);
+    expect(settings.slice(fast, diag)).toContain("{fastRadar ? (");
+    expect(settings).not.toContain("Radar engine");
   });
 
   it("leaves no empty catch in the in-map path", () => {
@@ -98,38 +96,12 @@ describe("in-map tile zoom and diagnostics wiring", () => {
   });
 });
 
-describe("radar engine setting", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    useWeatherStore.setState(useWeatherStore.getInitialState());
-  });
-
-  it("defaults to Classic fast until a device test decides otherwise", () => {
-    expect(DEFAULT_RADAR_ENGINE).toBe("skia");
-    expect(useWeatherStore.getState().radarEngine).toBe("skia");
-    expect(RADAR_ENGINE_OPTIONS[0]).toEqual({ value: "skia", label: "Classic fast" });
-    expect(RADAR_ENGINE_OPTIONS.find((o) => o.value === "in-map")?.label).toBe("In-map");
-  });
-
-  it("persists the choice under radarEngine", () => {
-    useWeatherStore.getState().setRadarEngine("in-map");
-    expect(setString).toHaveBeenCalledWith("radarEngine", "in-map");
-    expect(useWeatherStore.getState().radarEngine).toBe("in-map");
-  });
-
-  it("falls back to the default on a stale stored value", () => {
-    expect(parseRadarEngine("in-map")).toBe("in-map");
-    expect(parseRadarEngine("webgl")).toBe("skia");
-    expect(parseRadarEngine("")).toBe("skia");
-  });
-
-  it("shows the picker next to Fast radar, only while Fast radar is on", () => {
-    const settings = read("app/(tabs)/settings.tsx");
-    const fast = settings.indexOf('label="Fast radar (GPU)"');
-    const engine = settings.indexOf('title="Radar engine"');
-    expect(fast).toBeGreaterThan(0);
-    expect(engine).toBeGreaterThan(fast);
-    expect(settings.slice(fast, engine)).toContain("{fastRadar ? (");
-    expect(settings).toContain("keeps warnings, storm cells and your pin above the radar");
+describe("fast radar has no engine choice", () => {
+  it("keeps no radarEngine pref and never reads the old persisted key", () => {
+    const state = useWeatherStore.getInitialState();
+    expect(state).not.toHaveProperty("radarEngine");
+    expect(state).not.toHaveProperty("setRadarEngine");
+    expect(read("stores/useWeatherStore.ts")).not.toContain("radarEngine");
+    expect(getString).not.toHaveBeenCalledWith("radarEngine", expect.anything());
   });
 });

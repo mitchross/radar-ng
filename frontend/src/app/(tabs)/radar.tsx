@@ -12,7 +12,7 @@
  *   • EyedropperPin    (long-press map → readout)
  *   • TimelineBar      ("Reflectivity / Sunday, April 19 2026" header)
  */
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { View, StyleSheet, Text, Pressable } from "react-native";
 import { useIsFocused, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -37,7 +37,6 @@ import { WindParticlesOverlay, useSharedCamera } from "../../components/map/Wind
 import { WeatherAnchor } from "../../components/map/RasterFrameCarousel";
 import { PackedRadarOverlay } from "../../components/map/PackedRadarOverlay";
 import { InMapPackedRadar } from "../../components/map/InMapPackedRadar";
-import { canRenderInMap } from "../../components/map/inMapRadarEngine";
 import { SatelliteOverlay } from "../../components/map/SatelliteOverlay";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { LayerLegendCard } from "../../components/map/LayerLegendCard";
@@ -110,10 +109,6 @@ export default function RadarScreen() {
   );
   // Radar frames with packed tiles draw on the GPU canvas; the rest stay MapLibre rasters.
   const packed = usePackedFrames();
-  // Fast radar's engine choice: the Skia canvas over the map (default) or tiles inside it. The
-  // in-map engine needs an offscreen Skia surface; without one the canvas overlay draws.
-  const radarEngine = useWeatherStore((s) => s.radarEngine);
-  const inMap = useMemo(() => radarEngine === "in-map" && canRenderInMap(), [radarEngine]);
   // Set while In-map has drawn nothing it can show (no frame in time, or a file missing): the
   // Classic fast overlay draws meanwhile, and In-map keeps trying behind it.
   const [inMapFallback, setInMapFallback] = useState<string | null>(null);
@@ -149,8 +144,8 @@ export default function RadarScreen() {
           <WeatherLayerOverlay key={activeLayer} layerId={activeLayer} opacity={layerOpacity} isPacked={packed?.isPacked} />
         )}
         {/* Radar and weather slots insert under this; everything after it draws above them. */}
-        {/* In-map engine: packed frames as raster sources, inserted under the anchor like the classic ones. */}
-        {inMap && packed ? <InMapPackedRadar packed={packed} opacity={layerOpacity} camera={camera} onFallback={setInMapFallback} /> : null}
+        {/* Fast radar: packed frames as raster sources, inserted under the anchor like the raster frames. */}
+        {packed ? <InMapPackedRadar packed={packed} opacity={layerOpacity} camera={camera} onFallback={setInMapFallback} /> : null}
         <WeatherAnchor />
         {/* Always mounted: each overlay renders an empty collection / hidden pin when
             it has nothing to show, so the map's native child count never churns. */}
@@ -163,7 +158,7 @@ export default function RadarScreen() {
         <LayerLocationMarker inspecting={pinned != null} />
         <EyedropperPin pinned={pinned} readout={inspect.readout} />
       </WeatherMap>
-      {packed && (!inMap || inMapFallback) ? <PackedRadarOverlay packed={packed} camera={camera} opacity={layerOpacity} /> : null}
+      {packed && inMapFallback ? <PackedRadarOverlay packed={packed} camera={camera} opacity={layerOpacity} /> : null}
 
       {/* The tab bar is hidden on this full-screen route, so this is the way back. */}
       <MapChromeSurface
