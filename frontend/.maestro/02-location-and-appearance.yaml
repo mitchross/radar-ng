@@ -7,10 +7,12 @@ name: city selection and preferences survive relaunch
       all: deny
 - runFlow: common/dismiss-system-prompts.yaml
 # Denied location shows the "Location is off" card naming the fallback city, never "My Location".
+# The "DEFAULT LOCATION" label is not in the accessibility tree (the location button exposes one
+# combined label), so assert on the card copy instead.
 - extendedWaitUntil:
     visible: "Location is off"
     timeout: 20000
-- assertVisible: "DEFAULT LOCATION"
+- assertVisible: "Showing .*\\. Turn location on in Settings, or pick a city to follow instead\\."
 - assertNotVisible: "MY LOCATION"
 - runFlow:
     file: common/open-tab.yaml
