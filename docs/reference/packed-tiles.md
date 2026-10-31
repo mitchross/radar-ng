@@ -228,21 +228,20 @@ multiplies by the layer opacity. A later version may crossfade two slots.
   tile. It fetches every bucket the playback sequence needs, for the tiles in view at
   `clamp(floor(zoom), min_zoom, max_zoom)`, and keeps parent tiles while children load.
   Frames without a packed slot use the existing raster path.
-- **App:** two engines, chosen in Settings → **Radar engine** (shown while **Fast radar** is on):
-  - **Classic fast** (default): a Skia overlay with an SkSL `RuntimeEffect`, using the camera
-    projection the wind overlay uses. Atlas and table are image shaders. It is a canvas over the
-    whole map, so it also covers warnings, storm cells and the location pin.
-  - **In-map**: the same packed download and the same shader, but each (frame, tile) is colored
-    once into a 512 x 512 offscreen Skia surface and saved as a PNG at
-    `<cache>/radar-inmap/<layer>/<frameKey>/<gen>/{z}/{x}/{y}.png`. Every frame is a normal
-    MapLibre `RasterSource` (`tiles: ["file://…/{z}/{x}/{y}.png"]`, `tileSize` 512, `maxzoom` =
-    the packed max zoom) with a raster layer under the `weather-anchor` layer, so warnings, storm
-    cells and the pin draw above the radar. Playback only changes `raster-opacity`. A frame is
-    mounted only once the tiles for the current view (plus a one-tile ring) are on disk; a pan
-    that needs more writes a new `<gen>` (reusing files already on disk) and the source moves to
-    the new URL template. Frames that left the manifest, old gens and the whole directory (when
-    the engine is switched away) are deleted, and the total is capped. If no offscreen surface can
-    be made, the Skia overlay is used instead.
+- **App:** the **In-map** engine, used whenever Settings → **Fast radar** is on. Each (frame,
+  tile) is colored once by an SkSL `RuntimeEffect` (atlas and table are image shaders) into a
+  512 x 512 offscreen Skia surface and saved as a PNG at
+  `<cache>/radar-inmap/<layer>/<frameKey>/<gen>/{z}/{x}/{y}.png`. Every frame is a normal
+  MapLibre `RasterSource` (`tiles: ["file://…/{z}/{x}/{y}.png"]`, `tileSize` 512, `maxzoom` =
+  the packed max zoom) with a raster layer under the `weather-anchor` layer, so warnings, storm
+  cells and the pin draw above the radar. Playback only changes `raster-opacity`. A frame is
+  mounted only once the tiles for the current view (plus a one-tile ring) are on disk; a pan
+  that needs more writes a new `<gen>` (reusing files already on disk) and the source moves to
+  the new URL template. Frames that left the manifest, old gens and the whole directory (when
+  Fast radar is switched off) are deleted, and the total is capped. If no offscreen surface can
+  be made, no frame is committed within 8 seconds, or a tile file is missing, the app draws the
+  normal raster radar (what Fast radar off draws) while In-map keeps trying. The earlier Skia
+  canvas overlay, which covered warnings, storm cells and the pin, was removed.
 
 ## Rollout
 
