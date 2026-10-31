@@ -51,6 +51,7 @@ import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import { readingColumnStyle } from "../../lib/tabletLayout";
 import { SATELLITE_OVERLAY } from "../../components/map/radarLayers";
 import { clearInMapCache } from "../../components/map/inMapRadarEngine";
+import { useInMapSummary } from "../../hooks/useInMapStats";
 
 type SourceKey = "radar" | "satellite" | "forecast" | "airquality" | "basemap" | "alerts";
 type SourceStatus = "healthy" | "stale" | "error" | "disabled";
@@ -87,6 +88,7 @@ export default function SettingsScreen() {
   const setFastRadar = useWeatherStore((s) => s.setFastRadar);
   const radarEngine = useWeatherStore((s) => s.radarEngine);
   const setRadarEngine = useWeatherStore((s) => s.setRadarEngine);
+  const inMapSummary = useInMapSummary();
   const satelliteVisible = useWeatherStore((s) => s.satelliteVisible);
   const setSatelliteVisible = useWeatherStore((s) => s.setSatelliteVisible);
   const setPlaybackSpeed = useWeatherStore((s) => s.setPlaybackSpeed);
@@ -538,6 +540,15 @@ export default function SettingsScreen() {
                     }}
                   />
                 </Row>
+                {radarEngine === "in-map" ? (
+                  <View style={styles.inMapDiag}>
+                    {inMapSummary.map((line) => (
+                      <Text key={line} style={styles.inMapDiagText} selectable>
+                        {line}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
               </>
             ) : null}
             <Sep />
@@ -1296,6 +1307,8 @@ function createStyles(theme: WeatherClearTheme) {
   rowLabel: { fontSize: 14, color: cumulus.ink, fontWeight: "600", fontFamily: cumulusFonts.ui },
   rowSub: { fontSize: 11, color: cumulus.inkMuted, fontFamily: cumulusFonts.ui, marginTop: 2 },
   monoDim: { fontSize: 12, fontFamily: cumulusFonts.mono, color: cumulus.inkMuted },
+  inMapDiag: { paddingHorizontal: 16, paddingBottom: 12, gap: 2 },
+  inMapDiagText: { fontSize: 10, fontFamily: cumulusFonts.mono, color: cumulus.inkMuted },
 
   sourceRow: {
     flexDirection: "row",

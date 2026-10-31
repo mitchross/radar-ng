@@ -115,17 +115,33 @@ export function packedTileZoom(zoom: number, minZoom: number, maxZoom: number): 
 }
 
 /**
- * 512-px tiles covering the screen at clamp(floor(zoom), minZoom, maxZoom), nearest to the center
- * first. With a bearing, the cover is the rotated screen's bounding box. No world wrap.
+ * Tile zoom MapLibre Native requests for a 512-px raster source at a map zoom: it rounds (floor is
+ * for vector sources), then clamps to the source's zoom range. The in-map engine must write the tiles
+ * MapLibre will ask for, so it covers at this zoom instead of packedTileZoom.
+ */
+export function mapLibreRasterTileZoom(zoom: number, minZoom: number, maxZoom: number): number {
+  return Math.max(minZoom, Math.min(maxZoom, Math.round(zoom)));
+}
+
+/** How a cover picks its tile zoom: the Skia overlay draws at floor, MapLibre loads at round. */
+export type TileZoomMode = "floor" | "round";
+
+/**
+ * 512-px tiles covering the screen at clamp(floor(zoom), minZoom, maxZoom) (round for the in-map
+ * engine, see mapLibreRasterTileZoom), nearest to the center first. With a bearing, the cover is the rotated screen's bounding box. No world wrap.
  */
 export function tileCover(
   camera: PackedCamera,
   screen: { width: number; height: number },
   minZoom: number,
   maxZoom: number,
+  zoomMode: TileZoomMode = "floor",
 ): TileId[] {
   if (!(screen.width > 0 && screen.height > 0)) return [];
-  const z = packedTileZoom(camera.zoom, minZoom, maxZoom);
+  const z =
+    zoomMode === "round"
+      ? mapLibreRasterTileZoom(camera.zoom, minZoom, maxZoom)
+      : packedTileZoom(camera.zoom, minZoom, maxZoom);
   const center = worldPixel(camera.lon, camera.lat, camera.zoom);
   const rad = ((camera.bearing ?? 0) * Math.PI) / 180;
   const cos = Math.abs(Math.cos(rad));

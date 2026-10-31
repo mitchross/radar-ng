@@ -5,6 +5,7 @@ import {
   buildLut,
   buildPackedFrames,
   locateFrame,
+  mapLibreRasterTileZoom,
   packedTileUrl,
   packedTileZoom,
   parsePackedMeta,
@@ -219,6 +220,27 @@ describe("tileCover", () => {
 
   it("is empty before the canvas has a size", () => {
     expect(tileCover({ lon: 0, lat: 0, zoom: 4 }, { width: 0, height: 0 }, 3, 6)).toEqual([]);
+  });
+
+  it("covers at MapLibre's rounded raster zoom in round mode, floor otherwise", () => {
+    const c = lngLat(4.5 * 512 * 2, 5.5 * 512 * 2, 5);
+    // Map zoom 5.7: MapLibre asks for z6 tiles, the Skia overlay draws z5.
+    expect(mapLibreRasterTileZoom(5.7, 3, 6)).toBe(6);
+    expect(mapLibreRasterTileZoom(5.4, 3, 6)).toBe(5);
+    expect(mapLibreRasterTileZoom(5.5, 3, 6)).toBe(6);
+    expect(tileCover({ ...c, zoom: 5.7 }, screen, 3, 6).every((t) => t.z === 5)).toBe(true);
+    expect(tileCover({ ...c, zoom: 5.7 }, screen, 3, 6, "floor").every((t) => t.z === 5)).toBe(true);
+    const round = tileCover({ ...c, zoom: 5.7 }, screen, 3, 6, "round");
+    expect(round.length).toBeGreaterThan(0);
+    expect(round.every((t) => t.z === 6)).toBe(true);
+  });
+
+  it("clamps the rounded zoom to the source range", () => {
+    const c = lngLat(4.5 * 512, 5.5 * 512, 4);
+    expect(mapLibreRasterTileZoom(6.6, 3, 6)).toBe(6);
+    expect(mapLibreRasterTileZoom(2.6, 3, 6)).toBe(3);
+    expect(tileCover({ ...c, zoom: 6.6 }, screen, 3, 6, "round").every((t) => t.z === 6)).toBe(true);
+    expect(tileCover({ ...c, zoom: 2.4 }, screen, 3, 6, "round").every((t) => t.z === 3)).toBe(true);
   });
 });
 

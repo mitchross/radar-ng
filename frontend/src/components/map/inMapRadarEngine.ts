@@ -12,7 +12,8 @@
  * a process wipes the directory, since the index of what is on disk is not persisted.
  */
 import { ImageFormat, Skia, type SkPaint, type SkRuntimeEffect, type SkShader, type SkSurface } from "@shopify/react-native-skia";
-import { copyTile, deleteRelative, listFrames, wipeAll, writeTile } from "../../lib/inMapRadarDisk";
+import { hasPngSignature, inMapStats, patchInMapStats, recordInMapError, type InMapStage } from "../../lib/inMapDiag";
+import { copyTile, deleteRelative, listFrames, verifyTile, wipeAll, writeTile } from "../../lib/inMapRadarDisk";
 import {
   commitGen,
   diskBytes,
@@ -54,6 +55,8 @@ export interface EngineInput {
   covers: ReadonlyMap<string, readonly TileId[]>;
 }
 
+export { inMapStats };
+
 /** frameDir → committed disk state; module-level, see the header. */
 const disk = new Map<string, FrameDisk>();
 let initialized = false;
@@ -65,9 +68,14 @@ const zoomRangeKey = (loc: PackedFrameLocation) => `${loc.meta.min_zoom}|${loc.m
 function getSurface(): SkSurface | null {
   if (surface === undefined) {
     try {
-      surface = Skia.Surface.MakeOffscreen(PACKED_TILE_SIZE, PACKED_TILE_SIZE, { colorSpace: "srgb" }) ?? Skia.Surface.Make(PACKED_TILE_SIZE, PACKED_TILE_SIZE);
-    } catch {
+      const gpu = Skia.Surface.MakeOffscreen(PACKED_TILE_SIZE, PACKED_TILE_SIZE, { colorSpace: "srgb" });
+      surface = gpu ?? Skia.Surface.Make(PACKED_TILE_SIZE, PACKED_TILE_SIZE);
+      patchInMapStats({ surface: gpu ? "gpu" : surface ? "cpu" : "none" });
+      if (!surface) recordInMapError("surface", "no surface could be made");
+    } catch (err) {
       surface = null;
+      patchInMapStats({ surface: "none" });
+      recordInMapError("surface", err);
     }
   }
   return surface;
@@ -76,14 +84,28 @@ function getSurface(): SkSurface | null {
 /** False when no offscreen surface can be made; the caller falls back to the Skia canvas overlay. */
 export const canRenderInMap = () => getSurface() != null;
 
+/** PNG bytes of the surface. Throws (and records what it got) when they are empty or not a PNG. */
 function encode(target: SkSurface): Uint8Array {
   target.flush();
   const image = target.makeImageSnapshot();
+  let bytes: Uint8Array;
   try {
-    return image.encodeToBytes(ImageFormat.PNG);
+    // A GPU snapshot is a texture; read it back to a raster image first, which encodes reliably.
+    const raster = image.makeNonTextureImage();
+    try {
+      bytes = raster ? raster.encodeToBytes(ImageFormat.PNG) : new Uint8Array();
+    } finally {
+      raster?.dispose();
+    }
+    if (!hasPngSignature(bytes)) bytes = image.encodeToBytes(ImageFormat.PNG);
   } finally {
     image.dispose();
   }
+  const signature = hasPngSignature(bytes);
+  patchInMapStats({ lastPngBytes: bytes.length, lastPngSignature: signature });
+  if (bytes.length === 0) throw new Error("empty");
+  if (!signature) throw new Error("not a PNG");
+  return bytes;
 }
 
 /** A fully transparent tile: what a 204 (no data) packed tile becomes. */
@@ -95,20 +117,14 @@ function transparentPng(target: SkSurface): Uint8Array {
   return emptyPng;
 }
 
-function colorTile(
-  target: SkSurface,
-  paint: SkPaint,
-  effect: SkRuntimeEffect,
-  atlas: SkShader,
-  frame: EngineFrame,
-): Uint8Array {
+/** Draw one tile into the surface (the "color" stage); encode() reads it back. */
+function colorTile(target: SkSurface, paint: SkPaint, effect: SkRuntimeEffect, atlas: SkShader, frame: EngineFrame) {
   const canvas = target.getCanvas();
   canvas.clear(Skia.Color("transparent"));
   const { x0, y0, channel } = frame.loc;
   // The tile fills the surface 1:1, so the origin is (0, 0) and the scale 1; opacity is applied by MapLibre.
   paint.setShader(effect.makeShaderWithChildren([0, 0, 1, x0, y0, channel, PACKED_TILE_SIZE, 1], [atlas, frame.lut]));
   canvas.drawRect(Skia.XYWHRect(0, 0, PACKED_TILE_SIZE, PACKED_TILE_SIZE), paint);
-  return encode(target);
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -221,6 +237,18 @@ export function createInMapEngine(onChange: () => void) {
     return null;
   }
 
+  /** Check the gen's first tile is on disk where the MapLibre URL template points before the gen is handed over. */
+  function verifyGen(layer: string, frame: EngineFrame, plan: GenPlan): boolean {
+    const { uri, exists } = verifyTile(layer, frame.frameKey, plan.gen, plan.want[0]);
+    if (inMapStats.firstTileExists !== true) patchInMapStats({ firstTileUri: uri, firstTileExists: exists });
+    patchInMapStats({ verifyOk: exists });
+    if (!exists) {
+      recordInMapError("verify", "tile file missing after write");
+      onChange(); // the safety net re-checks whether to draw the Classic fast overlay
+    }
+    return exists;
+  }
+
   /** Write one gen of one frame. "done" = committed; "abort" = the viewport moved or the engine stopped. */
   async function prepare(rank: number, frame: EngineFrame, plan: GenPlan, current: EngineInput): Promise<"done" | "abort" | "error" | "full"> {
     const target = getSurface();
@@ -236,6 +264,7 @@ export function createInMapEngine(onChange: () => void) {
     const written = new Map<string, number>();
     const toRender = [...plan.render];
     activeGen = { dir: frame.dir, gen: plan.gen };
+    let stage: InMapStage = "copy";
     try {
       if (prev) {
         for (const t of plan.reuse) {
@@ -244,25 +273,40 @@ export function createInMapEngine(onChange: () => void) {
         }
       }
       for (const t of toRender) {
+        stage = "atlas-load";
         const entry = await settled(frame.urlFor(t));
         if (aborted()) return "abort";
-        if (!entry || entry.state === "error") return "error";
+        if (!entry || entry.state === "error") {
+          recordInMapError("atlas-load", entry ? "atlas download failed" : "engine stopped");
+          return "error";
+        }
         // An atlas shorter than this slot's block has no data for it (or is an older version).
         let bytes: Uint8Array;
         if (entry.state === "ready" && entry.height >= frame.loc.y0 + PACKED_TILE_SIZE) {
           tiles.touch(frame.urlFor(t), entry);
-          bytes = colorTile(target, paint, current.effect, entry.handle.shader, frame);
+          stage = "color";
+          colorTile(target, paint, current.effect, entry.handle.shader, frame);
+          stage = "encode";
+          bytes = encode(target);
         } else {
+          stage = "encode";
           bytes = transparentPng(target);
         }
+        stage = "write";
         await writeTile(layer, frame.frameKey, plan.gen, t, bytes);
         written.set(tileKey(t), bytes.length);
+        inMapStats.tilesWritten++;
+        inMapStats.bytesWritten += bytes.length;
         await sleep(YIELD_MS);
       }
+      stage = "verify";
+      if (!verifyGen(layer, frame, plan)) return "error";
       disk.set(frame.dir, commitGen(prev, plan, written));
+      patchInMapStats({ framesCommitted: inMapStats.framesCommitted + 1, writtenZoom: plan.want[0].z });
       onChange();
       return "done";
-    } catch {
+    } catch (err) {
+      recordInMapError(stage, err);
       return "error";
     } finally {
       activeGen = null;

@@ -114,6 +114,9 @@ export default function RadarScreen() {
   // in-map engine needs an offscreen Skia surface; without one the canvas overlay draws.
   const radarEngine = useWeatherStore((s) => s.radarEngine);
   const inMap = useMemo(() => radarEngine === "in-map" && canRenderInMap(), [radarEngine]);
+  // Set while In-map has drawn nothing it can show (no frame in time, or a file missing): the
+  // Classic fast overlay draws meanwhile, and In-map keeps trying behind it.
+  const [inMapFallback, setInMapFallback] = useState<string | null>(null);
   const layerOpacity = FIXED_LAYER_OPACITY[activeLayer] ?? radarOpacity;
   // Particles also run over the air-quality heatmap (the IQAir Earth look):
   // the wind field is what carries the smoke plume, so seeing it flow over
@@ -147,7 +150,7 @@ export default function RadarScreen() {
         )}
         {/* Radar and weather slots insert under this; everything after it draws above them. */}
         {/* In-map engine: packed frames as raster sources, inserted under the anchor like the classic ones. */}
-        {inMap && packed ? <InMapPackedRadar packed={packed} opacity={layerOpacity} camera={camera} /> : null}
+        {inMap && packed ? <InMapPackedRadar packed={packed} opacity={layerOpacity} camera={camera} onFallback={setInMapFallback} /> : null}
         <WeatherAnchor />
         {/* Always mounted: each overlay renders an empty collection / hidden pin when
             it has nothing to show, so the map's native child count never churns. */}
@@ -160,7 +163,7 @@ export default function RadarScreen() {
         <LayerLocationMarker inspecting={pinned != null} />
         <EyedropperPin pinned={pinned} readout={inspect.readout} />
       </WeatherMap>
-      {packed && !inMap ? <PackedRadarOverlay packed={packed} camera={camera} opacity={layerOpacity} /> : null}
+      {packed && (!inMap || inMapFallback) ? <PackedRadarOverlay packed={packed} camera={camera} opacity={layerOpacity} /> : null}
 
       {/* The tab bar is hidden on this full-screen route, so this is the way back. */}
       <MapChromeSurface

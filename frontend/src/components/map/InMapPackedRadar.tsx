@@ -23,11 +23,13 @@ import { useSharedValue } from "react-native-reanimated";
 import { useIsFocused } from "expo-router";
 import { useAppActive } from "../../hooks/useAppActive";
 import type { PackedFrames } from "../../hooks/usePackedFrames";
+import { decideInMapFallback, IN_MAP_BLANK_MS, inMapStats, patchInMapStats } from "../../lib/inMapDiag";
 import { rootUri } from "../../lib/inMapRadarDisk";
 import { frameDir, frameKeyOf, lutHash, priorityOrder, slotSpec, type InMapSlotSpec } from "../../lib/inMapRadarTiles";
 import { PACKED_TILE_SIZE, packedTileUrl, playbackOrder, tileCover, type TileId } from "../../lib/packed";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { createInMapEngine, getInMapDisk, type EngineFrame } from "./inMapRadarEngine";
+import { startInMapDiagReporter } from "./inMapDiagReporter";
+import { canRenderInMap, createInMapEngine, getInMapDisk, type EngineFrame } from "./inMapRadarEngine";
 import { makeLutShaders, PACKED_SKSL } from "./packedGpu";
 import { WEATHER_ANCHOR_ID } from "./RasterFrameCarousel";
 import { packedZoomBounds, usePackedCoverView, type CoverView } from "./usePackedCoverView";
@@ -41,6 +43,8 @@ interface Props {
   camera: SharedCamera;
   /** The active layer's raster opacity; defaults to the radar opacity setting. */
   opacity?: number;
+  /** Why the Classic fast overlay should draw instead (null: in-map draws). Needs a stable callback. */
+  onFallback?: (reason: string | null) => void;
 }
 
 interface FrameSlot {
@@ -48,7 +52,7 @@ interface FrameSlot {
   spec: InMapSlotSpec;
 }
 
-export function InMapPackedRadar({ packed, camera, opacity: layerOpacity }: Props) {
+export function InMapPackedRadar({ packed, camera, opacity: layerOpacity, onFallback }: Props) {
   const active = useAppActive();
   const focused = useIsFocused();
   const serverUrl = useWeatherStore((s) => s.serverUrl);
@@ -67,7 +71,7 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity }: Prop
 
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const zoomBounds = useMemo(() => packedZoomBounds(packed.locations), [packed.locations]);
-  const view = usePackedCoverView(camera, size, zoomBounds);
+  const view = usePackedCoverView(camera, size, zoomBounds, "round");
   const [settled, setSettled] = useState<CoverView | null>(null);
   useEffect(() => {
     if (!view) return;
@@ -91,7 +95,7 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity }: Prop
     for (const loc of packed.locations) {
       const key = loc ? `${loc.meta.min_zoom}|${loc.meta.max_zoom}` : "";
       if (!loc || out.has(key)) continue;
-      out.set(key, tileCover(settled.camera, settled.screen, loc.meta.min_zoom, loc.meta.max_zoom));
+      out.set(key, tileCover(settled.camera, settled.screen, loc.meta.min_zoom, loc.meta.max_zoom, "round"));
     }
     return out;
   }, [settled, packed.locations]);
@@ -120,7 +124,9 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity }: Prop
     if (paused) return;
     const engine = createInMapEngine(bump);
     engineRef.current = engine;
+    const stopReporter = startInMapDiagReporter();
     return () => {
+      stopReporter();
       engine.stop();
       engineRef.current = null;
     };
@@ -150,7 +156,42 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity }: Prop
       spec: slotSpec(index, { layer, frameKey: frame.frameKey, minZoom: meta.min_zoom, maxZoom: meta.max_zoom }, disk.get(frame.dir), root),
     });
   });
-  return <InMapFrameLayers slots={slots} currentIndex={currentFrameIndex} opacity={radarOpacity} />;
+
+  // Safety net: never a blank radar. No verified frame in time, or a frame whose file is missing,
+  // hands the screen to the Classic fast overlay while the engine keeps trying.
+  const hasCover = !paused && [...covers.values()].some((c) => c.length > 0);
+  const [waitedOut, setWaitedOut] = useState(false);
+  useEffect(() => {
+    if (!hasCover) return;
+    const id = setTimeout(() => setWaitedOut(true), IN_MAP_BLANK_MS);
+    return () => {
+      clearTimeout(id);
+      setWaitedOut(false);
+    };
+  }, [hasCover]);
+  const fallback = decideInMapFallback({
+    canRender: canRenderInMap(),
+    hasCover,
+    waitedMs: waitedOut ? IN_MAP_BLANK_MS : 0,
+    committedFrames: disk.size,
+    verifyFailed: inMapStats.verifyOk === false,
+  });
+  useEffect(() => {
+    patchInMapStats({ fallback });
+    onFallback?.(fallback);
+  }, [fallback, onFallback]);
+  useEffect(() => {
+    return () => onFallback?.(null);
+  }, [onFallback]);
+
+  const currentSpec = slots.find((s) => s.index === currentFrameIndex)?.spec;
+  const currentTemplate = currentSpec?.visible ? currentSpec.tileUrl : null;
+  const mapZoom = settled?.camera.zoom ?? null;
+  useEffect(() => {
+    patchInMapStats({ urlTemplate: currentTemplate, mapZoom });
+  }, [currentTemplate, mapZoom]);
+
+  return <InMapFrameLayers slots={slots} currentIndex={currentFrameIndex} opacity={fallback ? 0 : radarOpacity} />;
 }
 
 /**

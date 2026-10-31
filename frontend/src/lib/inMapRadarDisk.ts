@@ -4,6 +4,7 @@
  * extra dependency. Sizes are tracked by the caller from the bytes it writes; nothing here walks tiles.
  */
 import { Directory, File, Paths } from "expo-file-system";
+import { errorMessage, recordInMapError } from "./inMapDiag";
 import { inMapRootUri, IN_MAP_DIR, tilePath, type DiskFrameListing } from "./inMapRadarTiles";
 import type { TileId } from "./packed";
 
@@ -31,13 +32,21 @@ export async function copyTile(layer: string, frameKey: string, fromGen: number,
   return true;
 }
 
+/** Where a tile is and whether it is on disk with some bytes: the engine's check before a gen is committed. */
+export function verifyTile(layer: string, frameKey: string, gen: number, t: TileId): { uri: string; exists: boolean } {
+  const file = tileFile(layer, frameKey, gen, t);
+  return { uri: file.uri, exists: file.exists && (file.size ?? 1) > 0 };
+}
+
 /** Delete paths relative to the root (a frame dir or a gen dir); missing ones are ignored. */
 export function deleteRelative(paths: readonly string[]) {
   for (const rel of paths) {
     try {
       const dir = new Directory(root(), rel);
       if (dir.exists) dir.delete();
-    } catch {}
+    } catch (err) {
+      recordInMapError("write", `cleanup: ${errorMessage(err)}`);
+    }
   }
 }
 
@@ -46,7 +55,9 @@ export function wipeAll() {
   try {
     const dir = root();
     if (dir.exists) dir.delete();
-  } catch {}
+  } catch (err) {
+    recordInMapError("write", `wipe: ${errorMessage(err)}`);
+  }
 }
 
 /** Every `layer/frameKey/gen` directory on disk, grouped by frame. */
@@ -67,6 +78,8 @@ export function listFrames(): DiskFrameListing[] {
         out.push({ layer: layer.name, frameKey: frame.name, gens });
       }
     }
-  } catch {}
+  } catch (err) {
+    recordInMapError("write", `list: ${errorMessage(err)}`);
+  }
   return out;
 }

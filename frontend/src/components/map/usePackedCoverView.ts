@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { useAnimatedReaction, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import type { PackedCamera, PackedFrameLocation } from "../../lib/packed";
+import type { PackedCamera, PackedFrameLocation, TileZoomMode } from "../../lib/packed";
 import type { SharedCamera } from "./WindParticlesOverlay";
 
 export interface CoverView {
@@ -31,6 +31,7 @@ export function usePackedCoverView(
   camera: SharedCamera,
   size: SharedValue<{ width: number; height: number }>,
   zoomBounds: { lo: number; hi: number },
+  zoomMode: TileZoomMode = "floor",
 ): CoverView | null {
   const [view, setView] = useState<CoverView | null>(null);
   useAnimatedReaction(
@@ -38,7 +39,8 @@ export function usePackedCoverView(
       "worklet";
       const s = size.get();
       const zoom = camera.zoom.get();
-      const z = Math.max(zoomBounds.lo, Math.min(zoomBounds.hi, Math.floor(zoom)));
+      const base = zoomMode === "round" ? Math.round(zoom) : Math.floor(zoom);
+      const z = Math.max(zoomBounds.lo, Math.min(zoomBounds.hi, base));
       const world = 512 * Math.pow(2, zoom);
       const latRad = Math.max(-1.4844, Math.min(1.4844, (camera.lat.get() * Math.PI) / 180));
       const cx = ((camera.lon.get() + 180) / 360) * world;
@@ -47,7 +49,7 @@ export function usePackedCoverView(
       const hw = (s.width / 2) * Math.abs(Math.cos(rad)) + (s.height / 2) * Math.abs(Math.sin(rad));
       const hh = (s.width / 2) * Math.abs(Math.sin(rad)) + (s.height / 2) * Math.abs(Math.cos(rad));
       const tw = 512 * Math.pow(2, zoom - z);
-      const key = `${Math.floor(zoom)}|${z}|${Math.floor((cx - hw) / tw)}|${Math.floor((cx + hw) / tw)}|${Math.floor(
+      const key = `${base}|${z}|${Math.floor((cx - hw) / tw)}|${Math.floor((cx + hw) / tw)}|${Math.floor(
         (cy - hh) / tw,
       )}|${Math.floor((cy + hh) / tw)}|${s.width}x${s.height}`;
       return {
@@ -59,7 +61,7 @@ export function usePackedCoverView(
     (next, prev) => {
       if (next.key !== prev?.key) scheduleOnRN(setView, next);
     },
-    [zoomBounds],
+    [zoomBounds, zoomMode],
   );
   return view;
 }

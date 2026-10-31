@@ -66,8 +66,35 @@ describe("radar screen engine wiring", () => {
   it("mounts the in-map frames before the anchor and keeps the Skia overlay for the other engine", () => {
     expect(screen.indexOf("<InMapPackedRadar")).toBeGreaterThan(0);
     expect(screen.indexOf("<InMapPackedRadar")).toBeLessThan(screen.indexOf("<WeatherAnchor />"));
-    expect(screen).toContain("{packed && !inMap ? <PackedRadarOverlay");
+    expect(screen).toContain("{packed && (!inMap || inMapFallback) ? <PackedRadarOverlay");
     expect(screen).toContain('radarEngine === "in-map"');
+  });
+
+  it("draws the Skia overlay instead while the in-map safety net has fired", () => {
+    expect(screen).toContain("onFallback={setInMapFallback}");
+    expect(read("components/map/InMapPackedRadar.tsx")).toContain("decideInMapFallback(");
+  });
+});
+
+describe("in-map tile zoom and diagnostics wiring", () => {
+  const radar = read("components/map/InMapPackedRadar.tsx");
+
+  it("covers at MapLibre's rounded raster zoom, in the view hook and the cover", () => {
+    expect(radar).toContain('usePackedCoverView(camera, size, zoomBounds, "round")');
+    expect(radar).toContain('loc.meta.max_zoom, "round")');
+    expect(read("components/map/PackedRadarOverlay.tsx")).not.toContain('"round"');
+  });
+
+  it("shows the diagnostics under the Radar engine row only for In-map", () => {
+    const settings = read("app/(tabs)/settings.tsx");
+    expect(settings).toContain('radarEngine === "in-map" ? (');
+    expect(settings.indexOf("inMapSummary.map")).toBeGreaterThan(settings.indexOf('title="Radar engine"'));
+  });
+
+  it("leaves no empty catch in the in-map path", () => {
+    for (const file of ["components/map/inMapRadarEngine.ts", "lib/inMapRadarDisk.ts"]) {
+      expect(read(file)).not.toMatch(/catch\s*(\([^)]*\))?\s*\{\s*\}/);
+    }
   });
 });
 
