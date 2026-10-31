@@ -50,6 +50,7 @@ import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import { readingColumnStyle } from "../../lib/tabletLayout";
 import { SATELLITE_OVERLAY } from "../../components/map/radarLayers";
+import { clearInMapCache } from "../../components/map/inMapRadarEngine";
 
 type SourceKey = "radar" | "satellite" | "forecast" | "airquality" | "basemap" | "alerts";
 type SourceStatus = "healthy" | "stale" | "error" | "disabled";
@@ -512,7 +513,11 @@ export default function SettingsScreen() {
               label="Fast radar (GPU)"
               sub="Colors radar on the GPU with no download per frame; turn off if radar looks wrong"
               value={fastRadar}
-              onChange={setFastRadar}
+              onChange={(on) => {
+                setFastRadar(on);
+                // The in-map engine's colored tiles are only useful while it can draw.
+                if (!on) clearInMapCache();
+              }}
             />
             {fastRadar ? (
               <>
@@ -527,7 +532,9 @@ export default function SettingsScreen() {
                     selected={RADAR_ENGINE_OPTIONS.find((o) => o.value === radarEngine)?.label ?? ""}
                     onSelect={(label) => {
                       const next = RADAR_ENGINE_OPTIONS.find((o) => o.label === label);
-                      if (next) setRadarEngine(next.value);
+                      if (!next) return;
+                      setRadarEngine(next.value);
+                      if (next.value !== "in-map") clearInMapCache();
                     }}
                   />
                 </Row>

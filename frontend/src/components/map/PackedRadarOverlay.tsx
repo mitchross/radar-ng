@@ -10,18 +10,7 @@
  * Mercator with 512-pt tiles (MapLibre's zoom), screen center = camera center. Bearing rotates
  * the drawing around the center; the radar screen disables pitch while this overlay is on.
  */
-import {
-  AlphaType,
-  Canvas,
-  ColorType,
-  FilterMode,
-  MipmapMode,
-  Picture,
-  Skia,
-  TileMode,
-  type SkShader,
-  type SkSize,
-} from "@shopify/react-native-skia";
+import { Canvas, Picture, Skia, type SkShader, type SkSize } from "@shopify/react-native-skia";
 import { useEffect, useMemo, useReducer } from "react";
 import { StyleSheet } from "react-native";
 import { useDerivedValue, useSharedValue } from "react-native-reanimated";
@@ -37,7 +26,7 @@ import {
 } from "../../lib/packed";
 import type { PackedFrameLocation, PackedFrames } from "../../hooks/usePackedFrames";
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { atlasBytes, CACHE_BUDGET_BYTES, PACKED_SKSL, tiles } from "./packedGpu";
+import { atlasBytes, CACHE_BUDGET_BYTES, makeLutShaders, PACKED_SKSL, tiles } from "./packedGpu";
 import { packedZoomBounds, usePackedCoverView } from "./usePackedCoverView";
 import type { SharedCamera } from "./WindParticlesOverlay";
 
@@ -102,21 +91,7 @@ function ActivePackedRadar({ packed, camera, opacity: layerOpacity }: Props) {
 
   const effect = useMemo(() => Skia.RuntimeEffect.Make(PACKED_SKSL), []);
 
-  // One LUT image per (color key, quantization); the bytes are unpremultiplied RGBA.
-  const lutShaders = useMemo(() => {
-    const out: Record<string, SkShader> = {};
-    for (const [key, bytes] of Object.entries(packed.luts)) {
-      const image = Skia.Image.MakeImage(
-        { width: 256, height: 1, alphaType: AlphaType.Unpremul, colorType: ColorType.RGBA_8888 },
-        Skia.Data.fromBytes(bytes),
-        256 * 4,
-      );
-      if (image) {
-        out[key] = image.makeShaderOptions(TileMode.Clamp, TileMode.Clamp, FilterMode.Nearest, MipmapMode.None);
-      }
-    }
-    return out;
-  }, [packed.luts]);
+  const lutShaders = useMemo(() => makeLutShaders(packed.luts), [packed.luts]);
 
   const zoomBounds = useMemo(() => packedZoomBounds(packed.locations), [packed.locations]);
   const view = usePackedCoverView(camera, size, zoomBounds);

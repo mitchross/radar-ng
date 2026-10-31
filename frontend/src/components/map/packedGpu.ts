@@ -3,7 +3,16 @@
  * module-level decoded-tile cache. PackedRadarOverlay draws with them on a canvas over the map;
  * InMapPackedRadar draws the same shader into offscreen tiles that MapLibre loads from disk.
  */
-import { FilterMode, MipmapMode, Skia, TileMode, type SkImage, type SkShader } from "@shopify/react-native-skia";
+import {
+  AlphaType,
+  ColorType,
+  FilterMode,
+  MipmapMode,
+  Skia,
+  TileMode,
+  type SkImage,
+  type SkShader,
+} from "@shopify/react-native-skia";
 import { fetchWithTimeout } from "../../lib/api";
 import { PACKED_TILE_SIZE } from "../../lib/packed";
 import { createTileCache, type LoadResult } from "./packedTileCache";
@@ -55,6 +64,22 @@ async function loadTile(url: string): Promise<LoadResult<Decoded>> {
   if (!decoded) return { kind: "error" };
   const { image } = decoded;
   return { kind: "ready", handle: decoded, height: image.height(), bytes: image.width() * image.height() * 4 };
+}
+
+/** One LUT image per (color key, quantization); the bytes are unpremultiplied RGBA. */
+export function makeLutShaders(luts: Record<string, Uint8Array>): Record<string, SkShader> {
+  const out: Record<string, SkShader> = {};
+  for (const [key, bytes] of Object.entries(luts)) {
+    const image = Skia.Image.MakeImage(
+      { width: 256, height: 1, alphaType: AlphaType.Unpremul, colorType: ColorType.RGBA_8888 },
+      Skia.Data.fromBytes(bytes),
+      256 * 4,
+    );
+    if (image) {
+      out[key] = image.makeShaderOptions(TileMode.Clamp, TileMode.Clamp, FilterMode.Nearest, MipmapMode.None);
+    }
+  }
+  return out;
 }
 
 /** Module-level so tiles survive a remount (tab switch, layer toggle, engine switch). */
