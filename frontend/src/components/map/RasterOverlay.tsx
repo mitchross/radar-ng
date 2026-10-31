@@ -9,7 +9,7 @@ interface Props {
   minZoom: number;
   /** The frame's tile URL, zoom ceiling and cache variant; the only thing the overlays differ in. */
   specFor: (frame: RadarFrame) => CarouselFrameSpec;
-  /** `isPacked[i]`: frame i draws on PackedRadarOverlay, so the carousel skips it. */
+  /** `isPacked[i]`: frame i draws on InMapPackedRadar, so the carousel skips it. */
   isPacked?: readonly boolean[];
 }
 

@@ -1,5 +1,5 @@
 /**
- * The decoded-tile cache behind PackedRadarOverlay: LRU by Map order, a byte budget, a bounded
+ * The decoded-tile cache behind the in-map radar: LRU by Map order, a byte budget, a bounded
  * number of loads in flight, and a retry for failed tiles. No React and no Skia: `T` is whatever
  * the loader decodes a tile into, and the clock and loader are injected.
  */

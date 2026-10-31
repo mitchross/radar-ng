@@ -1,14 +1,15 @@
 /**
- * In-map radar: the packed tiles of PackedRadarOverlay, drawn by MapLibre itself.
+ * In-map radar: the fast radar engine. Packed tiles are drawn by MapLibre itself.
  *
- * Packed tiles are downloaded and colored on the GPU as before (inMapRadarEngine), but each colored
- * tile is saved as a PNG in the app cache and every frame is an ordinary raster source reading
- * `file://.../{z}/{x}/{y}.png`, inserted under WeatherAnchor like the classic raster frames. So
- * warnings, storm cells and the location pin draw above the radar, which the Skia canvas over the
- * map cannot do. Playback only changes `raster-opacity`: every ready frame stays mounted.
+ * Packed tiles are downloaded and colored on the GPU (inMapRadarEngine), each colored tile is
+ * saved as a PNG in the app cache and every frame is an ordinary raster source reading
+ * `file://.../{z}/{x}/{y}.png`, inserted under WeatherAnchor like the raster frames. So warnings,
+ * storm cells and the location pin draw above the radar. Playback only changes `raster-opacity`:
+ * every ready frame stays mounted.
  *
  * This relies on MapLibre Native resolving `file://` tile URL templates on iOS and Android (its
- * local file source). It is not verified on a device yet; see the PR.
+ * local file source). It is verified on iOS (simulator and phone), not yet on Android; the raster
+ * fallback below covers a failure there.
  *
  * Native child count: one RasterSource + Layer per packed frame, rendered for every frame from the
  * moment the manifest loads. A frame whose tiles are not on disk yet gets an inert pair (hidden
@@ -71,7 +72,7 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity, onFall
 
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const zoomBounds = useMemo(() => packedZoomBounds(packed.locations), [packed.locations]);
-  const view = usePackedCoverView(camera, size, zoomBounds, "round");
+  const view = usePackedCoverView(camera, size, zoomBounds);
   const [settled, setSettled] = useState<CoverView | null>(null);
   useEffect(() => {
     if (!view) return;
@@ -95,7 +96,7 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity, onFall
     for (const loc of packed.locations) {
       const key = loc ? `${loc.meta.min_zoom}|${loc.meta.max_zoom}` : "";
       if (!loc || out.has(key)) continue;
-      out.set(key, tileCover(settled.camera, settled.screen, loc.meta.min_zoom, loc.meta.max_zoom, "round"));
+      out.set(key, tileCover(settled.camera, settled.screen, loc.meta.min_zoom, loc.meta.max_zoom));
     }
     return out;
   }, [settled, packed.locations]);

@@ -8,7 +8,7 @@ import { RasterOverlay } from "./RasterOverlay";
 interface Props {
   layerId: LayerType;
   opacity?: number;
-  /** `isPacked[i]`: frame i draws on PackedRadarOverlay, so the carousel skips it. */
+  /** `isPacked[i]`: frame i draws on InMapPackedRadar, so the carousel skips it. */
   isPacked?: readonly boolean[];
 }
 

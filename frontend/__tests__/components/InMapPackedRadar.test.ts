@@ -12,8 +12,7 @@ const read = (rel: string) => readFileSync(path.join(__dirname, "../../src", rel
 
 /**
  * Source contracts for the in-map engine's MapLibre layers (the map itself is native, so a unit
- * test cannot draw them): same insertion point as the classic raster frames, instant frame
- * switches, and the Skia overlay kept for the default engine.
+ * test cannot draw them): same insertion point as the raster frames and instant frame switches.
  */
 describe("InMapPackedRadar contracts", () => {
   const source = read("components/map/InMapPackedRadar.tsx");
@@ -48,9 +47,8 @@ describe("InMapPackedRadar contracts", () => {
     expect(read("lib/inMapRadarDisk.ts")).toContain("Paths.cache.uri");
   });
 
-  it("colors with the same SkSL shader as the Skia overlay", () => {
+  it("colors tiles offscreen with the SkSL palette shader", () => {
     expect(source).toContain("PACKED_SKSL");
-    expect(read("components/map/PackedRadarOverlay.tsx")).toContain("PACKED_SKSL");
     expect(read("components/map/inMapRadarEngine.ts")).toContain("makeShaderWithChildren");
   });
 });
@@ -78,9 +76,9 @@ describe("in-map tile zoom and diagnostics wiring", () => {
   const radar = read("components/map/InMapPackedRadar.tsx");
 
   it("covers at MapLibre's rounded raster zoom, in the view hook and the cover", () => {
-    expect(radar).toContain('usePackedCoverView(camera, size, zoomBounds, "round")');
-    expect(radar).toContain('loc.meta.max_zoom, "round")');
-    expect(read("components/map/PackedRadarOverlay.tsx")).not.toContain('"round"');
+    expect(radar).toContain("usePackedCoverView(camera, size, zoomBounds)");
+    expect(read("components/map/usePackedCoverView.ts")).toContain("Math.round(zoom)");
+    expect(radar).toContain("tileCover(settled.camera, settled.screen, loc.meta.min_zoom, loc.meta.max_zoom)");
   });
 
   it("shows the diagnostics under the Fast radar row, only while Fast radar is on", () => {

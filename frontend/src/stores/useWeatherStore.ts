@@ -41,7 +41,7 @@ interface WeatherState {
   /** One-shot request for the radar map to frame these bounds [west, south, east, north]. */
   focusBounds: [number, number, number, number] | null;
   radarOpacity: number;
-  /** Draw radar frames that have packed tiles on the GPU (PackedRadarOverlay); off = PNG rasters. */
+  /** Draw radar frames that have packed tiles on the GPU (InMapPackedRadar); off = PNG rasters. */
   fastRadar: boolean;
   activeLayer: LayerType;
   temperatureUnit: TemperatureUnit;

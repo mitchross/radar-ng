@@ -1,7 +1,7 @@
 /**
- * What both fast-radar engines share: the SkSL palette shader, the packed-tile decoder and the
- * module-level decoded-tile cache. PackedRadarOverlay draws with them on a canvas over the map;
- * InMapPackedRadar draws the same shader into offscreen tiles that MapLibre loads from disk.
+ * What the in-map radar colors with: the SkSL palette shader, the packed-tile decoder and the
+ * module-level decoded-tile cache. InMapPackedRadar draws the shader into offscreen tiles that
+ * MapLibre loads from disk.
  */
 import {
   AlphaType,
@@ -82,7 +82,7 @@ export function makeLutShaders(luts: Record<string, Uint8Array>): Record<string,
   return out;
 }
 
-/** Module-level so tiles survive a remount (tab switch, layer toggle, engine switch). */
+/** Module-level so tiles survive a remount (tab switch, layer toggle). */
 export const tiles = createTileCache<Decoded>({
   budgetBytes: CACHE_BUDGET_BYTES,
   maxInFlight: 6,
