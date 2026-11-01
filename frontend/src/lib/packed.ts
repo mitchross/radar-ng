@@ -1,5 +1,5 @@
 /**
- * Packed data tiles (docs/reference/packed-tiles.md): pure helpers for the GPU radar overlay. The
+ * Packed data tiles (docs/reference/packed-tiles.md): pure helpers for the in-map GPU radar. The
  * manifest types, parser, LUT and slot helpers are shared with the web radar in `web/src/shared/packed`;
  * what stays here is the app's camera-based tile cover and the playback glue.
  */
@@ -95,7 +95,7 @@ export interface PackedCamera {
   lon: number;
   lat: number;
   zoom: number;
-  /** Degrees clockwise; the overlay rotates around the screen center. */
+  /** Degrees clockwise, around the screen center. */
   bearing?: number;
 }
 
@@ -109,39 +109,28 @@ export function worldPixel(lon: number, lat: number, zoom: number): { x: number;
   };
 }
 
-/** Tile zoom the overlay draws at for a map zoom; overzooms past maxZoom. */
-export function packedTileZoom(zoom: number, minZoom: number, maxZoom: number): number {
-  return Math.max(minZoom, Math.min(maxZoom, Math.floor(zoom)));
-}
-
 /**
  * Tile zoom MapLibre Native requests for a 512-px raster source at a map zoom: it rounds (floor is
  * for vector sources), then clamps to the source's zoom range. The in-map engine must write the tiles
- * MapLibre will ask for, so it covers at this zoom instead of packedTileZoom.
+ * MapLibre will ask for, so it covers at this zoom.
  */
 export function mapLibreRasterTileZoom(zoom: number, minZoom: number, maxZoom: number): number {
   return Math.max(minZoom, Math.min(maxZoom, Math.round(zoom)));
 }
 
-/** How a cover picks its tile zoom: the Skia overlay draws at floor, MapLibre loads at round. */
-export type TileZoomMode = "floor" | "round";
-
 /**
- * 512-px tiles covering the screen at clamp(floor(zoom), minZoom, maxZoom) (round for the in-map
- * engine, see mapLibreRasterTileZoom), nearest to the center first. With a bearing, the cover is the rotated screen's bounding box. No world wrap.
+ * 512-px tiles covering the screen at MapLibre's raster tile zoom (see mapLibreRasterTileZoom),
+ * nearest to the center first. With a bearing, the cover is the rotated screen's bounding box.
+ * No world wrap.
  */
 export function tileCover(
   camera: PackedCamera,
   screen: { width: number; height: number },
   minZoom: number,
   maxZoom: number,
-  zoomMode: TileZoomMode = "floor",
 ): TileId[] {
   if (!(screen.width > 0 && screen.height > 0)) return [];
-  const z =
-    zoomMode === "round"
-      ? mapLibreRasterTileZoom(camera.zoom, minZoom, maxZoom)
-      : packedTileZoom(camera.zoom, minZoom, maxZoom);
+  const z = mapLibreRasterTileZoom(camera.zoom, minZoom, maxZoom);
   const center = worldPixel(camera.lon, camera.lat, camera.zoom);
   const rad = ((camera.bearing ?? 0) * Math.PI) / 180;
   const cos = Math.abs(Math.cos(rad));
@@ -165,21 +154,6 @@ export function tileCover(
   }
   tiles.sort((a, b) => a.d - b.d);
   return tiles.map(({ z: tz, x, y }) => ({ z: tz, x, y }));
-}
-
-/** Screen rect of a tile before the bearing rotation, the screen center being the camera center. */
-export function tileScreenRect(
-  tile: TileId,
-  camera: PackedCamera,
-  screen: { width: number; height: number },
-): { x: number; y: number; size: number } {
-  const center = worldPixel(camera.lon, camera.lat, camera.zoom);
-  const size = PACKED_TILE_SIZE * Math.pow(2, camera.zoom - tile.z);
-  return {
-    x: screen.width / 2 + tile.x * size - center.x,
-    y: screen.height / 2 + tile.y * size - center.y,
-    size,
-  };
 }
 
 /** Absolute tile URL from the manifest's `url_template`; the bucket id is percent-encoded. */
@@ -247,25 +221,4 @@ export function rasterCarouselView(
     window: { start: raster[0], end: raster[raster.length - 1], sequence: raster },
     visible,
   };
-}
-
-/** Distinct buckets in playback order starting at the current frame (prefetch priority). */
-export function bucketsInPlaybackOrder<T extends { layer: string; bucket: string; v: number }>(
-  locations: readonly (T | null)[],
-  order: readonly number[],
-  currentIndex: number,
-): T[] {
-  const pos = Math.max(0, order.indexOf(currentIndex));
-  const rotated = [currentIndex, ...order.slice(pos), ...order.slice(0, pos)];
-  const seen = new Set<string>();
-  const out: T[] = [];
-  for (const i of rotated) {
-    const loc = locations[i];
-    if (!loc) continue;
-    const key = `${loc.layer}/${loc.bucket}/${loc.v}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(loc);
-  }
-  return out;
 }

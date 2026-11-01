@@ -16,7 +16,7 @@ const SOURCE_MAX_ZOOM: Record<string, number> = {
 // Pyramids start at z4 (CONUS only); lower zooms are 404s that starve real tile fetches.
 const SOURCE_MIN_ZOOM = 4;
 
-/** `isPacked[i]`: frame i draws on PackedRadarOverlay, so the carousel skips it. */
+/** `isPacked[i]`: frame i draws on InMapPackedRadar, so the carousel skips it. */
 export function RadarOverlay({ isPacked }: { isPacked?: readonly boolean[] }) {
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
   const serverUrl = useWeatherStore((s) => s.serverUrl);

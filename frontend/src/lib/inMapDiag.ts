@@ -1,7 +1,7 @@
 /**
  * Diagnostics and the blank-radar safety net of the in-map engine. Pure and module-level: the engine
  * writes `inMapStats`, Settings shows `formatInMapSummary`, telemetry sends `inMapDiagAttributes`,
- * and `decideInMapFallback` says when to draw the Classic fast overlay instead. No Skia, no file system.
+ * and `decideRasterFallback` says when to draw the normal raster radar instead. No Skia, no file system.
  */
 import type { TelemetryAttributes } from "./telemetryPrivacy";
 
@@ -30,7 +30,7 @@ export interface InMapStats {
   /** Zoom of the tiles last written. */
   writtenZoom: number | null;
   urlTemplate: string | null;
-  /** Why the Classic fast overlay is drawing instead, or null while in-map layers draw. */
+  /** Why the normal raster radar is drawing instead, or null while in-map layers draw. */
   fallback: string | null;
 }
 
@@ -155,11 +155,11 @@ export interface FallbackInput {
 }
 
 /**
- * Why to draw the Classic fast overlay instead of the in-map layers, or null to draw in-map. Re-run
- * as the inputs change: the engine keeps trying in the background, and the first verified frame
- * clears the reason.
+ * Why to draw the normal raster radar (what Fast radar off draws) instead of the in-map layers, or
+ * null to draw in-map. Re-run as the inputs change: the engine keeps trying in the background, and
+ * the first verified frame clears the reason.
  */
-export function decideInMapFallback(input: FallbackInput): string | null {
+export function decideRasterFallback(input: FallbackInput): string | null {
   if (!input.canRender) return "no offscreen surface";
   if (input.verifyFailed) return "verify: no file on disk";
   if (input.hasCover && input.committedFrames === 0 && input.waitedMs >= IN_MAP_BLANK_MS) {

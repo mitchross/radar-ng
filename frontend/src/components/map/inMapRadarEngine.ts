@@ -2,7 +2,7 @@
  * The in-map radar engine behind InMapPackedRadar: colors packed tiles on the GPU into PNG files in
  * the app cache, one generation at a time, so MapLibre can draw them as ordinary raster tiles.
  *
- * Each (frame, tile) is one draw of the same SkSL shader PackedRadarOverlay uses, into a 512 x 512
+ * Each (frame, tile) is one draw of the same SkSL shader (PACKED_SKSL), into a 512 x 512
  * offscreen surface, snapshotted and PNG-encoded. Work runs on one async loop, current frame first,
  * with a short sleep after every tile so panning and playback stay smooth. A frame is "committed"
  * (and only then handed to MapLibre) once every tile of its cover is on disk. Bookkeeping that needs
@@ -93,7 +93,7 @@ function getSurface(): SkSurface | null {
   return surface;
 }
 
-/** False when no offscreen surface can be made; the caller falls back to the Skia canvas overlay. */
+/** False when no offscreen surface can be made; the caller falls back to the raster radar. */
 export const canRenderInMap = () => getSurface() != null;
 
 /** PNG bytes of the surface. Throws (and records what it got) when they are empty or not a PNG. */
@@ -265,7 +265,7 @@ export function createInMapEngine(onChange: () => void) {
     patchInMapStats({ verifyOk: exists });
     if (!exists) {
       recordInMapError("verify", "tile file missing after write");
-      onChange(); // the safety net re-checks whether to draw the Classic fast overlay
+      onChange(); // the safety net re-checks whether to draw the raster radar
     }
     return exists;
   }

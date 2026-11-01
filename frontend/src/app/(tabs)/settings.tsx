@@ -33,7 +33,7 @@ import type { SelfHostedManifest } from "../../types/weather";
 import { formatPlaceLabel } from "../../lib/locationLabel";
 import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { SELF_HOSTED } from "../../lib/constants";
-import { PLAYBACK_FPS_RANGE, RADAR_ENGINE_OPTIONS } from "../../lib/persistedPrefs";
+import { PLAYBACK_FPS_RANGE } from "../../lib/persistedPrefs";
 import { RAIN_ALERT_LEAD_OPTIONS, parseRainAlertLead } from "../../lib/rainAlerts";
 import { useRainAlertOptIn } from "../../hooks/useRainAlertOptIn";
 import { isCleartextToPublicHost } from "../../lib/networkSafety";
@@ -86,8 +86,6 @@ export default function SettingsScreen() {
   const playbackSpeed = useWeatherStore((s) => s.playbackSpeed);
   const fastRadar = useWeatherStore((s) => s.fastRadar);
   const setFastRadar = useWeatherStore((s) => s.setFastRadar);
-  const radarEngine = useWeatherStore((s) => s.radarEngine);
-  const setRadarEngine = useWeatherStore((s) => s.setRadarEngine);
   const inMapSummary = useInMapSummary();
   const satelliteVisible = useWeatherStore((s) => s.satelliteVisible);
   const setSatelliteVisible = useWeatherStore((s) => s.setSatelliteVisible);
@@ -517,39 +515,18 @@ export default function SettingsScreen() {
               value={fastRadar}
               onChange={(on) => {
                 setFastRadar(on);
-                // The in-map engine's colored tiles are only useful while it can draw.
+                // The colored tiles are only useful while fast radar can draw.
                 if (!on) clearInMapCache();
               }}
             />
             {fastRadar ? (
-              <>
-                <Sep />
-                <Row>
-                  <RowLeft
-                    title="Radar engine"
-                    sub="In-map keeps warnings, storm cells and your pin above the radar"
-                  />
-                  <Segmented
-                    options={RADAR_ENGINE_OPTIONS.map((o) => o.label)}
-                    selected={RADAR_ENGINE_OPTIONS.find((o) => o.value === radarEngine)?.label ?? ""}
-                    onSelect={(label) => {
-                      const next = RADAR_ENGINE_OPTIONS.find((o) => o.label === label);
-                      if (!next) return;
-                      setRadarEngine(next.value);
-                      if (next.value !== "in-map") clearInMapCache();
-                    }}
-                  />
-                </Row>
-                {radarEngine === "in-map" ? (
-                  <View style={styles.inMapDiag}>
-                    {inMapSummary.map((line) => (
-                      <Text key={line} style={styles.inMapDiagText} selectable>
-                        {line}
-                      </Text>
-                    ))}
-                  </View>
-                ) : null}
-              </>
+              <View style={styles.inMapDiag}>
+                {inMapSummary.map((line) => (
+                  <Text key={line} style={styles.inMapDiagText} selectable>
+                    {line}
+                  </Text>
+                ))}
+              </View>
             ) : null}
             <Sep />
             <ToggleRow

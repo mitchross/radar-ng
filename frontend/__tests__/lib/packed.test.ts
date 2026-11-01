@@ -1,19 +1,16 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import {
-  bucketsInPlaybackOrder,
   buildLut,
   buildPackedFrames,
   locateFrame,
   mapLibreRasterTileZoom,
   packedTileUrl,
-  packedTileZoom,
   parsePackedMeta,
   playbackOrder,
   rasterCarouselView,
   slotAddress,
   tileCover,
-  tileScreenRect,
   worldPixel,
 } from "../../src/lib/packed";
 import type { ColorTable } from "../../../web/src/shared/serverPalettes";
@@ -192,7 +189,7 @@ describe("tileCover", () => {
     expect(tileCover({ ...c, zoom: 4 }, screen, 3, 6)).toEqual([{ z: 4, x: 4, y: 5 }]);
   });
 
-  it("uses floor(zoom) and lists the center tile first", () => {
+  it("uses round(zoom) and lists the center tile first", () => {
     const c = lngLat(4.5 * 512 * 2, 5.5 * 512 * 2, 5); // center of z4 tile (4,5) at map zoom 5
     const tiles = tileCover({ ...c, zoom: 5.4 }, screen, 3, 6);
     expect(tiles.every((t) => t.z === 5)).toBe(true);
@@ -202,8 +199,6 @@ describe("tileCover", () => {
 
   it("overzooms past max_zoom and clamps below min_zoom", () => {
     const c = lngLat(4.5 * 512, 5.5 * 512, 4);
-    expect(packedTileZoom(8.7, 3, 6)).toBe(6);
-    expect(packedTileZoom(1.2, 3, 6)).toBe(3);
     expect(tileCover({ ...c, zoom: 8.7 }, screen, 3, 6).every((t) => t.z === 6)).toBe(true);
     const low = tileCover({ ...c, zoom: 1.2 }, screen, 3, 6);
     expect(low.every((t) => t.z === 3 && t.x >= 0 && t.x < 8 && t.y >= 0 && t.y < 8)).toBe(true);
@@ -222,15 +217,13 @@ describe("tileCover", () => {
     expect(tileCover({ lon: 0, lat: 0, zoom: 4 }, { width: 0, height: 0 }, 3, 6)).toEqual([]);
   });
 
-  it("covers at MapLibre's rounded raster zoom in round mode, floor otherwise", () => {
+  it("covers at MapLibre's rounded raster zoom", () => {
     const c = lngLat(4.5 * 512 * 2, 5.5 * 512 * 2, 5);
-    // Map zoom 5.7: MapLibre asks for z6 tiles, the Skia overlay draws z5.
+    // Map zoom 5.7: MapLibre asks for z6 tiles.
     expect(mapLibreRasterTileZoom(5.7, 3, 6)).toBe(6);
     expect(mapLibreRasterTileZoom(5.4, 3, 6)).toBe(5);
     expect(mapLibreRasterTileZoom(5.5, 3, 6)).toBe(6);
-    expect(tileCover({ ...c, zoom: 5.7 }, screen, 3, 6).every((t) => t.z === 5)).toBe(true);
-    expect(tileCover({ ...c, zoom: 5.7 }, screen, 3, 6, "floor").every((t) => t.z === 5)).toBe(true);
-    const round = tileCover({ ...c, zoom: 5.7 }, screen, 3, 6, "round");
+    const round = tileCover({ ...c, zoom: 5.7 }, screen, 3, 6);
     expect(round.length).toBeGreaterThan(0);
     expect(round.every((t) => t.z === 6)).toBe(true);
   });
@@ -239,26 +232,13 @@ describe("tileCover", () => {
     const c = lngLat(4.5 * 512, 5.5 * 512, 4);
     expect(mapLibreRasterTileZoom(6.6, 3, 6)).toBe(6);
     expect(mapLibreRasterTileZoom(2.6, 3, 6)).toBe(3);
-    expect(tileCover({ ...c, zoom: 6.6 }, screen, 3, 6, "round").every((t) => t.z === 6)).toBe(true);
-    expect(tileCover({ ...c, zoom: 2.4 }, screen, 3, 6, "round").every((t) => t.z === 3)).toBe(true);
+    expect(tileCover({ ...c, zoom: 6.6 }, screen, 3, 6).every((t) => t.z === 6)).toBe(true);
+    expect(tileCover({ ...c, zoom: 2.4 }, screen, 3, 6).every((t) => t.z === 3)).toBe(true);
   });
 });
 
-describe("tileScreenRect", () => {
-  it("puts the camera's tile under the screen center with 512-pt tiles at its zoom", () => {
-    const c = lngLat(4.5 * 512, 5.5 * 512, 4);
-    const r = tileScreenRect({ z: 4, x: 4, y: 5 }, { ...c, zoom: 4 }, { width: 400, height: 800 });
-    expect(r.size).toBeCloseTo(512);
-    expect(r.x).toBeCloseTo(200 - 256, 6);
-    expect(r.y).toBeCloseTo(400 - 256, 6);
-  });
-
-  it("scales a parent tile by 2^(zoom - z)", () => {
-    const c = lngLat(4.5 * 512, 5.5 * 512, 4);
-    expect(tileScreenRect({ z: 3, x: 2, y: 2 }, { ...c, zoom: 4 }, { width: 400, height: 800 }).size).toBeCloseTo(1024);
-  });
-
-  it("agrees with worldPixel at the origin", () => {
+describe("worldPixel", () => {
+  it("puts lon -180 on the equator at the origin", () => {
     expect(worldPixel(-180, 0, 0)).toEqual({ x: 0, y: 256 });
   });
 });
@@ -307,14 +287,6 @@ describe("playback helpers", () => {
   it("rasterCarouselView still shows a raster frame scrubbed outside the loop", () => {
     const view = rasterCarouselView([P, P, P, R], 3, { start: 0, end: 2, sequence: [0, 1, 2] });
     expect(view).toEqual({ currentIndex: 3, window: { start: 3, end: 3, sequence: [3] }, visible: true });
-  });
-
-  it("bucketsInPlaybackOrder lists distinct buckets from the current frame, wrapping", () => {
-    const a = { layer: "radar", bucket: "a", v: 1 };
-    const b = { layer: "radar", bucket: "b", v: 1 };
-    const n = { layer: "nowcast", bucket: "r", v: 3 };
-    const locs = [a, a, b, b, n, null];
-    expect(bucketsInPlaybackOrder(locs, [0, 1, 2, 3, 4, 5], 3)).toEqual([b, n, a]);
   });
 });
 

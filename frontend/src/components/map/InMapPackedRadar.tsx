@@ -1,14 +1,15 @@
 /**
- * In-map radar: the packed tiles of PackedRadarOverlay, drawn by MapLibre itself.
+ * In-map radar: the fast radar engine. Packed tiles are drawn by MapLibre itself.
  *
- * Packed tiles are downloaded and colored on the GPU as before (inMapRadarEngine), but each colored
- * tile is saved as a PNG in the app cache and every frame is an ordinary raster source reading
- * `file://.../{z}/{x}/{y}.png`, inserted under WeatherAnchor like the classic raster frames. So
- * warnings, storm cells and the location pin draw above the radar, which the Skia canvas over the
- * map cannot do. Playback only changes `raster-opacity`: every ready frame stays mounted.
+ * Packed tiles are downloaded and colored on the GPU (inMapRadarEngine), each colored tile is
+ * saved as a PNG in the app cache and every frame is an ordinary raster source reading
+ * `file://.../{z}/{x}/{y}.png`, inserted under WeatherAnchor like the raster frames. So warnings,
+ * storm cells and the location pin draw above the radar. Playback only changes `raster-opacity`:
+ * every ready frame stays mounted.
  *
  * This relies on MapLibre Native resolving `file://` tile URL templates on iOS and Android (its
- * local file source). It is not verified on a device yet; see the PR.
+ * local file source). It is verified on iOS (simulator and phone), not yet on Android; the raster
+ * fallback below covers a failure there.
  *
  * Native child count: one RasterSource + Layer per packed frame, rendered for every frame from the
  * moment the manifest loads. A frame whose tiles are not on disk yet gets an inert pair (hidden
@@ -23,7 +24,7 @@ import { useSharedValue } from "react-native-reanimated";
 import { useIsFocused } from "expo-router";
 import { useAppActive } from "../../hooks/useAppActive";
 import type { PackedFrames } from "../../hooks/usePackedFrames";
-import { decideInMapFallback, IN_MAP_BLANK_MS, inMapStats, patchInMapStats } from "../../lib/inMapDiag";
+import { decideRasterFallback, IN_MAP_BLANK_MS, inMapStats, patchInMapStats } from "../../lib/inMapDiag";
 import { rootUri } from "../../lib/inMapRadarDisk";
 import { frameDir, frameKeyOf, lutHash, priorityOrder, slotSpec, type InMapSlotSpec } from "../../lib/inMapRadarTiles";
 import { PACKED_TILE_SIZE, packedTileUrl, playbackOrder, tileCover, type TileId } from "../../lib/packed";
@@ -43,7 +44,7 @@ interface Props {
   camera: SharedCamera;
   /** The active layer's raster opacity; defaults to the radar opacity setting. */
   opacity?: number;
-  /** Why the Classic fast overlay should draw instead (null: in-map draws). Needs a stable callback. */
+  /** Why the normal raster radar should draw instead (null: in-map draws). Needs a stable callback. */
   onFallback?: (reason: string | null) => void;
 }
 
@@ -71,7 +72,7 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity, onFall
 
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const zoomBounds = useMemo(() => packedZoomBounds(packed.locations), [packed.locations]);
-  const view = usePackedCoverView(camera, size, zoomBounds, "round");
+  const view = usePackedCoverView(camera, size, zoomBounds);
   const [settled, setSettled] = useState<CoverView | null>(null);
   useEffect(() => {
     if (!view) return;
@@ -95,7 +96,7 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity, onFall
     for (const loc of packed.locations) {
       const key = loc ? `${loc.meta.min_zoom}|${loc.meta.max_zoom}` : "";
       if (!loc || out.has(key)) continue;
-      out.set(key, tileCover(settled.camera, settled.screen, loc.meta.min_zoom, loc.meta.max_zoom, "round"));
+      out.set(key, tileCover(settled.camera, settled.screen, loc.meta.min_zoom, loc.meta.max_zoom));
     }
     return out;
   }, [settled, packed.locations]);
@@ -158,7 +159,7 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity, onFall
   });
 
   // Safety net: never a blank radar. No verified frame in time, or a frame whose file is missing,
-  // hands the screen to the Classic fast overlay while the engine keeps trying.
+  // hands the screen to the normal raster radar while the engine keeps trying.
   const hasCover = !paused && [...covers.values()].some((c) => c.length > 0);
   const [waitedOut, setWaitedOut] = useState(false);
   useEffect(() => {
@@ -169,7 +170,7 @@ export function InMapPackedRadar({ packed, camera, opacity: layerOpacity, onFall
       setWaitedOut(false);
     };
   }, [hasCover]);
-  const fallback = decideInMapFallback({
+  const fallback = decideRasterFallback({
     canRender: canRenderInMap(),
     hasCover,
     waitedMs: waitedOut ? IN_MAP_BLANK_MS : 0,

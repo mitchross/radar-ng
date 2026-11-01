@@ -119,7 +119,7 @@ describe("In-map diagnostics in Settings", () => {
     engine.stop();
   }, 10_000);
 
-  it("resets on a Classic-fast switch but keeps reporting the surface", async () => {
+  it("resets when Fast radar is switched off but keeps reporting the surface", async () => {
     const engine = createInMapEngine(() => {});
     engine.update(input(["a"]));
     const view = await summary();

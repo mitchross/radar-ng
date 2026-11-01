@@ -12,19 +12,8 @@ export const VIEW_MODES = ["simple", "advanced"] as const;
 
 export type ViewMode = (typeof VIEW_MODES)[number];
 
-/** How fast radar is drawn: "skia" = canvas over the map (today), "in-map" = colored tiles as MapLibre rasters. */
-export const RADAR_ENGINES = ["skia", "in-map"] as const;
-export type RadarEngine = (typeof RADAR_ENGINES)[number];
-export const DEFAULT_RADAR_ENGINE: RadarEngine = "skia";
-/** Settings labels, in display order. */
-export const RADAR_ENGINE_OPTIONS: readonly { value: RadarEngine; label: string }[] = [
-  { value: "skia", label: "Classic fast" },
-  { value: "in-map", label: "In-map" },
-];
-
 export const parseMapStyle = (v: string): MapStyle => oneOf(MAP_STYLES, v, "light");
 export const parsePalette = (v: string): Palette => oneOf(PALETTES, v, "classic");
-export const parseRadarEngine = (v: string): RadarEngine => oneOf(RADAR_ENGINES, v, DEFAULT_RADAR_ENGINE);
 export const parseViewMode = (v: string): ViewMode => oneOf(VIEW_MODES, v, "simple");
 
 /** Absolute http(s) origin without trailing slash; anything else falls back (tile URLs are string-joined onto it). */
