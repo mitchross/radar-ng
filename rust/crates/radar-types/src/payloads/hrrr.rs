@@ -1,6 +1,4 @@
 //! HRRR forecast payloads (`IngestHrrrWorkflow` and the `hrrr_*` activities).
-//!
-//! Source: `temporal/workflows/ingest_hrrr.py`, `backend/ingest_hrrr/activities.py`.
 
 use serde::{Deserialize, Serialize};
 

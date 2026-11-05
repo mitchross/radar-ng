@@ -1,11 +1,11 @@
 //! `radar`: the single binary for the radar-ng Rust backend.
 //!
 //! ```text
-//! radar api                          # HTTP server (tiles, basemap, /api, /v1) — replaces Caddy + FastAPI + go-pmtiles
+//! radar api                          # HTTP server (tiles, basemap, /api, /v1); replaces Caddy + FastAPI + go-pmtiles
 //! radar worker --role <role>         # Temporal worker (legacy|all|mrms|nowcast|hrrr|aux|alerts|open-meteo)
 //! radar seed                         # create-or-update all Temporal schedules, then exit
 //! radar watchdog                     # schedule stall watchdog (normally runs inside the seeding worker)
-//! radar debug <check> [...]          # operator diagnostics (port of tools/debug_harness)
+//! radar debug <check> [...]          # operator diagnostics
 //! radar render-once <grib.gz> <out> [--precip-flag <grib.gz>]  # render one MRMS frame, print timings
 //! radar parity --python-root A --rust-root B   # decode and compare two tile pyramids
 //! ```

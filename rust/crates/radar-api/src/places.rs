@@ -7,8 +7,8 @@
 //! Upstream failures are `502 {"error":"upstream_unavailable"}` with `no-store`, never a cached or
 //! empty body.
 //!
-//! Defect D8 fix: a Photon `osm_id` that is not an integer drops that feature. Python raised
-//! `ValueError` and answered 500.
+//! Defect D8 fix: a Photon `osm_id` that is not an integer drops that feature. The old code
+//! answered 500.
 
 use std::time::Duration;
 
@@ -115,7 +115,7 @@ pub fn place_from_feature(feature: &Value, reverse: bool) -> Option<Value> {
         truthy("name")?
     };
     let osm_id = props.get("osm_id").filter(|v| !v.is_null())?;
-    // D8: a non-integer osm_id drops the feature (Python raised and answered 500).
+    // D8: a non-integer osm_id drops the feature (it used to answer 500).
     let id = py_int(osm_id)?;
     let country_code = match props.get("countrycode").and_then(Value::as_str) {
         Some(code) => json!(code.to_uppercase()),
@@ -132,7 +132,7 @@ pub fn place_from_feature(feature: &Value, reverse: bool) -> Option<Value> {
     }))
 }
 
-/// Python `float(value)` for the JSON shapes a geocoder row can carry.
+/// Reads a float, as Python's `float(value)` would, from the JSON shapes a geocoder row can carry.
 fn to_f64(value: &Value) -> Option<f64> {
     match value {
         Value::Number(n) => n.as_f64(),

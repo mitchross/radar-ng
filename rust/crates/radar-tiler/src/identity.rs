@@ -7,8 +7,8 @@
 //! differently, as in Python (spec H4).
 //!
 //! Rust publishes under its own renderer name ([`RENDERER`], spec option B). The digest
-//! scheme is kept identical to Python so the golden vectors in spec section 18 still hold,
-//! but the identity never claims Python's `indexed` renderer.
+//! scheme matches the original Python so the golden vectors in spec section 18 still hold,
+//! but the identity never claims the Python `indexed` renderer.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -588,7 +588,7 @@ impl PyramidIdentity {
 
     /// `is_renderer_compatible_with` (spec 10.3): a known foreign renderer that won the same
     /// logical frame. Crate publication does not use this (the collision rule accepts any
-    /// complete marker); it is kept for parity and for the resume check.
+    /// complete marker); it is kept for the resume check.
     pub fn is_renderer_compatible_with(&self, expected: &PyramidIdentity) -> bool {
         const LEGACY: (&str, &str) = ("legacy", "rgba-bilinear-v1");
         let pair_a = (self.renderer.as_str(), self.algorithm.as_str());
@@ -792,7 +792,7 @@ pub fn frame_identities(
 
 /// Resume check (spec 10.3 `frame_pyramid_identity_is_compatible`): does a stored identity
 /// match the current contract for `palette_name`, given the stored source and grid digests?
-#[allow(clippy::too_many_arguments)] // mirrors the Python keyword-argument signature
+#[allow(clippy::too_many_arguments)] // matches the original Python keyword arguments
 pub fn frame_identity_is_compatible(
     stored: &PyramidIdentity,
     source_id: &str,
@@ -958,7 +958,7 @@ pub(crate) mod tests {
         legacy.renderer = "legacy".into();
         legacy.algorithm = "rgba-bilinear-v1".into();
         assert!(legacy.is_renderer_compatible_with(&indexed));
-        // Our own renderer name is never compatible with Python's `indexed`.
+        // Our own renderer name is never compatible with the Python `indexed` renderer.
         let mut rs = indexed.clone();
         rs.renderer = RENDERER.into();
         assert!(!indexed.is_renderer_compatible_with(&rs));

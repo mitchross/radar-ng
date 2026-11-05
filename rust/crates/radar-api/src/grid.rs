@@ -1,7 +1,7 @@
 //! Grid readers for the inspector, the nowcast point and the wind field (spec 9).
 //!
 //! Metadata parsing uses `radar_core::grid_read::read_meta`. Sampling reads only the four cells
-//! around the point, as the Python does, with positioned reads (`pread`). `radar_core`'s
+//! around the point with positioned reads (`pread`). `radar_core`'s
 //! `GridDump::sample` needs the whole grid in memory, which is too costly per request for a
 //! multi-megabyte HRRR grid. The arithmetic below copies spec 9.2 operation for operation, and a
 //! test checks it against `GridDump::sample` on the same grid.
@@ -24,14 +24,14 @@ use crate::params::Issues;
 use crate::respond;
 use crate::state::AppState;
 
-/// Keep only the characters in `allowed` (plus alphanumerics), as the Python sanitizers do.
+/// Keep only the characters in `allowed` (plus alphanumerics).
 fn sanitize(text: &str, extra: &str) -> String {
     text.chars()
         .filter(|c| c.is_alphanumeric() || extra.contains(*c))
         .collect()
 }
 
-/// `_grid_metadata_path(layer, timestamp, grid_key)`. `Err(())` where Python raises `ValueError`.
+/// The metadata path for `(layer, timestamp, grid_key)`. `Err(())` for an invalid name.
 ///
 /// # Errors
 /// Returns `Err(())` for a run-scoped key with an empty, `.`, `..` or illegal part.
@@ -80,7 +80,7 @@ fn reason(reason: &str, layer: &str, timestamp: &str) -> Value {
     json!({ "ok": false, "reason": reason, "layer": layer, "timestamp": timestamp })
 }
 
-/// `_sample_grid_point`: bilinear sample of one point, as the exact Python dict.
+/// Bilinear sample of one point, in the JSON shape clients already parse.
 #[must_use]
 pub fn sample_point(
     grid_dir: &Path,

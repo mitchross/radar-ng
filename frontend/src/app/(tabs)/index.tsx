@@ -1,5 +1,5 @@
 /**
- * Cumulus Home screen — Redesigned for Editorial Light.
+ * Cumulus Home screen, Editorial Light design.
  * Warm paper background, display serif headers, Simple/Advanced layout gating.
  */
 import { useCallback, useMemo, useState } from "react";
@@ -219,7 +219,7 @@ export default function HomeScreen() {
             />
           }
         >
-          {/* Top bar — Location & Toggle */}
+          {/* Top bar: location and toggle */}
           <View style={styles.topBar}>
             <Pressable
               accessibilityRole="button"

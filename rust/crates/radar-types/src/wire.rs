@@ -2,8 +2,7 @@
 //! IDs, task queues, environment variable names and worker roles.
 //!
 //! Every string here is part of the wire contract. Changing one breaks in-flight
-//! executions and replay (spec-temporal section 10.3). Source: `temporal/task_queues.py`,
-//! `temporal/workflows/*.py`, `backend/*/activities.py`, `backend/api/api/storm_watch_activities.py`.
+//! executions and replay (spec-temporal section 10.3).
 
 use std::fmt;
 use std::str::FromStr;
@@ -11,7 +10,7 @@ use std::str::FromStr;
 use thiserror::Error;
 
 // ---------------------------------------------------------------------------
-// Workflow types (13 from temporal/workflows/__init__.py, plus one Rust-only)
+// Workflow types (13 from the original Python, plus one Rust-only)
 // ---------------------------------------------------------------------------
 
 /// `RadarDeploymentSmokeWorkflow` (deployment gate, every role).
@@ -143,7 +142,7 @@ pub const ACTIVITY_SIGNAL_MATCHING_STORM_WATCHES: &str = "signal_matching_storm_
 /// name stays reserved for compatibility (spec-temporal section 8.1).
 pub const ACTIVITY_SEND_PUSH_NOTIFICATION: &str = "send_push_notification";
 
-/// All 35 activity names: the 30 the Python code registered (including the reserved
+/// All 35 activity names: the 30 the original Python registered (including the reserved
 /// `send_push_notification`) and the five Rust-only `global_model_*` ones. The legacy pool serves all
 /// of them except `open_meteo_sync`.
 pub const ALL_ACTIVITY_NAMES: [&str; 35] = [
@@ -209,7 +208,7 @@ pub const PATCH_WATCH_STORM_VERSION_BOUNDARY_V1: &str = "watch-storm-version-bou
 pub const PATCH_WATCH_STORM_HANDOFF_V1: &str = "watch-storm-handoff-v1";
 
 // ---------------------------------------------------------------------------
-// Task queues (temporal/task_queues.py)
+// Task queues
 // ---------------------------------------------------------------------------
 
 /// `radar-ng`: all-in-one (legacy and all) pool. Default queue for every schedule
@@ -254,7 +253,7 @@ pub const ENV_NOWCAST_SCHEDULE_ID: &str = "NOWCAST_SCHEDULE_ID";
 )]
 pub struct UnknownWorkerRole(pub String);
 
-/// A worker pool role. Mirrors the Python `ROLE_CONFIG` keys plus the open-meteo pool.
+/// A worker pool role. Covers the original Python `ROLE_CONFIG` keys plus the open-meteo pool.
 ///
 /// Deviation (spec-temporal D1): the Python worker has no `open-meteo` role and
 /// refuses to boot with it. The Rust worker accepts `open-meteo` (and the
@@ -330,8 +329,7 @@ impl fmt::Display for WorkerRole {
 impl FromStr for WorkerRole {
     type Err = UnknownWorkerRole;
 
-    /// Parses a role the way the Python worker does: surrounding whitespace is
-    /// stripped and the match is case-insensitive. `open_meteo` is accepted as
+    /// Surrounding whitespace is stripped and the match is case-insensitive. `open_meteo` is accepted as
     /// an alias of `open-meteo`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.trim().to_ascii_lowercase().as_str() {
@@ -348,7 +346,7 @@ impl FromStr for WorkerRole {
     }
 }
 
-/// Schedule action queue rule (spec-temporal section 2.2, `seed.py:297-301`).
+/// Schedule action queue rule (spec-temporal section 2.2).
 ///
 /// Returns `declared` when isolated queues are enabled, otherwise [`LEGACY_TASK_QUEUE`].
 /// Use [`use_isolated_task_queues`] to derive `use_isolated` from the raw env value.
@@ -360,15 +358,15 @@ pub fn schedule_task_queue(declared: &str, use_isolated: bool) -> &str {
     }
 }
 
-/// `USE_ISOLATED_TASK_QUEUES == "1"` (exact match, as in Python).
+/// `USE_ISOLATED_TASK_QUEUES == "1"` (exact match).
 pub fn use_isolated_task_queues(env_value: Option<&str>) -> bool {
     env_value == Some("1")
 }
 
 /// Poll queue for a worker: a non-empty `TEMPORAL_TASK_QUEUE` override, else the role default.
 ///
-/// Deviation: Python uses an empty override verbatim (polling the invalid queue
-/// name `""`). Here an empty value is treated as unset.
+/// Deviation: the original Python used an empty override verbatim (polling the invalid
+/// queue name `""`). Here an empty value is treated as unset.
 pub fn poll_task_queue(role: WorkerRole, override_value: Option<&str>) -> String {
     match override_value {
         Some(q) if !q.is_empty() => q.to_owned(),

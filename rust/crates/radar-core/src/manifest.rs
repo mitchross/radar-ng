@@ -109,7 +109,7 @@ pub struct Frame {
     pub extra: Map<String, Value>,
 }
 
-/// Caller-supplied frame data (the Python `frame=` dict). Reserved keys are kept in typed fields.
+/// Caller-supplied frame data (a free-form dict). Reserved keys are kept in typed fields.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FrameSpec {
     /// Frame timestamp. Used as the key by [`replace_layer`]. Ignored by [`add_frame`], which uses its own argument.
@@ -122,7 +122,7 @@ pub struct FrameSpec {
     pub extra: Map<String, Value>,
 }
 
-/// Options for [`add_frame`]. Mirrors the Python keyword arguments.
+/// Options for [`add_frame`].
 #[derive(Debug, Clone, Default)]
 pub struct AddOptions {
     /// Explicit palettes. Empty falls through to the frame's own, then `classic`.
@@ -433,7 +433,7 @@ pub fn canonical_timestamp(timestamp: &str) -> Result<String, ManifestError> {
     })
 }
 
-/// Serialize a manifest exactly as Python writes it: compact, sorted keys, trailing newline (writer style A).
+/// Serialize a manifest in the original Python format: compact, sorted keys, trailing newline (writer style A).
 pub fn render_manifest(manifest: &Manifest) -> Result<String, ManifestError> {
     let value = serde_json::to_value(manifest).map_err(|e| malformed(format!("serialize: {e}")))?;
     let mut text = pycompat::dumps_value(&value, Style::Compact, true);
@@ -506,7 +506,7 @@ fn add_frame_at(
 }
 
 /// `update_manifest_file(action="remove")`. Drops the frame with this timestamp. The layer is removed when
-/// it has no frames left. Like the Python version, this rewrites the file even when nothing changed.
+/// it has no frames left. This rewrites the file even when nothing changed.
 pub fn remove_frame(
     state_dir: &Path,
     layer: &str,

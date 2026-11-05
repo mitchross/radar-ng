@@ -14,7 +14,7 @@ use temporalio_sdk::{WorkflowContext, WorkflowResult};
 use super::{bounded, options};
 use crate::activities::hrrr::HrrrActivities;
 
-/// Concurrent forecast-hour renders (Python `Semaphore(4)`).
+/// Concurrent forecast-hour renders (4 slots).
 pub const FORECAST_CONCURRENCY: usize = 4;
 /// Layer whose presence in the publish result marks the run as published.
 pub const GATING_LAYER: &str = "radar-hrrr";

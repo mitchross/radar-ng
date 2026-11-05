@@ -141,7 +141,7 @@ impl TrustedProxies {
 /// Resolve the client key for one request (see the module docs).
 ///
 /// `peer` is the socket address, or `None` when the connection carries none (tests without
-/// `ConnectInfo`); that case yields `"unknown"`, as Python does. `xff` holds every
+/// `ConnectInfo`); that case yields `"unknown"`. `xff` holds every
 /// `X-Forwarded-For` header value in arrival order.
 #[must_use]
 pub fn resolve(peer: Option<IpAddr>, xff: &[String], trusted: &TrustedProxies) -> String {

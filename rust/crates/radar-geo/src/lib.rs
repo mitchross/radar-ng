@@ -1,8 +1,8 @@
 //! radar-geo: grid + projection types shared by the GRIB decoder (`radar-grib`), the tiler (`radar-tiler`),
-//! nowcast and the API. OWNED BY THE INTEGRATOR — implementation agents must not change these
+//! nowcast and the API. OWNED BY THE INTEGRATOR. Implementation agents must not change these
 //! signatures (add new items in other modules instead).
 //!
-//! Conventions (mirrors the Python tiler contract, spec-tiler §1):
+//! Conventions (the tiler contract, spec-tiler §1):
 //! - `values` is row-major `height x width` f32, NaN = missing.
 //! - Regular grids: `lats` (len = height) and `lons` (len = width) are 1-D axes in degrees.
 //! - Projected grids: `x` (len = width) and `y` (len = height) are 1-D axes in source-CRS metres,

@@ -4,7 +4,7 @@
 //! use the rounded values. Concurrent misses for one cell share one upstream request. The 200 body
 //! is the Open-Meteo JSON, unchanged, cached encoded. Failures are
 //! `502 {"error":"upstream_unavailable"}` with **no** `Cache-Control`. A 200 whose body is not JSON
-//! is also a 502 (defect D5 fix; Python returned 500). Missing or null current fields that clients
+//! is also a 502 (defect D5 fix; was 500). Missing or null current fields that clients
 //! read (every requested one except `precipitation`) bypass the cache and return `no-store`, so partial model syncs do not delay fresh data.
 
 use std::time::Duration;
@@ -42,7 +42,7 @@ pub enum ForecastError {
     NoData(Bytes),
 }
 
-/// The rounded cell for a point, as Python computes it: `round(x, 1)`.
+/// The rounded cell for a point: `round(x, 1)`, half to even.
 #[must_use]
 pub fn cell_key(lat: f64, lon: f64) -> (f64, f64, String) {
     let glat = round_digits(lat, 1);
@@ -70,8 +70,7 @@ pub async fn forecast_for(state: &AppState, lat: f64, lon: f64) -> Result<Value,
 }
 
 /// Encoded forecast body for a point, from the cache or Open-Meteo. Does not count the request:
-/// the caller does, exactly once, so `GET /api/forecast` is counted once (before validation, as in
-/// Python). A request that waited on another request's upstream call counts as a cache hit.
+/// the caller does, exactly once, so `GET /api/forecast` is counted once (before validation). A request that waited on another request's upstream call counts as a cache hit.
 ///
 /// # Errors
 /// [`ForecastError::OutOfRange`] for a bad point, [`ForecastError::Upstream`] for any upstream failure,

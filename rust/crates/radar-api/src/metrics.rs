@@ -1,6 +1,6 @@
 //! In-process counters and the `GET /api/metrics` text (spec 10.2).
 //!
-//! Counters that the Python code bumps by name are plain atomics. The HTTP counters are keyed by
+//! Counters bumped by name are plain atomics. The HTTP counters are keyed by
 //! `(method, route template, status)` and by `(method, route template)` for durations. Route
 //! labels are the matched template (`/api/forecast/{lat}/{lon}`) or `unmatched`, never a raw URL.
 

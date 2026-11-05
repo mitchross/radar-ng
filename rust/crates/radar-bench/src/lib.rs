@@ -1,6 +1,6 @@
 //! Measurement helpers for the Rust side of the radar-ng before/after benchmark.
 //!
-//! The rules match `bench/py/common.py` exactly so the two sides are comparable:
+//! The rules match the recorded Python benchmark so the two sides are comparable:
 //! wall time is measured around one call; CPU time is user plus system time of the whole
 //! process (`getrusage(RUSAGE_SELF)`); memory comes from `VmRSS` and `VmHWM` in
 //! `/proc/self/status`. Each process runs `warmup` iterations, then `iters` timed ones.
@@ -44,7 +44,8 @@ pub fn proc_status_mb() -> (f64, f64) {
 }
 
 /// Run `f(i)` for `i` in `0..warmup + iters` and return one JSON record per call, with the
-/// same keys as the Python `measure`. `f` returns extra fields to merge into the record.
+/// same keys as the Python benchmark's `measure`. `f` returns extra fields to merge into the
+/// record.
 pub fn measure<F>(warmup: usize, iters: usize, mut f: F) -> Result<Vec<Value>>
 where
     F: FnMut(usize) -> Result<Value>,
@@ -85,7 +86,7 @@ pub fn percentile(values: &[f64], q: f64) -> f64 {
     xs[lo] + (xs[hi] - xs[lo]) * (k - lo as f64)
 }
 
-/// Same fields as `bench/py/common.py::summarize`.
+/// Same fields as the Python benchmark's `summarize`.
 pub fn summarize(records: &[Value]) -> Value {
     let timed: Vec<&Value> = {
         let it: Vec<&Value> = records.iter().filter(|r| r["phase"] == "iter").collect();
@@ -269,7 +270,7 @@ pub fn write_json(path: &Path, value: &Value) -> Result<()> {
     Ok(())
 }
 
-/// Parse `inputs/manifest.json` written by `bench/py/gen_inputs.py`.
+/// Parse `inputs/manifest.json` written by the input generator.
 pub fn load_manifest(input_dir: &Path) -> Result<Value> {
     let text = fs::read_to_string(input_dir.join("manifest.json")).with_context(|| {
         format!(

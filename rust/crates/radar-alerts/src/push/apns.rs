@@ -9,7 +9,7 @@ use super::{
 use super::{current_epoch_seconds, delete_dead_token, retryable};
 
 /// Body for one notification: `{"aps": {...}, **extra}`. Keys in `extra` are added after `aps`, so an `aps` key in
-/// `extra` replaces the alert block. Python does the same.
+/// `extra` replaces the alert block.
 #[must_use]
 pub fn apns_body(payload: &PushPayload) -> Value {
     let mut body = Map::new();
@@ -28,7 +28,7 @@ pub fn apns_body(payload: &PushPayload) -> Value {
 }
 
 /// ES256 provider token: header `kid = APNS_KEY_ID`, claims `iss = APNS_TEAM_ID`, `iat = now`. Minted per send, as
-/// the Python code does.
+/// the original code does.
 pub(crate) fn provider_token(config: &PushConfig, iat: i64) -> Result<String, PushError> {
     let key_pem = std::fs::read(&config.apns_key_path).map_err(retryable)?;
     let key = EncodingKey::from_ec_pem(&key_pem).map_err(retryable)?;

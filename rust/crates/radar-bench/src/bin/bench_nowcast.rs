@@ -1,7 +1,7 @@
 //! Nowcast benchmark, Rust side: `radar_nowcast::estimate_motion` (LK, stride 2) followed by
 //! `radar_nowcast::forecast` (S-PROG, 6 cascade levels, 5 dBZ, 12 leads).
 //!
-//! Same inputs and steps as the Python `_run_nowcast` in `bench/py/bench_nowcast.py`: values
+//! Same inputs and steps as the recorded Python benchmark: values
 //! below -100 become NaN before the motion step, and the forecast is written with NaN as -9999.
 
 use std::fs;
@@ -16,7 +16,7 @@ use radar_bench::{
 use radar_nowcast::{Field2, MotionParams, SprogParams, estimate_motion, forecast};
 use serde_json::json;
 
-/// Mirrors `MOTION_STRIDE` in backend/nowcast/activities.py.
+/// Motion estimation stride.
 const MOTION_STRIDE: usize = 2;
 
 #[derive(Parser)]
@@ -58,7 +58,7 @@ fn main() -> Result<()> {
         frame_paths.push(path);
     }
     let _ = man; // manifest is read for its existence check; shapes are in the file names
-    // Lead times as in activities.py: ((i + 1) * STEP_MIN) / INPUT_STEP_MIN, 60 / 5 = 12 leads.
+    // Lead times: ((i + 1) * STEP_MIN) / INPUT_STEP_MIN, 60 / 5 = 12 leads.
     let lead_steps: Vec<f64> = (0..12).map(|i| ((i + 1) as f64 * 5.0) / 5.0).collect();
     let motion = MotionParams::radar_ng();
     let sprog = SprogParams::radar_ng();

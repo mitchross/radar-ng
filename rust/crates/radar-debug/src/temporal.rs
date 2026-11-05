@@ -1,8 +1,8 @@
 //! Temporal control-plane checks: schedules, recent failures, stuck runs, and retrying activities.
 //!
-//! Port of `tools/debug_harness/temporal_checks.py`. The expected schedule set comes from
-//! `radar-types`, the same table the seeder uses. The Python fell back to a hard-coded list of 10 that
-//! had already drifted (it lacked two schedules), so that fallback is gone.
+//! The expected schedule set comes from `radar-types`, the same table the seeder uses. The old
+//! Python harness fell back to a hard-coded list of 10 that had drifted (it lacked two schedules),
+//! so that fallback is gone.
 
 use std::collections::BTreeSet;
 use std::time::SystemTime;
@@ -145,7 +145,7 @@ pub async fn check_temporal(
     } else {
         failures.sort_by_key(|w| std::cmp::Reverse(w.start_time));
         let by_type = count_by_type(failures.iter().map(|w| w.workflow_type.as_str()));
-        // Python sorts by count (descending) and keeps first-seen order for ties.
+        // Sort by count (descending), keeping first-seen order for ties.
         let mut ranked = by_type.clone();
         ranked.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
         let summary = ranked
@@ -436,7 +436,7 @@ fn start_or_epoch(t: Option<SystemTime>) -> DateTime<Utc> {
     DateTime::<Utc>::from(t.unwrap_or(SystemTime::UNIX_EPOCH))
 }
 
-/// Count occurrences keeping first-seen order (Python dict insertion order).
+/// Count occurrences keeping first-seen order.
 fn count_by_type<'a>(types: impl Iterator<Item = &'a str>) -> Vec<(String, usize)> {
     let mut out: Vec<(String, usize)> = Vec::new();
     for t in types {
@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn ranking_is_stable_for_ties() {
-        // Python: sorted(items, key=lambda kv: -kv[1]) keeps insertion order for ties.
+        // Sorting by descending count keeps insertion order for ties.
         let mut ranked = count_by_type(["X", "Y", "Z", "Y"].into_iter());
         ranked.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
         assert_eq!(
@@ -508,7 +508,7 @@ mod tests {
     #[test]
     fn expected_schedules_come_from_radar_types() {
         let ids: Vec<String> = all_schedules().iter().map(|s| s.id.to_string()).collect();
-        // The Python fallback list omitted these two; the Rust set must include them.
+        // The old hard-coded fallback list omitted these two; the schedule set must include them.
         assert!(ids.iter().any(|i| i == "ingest-airquality"));
         assert!(ids.iter().any(|i| i == "open-meteo-sync-gfs025"));
         assert_eq!(ids.len(), 15);

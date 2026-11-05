@@ -1,5 +1,5 @@
 /**
- * "Heavy storm arriving in ~20 min" — shown only when a tracked storm cell's
+ * "Heavy storm arriving in ~20 min". Shown only when a tracked storm cell's
  * next-hour path crosses the active place (same rule as the web panel).
  */
 import React, { useMemo } from "react";

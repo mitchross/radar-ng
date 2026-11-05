@@ -1,9 +1,8 @@
-//! Storm-watch change detection (spec-shared 8.x and the pure parts of
-//! `storm_watch_activities.py`).
+//! Storm-watch change detection (spec-shared 8.x, pure parts only).
 //!
 //! The watch samples a square window of the latest radar grid around a point and
-//! decides whether the max reflectivity changed enough to push. Two Python
-//! hazards are fixed here (spec-shared D2): a sample outside coverage or a
+//! decides whether the max reflectivity changed enough to push. Two original Python
+//! defects are fixed here (spec-shared D2): a sample outside coverage or a
 //! fill-only window is "no data", and never feeds a comparison, so it cannot
 //! produce `dissipating` or `intensifying` events.
 
@@ -14,16 +13,16 @@ use serde_json::Value;
 
 use crate::numeric::{np_mean_f32, py_float, py_int, radians};
 
-/// Radius of the watch window used by `compare_radar_frames` (km). Python hard-codes this value.
+/// Radius of the watch window used by `compare_radar_frames` (km). Fixed, not configurable.
 pub const COMPARE_RADIUS_KM: f64 = 20.0;
 
 /// Values at or below this are fill or sentinel values, not reflectivity (spec-shared D2).
 ///
-/// `sample_window` keeps `> -100` as Python does, so a `-99` fill survives sampling.
+/// `sample_window` keeps `> -100`, so a `-99` fill survives sampling (kept to match the golden fixtures).
 /// Comparisons treat `<= -99` as no data. That also covers the `-99.0` wire sentinel the API uses for `-inf`.
 pub const NO_DATA_FLOOR_DBZ: f64 = -99.0;
 
-/// Thresholds for change detection (`storm_watch.py` module constants).
+/// Thresholds for change detection.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WatchConfig {
     /// `HAIL_DBZ_THRESHOLD` (default 60): at or above this, the change is `severe`.
@@ -118,7 +117,7 @@ impl ChangeKind {
 pub struct ChangeEvent {
     /// Kind of change.
     pub kind: ChangeKind,
-    /// Summary text, with the same wording and rounding as the Python code.
+    /// Summary text, with the same wording and rounding as the golden fixtures.
     pub summary: String,
 }
 
@@ -155,7 +154,7 @@ pub struct FrameComparison {
 
 /// Newest `*.meta.json` in `grid_dir/radar` by file name (`latest_radar_meta`).
 ///
-/// Dot files are skipped, as Python's `glob("*.meta.json")` skips them. Names
+/// Dot files are skipped. Names
 /// sort as ISO timestamps, so the last name is the newest frame.
 #[must_use]
 pub fn latest_radar_meta(grid_dir: &Path) -> Option<PathBuf> {
@@ -202,7 +201,7 @@ pub fn sample_window(meta_path: &Path, lat: f64, lon: f64, radius_km: f64) -> Op
     let (h, w) = (h as usize, w as usize);
     let bytes = fs::read(&bin_path).ok()?;
     if bytes.len() != h.checked_mul(w)?.checked_mul(4)? {
-        // Python's reshape raises ValueError on a size mismatch.
+        // Size mismatch: the grid file is unreadable.
         return None;
     }
     let values: Vec<f32> = bytes
@@ -227,11 +226,11 @@ pub fn sample_window(meta_path: &Path, lat: f64, lon: f64, radius_km: f64) -> Op
     let lat_span = lat_max - lat_min;
     let lon_span = lon_max - lon_min;
     if lat_span == 0.0 || lon_span == 0.0 {
-        // Python raises ZeroDivisionError here; treat a degenerate grid as unreadable.
+        // A degenerate grid would divide by zero; treat it as unreadable.
         return None;
     }
 
-    // Row 0 is lat_max. round() is Python's half-to-even.
+    // Row 0 is lat_max. Round half to even so samples match the golden fixtures.
     let row_center = (((lat_max - lat) / lat_span) * (h as f64 - 1.0)).round_ties_even() as i64;
     let col_center = (((lon - lon_min) / lon_span) * (w as f64 - 1.0)).round_ties_even() as i64;
 
@@ -249,7 +248,7 @@ pub fn sample_window(meta_path: &Path, lat: f64, lon: f64, radius_km: f64) -> Op
     for r in r0..r1 {
         for c in c0..c1 {
             let v = values[r as usize * w + c as usize];
-            // Drops fill values (-9999, -999, -99 is kept as Python does) and NaN.
+            // Drops fill values (-9999, -999, -99 is kept to match the golden fixtures) and NaN.
             if v > -100.0 {
                 window.push(v);
             }
@@ -358,7 +357,7 @@ pub fn compare_radar_frames(
 
 /// `detect_storm_change`: classify the change given a comparison result.
 ///
-/// Returns `None` when there is no previous frame, as the Python activity does.
+/// Returns `None` when there is no previous frame.
 #[must_use]
 pub fn detect_storm_change(comparison: &FrameComparison, cfg: &WatchConfig) -> Option<ChangeEvent> {
     if !comparison.has_prev {

@@ -1,5 +1,5 @@
 // Nearest-frame lookup for the radar timeline. Pure (no RN deps) so it can be
-// unit-tested directly — see __tests__/lib/frameIndex.test.ts.
+// unit-tested directly. See __tests__/lib/frameIndex.test.ts.
 
 /**
  * Index of the frame whose `time` is closest to `target`.

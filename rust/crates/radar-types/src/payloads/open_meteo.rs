@@ -1,6 +1,4 @@
 //! Open-Meteo sync payloads (`OpenMeteoSyncWorkflow` and `open_meteo_sync`).
-//!
-//! Source: `temporal/workflows/open_meteo_sync.py`, `backend/open_meteo_sync/activities.py`.
 
 use serde::{Deserialize, Serialize};
 

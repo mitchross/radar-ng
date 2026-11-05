@@ -10,7 +10,7 @@ use radar_geo::{Grid, GridGeo};
 
 use crate::config::IngestConfig;
 
-/// Seconds since `start`, rounded to 2 places (Python `round(elapsed, 2)`).
+/// Seconds since `start`, rounded to 2 places (round half to even).
 pub fn elapsed_s(start: Instant) -> f64 {
     radar_core::time::round_digits(start.elapsed().as_secs_f64(), 2)
 }
@@ -44,7 +44,7 @@ pub fn regular_axes(grid: &Grid) -> anyhow::Result<(&[f64], &[f64])> {
     }
 }
 
-/// `write_grid` with NaN fill, logging `grid_dump_failed` on error (MRMS `_grids`).
+/// `write_grid` with NaN fill, logging `grid_dump_failed` on error.
 pub fn dump_grid_logged(cfg: &IngestConfig, layer: &str, timestamp: &str, grid: &Grid, unit: &str) {
     let Ok((lats, lons)) = regular_axes(grid) else {
         return;

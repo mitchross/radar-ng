@@ -5,7 +5,7 @@
 //! they were recorded in.
 //!
 //! Fix (D13): extra fields named `ts`, `level`, `service`, `msg` are prefixed with `x_`, so they cannot
-//! overwrite the base fields. A field named `exc` fills the `exc` slot, the way `exc_info` does in Python.
+//! overwrite the base fields. A field named `exc` fills the `exc` slot, the way Python's `exc_info` does.
 //!
 //! `ts` is local time with second precision and an offset without a colon (`%Y-%m-%dT%H:%M:%S%z`).
 
@@ -223,7 +223,7 @@ impl Default for RetryPolicy {
 
 /// Run `op` up to `policy.attempts` times with exponential backoff. Only errors for which `retryable` returns
 /// true are retried. Each retry logs a `retry` warning (fields `fn`, `attempt`, `max_attempts`, `delay`, `err`)
-/// before sleeping. The final failure is returned without a warning, as in Python.
+/// before sleeping. The final failure is returned without a warning.
 pub fn retry<T, E, F, P>(name: &str, policy: RetryPolicy, retryable: P, mut op: F) -> Result<T, E>
 where
     E: fmt::Display,

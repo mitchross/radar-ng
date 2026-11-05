@@ -2,7 +2,7 @@
 //!
 //! Connects lazily on the first request that needs it, and keeps one shared client. Any RPC
 //! failure resets the client, so the next request reconnects (D3: a connect failure answers 503,
-//! not Python's 500). Workflow inputs and results travel as untyped payloads with the `json/plain`
+//! not 500). Workflow inputs and results travel as untyped payloads with the `json/plain`
 //! encoding, so the worker's JSON contract is unchanged.
 //!
 //! Limitation: this module compiles against `temporalio-client` 1.1.0, but it has not been run
@@ -98,7 +98,7 @@ pub async fn reset_client(state: &AppState) {
 
 /// Start a watch. Returns `(workflow_id, run_id)`.
 ///
-/// D1: `AllowDuplicate` lets a closed watch be started again. The Python policy
+/// D1: `AllowDuplicate` lets a closed watch be started again. The old policy
 /// (`AllowDuplicateFailedOnly`) returned 409 for a completed watch. This is not yet verified
 /// against a live server.
 ///

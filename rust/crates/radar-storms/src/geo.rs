@@ -15,7 +15,7 @@ pub const KM_PER_DEG_LON_EQUATOR: f64 = 111.320;
 
 /// Great-circle distance in km between two `(lon, lat)` points (degrees).
 ///
-/// Mirrors `storms._haversine_km`, which takes `(lon, lat)` tuples.
+/// Points are `(lon, lat)` tuples.
 #[must_use]
 pub fn haversine_km(a: (f64, f64), b: (f64, f64)) -> f64 {
     let (lon1, lat1) = a;
@@ -44,7 +44,7 @@ pub fn lon_scale_km(lat: f64) -> f64 {
     (KM_PER_DEG_LON_EQUATOR * radians(lat).cos()).max(1e-6)
 }
 
-/// Move `(lon, lat)` by a velocity for a number of minutes (`storms._advance`).
+/// Move `(lon, lat)` by a velocity for a number of minutes.
 #[must_use]
 pub fn advance(lon: f64, lat: f64, east_kmh: f64, north_kmh: f64, minutes: f64) -> (f64, f64) {
     let hours = minutes / 60.0;
@@ -54,9 +54,9 @@ pub fn advance(lon: f64, lat: f64, east_kmh: f64, north_kmh: f64, minutes: f64) 
     )
 }
 
-/// Translate a bbox `[west, south, east, north]` for a lead time (`storms._translate_bbox`).
+/// Translate a bbox `[west, south, east, north]` for a lead time.
 ///
-/// Each output coordinate is rounded to six decimals, as Python does.
+/// Each output coordinate is rounded to six decimals.
 #[must_use]
 pub fn translate_bbox(
     bbox: [f64; 4],
@@ -79,7 +79,7 @@ pub fn translate_bbox(
 /// Web Mercator tile `(x, y)` for a point (`storm_prefetch._lat_lon_to_tile`).
 ///
 /// Latitude is clipped to the Mercator limit and the result is clamped to
-/// `[0, 2^zoom - 1]`. Python `int()` truncates toward zero, so `as i64` does too.
+/// `[0, 2^zoom - 1]`. Truncation is toward zero, so `as i64` matches the golden fixtures.
 #[must_use]
 pub fn lat_lon_to_tile(lat: f64, lon: f64, zoom: u32) -> (i64, i64) {
     let n = 2_f64.powi(zoom as i32);

@@ -15,7 +15,7 @@ pub enum GribError {
     /// A value could not be decoded (bitmap/data inconsistency and similar).
     #[error("GRIB2 decode error: {0}")]
     Decode(String),
-    /// An `.idx` line was malformed (non-integer num or offset). Python raises ValueError here.
+    /// An `.idx` line was malformed (non-integer num or offset).
     #[error("malformed .idx line {line:?}: {detail}")]
     IdxParse { line: String, detail: String },
     /// An S3 ListObjectsV2 response could not be parsed.

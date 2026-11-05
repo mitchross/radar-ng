@@ -1,4 +1,4 @@
-//! Response builders that reproduce the Python error and body shapes.
+//! Response builders that reproduce the original service's error and body shapes.
 //!
 //! - `{"detail": "..."}` for `HTTPException` (FastAPI).
 //! - `{"detail": [ {type, loc, msg, input} ]}` with status 422 for request validation.

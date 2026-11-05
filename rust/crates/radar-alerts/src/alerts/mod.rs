@@ -1,4 +1,4 @@
-//! NWS active alerts (spec-ingest-aux section 10, Python `storm_watch_activities.py` alert activities).
+//! NWS active alerts (spec-ingest-aux section 10).
 //!
 //! - [`fetch_nws_active_alerts`]: fetch and diff against the seen set. Does **not** commit the seen set.
 //! - [`mark_alerts_seen`]: commit the IDs whose watch signal succeeded (at-least-once).
@@ -28,7 +28,7 @@ pub use state::{
 
 /// Default feed (`NWS_ALERTS_URL`).
 pub const DEFAULT_ALERTS_URL: &str = "https://api.weather.gov/alerts/active?status=actual";
-/// Default `User-Agent` (`NWS_USER_AGENT`). This is the Python code default. Production sets a real contact (spec
+/// Default `User-Agent` (`NWS_USER_AGENT`). This is the code default. Production sets a real contact (spec
 /// 13, D-8c).
 pub const DEFAULT_USER_AGENT: &str = "(radar-ng, mitch@example.com)";
 /// Timeout of the feed request (`timeout=20`).
@@ -71,11 +71,11 @@ impl AlertsConfig {
     }
 }
 
-/// Build an [`AlertForSignal`] from one GeoJSON feature (spec 10.1, Python `_alert_from_feature`).
+/// Build an [`AlertForSignal`] from one GeoJSON feature (spec 10.1).
 ///
 /// The ID is `properties.id` when that is truthy, otherwise `feature.id`. A falsy ID gives `None`. The geometry is
 /// the feature's `geometry` when it is an object, otherwise `{}`. A non-object `properties` is treated as `{}`, a
-/// deliberate change from the Python `AttributeError` (see README).
+/// deliberate change from the original `AttributeError` crash (see README).
 #[must_use]
 pub fn alert_from_feature(feature: &Value) -> Option<AlertForSignal> {
     let feature = feature.as_object()?;
@@ -98,7 +98,7 @@ pub fn alert_from_feature(feature: &Value) -> Option<AlertForSignal> {
     })
 }
 
-/// The feature list of a feed body. Python `payload.get("features", []) or []`: a missing or falsy value is empty.
+/// The feature list of a feed body. A missing or falsy value is empty.
 /// A truthy non-list is an error. A non-object body is an error.
 fn features_of(payload: &Value) -> anyhow::Result<&[Value]> {
     let object = payload
@@ -117,7 +117,7 @@ fn features_of(payload: &Value) -> anyhow::Result<&[Value]> {
 /// The feed is requested with `User-Agent` and `Accept: */*`, with a 20-second timeout and no redirects. A non-2xx
 /// status is an error. Each feature is read through [`alert_from_feature`]. A feature that is not an object is
 /// skipped, and `alert_count` still counts it. `new_alert_ids` and `new_alerts` keep feed order, and duplicate IDs
-/// appear twice, as in Python. The active snapshot is written for `mark_alerts_seen`. A failed snapshot write is
+/// appear twice. The active snapshot is written for `mark_alerts_seen`. A failed snapshot write is
 /// logged and ignored.
 pub async fn fetch_nws_active_alerts(config: &AlertsConfig) -> anyhow::Result<FetchAlertsResult> {
     let client = reqwest::Client::builder()
@@ -205,8 +205,8 @@ pub trait WatchSignaler: Send + Sync {
     /// Workflow IDs of every running `WatchStormWorkflow`. The implementation pages through the results.
     async fn list_running_watches(&self) -> anyhow::Result<Vec<String>>;
 
-    /// The watch's center from its `getCurrentState` query. `Ok(None)` when `lat` or `lng` is missing. Python
-    /// `float()` failures are returned as `Err`.
+    /// The watch's center from its `getCurrentState` query. `Ok(None)` when `lat` or `lng` is missing. A non-numeric value
+    /// is returned as `Err`.
     async fn watch_center(&self, workflow_id: &str) -> anyhow::Result<Option<WatchCenter>>;
 
     /// Send `alertMatchSignal` with the alert ID as its one positional string argument.

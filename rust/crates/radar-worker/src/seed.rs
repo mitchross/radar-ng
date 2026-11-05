@@ -156,8 +156,8 @@ fn duration(seconds: u64) -> prost_wkt_types::Duration {
 }
 
 /// Canonical JSON bytes for an argument: compact, with object keys sorted at every depth. This is
-/// `json.dumps(value, sort_keys=True)` as the Python schedule seeder writes it (F8). Byte-equal output lets the
-/// Python and Rust seeders write the same bytes, so neither rewrites the other's schedules.
+/// `json.dumps(value, sort_keys=True)`, which the Python schedule seeder used (F8). Byte-equal output means
+/// a schedule written by the Python seeder is not seen as changed.
 #[must_use]
 pub fn canonical_json(value: &Value) -> Vec<u8> {
     serde_json::to_vec(&sort_keys(value)).unwrap_or_default()
@@ -181,7 +181,7 @@ fn sort_keys(value: &Value) -> Value {
     }
 }
 
-/// JSON payload with the `json/plain` encoding, as the Python default converter writes it. The data uses
+/// JSON payload with the `json/plain` encoding, as the Python default converter does. The data uses
 /// [`canonical_json`].
 pub fn json_payload(value: &Value) -> Payload {
     Payload {
@@ -247,8 +247,8 @@ pub fn desired_schedule(def: &ScheduleDef, use_isolated: bool) -> Schedule {
 }
 
 /// Comparison projection of a schedule. Two schedules are equal here exactly when the update would not
-/// change anything this port controls. Live `paused`, `note` and limited-action state are excluded, as the
-/// Python callback preserves them.
+/// change anything this port controls. Live `paused`, `note` and limited-action state are excluded and
+/// preserved on update.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Comparable {
     /// `(interval, phase)` in seconds. A missing phase is 0.
@@ -374,7 +374,7 @@ pub async fn apply(
         Err(err) => return Err(err),
     }
 
-    // Python's ScheduleHandle.update() performs this describe internally before its callback runs.
+    // Describe first, as the SDK's ScheduleHandle.update() does before its callback runs.
     let described = rpc(
         service.describe_schedule(tonic::Request::new(DescribeScheduleRequest {
             namespace: namespace.to_owned(),

@@ -7,15 +7,15 @@
 //! - `.grid.lock`: `flock` sidecar. Metadata commits, marker writes and prunes all serialize on it.
 //! - `runs/<run>/`: run-scoped grids with a `.grid-generation-complete-v1.json` marker.
 //!
-//! Byte-compatibility with Python: a golden test (`testdata/grid/`) regenerates the Python output for fixed
-//! inputs and a fixed generation id, and compares every byte. Read the code for the exact operation order:
+//! Output must stay byte-identical to the original Python writer. A golden test (`testdata/grid/`)
+//! writes grids for fixed inputs and a fixed generation id and compares every byte. The operation order is:
 //! layer lock, then directory create and fsync, then `.bin` write and fsync, then meta tmp, rename and
 //! fsync.
 //!
 //! Deliberate deviations (details in README.md):
-//! - Stored shape after stride uses `ceil(n / stride)`. The Python `numpy` slice does the same, even though the
-//!   cell cap is computed with floor division.
-//! - Non-finite `lats`/`lons` are rejected. Python would write NaN into the metadata.
+//! - Stored shape after stride uses `ceil(n / stride)`, like a `numpy` slice, even though the cell cap
+//!   is computed with floor division. This keeps output identical to the golden fixtures.
+//! - Non-finite `lats`/`lons` are rejected. The original Python wrote NaN into the metadata.
 //! - D11: `cleanup_old_grids` also removes `runs/<gen>` directories older than `GRID_MAX_AGE_S`, complete or not.
 
 use crate::env::{self, EnvError};
@@ -45,7 +45,7 @@ pub const NOWCAST_INPUT_LAYER: &str = "radar-nowcast-input";
 /// Errors from grid writes, finalization and retention.
 #[derive(Debug, Error)]
 pub enum GridError {
-    /// Filesystem failure. Propagates from fsync and rename, as the Python tests require.
+    /// Filesystem failure. Propagates from fsync and rename.
     #[error("grid I/O: {0}")]
     Io(#[from] io::Error),
     /// A grid key is empty or contains an empty, `.` or `..` segment.
@@ -234,7 +234,7 @@ pub fn write_grid_with(
         col_order = Some(order);
     }
 
-    // Stride decimation to the cell cap. The loop condition uses floor division, as the Python does.
+    // Stride decimation to the cell cap. The loop condition uses floor division so the stride matches the golden fixtures.
     let cell_limit = input
         .max_cells
         .filter(|&m| m > 0)
@@ -464,7 +464,7 @@ pub fn prune_grid_generations(
 }
 
 /// `prune_grid_layer(layer, keep)`. `keep` defaults to the layer's `GRID_KEEP_LAST`. A layer with no keep-N
-/// setting is a no-op. Errors other than `ENOENT`-like conditions return 0, as in Python.
+/// setting is a no-op. Errors other than `ENOENT`-like conditions return 0.
 pub fn prune_grid_layer(cfg: &GridConfig, layer: &str, keep: Option<u64>) -> usize {
     let Some(keep) = keep.or_else(|| cfg.keep_last.get(layer).copied()) else {
         return 0;
@@ -731,8 +731,8 @@ fn meta_file_names(dir: &Path) -> io::Result<Vec<String>> {
     Ok(names)
 }
 
-/// Number of non-directory entries (files and symlinks) under `dir`, recursively. Matches the Python `rglob`
-/// count used before `rmtree`.
+/// Number of non-directory entries (files and symlinks) under `dir`, recursively. This is the count taken
+/// before `rmtree`.
 fn count_files(dir: &Path) -> usize {
     walkdir::WalkDir::new(dir)
         .min_depth(1)

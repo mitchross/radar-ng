@@ -4,7 +4,7 @@
  * The overlay mounts a CONSTANT number of raster sources ("slots"). A
  * mounted MapLibre RasterSource cannot change its tile URL in place
  * (maplibre-react-native 11.x: MLRNRasterSource only implements makeSource),
- * so advancing a frame means remounting one source — the trick is to only
+ * so advancing a frame means remounting one source. The trick is to only
  * ever remount a HIDDEN slot, several ticks before it becomes visible, so
  * its tiles are already fetched when its opacity flips on.
  *
@@ -16,7 +16,7 @@
  * played, which becomes the farthest prefetch). Padding aliases positions
  * past the window end back to the window start, so the loop wrap is
  * prefetched like any other frame. When the window is shorter than N,
- * some slots hold duplicate frames — harmless, they stay hidden.
+ * some slots hold duplicate frames. This is harmless, they stay hidden.
  */
 
 /**

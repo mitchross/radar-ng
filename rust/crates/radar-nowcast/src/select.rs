@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 pub struct Candidate<T> {
     /// File stem, the ISO-8601 timestamp without `.meta.json`.
     pub stem: String,
-    /// Parsed UTC time, `None` when the stem does not parse (Python skips these in the timed list).
+    /// Parsed UTC time, `None` when the stem does not parse (these are skipped in the timed list).
     pub time: Option<DateTime<Utc>>,
     /// Caller payload (for example the meta path).
     pub item: T,
@@ -45,7 +45,7 @@ pub fn select_input_grids<T: Clone>(
                 continue;
             }
             let dist = secs_between(t, target).abs();
-            // Strictly smaller keeps the first candidate on ties, as Python's min() does.
+            // Strictly smaller keeps the first candidate on ties.
             if best.is_none_or(|(d, _)| dist < d) {
                 best = Some((dist, (t, c)));
             }
@@ -68,7 +68,7 @@ fn tail<T: Clone>(items: &[Candidate<T>], frames: usize) -> Vec<Candidate<T>> {
     items[items.len().saturating_sub(frames)..].to_vec()
 }
 
-/// `(later - earlier)` in seconds, as f64. Python's `total_seconds()`.
+/// `(later - earlier)` in seconds, as f64.
 fn secs_between(earlier: DateTime<Utc>, later: DateTime<Utc>) -> f64 {
     (later - earlier).num_milliseconds() as f64 / 1000.0
 }

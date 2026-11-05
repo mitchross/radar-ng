@@ -14,7 +14,7 @@ use crate::error::{GribError, Result};
 use crate::http::{LIST_TIMEOUT, MRMS_GET_TIMEOUT};
 use crate::s3::S3Client;
 
-/// Gunzips a complete `.grib2.gz` (multi-member gzip is accepted, as Python's gzip.open does).
+/// Gunzips a complete `.grib2.gz` (multi-member gzip is accepted).
 pub fn gunzip(gz: &[u8]) -> Result<Vec<u8>> {
     let mut out = Vec::with_capacity(gz.len() * 4);
     flate2::read::MultiGzDecoder::new(gz).read_to_end(&mut out)?;
@@ -26,7 +26,7 @@ pub fn decode_gz(gz: &[u8]) -> Result<Grid> {
     decode_message(&gunzip(gz)?)
 }
 
-/// Makes the grid south-up: flips rows when `lats[0] > lats[-1]` (Python `flip = lats[0] > lats[-1]`).
+/// Makes the grid south-up: flips rows when `lats[0] > lats[-1]`.
 ///
 /// Returns true when a flip happened. Longitudes are untouched.
 pub fn ensure_south_up(grid: &mut Grid) -> bool {
@@ -42,13 +42,13 @@ pub fn ensure_south_up(grid: &mut Grid) -> bool {
     flip
 }
 
-/// The basename of an object key with `.grib2.gz` removed (Python `timestamp_hint`).
+/// The basename of an object key with `.grib2.gz` removed.
 pub fn timestamp_hint(key: &str) -> &str {
     let base = key.rsplit('/').next().unwrap_or(key);
     base.strip_suffix(".grib2.gz").unwrap_or(base)
 }
 
-/// Parses the valid time from an MRMS object key (Python `_extract_timestamp`).
+/// Parses the valid time from an MRMS object key.
 ///
 /// The basename minus `.grib2.gz` is split on `_`; the last token is read as `%Y%m%d-%H%M%S` UTC.
 /// The result is `datetime.isoformat()` of that instant, e.g. `2026-09-30T00:00:00+00:00`.
@@ -89,7 +89,7 @@ pub fn format_valid_time(dt: DateTime<Utc>) -> String {
     dt.format("%Y-%m-%dT%H:%M:%S+00:00").to_string()
 }
 
-/// Keeps the `.grib2.gz` keys of a listing (Python `_list_keys_sync` filter).
+/// Keeps the `.grib2.gz` keys of a listing.
 fn filter_grib(keys: Vec<String>) -> Vec<String> {
     keys.into_iter()
         .filter(|k| k.ends_with(".grib2.gz"))
@@ -105,7 +105,7 @@ fn in_midnight_window(now: DateTime<Utc>) -> bool {
     now.time().signed_duration_since(NaiveTime::MIN) < MIDNIGHT_LIST_WINDOW
 }
 
-/// Lists the MRMS keys for the most recent UTC day (Python `_list_recent_files_sync`).
+/// Lists the MRMS keys for the most recent UTC day.
 ///
 /// Lists `{prefix}/{YYYYMMDD}` for `now`'s UTC date. Yesterday's prefix is listed as well when today's
 /// yields no `.grib2.gz` keys, or when `now` is within the first 10 minutes after UTC midnight. The
@@ -134,8 +134,7 @@ pub async fn list_recent_keys(
     Ok(keys)
 }
 
-/// Downloads one `.grib2.gz` and returns its valid time with the raw bytes (Python
-/// `_download_and_decode_sync`, 60 s timeout).
+/// Downloads one `.grib2.gz` and returns its valid time with the raw bytes (60 s timeout).
 ///
 /// The valid time is parsed from the key before any bytes are fetched (PLAN defect D21), so a key
 /// with a bad timestamp fails without a download.

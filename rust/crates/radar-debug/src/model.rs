@@ -1,6 +1,6 @@
 //! Shared plumbing: timed HTTP fetches, percentiles, check results, and rendering.
 //!
-//! Port of `tools/debug_harness/core.py`. Output is byte-compatible with the Python harness: the
+//! Output is byte-compatible with the Python harness: the
 //! JSON form is `json.dumps(..., indent=2)` (ASCII-escaped, Python float reprs), and the human form
 //! prints the same icons, section titles and summary lines.
 
@@ -13,7 +13,7 @@ use radar_core::pycompat::{self, Json, Style};
 use radar_core::time::{parse_iso_as_utc, round_digits, round_half_even};
 use serde_json::Value;
 
-/// Default per-request timeout, seconds (`DEFAULT_TIMEOUT_S`).
+/// Default per-request timeout, seconds.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// User-Agent sent by every probe (`radar-ng-debug-harness`).
@@ -50,7 +50,7 @@ impl Status {
     }
 }
 
-/// One named result (`Check` in the Python).
+/// One named result.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Check {
     /// Dotted check name, e.g. `api.manifest` or `temporal.schedule.nowcast`.
@@ -122,8 +122,8 @@ impl Fetch {
     }
 }
 
-/// Blocking-free HTTP client shared by every probe. Self-signed certificates are accepted, as in the
-/// Python harness (it reads public weather tiles).
+/// Blocking-free HTTP client shared by every probe. Self-signed certificates are accepted because it reads public
+/// weather tiles.
 #[derive(Clone)]
 pub struct Http {
     client: reqwest::Client,
@@ -214,7 +214,7 @@ fn transport_error(err: &reqwest::Error) -> String {
     format!("{kind}: {err}")
 }
 
-/// Latency summary of a sample set (`percentiles` in the Python).
+/// Latency summary of a sample set.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Stats {
     /// Sample count.
@@ -230,7 +230,7 @@ pub struct Stats {
 }
 
 impl Stats {
-    /// The Python dict shape: `{"n", "min_ms", "p50_ms", "p95_ms", "max_ms"}`.
+    /// The JSON shape: `{"n", "min_ms", "p50_ms", "p95_ms", "max_ms"}`.
     pub fn to_json(self) -> Json {
         Json::Object(vec![
             ("n".into(), Json::Int(self.n as i64)),
@@ -242,7 +242,7 @@ impl Stats {
     }
 }
 
-/// Stats or the empty object, as the Python returns `{}` for no samples.
+/// Stats or the empty object, `{}` for no samples.
 pub fn stats_json(stats: Option<Stats>) -> Json {
     stats.map_or_else(|| Json::Object(Vec::new()), Stats::to_json)
 }
@@ -279,7 +279,7 @@ pub fn parse_iso(ts: &str) -> Option<DateTime<Utc>> {
     parse_iso_as_utc(ts)
 }
 
-/// Seconds from `then` to `now`, as a float (Python `(now - then).total_seconds()`).
+/// Seconds from `then` to `now`, as a float.
 pub fn seconds_between(now: DateTime<Utc>, then: DateTime<Utc>) -> f64 {
     (now - then).num_milliseconds() as f64 / 1000.0
 }
@@ -492,12 +492,12 @@ pub fn summary_line(checks: &[Check]) -> String {
     format!("\n{} checks · {fails} fail · {warns} warn", checks.len())
 }
 
-/// Current UTC time (`utcnow()`).
+/// Current UTC time.
 pub fn utcnow() -> DateTime<Utc> {
     Utc::now()
 }
 
-/// Fetch and parse a manifest, requiring a `layers` object (`_get_manifest`).
+/// Fetch and parse a manifest, requiring a `layers` object.
 pub async fn get_manifest(http: &Http, server: &str) -> (Fetch, Option<Value>) {
     let (mut f, body) = http.get_json(&format!("{server}/api/manifest.json")).await;
     let body = match body {

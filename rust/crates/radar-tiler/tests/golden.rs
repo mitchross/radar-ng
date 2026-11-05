@@ -1,4 +1,5 @@
-//! Pixel parity against the Python reference (spec-tiler section 18, fixtures in testdata/).
+//! Pixel parity against the golden fixtures generated from the original Python (spec-tiler
+//! section 18, fixtures in testdata/).
 //!
 //! Each golden tile is decoded with `decode_indexed`; class indices must match exactly, and the
 //! set of emitted tiles must be identical. Byte parity with Pillow is not required.

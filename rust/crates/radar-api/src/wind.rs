@@ -43,7 +43,7 @@ fn sanitize(raw: &str) -> String {
         .collect()
 }
 
-/// Stems of `*.meta.json` in `dir`, with `.meta` removed as the Python `replace(".meta", "")` does.
+/// Stems of `*.meta.json` in `dir`, with `.meta` removed.
 fn meta_stems(dir: &Path) -> BTreeSet<String> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return BTreeSet::new();

@@ -162,10 +162,7 @@ fn atomic_render_transparent_frame_publishes_nothing() {
 
 #[test]
 fn unbound_legacy_trees_are_never_adopted_adapted_h6() {
-    // Adapted from test_atomic_render_adopts_exact_pre_marker_legacy_dir,
-    // test_atomic_render_rejects_visually_equal_but_byte_different_legacy_dir,
-    // test_atomic_render_rejects_partial_pre_marker_legacy_dir and
-    // test_atomic_multi_palette_rejects_incomplete_existing_dir. Rust never adopts (spec H6),
+    // Adapted from the Python adoption and incomplete-directory tests. Rust never adopts (spec H6),
     // so every unmarked non-empty final is an Unbound error, and nothing is rendered.
     let tmp = tempfile::tempdir().unwrap();
     let classic = tmp.path().join("classic");
@@ -1005,8 +1002,8 @@ fn legacy_rgba(table: &ColorTable, v: f32) -> [u8; 4] {
 
 #[test]
 fn class_model_matches_legacy_formula_for_every_shipped_table() {
-    // test_class_model_matches_legacy_for_every_shipped_table[float32] (f64 variant not ported:
-    // the Rust pipeline stores values as f32, spec 4.2).
+    // The f64 variant of the Python test is not ported: the Rust pipeline stores values as f32
+    // (spec 4.2).
     for name in NAMES {
         let palette = load_palette(name).unwrap();
         for key in palette.color_keys().map(str::to_string).collect::<Vec<_>>() {
@@ -1075,8 +1072,7 @@ fn shipped_palettes_share_edges_per_key() {
 
 #[test]
 fn class_model_handles_overlapping_and_disjoint_palettes() {
-    // test_class_model_later_overlapping_range_wins_like_legacy and
-    // test_class_model_handles_palettes_with_different_edges.
+    // The later overlapping range wins, and palettes may have different edges.
     let overlap = table_json(
         r#"{"ranges":[{"min":0,"max":20,"rgba":[255,0,0,255]},{"min":10,"max":30,"rgba":[0,0,255,255]}],"no_data_below":0}"#,
     );
@@ -1112,7 +1108,7 @@ fn class_model_handles_overlapping_and_disjoint_palettes() {
 
 #[test]
 fn categorical_model_matches_legacy_including_negative_and_unknown_ids() {
-    // test_categorical_model_matches_legacy: ids outside the map are class 0.
+    // Ids outside the map are class 0.
     let table = palette_table("classic", "precip_type");
     let map: BTreeMap<i64, String> = [
         (1, "rain"),
@@ -1245,9 +1241,8 @@ fn indexed_render_matches_palette_lut_and_tile_geometry_is_valid() {
 
 #[test]
 fn renderer_selection_fails_closed_and_needs_a_canary() {
-    // test_unknown_renderer_fails_closed (adapted: the env reader is `resolve_tile_renderer`),
-    // test_indexed_renderer_requires_one_named_canary_role,
-    // test_legacy_renderer_ignores_stale_canary_role.
+    // An unknown renderer fails closed, an indexed renderer needs one named canary role, and a
+    // legacy renderer ignores a stale canary role.
     assert!(resolve_tile_renderer("mrms", Some("typo"), None).is_err());
     let err = resolve_tile_renderer("mrms", Some("indexed"), None).unwrap_err();
     assert!(err.to_string().contains("CANARY_ROLE"), "{err}");

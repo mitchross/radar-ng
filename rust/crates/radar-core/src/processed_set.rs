@@ -1,16 +1,16 @@
 //! Bounded, disk-backed set of processed keys (spec-shared §4): MRMS keys, HRRR run ids, nowcast anchors.
 //!
 //! File format (writer style C): `{"items": ["k1", "k2"]}`, Python default separators, no trailing newline,
-//! oldest first. The format is shared with Python during a rolling deploy.
+//! oldest first. Existing files must keep loading.
 //!
 //! Fixes applied (PLAN, spec §14 D9 and §4.5):
 //! - A corrupt, unreadable, or structurally wrong file resets to empty instead of crashing the constructor.
 //!   Non-string items are dropped.
 //! - Duplicates in the file are collapsed on load, so trimming never drops a key that is still present.
-//! - `max_entries = 0` is rejected. Python treated it as unbounded by accident.
+//! - `max_entries = 0` is rejected. The original Python treated it as unbounded by accident.
 //! - Writes are fsynced. If the write fails, the in-memory change is rolled back.
 //!
-//! Concurrency: as in Python there is no lock. One writer per file is the design (spec §4.7).
+//! Concurrency: there is no lock. One writer per file is the design (spec §4.7).
 
 use crate::fsutil;
 use crate::pycompat::{self, Json, Style};

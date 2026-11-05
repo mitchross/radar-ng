@@ -1,11 +1,11 @@
 //! HTTP-side checks: API latency, tile sampling, pipeline freshness, and the client playback sim.
 //!
-//! Port of `tools/debug_harness/checks.py`. Everything goes through the public serving path, the
-//! same way the app does, so the numbers include the full hop (`radar api`, not just the handler).
+//! Everything goes through the public serving path, the same way the app does, so the numbers
+//! include the full hop (`radar api`, not just the handler).
 //!
-//! Deliberate deviation: the tile URL template is filled with the frame's `path` (which defaults to
-//! its timestamp). The Python formatted only `{timestamp}`, but the manifest advertises `{path}`, so
-//! the Python harness raised `KeyError` on the live stack. See `README.md`.
+//! The tile URL template is filled with the frame's `path` (which defaults to its timestamp),
+//! because the manifest advertises `{path}`. The old Python harness formatted only `{timestamp}`
+//! and raised `KeyError` on the live stack. See `README.md`.
 
 use std::f64::consts::PI;
 
@@ -78,7 +78,7 @@ pub enum Expectation {
     },
 }
 
-/// Layer name to expectation, in the Python dict's order.
+/// Layer name to expectation, in display order.
 pub const LAYER_EXPECTATIONS: &[(&str, Expectation)] = &[
     (
         "radar",
@@ -168,7 +168,7 @@ pub const LAYER_EXPECTATIONS: &[(&str, Expectation)] = &[
     ),
 ];
 
-/// Web Mercator tile containing `(lat, lon)` at zoom `z` (`_slippy`).
+/// Web Mercator tile containing `(lat, lon)` at zoom `z`.
 pub fn slippy(lat: f64, lon: f64, z: u32) -> (i64, i64) {
     let lat_r = lat.to_radians();
     let n = 2f64.powi(z as i32);
@@ -728,7 +728,7 @@ pub async fn check_client_sim(
 
     let template = template_of(&manifest);
     let palette = first_palette(lyr);
-    // Python `timestamps[-frames:]`: a zero count selects everything.
+    // A zero count selects every frame.
     let window: Vec<String> = if frames == 0 || frames >= timestamps.len() {
         timestamps.clone()
     } else {
@@ -822,7 +822,7 @@ pub async fn check_client_sim(
     checks
 }
 
-/// Layers of a manifest sorted by name (`sorted(manifest["layers"].items())`).
+/// Layers of a manifest sorted by name.
 fn sorted_layers(manifest: &Value) -> Vec<(&str, &Value)> {
     let mut layers: Vec<(&str, &Value)> = manifest
         .get("layers")
@@ -903,7 +903,6 @@ mod tests {
         assert_eq!(frame_path(&layer, "t2"), "t2");
     }
 
-    /// Mirrors the Python `test_pipeline_freshness_logic`.
     #[test]
     fn pipeline_freshness_logic() {
         let now = parse_iso("2026-10-14T12:00:00+00:00").unwrap();
@@ -980,7 +979,7 @@ mod tests {
         assert_eq!(checks[1].name, "pipeline.manifest");
         assert_eq!(checks[1].detail, "cannot load manifest: manifest down");
 
-        // A manifest failure ends the run (as in Python), so there is no lightning check after it.
+        // A manifest failure ends the run, so there is no lightning check after it.
         assert_eq!(checks.len(), 2);
 
         let checks = pipeline_checks(

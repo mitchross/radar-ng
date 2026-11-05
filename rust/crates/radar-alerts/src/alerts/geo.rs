@@ -1,4 +1,4 @@
-//! Point-in-polygon for NWS alert geometry (spec-ingest-aux section 10.5, Python `_point_in_geojson`).
+//! Point-in-polygon for NWS alert geometry (spec-ingest-aux section 10.5).
 //!
 //! Ray casting over GeoJSON `[lng, lat]` positions. Holes subtract, and a malformed hole counts as "not in hole".
 //! A malformed outer ring, or any malformed vertex in the outer ring, makes the point outside. Coordinates may be

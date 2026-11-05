@@ -13,7 +13,7 @@ use temporalio_sdk::{WorkflowContext, WorkflowResult};
 use super::{OptionalArg, bounded, options};
 use crate::activities::mrms::MrmsActivities;
 
-/// Concurrent frame renders per run (Python `Semaphore(2)`).
+/// Concurrent frame renders per run (2 slots).
 pub const FRAME_CONCURRENCY: usize = 2;
 
 /// Placeholder for a frame whose activity failed. It is not marked processed, so the next run retries it.
@@ -50,7 +50,7 @@ impl IngestMrmsWorkflow {
         ctx: &mut WorkflowContext<Self>,
         input: OptionalArg<IngestMrmsArgs>,
     ) -> WorkflowResult<IngestMrmsResult> {
-        // Python: `args = args or IngestMrmsArgs()`. Schedules without input start with no payload at all.
+        // Schedules without input start with no payload at all, so default the args.
         let args = input.0.unwrap_or_default();
         let layer = args.layer_name.clone();
         let listing = ctx

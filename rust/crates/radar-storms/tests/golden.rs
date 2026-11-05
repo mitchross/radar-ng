@@ -1,7 +1,7 @@
-//! Golden tests: the Rust port must reproduce the Python outputs in `testdata/`.
+//! Golden tests: the Rust port must reproduce the outputs in `testdata/`, which come from the original Python.
 //!
 //! The fixtures come from `testdata/gen_golden.py`, which runs the original
-//! radar-ng Python on deterministic inputs. Where a fixture records a Python
+//! radar-ng Python on deterministic inputs. Where a fixture records a
 //! defect (D1, D2, D3), the test asserts the fixed behavior instead, and the
 //! fixed expectation comes from a reference oracle in the generator or from the
 //! invariant itself.
@@ -53,8 +53,8 @@ fn storms_detect_matches_python_chains() {
             if case["defect"] == "D3" && i == 2 {
                 exp = replace_cell_id(&exp, 3, 4);
             }
-            // generated_at is wall-clock in Python (forced to 0.0 in the fixture); next_cell_id is new.
-            // The fixture still has Python's top-level `prediction_minutes` and `tracking_vectors`;
+            // generated_at is wall-clock (forced to 0.0 in the fixture); next_cell_id is new.
+            // The fixture still has the top-level `prediction_minutes` and `tracking_vectors`;
             // nothing reads them, so the port no longer writes them (C16).
             assert_json_close(
                 &actual,
@@ -94,7 +94,7 @@ fn replace_cell_id(doc: &Value, old: i64, new: i64) -> Value {
 
 #[test]
 fn d3_reuse_reference_ids_are_monotonic() {
-    // Python gives the new cell id 3 (reuse); the port must give 4 and never go back.
+    // The Python fixture gives the new cell id 3 (reuse); the port must give 4 and never go back.
     let golden = testdata("storms_detect.json");
     let case = golden["cases"]
         .as_array()
@@ -134,7 +134,7 @@ fn d3_reuse_reference_ids_are_monotonic() {
     frame2.sort_unstable();
     assert_eq!(frame2, vec![1, 2, 4]);
     assert_eq!(ids_per_frame[2].1, 5);
-    // Python's reference output for the same frame, kept to document the defect.
+    // The Python reference output for the same frame, kept to document the defect.
     let python_frame2 = case["expected"][2]["features"]
         .as_array()
         .unwrap()
@@ -230,7 +230,7 @@ fn prefetch_plans_match_python_or_the_d1_fixed_oracle() {
 
 #[test]
 fn nowcast_run_paths_produce_tiles_d1() {
-    // D1: with run-scoped manifest paths, leads 5 and 10 must have tile URLs (Python had none).
+    // D1: with run-scoped manifest paths, leads 5 and 10 must have tile URLs (the Python fixture had none).
     let golden = testdata("prefetch.json");
     let case = golden["cases"]
         .as_array()
@@ -417,7 +417,7 @@ fn storm_watch_samples_match_python() {
         golden["latest_meta_name"].as_str().unwrap()
     );
 
-    // Python sorts the same names; dot files are excluded.
+    // The names sort the same way; dot files are excluded.
     let expected_names: Vec<&str> = golden["latest_candidates"]
         .as_array()
         .unwrap()
@@ -588,7 +588,7 @@ fn compare_radar_frames_matches_python_except_d2() {
         let exp = &case["result"];
 
         if name == "out_of_bounds_D2" {
-            // Python compares -99 (the sentinel for -inf) against 30 and reports a dissipation.
+            // The Python fixture compares -99 (the sentinel for -inf) against 30 and reports a dissipation.
             assert!(!got.sampled, "{name}: no-data sample must not be compared");
             assert_eq!(detect_storm_change(&got, &WatchConfig::default()), None);
             continue;
@@ -628,7 +628,7 @@ fn compare_radar_frames_matches_python_except_d2() {
             "{name} ts"
         );
         let change = detect_storm_change(&got, &WatchConfig::default());
-        // Python reports "no change" as empty kind and summary strings.
+        // "No change" is empty kind and summary strings in the fixture.
         match (&change, &case["change"]) {
             (None, Value::Null) => {}
             (None, c) if c["kind"] == "" => {}

@@ -24,7 +24,7 @@ pub use alerts::{WatchCenter, WatchSignaler};
 pub use lightning::{LightningConfig, LightningError};
 pub use push::{PushConfig, PushError, PushSender};
 
-/// Wall-clock seconds since the Unix epoch, as Python's `time.time()` returns them.
+/// Wall-clock seconds since the Unix epoch, like `time.time()` in Python.
 pub(crate) fn now_epoch() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -32,7 +32,7 @@ pub(crate) fn now_epoch() -> f64 {
         .unwrap_or(0.0)
 }
 
-/// Uniform random value in `[0, 1)`, used for reconnect jitter (Python `random.random()`). Built from the
+/// Uniform random value in `[0, 1)`, used for reconnect jitter. Built from the
 /// standard library hasher so the crate needs no RNG dependency.
 pub(crate) fn unit_random() -> f64 {
     use std::hash::{BuildHasher, Hasher};

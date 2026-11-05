@@ -13,7 +13,7 @@ use temporalio_sdk::{WorkflowContext, WorkflowResult};
 use super::{bounded, options};
 use crate::activities::aqm::AqmActivities;
 
-/// Concurrent chunk renders (Python `Semaphore(2)`).
+/// Concurrent chunk renders (2 slots).
 pub const CHUNK_CONCURRENCY: usize = 2;
 /// Layer whose publication gates the processed mark.
 pub const GATING_LAYER: &str = "air-quality";

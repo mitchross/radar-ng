@@ -1,6 +1,4 @@
 //! Tropical cyclone payloads (`IngestTropicalWorkflow` and `tropical_fetch_and_publish`).
-//!
-//! Source: `temporal/workflows/ingest_tropical.py`, `backend/ingest_tropical/activities.py`.
 
 use serde::{Deserialize, Serialize};
 

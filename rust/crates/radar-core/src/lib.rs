@@ -1,4 +1,4 @@
-//! radar-core: Rust port of radar-ng's `backend/shared/` data-plane library.
+//! radar-core: the data-plane library shared by the radar-ng backend crates.
 //!
 //! Covers the modules of `spec-shared.md` that are not the tiler, palettes/PNG (radar-tiler) or
 //! storms / storm prefetch / storm watch (radar-storms):
@@ -17,7 +17,7 @@
 //! - [`pycompat`]: Python-compatible JSON writer, float `repr`, and `int()`/`str()` coercions.
 //!
 //! See `README.md` in this crate for the public API summary and every deliberate deviation from the
-//! Python originals.
+//! original Python.
 
 pub mod env;
 pub mod fsutil;

@@ -16,7 +16,7 @@ use super::{
 };
 use radar_core::time::isoformat_utc;
 
-/// Publishes every complete layer (Python `_publish_run_sync`). Returns the published layer names.
+/// Publishes every complete layer Returns the published layer names.
 ///
 /// A layer needs exactly 72 distinct rendered timestamps and at least one palette that carries its color
 /// key. Otherwise it is skipped and the manifest keeps the previous run for that layer. With
@@ -130,7 +130,7 @@ fn lead_minutes(valid: &DateTime<Utc>, run_dt: &DateTime<Utc>) -> i64 {
     (*valid - *run_dt).num_seconds().div_euclid(60)
 }
 
-/// The extra frame keys the Python writes (spec 5.12).
+/// The extra frame keys written (spec 5.12).
 fn frame_extra(run_id: &str, run_issued_at: &str, lead: i64) -> Map<String, Value> {
     let mut extra = Map::new();
     extra.insert("source".into(), json!("aqm"));

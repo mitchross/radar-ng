@@ -6,15 +6,15 @@ use serde_json::Value;
 use super::config::BoundingBox;
 use super::store::Strike;
 
-/// Largest decoded output the LZW decoder will produce, in UTF-8 bytes. Python has no cap. A pathological frame
-/// can grow the dictionary quadratically, so the port gives up and returns the raw frame (as Python does on an
+/// Largest decoded output the LZW decoder will produce, in UTF-8 bytes. The original had none. A pathological frame
+/// can grow the dictionary quadratically, so the port gives up and returns the raw frame (as before on an
 /// exception). Real frames decode to a few hundred bytes.
 pub const MAX_DECODED_BYTES: usize = 4 << 20;
 
 /// Total size of the decoder's dictionary, in UTF-8 bytes. Same purpose as [`MAX_DECODED_BYTES`].
 pub const MAX_DICTIONARY_BYTES: usize = 8 << 20;
 
-/// The Blitzortung LZW-variant decode (Python `_decode_payload`, spec 6.6), on Unicode code points.
+/// The Blitzortung LZW-variant decode (spec 6.6), on Unicode code points.
 ///
 /// Code points below 256 are literals. Code points from 256 up are dictionary references, and a reference to an
 /// entry not yet defined is the KwKwK case (`curr + curr[0]`). Input that is not valid for the variant, or that
@@ -31,7 +31,7 @@ fn lzw_decode(raw: &str) -> Option<String> {
     let chars: Vec<char> = raw.chars().collect();
     let mut curr = chars[0].to_string();
     let mut result = curr.clone();
-    // Entry `i` is the dictionary value for code `256 + i`. Python inserts exactly one entry per loop iteration,
+    // Entry `i` is the dictionary value for code `256 + i`. It inserts exactly one entry per loop iteration,
     // so the codes are contiguous and the index is `code - 256`.
     let mut dictionary: Vec<String> = Vec::new();
     let mut dictionary_bytes = 0usize;
@@ -67,10 +67,10 @@ fn first_char(s: &str) -> char {
     s.chars().next().unwrap_or('\0')
 }
 
-/// Parse one websocket text frame the way the Python loop does (spec 6.5, step 3).
+/// Parse one websocket text frame as the original loop did (spec 6.5, step 3).
 ///
 /// The raw text is tried first. Only when it is not JSON is the decoded form tried. A frame that parses to JSON
-/// `null` is returned as `Some(Value::Null)`. The caller skips it without counting it as parsed, as Python does.
+/// `null` is returned as `Some(Value::Null)`. The caller skips it without counting it as parsed.
 /// Returns `None` when neither form parses.
 #[must_use]
 pub fn decode_frame(text: &str) -> Option<Value> {
@@ -86,14 +86,14 @@ pub enum FrameError {
     /// The JSON value is not an object (for example an array or a number).
     #[error("frame is not a JSON object")]
     NotAnObject,
-    /// A field that Python would coerce with `float()` or `int()` cannot be coerced.
+    /// A field cannot be coerced with `float()` or `int()` semantics.
     #[error("field {0} has a value that cannot be converted to a number")]
     BadField(&'static str),
 }
 
 /// Turn a parsed frame into a strike, or `None` when the frame is outside the box or has no timestamp (spec 6.7).
 ///
-/// Field defaults match Python: `lat` and `lon` default to 0, `time` to 0 (which is skipped), `pol` and `mds` to 0.
+/// Defaults: `lat` and `lon` default to 0, `time` to 0 (which is skipped), `pol` and `mds` to 0.
 /// `lat`, `lon` and `time` are coerced before the box check. `pol` and `mds` are coerced only for in-box strikes.
 pub fn extract_strike(value: &Value, bbox: &BoundingBox) -> Result<Option<Strike>, FrameError> {
     let object = value.as_object().ok_or(FrameError::NotAnObject)?;

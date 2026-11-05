@@ -165,7 +165,7 @@ fn fan_out_extra_defaults_to_empty() {
 
 #[test]
 fn mrms_args_missing_keys_use_defaults() {
-    // The Python defaults come from env MRMS_PREFIX / LAYER_NAME. These tests
+    // The defaults come from env MRMS_PREFIX / LAYER_NAME. These tests
     // only assert the built-in defaults, and skip the check if the env sets them.
     let args: IngestMrmsArgs = serde_json::from_str("{}").unwrap();
     if std::env::var_os("MRMS_PREFIX").is_none() {

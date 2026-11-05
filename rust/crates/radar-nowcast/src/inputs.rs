@@ -1,7 +1,7 @@
 //! Reading grid dumps (spec-nowcast sections 3.3, 4.1, 5).
 //!
 //! Metadata and data come from `radar_core::grid_read`. This module adds the radar-ng rules on top:
-//! the Python `_load_grid` fill normalization, the linspace axes, and the input-layer fallback.
+//! fill normalization, the linspace axes, and the input-layer fallback.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -44,8 +44,8 @@ pub fn linspace(start: f64, stop: f64, n: usize) -> Vec<f64> {
     }
 }
 
-/// Load `<key>.meta.json` and its data (Python `_load_grid`). Any read or parse failure returns `None`,
-/// and the grid is skipped, as Python does.
+/// Load `<key>.meta.json` and its data. Any read or parse failure returns `None`,
+/// and the grid is skipped.
 pub fn load_grid(meta_path: &Path) -> Option<LoadedGrid> {
     let dump = match grid_read::read_grid(meta_path) {
         Ok(d) => d,
@@ -87,7 +87,7 @@ pub fn input_layer_dir(cfg: &NowcastConfig) -> PathBuf {
     dir
 }
 
-/// All `*.meta.json` in `dir`, sorted by file name (Python `sorted(glob)`), as candidates.
+/// All `*.meta.json` in `dir`, sorted by file name, as candidates.
 pub fn list_metas(dir: &Path) -> Vec<Candidate<PathBuf>> {
     let Ok(read) = fs::read_dir(dir) else {
         return Vec::new();
@@ -112,13 +112,13 @@ pub fn list_metas(dir: &Path) -> Vec<Candidate<PathBuf>> {
         .collect()
 }
 
-/// `_list_recent_grids`: the candidates in the input layer, then `select_input_grids` (spec 4.1).
+/// The candidates in the input layer, then `select_input_grids` (spec 4.1).
 pub fn recent_input_grids(cfg: &NowcastConfig) -> Vec<Candidate<PathBuf>> {
     let metas = list_metas(&input_layer_dir(cfg));
     select_input_grids(&metas, cfg.input_step_min, cfg.input_frames)
 }
 
-/// Time of a stem, as used for matching (Python `datetime.fromisoformat`).
+/// Time of a stem, as used for matching.
 pub fn stem_time(stem: &str) -> Option<DateTime<Utc>> {
     parse_iso_as_utc(stem)
 }

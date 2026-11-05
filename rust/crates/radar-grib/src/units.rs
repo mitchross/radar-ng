@@ -1,8 +1,8 @@
 //! Unit conversions and the precip-type category grid used by the HRRR and NAQFC paths
-//! (spec-ingest-mrms-hrrr §5.5, `_process_forecast_hour_sync`).
+//! (spec-ingest-mrms-hrrr §5.5).
 //!
-//! Every function performs its arithmetic in `f32`, in the same operation order as the numpy
-//! expression in the Python source. The operation order is part of the contract (spec §5.5).
+//! Every function performs its arithmetic in `f32`, in the same operation order as the original
+//! numpy expressions, so output matches the golden fixtures (spec §5.5).
 
 /// Categorical precip-type codes (`PRECIP_TYPE_CATEGORIES`).
 pub const PRECIP_RAIN: i32 = 1;
@@ -75,12 +75,12 @@ pub fn mm_to_inches(mm: f32) -> f32 {
     mm / 25.4_f32
 }
 
-/// Builds the precip-type category grid from the four categorical flags, in the Python order:
+/// Builds the precip-type category grid from the four categorical flags, in this order:
 /// `cat[crain > 0] = 1`, then snow, then freezing rain, then ice pellets. Later assignments win, so
 /// the effective precedence is ice pellets > freezing rain > snow > rain. NaN compares false.
 ///
 /// All four slices must have the same length; the result has that length. Missing (absent) inputs
-/// are passed as `None` and contribute nothing, matching "each optional" in the Python.
+/// are passed as `None` and contribute nothing.
 pub fn precip_type_category(
     crain: Option<&[f32]>,
     csnow: Option<&[f32]>,

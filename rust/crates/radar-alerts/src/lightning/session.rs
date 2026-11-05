@@ -1,6 +1,6 @@
 //! One websocket session (spec-ingest-aux section 6.4, the `try` body).
 //!
-//! The Python loop runs `async for msg in ws` with keepalive pings every 30 s and a 10 s open timeout. Here the
+//! The old loop ran `async for msg in ws` with keepalive pings every 30 s and a 10 s open timeout. Here the
 //! same loop is a `select!` over the socket, the keepalive timer, the run deadline and cooperative cancellation.
 
 use std::sync::Mutex;
@@ -25,9 +25,9 @@ pub const PING_INTERVAL: Duration = Duration::from_secs(30);
 pub const PING_TIMEOUT: Duration = Duration::from_secs(30);
 /// Connect and handshake timeout (`open_timeout=10`).
 pub const OPEN_TIMEOUT: Duration = Duration::from_secs(10);
-/// Largest accepted message, as the Python `websockets` default `max_size` (spec section 16.1).
+/// Largest accepted message, the `websockets` library default `max_size` (spec section 16.1).
 pub const MAX_MESSAGE_BYTES: usize = 1 << 20;
-/// Subscription frame sent after connecting. Exact bytes, as in Python `json.dumps({"a": 111})`.
+/// Subscription frame sent after connecting. Exact bytes of `json.dumps({"a": 111})`.
 pub const SUBSCRIBE_FRAME: &str = r#"{"a": 111}"#;
 
 /// What one session produced.

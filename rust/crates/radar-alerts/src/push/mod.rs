@@ -1,8 +1,8 @@
-//! Push notification senders (spec-temporal section 8, Python `temporal/shared/push.py`).
+//! Push notification senders (spec-temporal section 8).
 //!
 //! [`send_push_notification`] is the single entry point. It applies the `PUSH_DISABLED` gate, dispatches on
 //! platform (`ios` to APNs, `android` to FCM), and classifies every failure as retryable or not, which is what the
-//! Python `ApplicationError(non_retryable=True)` decides. Dead tokens are deleted from the local store before the
+//! the non-retryable `ApplicationError` decides. Dead tokens are deleted from the local store before the
 //! non-retryable error is returned.
 
 mod apns;
@@ -32,15 +32,15 @@ pub const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 /// Per-request timeout for APNs, FCM and the OAuth exchange (`timeout=10.0`).
 pub const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// APNs caps `apns-collapse-id` at 64 bytes. The Python code cuts the string at 64 characters, and this port
+/// APNs caps `apns-collapse-id` at 64 bytes. The original cut the string at 64 characters, and this port
 /// keeps that rule (spec D15).
 pub const APNS_COLLAPSE_ID_MAX_CHARS: usize = 64;
 
-/// Decide the `PUSH_DISABLED` gate from the raw variable value. `None` (unset) means the Python default `"1"`,
+/// Decide the `PUSH_DISABLED` gate from the raw variable value. `None` (unset) means `"1"`,
 /// which disables sends.
 ///
 /// Only `1`, `true` and `yes` disable, compared case-insensitively after trimming. Any other value enables sends,
-/// including `""`, `"0"` and `"false"`. This is the PLAN fix to temporal D5. The Python code disabled only for the
+/// including `""`, `"0"` and `"false"`. This is the PLAN fix to temporal D5. The original disabled only for the
 /// exact string `"1"`.
 #[must_use]
 pub fn push_disabled_from(raw: Option<&str>) -> bool {
@@ -106,10 +106,10 @@ impl PushConfig {
 /// A send failure. The variant decides whether the worker retries (spec-temporal section 8).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PushError {
-    /// Python `ApplicationError(non_retryable=True)`: configuration, dead token, 4xx, unknown platform.
+    /// Non-retryable (`ApplicationError`): configuration, dead token, 4xx, unknown platform.
     #[error("{0}")]
     NonRetryable(String),
-    /// Python `RuntimeError` or a transport error: 5xx, timeouts, unreadable key files, OAuth failures.
+    /// A runtime or transport error: 5xx, timeouts, unreadable key files, OAuth failures.
     #[error("{0}")]
     Retryable(String),
 }
@@ -129,7 +129,7 @@ pub(crate) fn retryable(err: impl std::fmt::Display) -> PushError {
 #[derive(Debug, Clone)]
 struct CachedToken {
     token: String,
-    /// Wall-clock seconds at which the cached token stops being used (`time.time() + 3000` in Python).
+    /// Wall-clock seconds at which the cached token stops being used (now + 3000 s).
     expires_at: f64,
 }
 
@@ -143,7 +143,7 @@ pub struct PushSender {
 }
 
 impl PushSender {
-    /// New sender. Redirects are not followed, as with the Python `httpx` default.
+    /// New sender. Redirects are not followed, as in the original.
     pub fn new(config: PushConfig, store: PushTokenStore) -> anyhow::Result<Self> {
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
@@ -183,7 +183,7 @@ pub(crate) async fn delete_dead_token(
         .map_err(|err: PushTokenError| retryable(err))
 }
 
-/// Send one notification to one device (Python `send_push_notification`).
+/// Send one notification to one device.
 ///
 /// With push disabled, logs `push_skipped` and returns `Ok`, so the caller counts the send as successful. Otherwise
 /// the platform decides the path: `ios` goes to APNs, `android` to FCM, and anything else is non-retryable.

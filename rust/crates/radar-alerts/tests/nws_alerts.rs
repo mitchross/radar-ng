@@ -72,7 +72,7 @@ fn feed_body() -> Value {
         "junk",
         // Falsy properties id and null feature id: skipped.
         {"id": null, "properties": {"id": 0}},
-        // Duplicate of urn:a: reported twice, as in Python.
+        // Duplicate of urn:a: reported twice.
         {"properties": {"id": "urn:a"}},
     ]})
 }

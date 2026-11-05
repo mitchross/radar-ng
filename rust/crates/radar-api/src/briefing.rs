@@ -35,7 +35,7 @@ pub const BRIEFING_SYSTEM: &str = r#"You narrate the weather for a personal rada
 /// System prompt for the alert explainer (spec 7.5, verbatim).
 pub const EXPLAIN_SYSTEM: &str = r#"You explain official NWS weather alerts to a regular person. Use ONLY the alert text given. Reply as JSON: {"what": "one plain sentence on what is happening and where", "do": "one plain sentence on what to do"}. No hype, no emojis."#;
 
-/// WMO weather codes as labels (`WMO` in `routes_briefing.py`).
+/// WMO weather codes as labels.
 const WMO: &[(i64, &str)] = &[
     (0, "clear"),
     (1, "mostly clear"),
@@ -95,12 +95,12 @@ fn ok_json(body: &Value, max_age: u64) -> Response {
     .into_response()
 }
 
-/// `value` when it is present and truthy (Python `d.get(k)` followed by `or`).
+/// `value` when it is present and truthy.
 fn truthy(value: Option<&Value>) -> Option<&Value> {
     value.filter(|v| !is_falsy(v))
 }
 
-/// Python `_clean(text, limit)`: `str(text or "")`, whitespace collapsed and stripped, first `limit` characters.
+/// `text` (empty for none) with whitespace collapsed and stripped, cut to `limit` characters.
 #[must_use]
 pub fn clean(value: Option<&Value>, limit: usize) -> String {
     let text = match truthy(value) {
@@ -138,7 +138,7 @@ pub fn wmo_label(code: Option<&Value>) -> &'static str {
         .map_or("unknown", |(_, label)| label)
 }
 
-/// `_r(value)`: Python `round()` for numbers, `null` otherwise.
+/// Rounds a number (half to even, like Python's `round()`), `null` otherwise.
 fn round_value(value: Option<&Value>) -> Value {
     match value {
         Some(Value::Number(n)) => match n.as_f64() {
@@ -149,7 +149,7 @@ fn round_value(value: Option<&Value>) -> Value {
     }
 }
 
-/// A numeric field read as Python `float(...)`, with `default` when the key is absent.
+/// A numeric field read as a float, with `default` when the key is absent.
 fn float_field(obj: &Value, key: &str, default: f64) -> f64 {
     match obj.get(key) {
         None => default,
@@ -297,7 +297,7 @@ pub fn incoming_storm(storms: &Value, lat: f64, lon: f64) -> Option<Value> {
     best.map(|(_, value)| value)
 }
 
-/// The facts object sent to the model (`build_facts`), in the Python key order.
+/// The facts object sent to the model in a fixed key order.
 #[must_use]
 pub fn build_facts(
     place: &str,
@@ -505,14 +505,14 @@ pub async fn chat(state: &AppState, system: &str, user: &str, max_tokens: u32) -
     if state.config.llm_base_url.is_empty() || !breaker_allows(state) {
         return None;
     }
-    // Busy means skip, without touching the breaker (Python's locked-semaphore branch).
+    // Busy means skip, without touching the breaker (all slots in use).
     let _permit = state.llm_slots.try_acquire().ok()?;
     let parsed = request_reply(state, system, user, max_tokens).await;
     breaker_record(state, parsed.is_some());
     parsed
 }
 
-/// Sensor and forecast inputs for one briefing. Each is best effort, as in Python.
+/// Sensor and forecast inputs for one briefing. Each is best effort.
 async fn gather(state: &AppState, lat: f64, lon: f64) -> (Value, Value, Value, Vec<Value>) {
     let forecast = async {
         forecast_for(state, lat, lon)

@@ -2,9 +2,9 @@
  * NWS alert polygons with per-type styling.
  *
  * Event classification (from the alert's `event` text):
- *   warning  — active hazard, solid outline + filled fill
- *   watch    — conditions are favorable, dashed outline + lighter fill
- *   advisory — less severe, dotted outline + very light fill
+ *   warning:  active hazard, solid outline + filled fill
+ *   watch:    conditions are favorable, dashed outline + lighter fill
+ *   advisory: less severe, dotted outline + very light fill
  *
  * Severity still drives color (Extreme/Severe/Moderate/Minor).
  */
@@ -37,7 +37,7 @@ function classifyEvent(event: string): "warning" | "watch" | "advisory" | "state
   return "statement";
 }
 
-// Always mounted (empty collection when there are no alerts) — see lib/emptyGeoJSON.
+// Always mounted (empty collection when there are no alerts). See lib/emptyGeoJSON.
 export function AlertPolygon() {
   const { data: alertData } = useAlerts();
 
@@ -69,7 +69,7 @@ export function AlertPolygon() {
 
   return (
     <GeoJSONSource id="alert-polygons" data={geojson}>
-      {/* Fill — opacity scales by alert kind so watches/advisories recede. */}
+      {/* Fill: opacity scales by alert kind so watches/advisories recede. */}
       <Layer
         type="fill"
         id="alert-fill"

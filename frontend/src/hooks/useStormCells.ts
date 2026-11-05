@@ -23,7 +23,7 @@ export interface StormCellCollection {
   threshold_dbz?: number;
 }
 
-/** `enabled` gates polling — the overlay stays mounted while extras are off. */
+/** `enabled` gates polling. The overlay stays mounted while extras are off. */
 export function useStormCells(enabled = true) {
   const serverUrl = useWeatherStore((s) => s.serverUrl);
 

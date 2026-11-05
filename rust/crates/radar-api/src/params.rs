@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 
 use crate::respond;
 
-/// Python `float(text)` restricted to the forms clients send. `None` where Python would raise.
+/// Parses a float like Python's `float(text)`, for the forms clients send. `None` if invalid.
 #[must_use]
 pub fn py_float(text: &str) -> Option<f64> {
     if text.is_empty() || text.chars().any(|c| c.is_whitespace() || c == '_') {
@@ -186,7 +186,7 @@ impl Issues {
         Some(v)
     }
 
-    /// String parameter with a length window (counted in characters, as Python does).
+    /// String parameter with a length window (counted in characters).
     pub fn string(
         &mut self,
         src: &str,
@@ -228,7 +228,7 @@ impl Issues {
     }
 }
 
-/// Format a bound the way Python prints it (`-90`, `180`, `-90.5`).
+/// Format a bound the way Python prints it, to keep error text unchanged (`-90`, `180`, `-90.5`).
 fn fmt_bound(v: f64) -> String {
     if v.fract() == 0.0 && v.abs() < 1e15 {
         format!("{v:.0}")
@@ -237,7 +237,7 @@ fn fmt_bound(v: f64) -> String {
     }
 }
 
-/// First value of `name` in a raw query string, percent-decoded (`+` is a space, as in Python).
+/// First value of `name` in a raw query string, percent-decoded (`+` is a space).
 #[must_use]
 pub fn query_param(raw_query: Option<&str>, name: &str) -> Option<String> {
     let raw = raw_query?;

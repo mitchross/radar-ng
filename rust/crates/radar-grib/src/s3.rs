@@ -2,7 +2,7 @@
 //!
 //! The base URL is configurable so tests can point at a local server. Query parameters go through
 //! reqwest's query encoder, so the prefix and continuation token are percent-encoded (PLAN defect D6).
-//! Python interpolates them raw. There are no in-process retries, as in the Python.
+//! The original Python interpolated them raw. There are no in-process retries.
 
 use std::time::Duration;
 
@@ -13,7 +13,7 @@ use quick_xml::events::Event;
 use crate::error::{GribError, Result};
 use crate::idx::ByteRange;
 
-/// Page size used by the Python listing (`max-keys=1000`, the S3 maximum).
+/// Page size of a listing (`max-keys=1000`, the S3 maximum).
 pub const MAX_KEYS: u32 = 1000;
 
 /// One ListObjectsV2 response page.
@@ -21,7 +21,7 @@ pub const MAX_KEYS: u32 = 1000;
 pub struct ListPage {
     /// Keys on this page, in listing order (S3 returns them sorted by key).
     pub keys: Vec<String>,
-    /// `IsTruncated == "true"` (exact string, as the Python compares it).
+    /// `IsTruncated == "true"` (exact string comparison).
     pub is_truncated: bool,
     /// `NextContinuationToken`, when present and non-empty.
     pub next_token: Option<String>,
@@ -42,7 +42,7 @@ pub fn parse_list_objects(xml: &str) -> Result<ListPage> {
                 text.clear();
             }
             Ok(Event::Empty(e)) => {
-                // An empty element has no text; `<Key/>` contributes nothing (Python: content.text None).
+                // An empty element has no text; `<Key/>` contributes nothing.
                 let _ = local_name(e.name().as_ref());
                 text.clear();
             }
@@ -153,7 +153,7 @@ impl S3Client {
         parse_list_objects(&body)
     }
 
-    /// Lists every key under `prefix`, following continuation tokens (Python `_list_keys_sync`).
+    /// Lists every key under `prefix`, following continuation tokens.
     ///
     /// Stops when `IsTruncated` is not `"true"` or no continuation token is returned. Keys are
     /// returned unfiltered; callers filter by suffix.
@@ -174,7 +174,7 @@ impl S3Client {
         Ok(keys)
     }
 
-    /// GET of a whole object. Any non-2xx status is an error (Python `raise_for_status`).
+    /// GET of a whole object. Any non-2xx status is an error.
     pub async fn get_object(&self, key: &str, timeout: Duration) -> Result<Bytes> {
         let url = format!("{}/{}", self.base, key);
         let resp = self

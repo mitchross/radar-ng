@@ -1,5 +1,5 @@
 /**
- * Apple-Weather-style vertical legend — layer-aware title + labeled color
+ * Apple-Weather-style vertical legend: layer-aware title + labeled color
  * scale. Sits top-left over the map. Replaces the thin horizontal dBZ strip.
  */
 import { View, Text, StyleSheet } from "react-native";
@@ -52,7 +52,7 @@ interface LegendSpec {
 
 // Radar tiles ARE reflectivity (dBZ from MRMS), but the user-facing legend
 // reads as "Precipitation" with category labels mapped onto our DBZ palette
-// — nobody but a meteorologist reads "45 dBZ" intuitively. Stops match the
+// Nobody but a meteorologist reads "45 dBZ" intuitively. Stops match the
 // dBZ→intensity buckets in `describeDBZ` (lib/inspector.ts) so the legend
 // and the eyedropper readout agree.
 const PRECIP_STOPS: LegendStop[] = [

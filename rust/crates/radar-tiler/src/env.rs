@@ -16,7 +16,7 @@ pub const DEFAULT_PNG_COMPRESS_LEVEL: i64 = 6;
 /// Roles that select a tile renderer.
 pub const RENDERER_ROLES: [&str; 4] = ["mrms", "nowcast", "hrrr", "aux"];
 
-/// Parse an integer environment value with the Python clamping rules: a missing, empty or
+/// Parse an integer environment value with clamping: a missing, empty or
 /// non-integer value yields `default`; the result is clamped to `[lo, hi]`.
 pub fn parse_bounded_int(raw: Option<&str>, default: i64, lo: i64, hi: i64) -> i64 {
     let value = raw
@@ -52,7 +52,7 @@ pub fn png_compress_level() -> u32 {
 /// Renderer selected for one role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TileRenderer {
-    /// The legacy RGBA renderer. Not implemented in Rust; callers route this to Python.
+    /// The legacy RGBA renderer. Not implemented in Rust.
     Legacy,
     /// The indexed (class-index) renderer implemented by this crate.
     Indexed,

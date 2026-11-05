@@ -2,13 +2,13 @@
 //!
 //! The log holds one entry per (run, lead) once the observed frame arrives. The summary gives POD, FAR and
 //! CSI per lead and per threshold (rain >= 20 dBZ, heavy >= 35 dBZ), a persistence baseline, and a headline at
-//! the lead nearest `headline_lead_min`. Output shapes and formulas match Python. The Prometheus text uses
-//! Python `str(float)` (`0.833`, `1.0`).
+//! the lead nearest `headline_lead_min`. Output shapes and formulas match the golden fixtures. The Prometheus text uses
+//! Python `str(float)` formatting (`0.833`, `1.0`).
 //!
 //! Fixes applied: D15 (appends take an exclusive flock on the `nowcast-skill.lock` sidecar, opened read-write,
 //! as `manifest.lock` is; a corrupt or non-object log is an error, not a silent reset). Locking the directory
 //! itself failed on NFS (EBADF), so the sidecar replaces it (review F4). Reads stay lenient (NSK-03). Unparseable
-//! `scored_at` entries are dropped, as in Python.
+//! `scored_at` entries are dropped.
 
 use crate::fsutil::{self, FlockGuard};
 use crate::pycompat::{self, Style, is_falsy, py_int, py_int_or_zero, py_str};

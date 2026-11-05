@@ -1,7 +1,4 @@
 //! Push notification payloads (token registration, fan-out, and the send path).
-//!
-//! Source: `backend/api/api/storm_watch_activities.py`, `temporal/shared/push.py`,
-//! `temporal/workflows/register_push_token.py`.
 
 use std::collections::BTreeMap;
 

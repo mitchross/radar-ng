@@ -1,12 +1,12 @@
 //! Serialized shape of `storms.json` (spec-shared 6.10).
 //!
-//! Field order matches Python's dict insertion order, so the compact writer
-//! produces the same key sequence. Python writes a short shape (no threshold or
+//! Field order matches the Python dict insertion order, so the compact writer
+//! produces the same key sequence. The Python writer wrote a short shape (no threshold or
 //! count) when no component reaches the threshold at all. That shape is kept
 //! as-is. `next_cell_id` is the one addition on every payload: it is the
 //! monotonic counter that fixes defect D3 and is ignored by existing readers.
-//! Python's top-level `prediction_minutes` and `tracking_vectors` are no longer
-//! written: nothing reads them.
+//! The top-level `prediction_minutes` and `tracking_vectors` fields from Python are no
+//! longer written. Nothing reads them.
 
 use serde::Serialize;
 
@@ -77,7 +77,7 @@ pub struct CellProperties {
     pub predicted_bboxes: Vec<PredictedBbox>,
 }
 
-/// Motion of a cell, rounded as Python rounds it.
+/// Motion of a cell, rounded half to even.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct TrackingVector {
     /// Eastward speed (km/h, 3 dp).

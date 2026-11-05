@@ -45,7 +45,7 @@ pub fn detect_storms_with_clock(
 ) -> StormsDoc {
     let (height, width) = (grid.height(), grid.width());
     let values = grid.values();
-    // Python compares a float32 array to a float64 threshold, i.e. after widening. NaN is false.
+    // Compare as float64: widen the float32 values first, as the golden fixtures do. NaN is false.
     let mask: Vec<bool> = values
         .iter()
         .map(|&v| f64::from(v) >= cfg.threshold_dbz)
@@ -62,7 +62,7 @@ pub fn detect_storms_with_clock(
             candidates.push(geo.candidate(comp, cfg));
         }
     }
-    // Stable sort: equal peaks keep scipy label order, as Python's reverse sort does.
+    // Stable sort: equal peaks keep scipy label order.
     candidates.sort_by(|a, b| {
         b.peak_dbz
             .partial_cmp(&a.peak_dbz)
@@ -70,7 +70,7 @@ pub fn detect_storms_with_clock(
     });
     candidates.truncate(cfg.max_storms);
 
-    // Python returns early, without tracking, when no pixel passes the threshold. The
+    // No pixel passes the threshold: return early, without tracking. The
     // counter is still carried forward so IDs are not reused later (D3).
     let no_components = components.is_empty();
     let (features, next_cell_id) = assign_tracking(&candidates, previous, timestamp, wall_now, cfg);
@@ -160,7 +160,7 @@ impl GridGeometry {
         }
     }
 
-    /// Area of one grid cell at `lat` (km^2), with the same operation order as Python.
+    /// Area of one grid cell at `lat` (km^2), with the same operation order as the golden fixtures.
     fn cell_km2(&self, lat: f64) -> f64 {
         self.dlat_km * self.dlon_deg * KM_PER_DEG_LON_EQUATOR * radians(lat).cos()
     }
@@ -183,7 +183,7 @@ impl GridGeometry {
         }
     }
 
-    /// Padded `[west, south, east, north]` (`_component_bbox`). No rounding.
+    /// Padded `[west, south, east, north]` No rounding.
     fn component_bbox(&self, comp: &Component, padding_km: f64) -> [f64; 4] {
         let row_start = comp.row_start;
         let row_stop = comp.row_stop.saturating_sub(1).max(row_start);
@@ -208,7 +208,7 @@ impl GridGeometry {
     }
 }
 
-/// Current wall clock in epoch seconds (Python `time.time()`).
+/// Current wall clock in epoch seconds (`time.time()`).
 #[must_use]
 pub fn now_epoch_seconds() -> f64 {
     SystemTime::now()

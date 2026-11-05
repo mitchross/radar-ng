@@ -1,5 +1,5 @@
 /**
- * Inspector eyedropper — long-press the map to pin a point, shows a readout
+ * Inspector eyedropper. Long-press the map to pin a point, shows a readout
  * pill with the active-layer value at that point. Uses /api/inspect on the
  * self-hosted tile-server when available, falls back to Open-Meteo for
  * temperature/wind, shows "—" otherwise.

@@ -170,7 +170,7 @@ fn man_08_directory_where_file_should_be_is_io_error() {
 fn man_09_d7_structurally_invalid_manifest_fails_closed_for_writers() {
     let dir = tempfile::tempdir().unwrap();
     let path = manifest_path(dir.path());
-    // Valid JSON but no layers object: the Python version silently became empty and wiped on write.
+    // Valid JSON but no layers object: the original Python silently became empty and wiped on write.
     for bad in [
         r#"[]"#,
         r#"{"schema_version": 2}"#,
@@ -327,7 +327,7 @@ fn render_is_compact_sorted_with_trailing_newline_and_round_trips() {
 
 #[test]
 fn golden_replay_matches_python_bytes() {
-    // The same operations run through backend/shared/manifest.py with `datetime` pinned to `now()`.
+    // The same operations were run through the original Python with `datetime` pinned to `now()`.
     // The input is a v1 document (no frames); the output is byte-for-byte the Python file.
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(

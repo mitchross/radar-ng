@@ -4,8 +4,8 @@
 //! finds the manifest frame to show and lists the tiles that exist on disk.
 //!
 //! **D1 fix.** Tile paths come from the manifest frame's `path` (for example
-//! `runs/<anchor>/<valid>` for nowcast), not from its timestamp. The Python code
-//! built paths from the timestamp, so leads 5 and 10 silently had no tiles.
+//! `runs/<anchor>/<valid>` for nowcast), not from its timestamp. The original Python
+//! built paths from the timestamp, so leads 5 and 10 had no tiles.
 //! The `style_url` query still carries `timestamp`, as the API contract requires.
 
 use std::path::Path;
@@ -72,7 +72,7 @@ pub struct PlanBbox {
 /// The plan (`build_storm_prefetch_plan` return value).
 ///
 /// With no storm selected only `plan_id`, `storm_cell_id`, `bboxes` and
-/// `tile_urls` are present, as in the Python shape.
+/// `tile_urls` are present, as before.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PrefetchPlan {
     /// `"<anchor>:<cell_id>:<palette>:<requested_zoom>"`, or `None`.
@@ -229,7 +229,7 @@ fn requested_zoom(zoom: i64) -> i64 {
     zoom.max(MIN_ZOOM)
 }
 
-/// Pick the storm to prefetch (`_select_storm`). Returns the feature object.
+/// Pick the storm to prefetch Returns the feature object.
 ///
 /// The score is distance to the nearest predicted-bbox centre, minus an intensity
 /// and size bonus capped at 35 km. The lowest score wins; ties keep list order.
@@ -255,7 +255,7 @@ fn select_storm<'a>(
         let Some(predictions) = props.get("predicted_bboxes").and_then(Value::as_array) else {
             continue;
         };
-        // Any malformed prediction drops the whole feature, as the Python try block does.
+        // Any malformed prediction drops the whole feature.
         let Some(distances) = predictions
             .iter()
             .map(|p| {
@@ -293,7 +293,7 @@ fn select_storm<'a>(
         let score = distance - (severity * 0.8 + area.log10() * 3.0).min(35.0);
         ranked.push((score, feature));
     }
-    // Stable sort: the first of equal scores wins, as Python's sort does.
+    // Stable sort: the first of equal scores wins.
     ranked.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
     let (_, selected) = *ranked.first()?;
     let point = selected
@@ -312,7 +312,7 @@ fn select_storm<'a>(
     Some(selected)
 }
 
-/// Frame for a lead (`_frame_for_lead`), including the manifest path (D1).
+/// Frame for a lead including the manifest path (D1).
 fn frame_for_lead(layers: &Map<String, Value>, anchor: Instant, lead: i64) -> Option<FrameRef> {
     if lead == 0 {
         let timestamp = nearest_timestamp(layer_timestamps(layers, "radar"), anchor, true)?;
@@ -382,7 +382,7 @@ fn nearest_timestamp(
     best.map(|(_, v)| v)
 }
 
-/// Existing tile URLs for one bbox (`_tiles_for_bbox` plus the disk check).
+/// Existing tile URLs for one bbox (checked on disk).
 fn existing_tile_urls(
     tile_dir: &Path,
     base_url: &str,
@@ -431,7 +431,7 @@ pub fn tile_url_path(layer: &str, palette: &str, path: &str, zoom: i64, x: i64, 
     out
 }
 
-/// Percent-encode like Python `urllib.parse.quote(s, safe=...)`.
+/// Percent-encode like `urllib.parse.quote(s, safe=...)`, to match the golden fixtures.
 #[must_use]
 pub fn quote(s: &str, safe: &str) -> String {
     let mut out = String::with_capacity(s.len());

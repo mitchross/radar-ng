@@ -1,5 +1,5 @@
 /**
- * Lightning strikes overlay — renders the rolling 15-min buffer from the
+ * Lightning strikes overlay. Renders the rolling 15-min buffer from the
  * self-hosted backend as yellow/white dots on the map. Fresh strikes (<60s)
  * pulse, older strikes fade toward transparent.
  *
@@ -45,7 +45,7 @@ export function LightningOverlay() {
           "circle-blur": 0.6,
         }}
       />
-      {/* Core strike dot — age-fade across the full 15-min buffer */}
+      {/* Core strike dot, age-fade across the full 15-min buffer */}
       <Layer
         type="circle"
         id="lightning-dot"

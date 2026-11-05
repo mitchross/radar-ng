@@ -1,5 +1,5 @@
 /**
- * Cumulus radar timeline — Apple-Weather-inspired "forecast pill".
+ * Cumulus radar timeline, Apple-Weather-inspired "forecast pill".
  * Violet play button + layer/date header + 1h/48h (72h with GFS) segmented zoom + segmented
  * track (past / nowcast / HRRR / long-range) + NOW marker + draggable thumb.
  * Playback follows the configured speed within the active zoom window.
@@ -122,9 +122,9 @@ export function TimelineBar() {
     return () => clearInterval(id);
   }, [appActive, focused, isPlaying, playbackSpeed, canLoop, setCurrentFrameIndex]);
 
-  // Segment boundaries and axis labels don't depend on the playback index —
-  // memoize so the playback tick doesn't rescan frames. Must stay above the
-  // early return below (rules-of-hooks).
+  // Segment boundaries and axis labels don't depend on the playback index.
+  // Memoize them so the playback tick doesn't rescan frames. This hook must
+  // stay above the early return below (rules-of-hooks).
   const { nowPct, nowcastPct, longPct, longLabel, axisLabels } = useMemo(() => {
     const toPct = (p: number) => (lastPos === 0 ? 0 : (p / lastPos) * 100);
     // Last position at or before a time; -1 when the sequence starts after it.

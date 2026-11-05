@@ -3,8 +3,7 @@
 //!
 //! Spec §0.3 (atomic write idioms), §0.4 (locks), §5.8 (`_durable_mkdir`, `_fsync_dir`).
 //!
-//! Locks are `flock(2)`, not `fcntl` record locks (spec §0.4), so Python and Rust writers that share a PVC
-//! exclude each other. Lock files are never removed.
+//! Locks are `flock(2)`, not `fcntl` record locks (spec §0.4), so writers that share a PVC exclude each other. Lock files are never removed.
 
 use rustix::fs::{FlockOperation, Mode, OFlags};
 use rustix::io::Errno;
@@ -127,8 +126,7 @@ pub fn durable_mkdir(path: &Path, sync: DirSync<'_>) -> io::Result<()> {
 }
 
 /// Atomically replace `path` with `bytes`: write a `0600` temp file in the same directory, fsync it,
-/// `rename(2)` it over `path`, then fsync the directory. `prefix` and `suffix` shape the temp name, as the
-/// Python `mkstemp(prefix=..., suffix=...)` calls do.
+/// `rename(2)` it over `path`, then fsync the directory. `prefix` and `suffix` shape the temp name.
 pub fn atomic_write(path: &Path, bytes: &[u8], prefix: &str, suffix: &str) -> io::Result<()> {
     atomic_write_with(path, bytes, prefix, suffix, &fsync_dir)
 }

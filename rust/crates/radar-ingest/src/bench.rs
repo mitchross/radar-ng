@@ -1,4 +1,4 @@
-//! Binary-free benchmark entry point (port of `backend/scripts/bench_render_once.py`): decode one GRIB
+//! Binary-free benchmark entry point (`bench_render_once`): decode one GRIB
 //! file (gzip or raw), render it into three palettes at zooms 4 to 7, and run storm detection. Times
 //! each stage, then packs the frame into one packed-tile bucket (`out_dir/packed/radar/bench`).
 //! With a PrecipFlag file, the tiles and the bucket are colored and coded by precipitation type.
@@ -11,7 +11,7 @@ use radar_grib::mrms::ensure_south_up;
 use radar_storms::{Grid as StormGrid, StormConfig};
 use radar_tiler::{FrameKind, FrameOptions, Overview};
 
-/// Palettes rendered by the benchmark, as the Python script does.
+/// Palettes rendered by the benchmark.
 pub const BENCH_PALETTES: [&str; 3] = ["classic", "muted", "vivid"];
 /// Zooms rendered by the benchmark.
 pub const BENCH_ZOOMS: [u32; 4] = [4, 5, 6, 7];

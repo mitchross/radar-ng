@@ -289,8 +289,8 @@ async fn post_push_token(
         return resp;
     }
     // F9: the shipped manifests mount STATE_DIR read-only, so the SQLite write cannot succeed. Answer 503 with a
-    // log line, not an opaque 500. The write itself stays a direct SQLite write, as in Python (routes_workflows.py
-    // calls `upsert` directly and does not start RegisterPushTokenWorkflow).
+    // log line, not an opaque 500. The write itself stays a direct SQLite write, not a RegisterPushTokenWorkflow
+    // start.
     if let Err(err) = rustix::fs::access(&state.config.state_dir, rustix::fs::Access::WRITE_OK)
         && read_only_errno(err)
     {

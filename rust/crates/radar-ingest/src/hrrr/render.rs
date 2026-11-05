@@ -1,4 +1,4 @@
-//! Per-hour HRRR CPU work (spec §12.2 `_process_forecast_hour_sync`, `_render_per_palette`): extract the
+//! Per-hour HRRR CPU work (spec §12.2): extract the
 //! variables, render every layer that has a palette, and write the grid dumps. Runs on the blocking pool.
 
 use std::collections::BTreeMap;
@@ -38,7 +38,7 @@ pub fn tables_for_key(palettes: &[Palette], key: &str) -> Vec<(String, ColorTabl
         .collect()
 }
 
-/// `_load_palette_tables` for HRRR: each `PALETTES` name, with missing ones warned and skipped; `classic`
+/// Palette tables for HRRR: each `PALETTES` name, with missing ones warned and skipped; `classic`
 /// when nothing loads. Duplicates are dropped (first occurrence wins).
 pub fn load_hrrr_palettes(names: &[String]) -> Vec<Palette> {
     let mut seen = std::collections::BTreeSet::new();
@@ -60,7 +60,7 @@ pub fn load_hrrr_palettes(names: &[String]) -> Vec<Palette> {
     out
 }
 
-/// Render one layer for every palette that has its color key (spec §12.2 `_render_per_palette`).
+/// Render one layer for every palette that has its color key (spec §12.2).
 /// Returns true only when every such palette rendered (D2 replicated: a partial or empty set is not
 /// published for this hour).
 #[allow(
@@ -171,7 +171,7 @@ fn identity_ok(
         && stored.semantic_digest == expected.semantic_digest
 }
 
-/// Layers already complete for this hour (spec H13 to H18, `_existing_rendered_layers`). A layer counts
+/// Layers already complete for this hour (spec H13 to H18). A layer counts
 /// only when every palette that carries its key has a complete, acceptable pyramid. Ignores
 /// `HRRR_ENABLED_LAYERS` (D17).
 pub fn existing_rendered_layers(
@@ -240,7 +240,7 @@ fn grid_of(values: Vec<f32>, template: &Grid) -> Grid {
     }
 }
 
-/// Process one forecast hour's GRIB file (spec §12.2 `_process_forecast_hour_sync`). Returns the layers
+/// Process one forecast hour's GRIB file (spec §12.2). Returns the layers
 /// rendered, in pipeline order.
 pub fn process_hour_sync(
     cfg: &IngestConfig,

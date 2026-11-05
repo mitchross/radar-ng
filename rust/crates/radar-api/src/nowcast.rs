@@ -233,7 +233,7 @@ pub async fn nowcast_point(state: &AppState, lat: f64, lon: f64) -> Result<Point
         });
     }
 
-    // Each frame: (timestamp, grid_key). Frames without a timestamp are skipped, as in Python.
+    // Each frame: (timestamp, grid_key). Frames without a timestamp are skipped.
     let mut requests: Vec<(String, Option<String>)> = Vec::new();
     for frame in &frames {
         let Some(obj) = frame.as_object() else {

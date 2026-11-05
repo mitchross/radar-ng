@@ -1,7 +1,7 @@
 //! Retry policies and per-activity call options (spec-temporal section 4).
 //!
 //! These are plain data. The worker crate maps them to SDK options. Every field
-//! is written out, including the Python SDK defaults that spec-temporal says a
+//! is written out, including the Temporal SDK defaults that spec-temporal says a
 //! `RetryPolicy(maximum_attempts=N)` inherits (initial 1 s, backoff 2.0, max 100 x initial).
 //! Non-retryable errors are signalled by `ApplicationError(non_retryable=True)`, so no
 //! error types are listed here.
@@ -89,7 +89,7 @@ pub const WATCH_STORM_RETRY: RetryPolicySpec = RetryPolicySpec::new(2, 2.0, 60, 
 pub const WATCH_PUSH_RETRY: RetryPolicySpec = RetryPolicySpec::new(1, 2.0, 30, 3);
 
 // ---------------------------------------------------------------------------
-// Activity calls. Names follow the activity they call (`MRMS_PROCESS_FRAME` -> `mrms_process_frame`).
+// Activity calls. Names follow the activity they call (`MRMS_PROCESS_FRAME` maps to `mrms_process_frame`).
 // ---------------------------------------------------------------------------
 
 /// `mrms_list_unprocessed_keys`.

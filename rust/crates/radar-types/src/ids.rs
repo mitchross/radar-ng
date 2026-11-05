@@ -7,8 +7,8 @@ pub const WATCH_ID_PREFIX: &str = "watch:";
 
 /// Watch workflow ID: `"watch:" + lowercase hex(sha256(user_id + "\0" + storm_cell_id))`.
 ///
-/// This is the production scheme (`routes_workflows._watch_id`). The docstring
-/// in `watch_storm.py` (`watch:{user_id}:{storm_cell_id}`) is stale.
+/// This is the production scheme. The older `watch:{user_id}:{storm_cell_id}` form
+/// is not used.
 ///
 /// The NUL separator keeps `("ab", "c")` and `("a", "bc")` distinct. The
 /// digest is 64 hex characters, so the full ID is 70 characters long.

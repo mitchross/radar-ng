@@ -1,6 +1,6 @@
 //! APNs and FCM senders against a local axum mock, the PUSH_DISABLED gate, and the storm-watch fan-out
 //! (spec-temporal section 8, spec-temporal 4.11 and 8.1). Replays `testdata/push_apns.json` and
-//! `testdata/push_fcm.json`, which were produced from the Python `temporal/shared/push.py`.
+//! `testdata/push_fcm.json`, which were produced from the original Python sender.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};

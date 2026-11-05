@@ -1,6 +1,4 @@
 //! NWS alert payloads (`PollAlertsWorkflow` and the alert activities).
-//!
-//! Source: `temporal/workflows/poll_alerts.py`, `backend/api/api/storm_watch_activities.py`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};

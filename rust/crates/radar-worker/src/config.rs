@@ -1,7 +1,7 @@
 //! Process configuration read from the environment (spec-temporal section 3.1).
 //!
 //! [`WorkerConfig::from_env`] performs every validation before any network or background work starts,
-//! so a bad value fails startup the same way the Python `main()` does (section 3.3).
+//! so a bad value fails startup before the worker connects (section 3.3).
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -23,7 +23,7 @@ pub const DEFAULT_MAX_CONCURRENT_ACTIVITIES: i64 = 4;
 pub const DEFAULT_MAX_ACTIVITY_POLLS: i64 = 2;
 /// Default drain budget in seconds (`TEMPORAL_GRACEFUL_SHUTDOWN_S`).
 pub const DEFAULT_GRACEFUL_SHUTDOWN_S: i64 = 25;
-/// Workflow task slots. The Python worker leaves the SDK default in place; Rust fixes it here.
+/// Workflow task slots. The SDK default is not used; this fixes the value.
 pub const WORKFLOW_TASK_SLOTS: usize = 100;
 
 /// Worker Versioning identity. Present only when both variables are non-empty (spec 3.6).
@@ -66,7 +66,7 @@ impl WorkerConfig {
     /// Read and validate every worker setting from the process environment.
     ///
     /// Fails for an unknown `WORKER_ROLE` or an unparsable metrics bind address. Numeric variables
-    /// fall back to their defaults (with a warning) as the Python `int_env` helper does.
+    /// fall back to their defaults, with a warning.
     pub fn from_env() -> anyhow::Result<Self> {
         let env = |name: &str| std::env::var(name).ok();
         Self::from_lookup(&env)
@@ -142,7 +142,7 @@ impl WorkerConfig {
     }
 }
 
-/// Parse an integer setting the way Python `int_env` does: an absent value returns `default`, an
+/// Parse an integer setting: an absent value returns `default`, an
 /// unparsable one logs a warning and returns `default`, and the result is `max(min, value)`.
 pub fn parse_int_setting(name: &str, raw: Option<&str>, default: i64, min: i64) -> i64 {
     let value = match raw {

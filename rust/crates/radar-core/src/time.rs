@@ -44,7 +44,7 @@ pub fn parse_iso(value: &str) -> Option<DateTime<FixedOffset>> {
     DateTime::parse_from_rfc3339(&normalized).ok()
 }
 
-/// Like [`parse_iso`] but a naive timestamp is taken as UTC (`_parse_ts` in `nowcast_skill.py`, spec §0.1).
+/// Like [`parse_iso`] but a naive timestamp is taken as UTC (spec §0.1).
 pub fn parse_iso_as_utc(value: &str) -> Option<DateTime<Utc>> {
     if let Some(dt) = parse_iso(value) {
         return Some(dt.with_timezone(&Utc));

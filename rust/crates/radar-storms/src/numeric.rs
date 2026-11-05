@@ -1,8 +1,8 @@
 //! Python- and numpy-compatible numeric helpers (spec-shared section 15.2).
 //!
-//! The storm math must reproduce Python's `round`, `format`, `math.radians`
-//! and numpy's pairwise summation, because rounded outputs and tie-breaks are
-//! compared exactly against the Python golden fixtures.
+//! The storm math reproduces Python's `round`, `format`, `math.radians` and
+//! numpy's pairwise summation, because rounded outputs and tie-breaks are
+//! compared exactly against the golden fixtures.
 
 use serde_json::Value;
 
@@ -37,7 +37,7 @@ pub fn round_digits(x: f64, ndigits: usize) -> f64 {
     format!("{x:.ndigits$}").parse::<f64>().unwrap_or(x)
 }
 
-/// Python `float(value)` for a JSON value. Returns `None` where Python would raise.
+/// Python `float(value)` for a JSON value. Returns `None` where Python raises.
 #[must_use]
 pub fn py_float(value: &Value) -> Option<f64> {
     match value {

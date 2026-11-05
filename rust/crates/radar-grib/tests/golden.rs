@@ -59,7 +59,7 @@ fn mrms_regular_ll_values_and_axes_match_python() {
     let GridGeo::Regular { lats, lons } = &grid.geo else {
         panic!("expected regular grid")
     };
-    // Python _grid_axes: linspace over header keys; lons normalised (> 180 -> -360).
+    // Axes are linspace over the header keys; lons above 180 are shifted by -360.
     assert!(max_abs_diff(lats, &read_f64("mrms_lat_axis.f64le")) <= 1e-9);
     assert!(max_abs_diff(lons, &read_f64("mrms_lon_axis.f64le")) <= 1e-9);
     assert_eq!(lats[0], 54.0);

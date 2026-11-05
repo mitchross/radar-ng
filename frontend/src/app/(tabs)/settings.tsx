@@ -1,5 +1,5 @@
 /**
- * Cumulus Settings tab — Redesigned for Editorial Light.
+ * Cumulus Settings tab, Editorial Light design.
  * Self-hosted stack controls gated under Advanced mode.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -114,7 +114,7 @@ export default function SettingsScreen() {
   const [fpsDraft, setFpsDraft] = useState<number | null>(null);
 
   // Live stack data for the Advanced cards. The old build shipped a
-  // hard-coded container list ("versions are wrong") — everything shown
+  // hard-coded container list ("versions are wrong"). Everything shown
   // now comes from /api/health + /api/manifest.json.
   const focused = useIsFocused();
   const { data: serverStatus, refetch: refetchStatus } = useQuery({
@@ -333,7 +333,7 @@ export default function SettingsScreen() {
           )}
 
           {/* Advanced Mode: live stack pipeline status (from /api/health +
-              /api/manifest.json — nothing here is hard-coded). */}
+              /api/manifest.json; nothing here is hard-coded). */}
           {isAdv && (
             <>
               <SectionHeader>Stack Pipelines</SectionHeader>
@@ -1019,7 +1019,7 @@ interface StackActivityEntry {
   detail?: string;
 }
 
-/** Recent ingest events, synthesized from the manifest + health payloads —
+/** Recent ingest events, synthesized from the manifest + health payloads.
  *  the closest thing to "stack logs" the phone can honestly show. */
 function buildStackActivity(
   status: ServerStatus | null | undefined,

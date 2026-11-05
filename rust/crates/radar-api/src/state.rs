@@ -1,9 +1,9 @@
 //! Shared application state: configuration, caches, the rate limiter, metrics, the upstream HTTP
 //! client, the breaker and the lazily connected Temporal client.
 //!
-//! Every cache is in-process and per replica, as in Python (spec 11). TTL caches use `moka` with a
+//! Every cache is in-process and per replica (spec 11). TTL caches use `moka` with a
 //! cache-wide time-to-live (entries expire `ttl` after insertion, and a hit does not extend it,
-//! matching the Python `(insert_time, body)` tuples). Response caches hold the encoded body and
+//! as the original `(insert_time, body)` tuples did). Response caches hold the encoded body and
 //! are bounded by bytes. Caches filled from an upstream are `moka::future` caches, so concurrent
 //! misses for one key make one upstream call. The manifest snapshot and the wind "latest" stamp are
 //! single-entry caches that load once per miss. The skill snapshot is a single entry behind a
@@ -71,7 +71,7 @@ impl Breaker {
         }
     }
 
-    /// True when a call may be made now. There is no half-open probe (as in Python).
+    /// True when a call may be made now. There is no half-open probe.
     #[must_use]
     pub fn allow(&self, now: Instant) -> bool {
         self.open_until.is_none_or(|t| now >= t)

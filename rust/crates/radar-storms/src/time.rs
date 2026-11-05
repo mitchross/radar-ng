@@ -1,23 +1,22 @@
 //! Timestamp parsing with the UTC policy from spec-shared 0.1 and D6/D16.
 //!
-//! Python's `fromisoformat` accepts many forms and raises on mixed naive and
-//! aware values. Here every value is normalized to a UTC instant at microsecond
+//! Every value is normalized to a UTC instant at microsecond
 //! precision, and a timestamp without an offset is read as UTC.
 
 use chrono::DateTime;
 
-/// A UTC instant as microseconds since the Unix epoch (Python `datetime` precision).
+/// A UTC instant as microseconds since the Unix epoch (microsecond precision).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Instant(pub i64);
 
 impl Instant {
-    /// Epoch seconds as Python's `datetime.timestamp()` returns them.
+    /// Epoch seconds as a float.
     #[must_use]
     pub fn epoch_seconds(self) -> f64 {
         self.0 as f64 / 1_000_000.0
     }
 
-    /// Minutes from `other` to `self` (Python `(self - other).total_seconds() / 60`).
+    /// Minutes from `other` to `self` (`(self - other).total_seconds() / 60`).
     #[must_use]
     pub fn minutes_since(self, other: Instant) -> f64 {
         ((self.0 - other.0) as f64 / 1_000_000.0) / 60.0
@@ -47,7 +46,7 @@ fn normalize(text: &str) -> Option<String> {
     let replaced = text.replace('Z', "+00:00");
     let sep = replaced.find(['T', ' ']);
     let Some(sep) = sep else {
-        // Date only: Python accepts it as midnight; treat it as UTC midnight.
+        // Date only: treat it as UTC midnight.
         return Some(format!("{replaced}T00:00:00+00:00"));
     };
     let (date, rest) = replaced.split_at(sep);

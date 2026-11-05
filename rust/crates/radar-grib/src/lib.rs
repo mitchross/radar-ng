@@ -1,7 +1,4 @@
-//! radar-grib: GRIB2 decoding and NOAA data access for the radar-ng Rust port.
-//!
-//! Replaces the Python `pygrib` + `pyproj` + `boto`/`httpx` usage in `backend/ingest_mrms`,
-//! `backend/ingest_hrrr` and `backend/ingest_airquality`.
+//! radar-grib: GRIB2 decoding and NOAA data access for radar-ng.
 //!
 //! Modules:
 //! - [`decode`]: GRIB2 message selection and decoding to [`radar_geo::Grid`].

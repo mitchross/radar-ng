@@ -1,4 +1,4 @@
-//! Endpoint selection and reconnect backoff (spec-ingest-aux section 6.3, Python `EndpointPicker`).
+//! Endpoint selection and reconnect backoff (spec-ingest-aux section 6.3).
 //!
 //! Pure bookkeeping. The caller supplies `now` and the jitter value, so every rule can be tested without sockets.
 
@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::ensure;
 
-/// Delay after a session that delivered at least one message (Python `RECONNECT_AFTER_CLOSE_S`).
+/// Delay after a session that delivered at least one message.
 pub const RECONNECT_AFTER_CLOSE_S: f64 = 1.0;
 /// Upper bound of the failure backoff (`FAILURE_BACKOFF_MAX_S`).
 pub const FAILURE_BACKOFF_MAX_S: f64 = 30.0;
@@ -18,7 +18,7 @@ pub const DEMOTE_LEGACY_S: f64 = 900.0;
 
 /// Round-robin over healthy primaries, with legacy endpoints only when no primary is healthy.
 ///
-/// `cursor` is global and is never reset, so the modulo index matches Python exactly (spec 6.3).
+/// `cursor` is global and is never reset, so the modulo index matches exactly (spec 6.3).
 #[derive(Debug, Clone)]
 pub struct EndpointPicker {
     primary: Vec<String>,
@@ -29,7 +29,7 @@ pub struct EndpointPicker {
 }
 
 impl EndpointPicker {
-    /// New picker. Fails when there is no primary endpoint (Python `ValueError`).
+    /// New picker. Fails when there is no primary endpoint.
     pub fn new(primary: Vec<String>, legacy: Vec<String>) -> anyhow::Result<Self> {
         ensure!(
             !primary.is_empty(),

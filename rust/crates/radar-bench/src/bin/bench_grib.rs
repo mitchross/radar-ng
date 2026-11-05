@@ -1,7 +1,7 @@
 //! GRIB decode benchmark, Rust side.
 //!
 //! --kind mrms-gz     `radar_grib::mrms::decode_gz` (in-memory gunzip and decode of the first
-//!                    message) followed by `ensure_south_up`, as the Python caller flips.
+//!                    message) followed by `ensure_south_up`, as the production caller does.
 //! --kind grib-multi  every message of a multi-message file, split by the GRIB2 length field
 //!                    and decoded with `decode_message`.
 

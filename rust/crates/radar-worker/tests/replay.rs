@@ -1,11 +1,10 @@
 //! Offline determinism gate: replay every recorded Python workflow history with the Rust workflow code.
 //!
 //! Fixtures live at `testdata/replay_fixtures/<WorkflowType>/<version>/<scenario>.json[.gz]`. They are
-//! copied unchanged from `temporal/workflows/replay_fixtures` in the Python repo, so this crate's tests are
-//! self-contained. `version` is the Python worker release that produced the history (`v1.1.49` is the
+//! copied unchanged from the original Python repo, so this crate's tests are self-contained. `version` is the Python worker release that produced the history (`v1.1.49` is the
 //! build deployed at cutover), or `src-<sha>` for an unreleased checkout.
 //!
-//! This is the Rust side of `temporal/workflows/test_replay.py`:
+//! The test checks that:
 //! - the fixture tree must cover exactly the registered workflow types;
 //! - every release must keep the [`REQUIRED_SCENARIOS`], and each such history must show the path it is
 //!   named for (an event type, or an activity type that was scheduled);
@@ -58,7 +57,7 @@ const SINGLE_ACTIVITY: Scenarios = &[
     ("activity-error", &[ACTIVITY_FAILED, FAILED]),
 ];
 
-/// Copied from `REQUIRED_SCENARIOS` in `test_replay.py`. Every workflow must retain these scenarios in every
+/// Every workflow must retain these scenarios in every
 /// release directory, each with proof it took the path it is named for. Add, do not remove.
 const REQUIRED_SCENARIOS: &[(&str, Scenarios)] = &[
     ("RadarDeploymentSmokeWorkflow", SINGLE_ACTIVITY),
@@ -275,7 +274,7 @@ fn descriptor_pool() -> &'static DescriptorPool {
 /// `data`, int64 as strings) into the SDK's `History`. The SDK's `WorkflowHistory::from_json` cannot be used:
 /// in temporalio-protos 0.10 the history messages derive plain serde (snake_case fields, numeric enums), not
 /// proto3 JSON. The JSON goes through a reflective message and is re-decoded from the binary encoding, which
-/// is unambiguous. Unknown fields are rejected, so a schema drift between the Python and Rust SDKs shows up
+/// is unambiguous. Unknown fields are rejected, so a schema drift between the Python and Rust SDKs fails
 /// here instead of being dropped silently.
 fn decode_history(bytes: &[u8]) -> anyhow::Result<History> {
     let descriptor = descriptor_pool()
@@ -294,7 +293,7 @@ fn file_name(path: &Path) -> String {
         .to_owned()
 }
 
-/// `v<major>.<minor>.<patch>` or `src-<7..40 lowercase hex>`, as `VERSION_RE` in `test_replay.py`.
+/// `v<major>.<minor>.<patch>` or `src-<7..40 lowercase hex>`, .
 fn version_is_valid(version: &str) -> bool {
     if let Some(rest) = version.strip_prefix('v') {
         let parts: Vec<&str> = rest.split('.').collect();

@@ -24,7 +24,7 @@ export function RadarOverlay({ isPacked }: { isPacked?: readonly boolean[] }) {
   const activePalette = useWeatherStore((s) => s.activePalette);
 
   const specFor = (frame: RadarFrame): CarouselFrameSpec => {
-    // In forecast mode the frame list is a merged radar + nowcast + HRRR stream —
+    // In forecast mode the frame list is a merged radar + nowcast + HRRR stream,
     // per-frame `source` tells us which tile subtree to hit.
     const layerForUrl = frame.source ?? activeLayer;
     return {

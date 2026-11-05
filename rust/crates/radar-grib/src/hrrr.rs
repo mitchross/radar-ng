@@ -1,7 +1,7 @@
 //! HRRR access and selection (spec-ingest-mrms-hrrr §4.2, §5.3, §5.4, §12.2).
 //!
 //! Selection uses GRIB2 codes (discipline, category, number, first-surface type, level), not the
-//! eccodes name strings the Python selectors use. See the README for the mapping and the
+//! eccodes name strings. See the README for the mapping and the
 //! "verify against real files" list.
 
 use bytes::Bytes;
@@ -18,7 +18,7 @@ use crate::s3::S3Client;
 /// NOAA HRRR bucket (anonymous).
 pub const BASE_URL: &str = "https://noaa-hrrr-bdp-pds.s3.amazonaws.com";
 
-/// The HRRR fields the pipeline reads (Python `IDX_MATCHERS` / `VAR_SELECTORS` keys).
+/// The HRRR fields the pipeline reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HrrrVar {
     /// Composite reflectivity (REFC).
@@ -50,7 +50,7 @@ pub enum HrrrVar {
 }
 
 impl HrrrVar {
-    /// The Python key name (`refc`, `t2m`, ...), used in logs and fixtures.
+    /// The short key name (`refc`, `t2m`, ...), used in logs and fixtures.
     pub fn key(self) -> &'static str {
         match self {
             HrrrVar::Refc => "refc",
@@ -69,7 +69,7 @@ impl HrrrVar {
         }
     }
 
-    /// The `.idx` matcher terms (Python `IDX_MATCHERS`); every term must appear in the line.
+    /// The `.idx` matcher terms; every term must appear in the line.
     pub fn idx_matcher(self) -> &'static [&'static str] {
         match self {
             HrrrVar::Refc => &["REFC", "entire atmosphere"],
@@ -88,7 +88,7 @@ impl HrrrVar {
         }
     }
 
-    /// The GRIB2 selector (Python `VAR_SELECTORS`), expressed as discipline/category/number/level.
+    /// The GRIB2 selector, expressed as discipline/category/number/level.
     ///
     /// Codes are from WMO Tables 4.1, 4.2 and 4.5, with NCEP local parameters for REFC (0.16.196)
     /// and the categorical precipitation fields (0.1.192..195).
@@ -159,7 +159,7 @@ pub fn parse_run_id(run: &str) -> Option<DateTime<Utc>> {
     Some(t.and_utc())
 }
 
-/// Forecast horizon for a run (Python `_horizon_for_run`): 48 for 00/06/12/18z, else 18.
+/// Forecast horizon for a run: 48 for 00/06/12/18z, else 18.
 pub fn horizon_for_run(run_hour: u32, forecast_hours: u32, extended_hours: u32) -> u32 {
     if [0, 6, 12, 18].contains(&run_hour) {
         extended_hours
@@ -169,7 +169,7 @@ pub fn horizon_for_run(run_hour: u32, forecast_hours: u32, extended_hours: u32) 
 }
 
 /// The f01 keys probed by the latest-run finder: the hours 0..12 before `now`, truncated to the
-/// hour, newest first (Python `_find_latest_run_sync`).
+/// hour, newest first.
 pub fn latest_run_candidates(now: DateTime<Utc>) -> Vec<(String, String)> {
     (0..12)
         .map(|hours_ago| {
@@ -184,7 +184,7 @@ pub fn latest_run_candidates(now: DateTime<Utc>) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Latest run whose f01 object answers HEAD with 200 (Python `_find_latest_run_sync`).
+/// Latest run whose f01 object answers HEAD with 200.
 ///
 /// Transport errors skip a candidate. So does any status other than 200, including 3xx and 403,
 /// because redirects are not followed. `Ok(None)` when no candidate succeeds.
@@ -209,11 +209,11 @@ pub enum Fetched {
     Data { bytes: Bytes, full_file: bool },
 }
 
-/// Fetches the GRIB2 bytes an hour needs (Python `_download_subset_sync`).
+/// Fetches the GRIB2 bytes an hour needs.
 ///
 /// 1. GET the `.idx` (15 s). A 404 falls back to the whole object (300 s); a 404 there means pending.
-///    Any other index failure is an error. Python falls back on every HTTP error, which fetches about
-///    130 MB for a 5xx or a timeout (PLAN D4). This port falls back only on 404.
+///    Any other index failure is an error. Falling back on every HTTP error would fetch about
+///    130 MB for a 5xx or a timeout (PLAN D4).
 /// 2. Plan byte ranges for `needed` (no merging). None matched gives `NoMatchingFields`.
 /// 3. GET each range (120 s) and require 206 (D5). The ranges are concatenated in index order.
 pub async fn fetch_hour(

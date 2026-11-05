@@ -3,7 +3,7 @@
 //! One axum server does the work of three processes: the Caddy front proxy (static lanes, the
 //! error override, `X-Client-IP`, the access log), the FastAPI application (every `/api` and `/v1`
 //! route), and the go-pmtiles sidecar (basemap vector tiles, read here straight from the archive).
-//! Routes, parameters, JSON bodies, status codes and headers match the Python service so the apps
+//! Routes, parameters, JSON bodies, status codes and headers match the old service, so the apps
 //! do not change. Deliberate differences are listed in the crate README.
 //!
 //! Public surface: [`router`] builds the application, [`serve`] runs it, and [`AppState::from_env`]

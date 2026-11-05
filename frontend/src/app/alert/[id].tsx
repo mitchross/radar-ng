@@ -1,5 +1,5 @@
 /**
- * Alert Detail — Redesigned for Editorial Light.
+ * Alert Detail screen, Editorial Light design.
  * Warm paper layout, high-contrast text, clear map coordinates projection.
  */
 import { ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from "react-native";

@@ -1,6 +1,4 @@
 //! Lightning payloads (`IngestLightningWorkflow` and `lightning_consume_stream`).
-//!
-//! Source: `temporal/workflows/ingest_lightning.py`, `backend/ingest_lightning/activities.py`.
 
 use serde::{Deserialize, Serialize};
 

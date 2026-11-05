@@ -2,8 +2,8 @@
 //!
 //! One lead is one forecast field. It is classified against the palettes, rendered into one pyramid
 //! per palette by `radar-tiler` (renderer identity `indexed-rs1`), and written as a point grid for the
-//! API. A lead is accepted only when every expected palette rendered tiles (Python `set(palettes) ==
-//! expected`). A rejected lead has its tile directories removed and produces no manifest frame.
+//! API. A lead is accepted only when every expected palette rendered tiles. A rejected lead has its tile directories removed
+//! and produces no manifest frame.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;

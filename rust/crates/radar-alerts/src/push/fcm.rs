@@ -9,7 +9,7 @@ use crate::now_epoch;
 
 /// OAuth scope for FCM v1.
 pub const FCM_SCOPE: &str = "https://www.googleapis.com/auth/firebase.messaging";
-/// `aud` claim of the service-account assertion. Python fixes it to the Google endpoint, whatever the POST goes to.
+/// `aud` claim of the service-account assertion. Fixed to the Google endpoint, whatever the POST goes to.
 pub const FCM_AUDIENCE: &str = "https://oauth2.googleapis.com/token";
 /// Grant type for the JWT bearer exchange.
 pub const JWT_BEARER_GRANT: &str = "urn:ietf:params:oauth:grant-type:jwt-bearer";
@@ -52,7 +52,7 @@ pub(crate) fn assertion(
     jsonwebtoken::encode(&Header::new(Algorithm::RS256), &claims, &key).map_err(retryable)
 }
 
-/// Percent-encode a form value, as Python `httpx` does for `application/x-www-form-urlencoded`.
+/// Percent-encode a form value, for `application/x-www-form-urlencoded`.
 #[must_use]
 pub fn form_encode(pairs: &[(&str, &str)]) -> String {
     fn encode(value: &str, out: &mut String) {

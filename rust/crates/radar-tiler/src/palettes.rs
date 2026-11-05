@@ -130,7 +130,7 @@ fn rgba(v: Option<&Value>) -> Result<[u8; 4]> {
         .ok_or_else(|| TilerError::Invalid("rgba must be an array of four numbers".into()))?;
     let mut out = [0u8; 4];
     for (slot, channel) in out.iter_mut().zip(arr) {
-        // Python truncates floats toward zero and rejects values outside 0..=255 (OverflowError).
+        // Truncate floats toward zero and reject values outside 0..=255, like the original Python.
         let t = channel
             .as_f64()
             .map(f64::trunc)
@@ -203,7 +203,7 @@ pub fn validate_palette_name(name: &str) -> Result<()> {
 }
 
 /// Palette names from a `PALETTES`-style comma-separated value: split on `,`, trim, drop
-/// empties, default to `["classic"]`. Duplicates are kept, as in Python.
+/// empties, default to `["classic"]`. Duplicates are kept, as in the original Python.
 pub fn parse_palette_names(raw: Option<&str>) -> Vec<String> {
     let names: Vec<String> = raw
         .unwrap_or("classic")

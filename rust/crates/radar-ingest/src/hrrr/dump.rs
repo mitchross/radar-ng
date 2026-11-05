@@ -189,7 +189,7 @@ pub fn write_dump(
     Ok(())
 }
 
-/// `_safe_grid_dump`: logs `grid_dump_failed` (with `layer`) and never raises.
+/// Writes a grid dump, logging `grid_dump_failed` (with `layer`) on error. Never fails.
 pub fn safe_dump(
     cfg: &IngestConfig,
     layer: &str,

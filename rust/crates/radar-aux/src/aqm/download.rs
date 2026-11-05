@@ -2,7 +2,7 @@
 //!
 //! Decisions (spec-ingest-aux 5.5, DECIDE D-5 and D-6, PLAN defect mrms/hrrr D3):
 //! - The AWS mirror is tried first, then NOMADS. Any non-2xx status or transport error on AWS falls
-//!   through to NOMADS. The Python fell through on 404 only. NOAA can answer a missing anonymous S3 key
+//!   through to NOMADS. The original Python fell through on 404 only. NOAA can answer a missing anonymous S3 key
 //!   with 403, so 404-only fallback could never reach NOMADS. Redirects are not followed.
 //! - One download per (run, product). The file is streamed to `<product>.grib2.part` under an exclusive
 //!   `flock` on `.<product>.lock`, then renamed. Chunks that wait on the lock keep heartbeating.

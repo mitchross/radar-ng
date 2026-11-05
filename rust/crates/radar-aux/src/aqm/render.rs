@@ -59,7 +59,7 @@ pub(crate) fn render_chunk_blocking(job: &ChunkJob) -> Result<Vec<String>, AqmEr
         })?;
         let ts = isoformat_utc(&valid);
         let grid = radar_grib::decode_first_message(msg)?.grid;
-        // The renderer wants north-first (Python `_write_palette_tiles`). Flip a copy only when needed.
+        // The renderer wants north-first Flip a copy only when needed.
         let flipped = orientation_copy(&grid);
         if render_frame(job, &ts, flipped.as_ref().unwrap_or(&grid))?.is_empty() {
             continue;
@@ -165,11 +165,11 @@ pub(crate) fn orientation_copy(grid: &Grid) -> Option<Grid> {
     })
 }
 
-/// Writes the grid dump for one recorded frame. Errors are logged and swallowed, as in Python
-/// (`_safe_grid_dump`): a failed dump never fails the frame.
+/// Writes the grid dump for one recorded frame. Errors are logged and swallowed, so a failed
+/// dump never fails the frame.
 fn dump_grid(job: &ChunkJob, ts: &str, grid: &Grid) {
     let (lats, lons) = dump_axes(grid);
-    // Spec D-7 (decided): longitudes are stored ascending. Python keeps the source order. radar-core's
+    // Spec D-7 (decided): longitudes are stored ascending. The original Python kept the source order. radar-core's
     // writer only sorts values above 180, so the reorder happens here.
     let (data, lons) = ascending_columns(&grid.values, grid.width, lons);
     let input = GridInput::new(&data, &lats, &lons, job.layer.unit);
@@ -178,7 +178,7 @@ fn dump_grid(job: &ChunkJob, ts: &str, grid: &Grid) {
     }
 }
 
-/// The 1-D axes for a grid dump (Python `_grid_dump_axes`): for a projected grid, the latitude column at
+/// The 1-D axes for a grid dump: for a projected grid, the latitude column at
 /// `w // 2` and the longitude row at `h // 2`. The axes are taken from the un-flipped grid.
 pub(crate) fn dump_axes(grid: &Grid) -> (Vec<f64>, Vec<f64>) {
     match &grid.geo {

@@ -9,8 +9,8 @@
 //! 4. [`aqm_mark_processed`]: records the run once `air-quality` published.
 //! 5. [`aqm_cleanup`]: removes superseded run directories (and stale download cache entries).
 //!
-//! Rendering uses the Rust tile renderer (`radar-tiler`, renderer `indexed-rs1`). The Python legacy
-//! RGBA renderer is not ported (`radar-tiler` README, deviation 1). Renderer identities never mix on
+//! Rendering uses the Rust tile renderer (`radar-tiler`, renderer `indexed-rs1`). The legacy RGBA
+//! renderer is not ported (`radar-tiler` README, deviation 1). Renderer identities never mix on
 //! one run (PLAN collision rule), so Python and Rust pyramids can coexist under the same `TILE_DIR`.
 
 mod cleanup;
@@ -203,7 +203,7 @@ pub enum AqmError {
     /// A GRIB2 feature the port does not interpret.
     #[error("unsupported GRIB2 feature: {0}")]
     Unsupported(String),
-    /// The file has fewer messages than the chunk needs (Python: `grbs.message` raises).
+    /// The file has fewer messages than the chunk needs (pygrib raised here).
     #[error("GRIB2 file has {found} messages; the chunk needs {needed}")]
     MissingMessage {
         /// Messages in the file.
@@ -249,8 +249,8 @@ pub struct PaletteKeys {
     pub keys: BTreeSet<String>,
 }
 
-/// Loads the named palettes in order, skipping duplicates and palettes that do not exist (Python logs and
-/// skips a missing file). Fails when none loads: the code's legacy fallback lacks the AQ keys (spec Q-4).
+/// Loads the named palettes in order, skipping duplicates and palettes that do not exist (a missing file is logged and
+/// skipped). Fails when none loads: the code's legacy fallback lacks the AQ keys (spec Q-4).
 pub fn load_palettes(names: &[String]) -> Result<Vec<(String, Palette)>, AqmError> {
     let mut out: Vec<(String, Palette)> = Vec::new();
     for name in names {
@@ -464,7 +464,7 @@ pub fn frame_path(run_id: &str, timestamp: &str) -> String {
     format!("runs/{run_id}/{timestamp}")
 }
 
-/// Parses a run id `YYYYMMDD_CC` (Python `strptime("%Y%m%d_%H")`) into its issue time, UTC.
+/// Parses a run id `YYYYMMDD_CC` (format `%Y%m%d_%H`) into its issue time, UTC.
 pub fn parse_run_id(run_id: &str) -> Option<DateTime<Utc>> {
     let (date, hour) = run_id.split_once('_')?;
     if date.len() != 8
