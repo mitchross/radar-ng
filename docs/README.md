@@ -21,7 +21,7 @@ links to the guide for it.
 | Know what the app sends, and to whom | [app/privacy.md](app/privacy.md) |
 | Contribute code | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 | Fork it with my own app name, server and images | [../FORKING.md](../FORKING.md) |
-| Work on the Rust backend | [develop/rust-backend-handoff.md](develop/rust-backend-handoff.md) · [../rust/README.md](../rust/README.md) · [develop/specs/](develop/specs/) |
+| Work on the Rust backend | [develop/rust-backend-handoff.md](develop/rust-backend-handoff.md) · [../rust/README.md](../rust/README.md) · [archive/rust-migration/specs/](archive/rust-migration/specs/) |
 | Cut a release | [develop/releasing.md](develop/releasing.md) · [develop/temporal-safe-deployments.md](develop/temporal-safe-deployments.md) |
 | Upgrade Expo / React Native | [develop/expo-rn-upgrade-playbook.md](develop/expo-rn-upgrade-playbook.md) |
 | See how the pieces fit together | [reference/architecture.md](reference/architecture.md) |
@@ -38,7 +38,7 @@ docs/
   start/       new here? begin here
   self-host/   run the backend: Compose, Kubernetes, configuration, tuning
   app/         the phone app and web radar: running, device builds, CarPlay/Watch, privacy
-  develop/     working on the code: backend handoff, API/worker specs, releasing
+  develop/     working on the code: backend handoff, releasing
   reference/   architecture, debugging, packed tiles, data terms
   archive/     dated QA, perf and review notes, and the Python → Rust migration history
   diagrams/    SVGs used across the docs

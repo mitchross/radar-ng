@@ -5,7 +5,7 @@ The whole radar-ng backend is one Cargo workspace that builds one binary, `radar
 the operator diagnostics. The app (`frontend/`) and the web radar (`web/`) talk to it over HTTP.
 
 Images, compose and releases: [`deploy/`](../deploy/README.md). Migration history:
-`docs/rust-migration/` (PLAN, REVIEW, specs, benchmark-results).
+`docs/archive/rust-migration/` (PLAN, REVIEW, specs, benchmark-results).
 
 ## Build and test
 

@@ -4,7 +4,7 @@ MRMS and HRRR ingest activity bodies for radar-ng, as plain async functions. The
 types. The worker crate wraps these functions as activities and supplies the `ActivityInfo` and heartbeat
 sink.
 
-Source of truth: `docs/develop/specs/spec-ingest-mrms-hrrr.md`. Defect decisions: `docs/archive/rust-migration/PLAN.md` (Python defects table).
+Source of truth: `docs/archive/rust-migration/specs/spec-ingest-mrms-hrrr.md`. Defect decisions: `docs/archive/rust-migration/PLAN.md` (Python defects table).
 
 ## Coverage
 

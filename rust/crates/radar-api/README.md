@@ -3,7 +3,7 @@
 The radar-ng HTTP server (`radar api`, the tile-server image). One axum process serves the tile
 pyramids, the basemap (PMTiles, styles, fonts, imagery proxy), `/api/*`, `/v1/*` and `/api/metrics`.
 It replaced the Python stack's Caddy, FastAPI/uvicorn and go-pmtiles processes; routes, parameters,
-JSON shapes, status codes and headers follow `docs/develop/specs/spec-api.md`, so the app and
+JSON shapes, status codes and headers follow `docs/archive/rust-migration/specs/spec-api.md`, so the app and
 the web radar did not change.
 
 ## Public API
@@ -95,7 +95,7 @@ The static lane sets ACAO `*`. It overrides errors to
 
 ## Deviations
 
-Item numbers match `docs/develop/specs/spec-api.md` section 16. "Fixed" means the port does not
+Item numbers match `docs/archive/rust-migration/specs/spec-api.md` section 16. "Fixed" means the port does not
 reproduce the Python bug. "Kept" means the port matches Python on purpose.
 
 | ID | Decision | What the port does |

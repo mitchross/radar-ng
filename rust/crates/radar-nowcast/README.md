@@ -106,7 +106,7 @@ to float precision. "Approximate" means an independent re-implementation, not bi
 
 ## Activity glue (`run.rs`, `select.rs`, `inputs.rs`, `render.rs`, `score.rs`, `status.rs`)
 
-Follows `docs/develop/specs/spec-nowcast.md` sections 2 to 5, 8 to 11 and 13, and the former Python nowcast activity.
+Follows `docs/archive/rust-migration/specs/spec-nowcast.md` sections 2 to 5, 8 to 11 and 13, and the former Python nowcast activity.
 
 1. **Setup**: the processed-anchor file (`nowcast.json`, last 100 anchors) short-circuits an anchor
    already committed. `select_input_grids` (spec 4.2) picks the input grids on the 5-minute marks, with

@@ -4,7 +4,7 @@ Temporal control plane for radar-ng. It holds the 13 workflow types, the activit
 the sibling ingest, aux, alerts, nowcast and smoke crates, the schedule seeder, the schedule watchdog, and the
 worker process. The wire contract (names, payload shapes, retry constants, schedule definitions, queues,
 and environment variable names) comes from `radar-types`. Behaviour follows
-`docs/develop/specs/spec-temporal.md`. Deviations are listed below.
+`docs/archive/rust-migration/specs/spec-temporal.md`. Deviations are listed below.
 
 ## Coverage
 
