@@ -28,10 +28,10 @@ Want one computer and no Kubernetes? Use Docker Compose instead:
 
 ### You need
 
-- A Kubernetes cluster with a **default StorageClass**. kind, k3d and k3s come with one
+- A Kubernetes cluster with a default StorageClass. kind, k3d and k3s come with one
   (`local-path`). Check with `kubectl get storageclass`: one line should say `(default)`.
 - `kubectl` 1.27 or newer (it has Kustomize built in).
-- A machine with room to spare: about **8 CPU cores, 16 GB RAM and 50 GB free disk** is
+- A machine with room to spare: about 8 CPU cores, 16 GB RAM and 50 GB free disk is
   comfortable. The worker alone asks for 1 CPU and 3 GB. On a smaller machine, see
   [If it didn't work](#if-it-didnt-work).
 - Internet access from the cluster: it pulls public images from `ghcr.io` and Docker Hub, and the
@@ -86,7 +86,7 @@ curl -s localhost:8080/api/livez      # the api process is up
 curl -s localhost:8080/api/health     # "degraded" (HTTP 503) at first, then "ok"
 ```
 
-`/api/health` says `degraded` until the first radar frame lands, which takes **about 2 minutes**
+`/api/health` says `degraded` until the first radar frame lands, which takes about 2 minutes
 after the worker starts. Then it returns `"status":"ok"`. Other layers fill in over the next half
 hour (HRRR forecast radar, nowcast); the first forecast appears after the first Open-Meteo sync.
 
@@ -146,10 +146,10 @@ patches:
 
 Two ConfigMaps hold the settings, generated from files in `base/`:
 
-- `settings.env` → `radar-ng-settings`: the things you're expected to change.
+- `settings.env` feeds `radar-ng-settings`: the things you're expected to change.
   **`NWS_USER_AGENT` must be changed** (look for `>>> CHANGE THIS <<<`). `TEMPORAL_ADDRESS` and
   `TEMPORAL_NAMESPACE` point at your Temporal.
-- `worker.env` → `radar-ng-worker-config`: worker tunables. The defaults work.
+- `worker.env` feeds `radar-ng-worker-config`: worker tunables. The defaults work.
 
 Every variable is described in [docs/self-host/configuration.md](../../docs/self-host/configuration.md).
 Changing a value restarts the pods that read it.
@@ -177,7 +177,7 @@ The workers need a Temporal server. Pick one:
 
 ### Storage
 
-The PVCs in `base/pvcs.yaml` have **no `storageClassName`**, so they use your cluster's default.
+The PVCs in `base/pvcs.yaml` have no `storageClassName`, so they use your cluster's default.
 To pick another class, patch it in your overlay:
 
 ```yaml
@@ -202,15 +202,15 @@ The sizes are generous ceilings; real use is much lower (see the disk notes in
 [compose.md](../../docs/self-host/compose.md)). On `local-path` the size isn't enforced anyway.
 
 **ReadWriteOnce (RWO) is the default, and it has rules.** Most storage (local-path, cloud block
-disks, Longhorn's default) is RWO: a volume can be attached to **one node** at a time. `tiles`,
+disks, Longhorn's default) is RWO: a volume can be attached to one node at a time. `tiles`,
 `grids` and `state` are shared by the tile-server and the worker, so with RWO:
 
 - the worker has a `podAffinity` that puts it on the tile-server's node (already set up);
 - every Deployment uses `strategy: Recreate`, so the old pod lets go of the volume before the new
   one starts (otherwise the rollout hangs on a Multi-Attach error);
-- the tile-server stays at **one replica**. That's why `components/autoscaling` has no HPA.
+- the tile-server stays at one replica. That's why `components/autoscaling` has no HPA.
 
-On a single-node cluster none of this matters. If your class is **ReadWriteMany** (NFS, CephFS,
+On a single-node cluster none of this matters. If your class is ReadWriteMany (NFS, CephFS,
 Longhorn RWX), change `accessModes` to `ReadWriteMany` for those three PVCs and you can drop the
 `podAffinity` from the workers.
 
@@ -255,11 +255,11 @@ If you change the manifests, keep these, or pods restart for no reason or can't 
 
 - **tile-server liveness is `/api/livez` on 8080, never `/api/health`.** Health returns 503
   whenever NOAA data is late, which would restart every replica at once.
-- **Worker liveness** is `sh -c "test $(find /tmp/worker-alive -mmin -3)"`. The worker touches
+- Worker liveness is `sh -c "test $(find /tmp/worker-alive -mmin -3)"`. The worker touches
   that file every 30 s.
-- **Users:** the images run as uid 1000 (open-meteo: 999). Keep `fsGroup` set to match, or the
+- The images run as uid 1000 (open-meteo: 999). Keep `fsGroup` set to match, or the
   pods can't write to fresh volumes.
-- **Paths:** data lives at `/data/tiles`, `/data/grids`, `/data/state` (or change `TILE_DIR`,
+- Data lives at `/data/tiles`, `/data/grids`, `/data/state` (or change `TILE_DIR`,
   `GRID_DIR`, `STATE_DIR`).
 - **Exactly one worker seeds the Schedules** (`SEED_SCHEDULES=1`): the `legacy` worker in base,
   the `aux` pool with `worker-controller`.

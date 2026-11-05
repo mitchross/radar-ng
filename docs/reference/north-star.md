@@ -41,7 +41,7 @@ NOAA/NWS feeds
   -> mobile last-known-good manifest + provenance-aware timeline
 ```
 
-Temporal owns retries, schedules, and coherent publication—not bulk imagery.
+Temporal owns retries, schedules, and coherent publication. It does not carry bulk imagery.
 Workers publish an immutable run/frame path and commit one small manifest row
 only after object verification. PostgreSQL owns manifests, subscriptions, and
 push-token metadata; object storage owns radar artifacts; Redis may own only

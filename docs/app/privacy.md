@@ -1,4 +1,4 @@
-# Privacy — what Radar NG sends, to whom, and for how long
+# Privacy: what Radar NG sends, to whom, and for how long
 
 Written for task 1.4 of `docs/archive/tasks/2026-09-23-mobile-audit-and-plan.md` (findings F-R6, F-P9).
 Covers the iOS app, the watchOS app and the radar widget. The CarPlay target is included but is
@@ -19,7 +19,7 @@ Every position that leaves the app is rounded in one place, `frontend/src/lib/co
 Rounding is applied at the API boundary (`src/lib/api.ts`, `src/lib/inspector.ts`) rather than at
 the call sites, so a new caller cannot forget it. `targets/watch/WatchAPI.swift` mirrors the same
 two values. React-query keys carry `locationKey(...)` instead of the raw pair, so GPS jitter no
-longer creates a new cache entry — and therefore a new request — every few metres (F-P9).
+longer creates a new cache entry, and therefore a new request, every few metres (F-P9).
 
 **Why 2 decimals costs no accuracy.** MRMS radar and the self-hosted nowcast grid are 1 km cells,
 and the Open-Meteo models behind the forecast are 1–11 km. Both are already coarser than a 1.1 km
@@ -33,7 +33,7 @@ negligible.
 Location* and city/postal level in *Coarse Location*. The 2-decimal weather paths qualify as
 coarse; the 3-decimal alert path is still street-level and so counts as precise. Rounding alerts to
 2 decimals as well would let the whole app declare coarse location only, at the cost of the
-boundary behaviour above. This is a deliberate, reversible tradeoff — not an oversight.
+boundary behaviour above. This is a deliberate, reversible tradeoff, not an oversight.
 
 The raw GPS fix is *not* rounded in the store: the map marker legitimately uses full precision on
 device, where it never leaves the app except through the two paths above.
@@ -47,14 +47,14 @@ device, where it never leaves the app except through the two paths above.
 | " | `GET /api/storm-prefetch?lat&lon&zoom&palette` | 2 dp | offline storm tiles |
 | " | `GET /api/inspect/{layer}/{timestamp}/{lat}/{lon}` | 3 dp | layer value at the marker |
 | " | `GET /api/manifest.json`, `/api/health`, `/api/livez` | none (IP + UA only) | frames, health |
-| " | `GET /tiles/{layer}/{palette}/{timestamp}/{z}/{x}/{y}.png` | none — z/x/y reveals the viewed area | radar frames |
-| " | `GET /basemap/tiles/{z}/{x}/{y}.mvt` | none — as above | vector basemap |
-| " | `GET /api/alerts?lat&lon` | 3 dp | active NWS alerts; the **server** asks `api.weather.gov` with its own contact User-Agent |
-| " | `GET /api/geocode?q=` | none — the typed city name only | city search; the server asks the self-hosted Photon |
+| " | `GET /tiles/{layer}/{palette}/{timestamp}/{z}/{x}/{y}.png` | none, z/x/y reveals the viewed area | radar frames |
+| " | `GET /basemap/tiles/{z}/{x}/{y}.mvt` | none, as above | vector basemap |
+| " | `GET /api/alerts?lat&lon` | 3 dp | active NWS alerts; the server asks `api.weather.gov` with its own contact User-Agent |
+| " | `GET /api/geocode?q=` | none, the typed city name only | city search; the server asks the self-hosted Photon |
 | " | `GET /api/reverse-geocode?lat&lon` | 3 dp | place label for the device position; the server asks the self-hosted Photon |
-| " | `GET /basemap/imagery/{z}/{x}/{y}.jpg`, or the self-hosted VersaTiles host's `/imagery/...` in release builds | none — z/x/y reveals the viewed area | satellite imagery; the **server** fetches public-domain USGS tiles |
+| " | `GET /basemap/imagery/{z}/{x}/{y}.jpg`, or the self-hosted VersaTiles host's `/imagery/...` in release builds | none, z/x/y reveals the viewed area | satellite imagery; the server fetches public-domain USGS tiles |
 | Apple, via `MKDirections` (**CarPlay build only**) | route request with `MKMapItem(location:)` | **full precision** | turn-by-turn routing |
-| Configured OTLP endpoint (opt-in, off by default) | traces and logs | none — location-shaped attributes are stripped by `src/lib/telemetryPrivacy.ts` | diagnostics |
+| Configured OTLP endpoint (opt-in, off by default) | traces and logs | none, location-shaped attributes are stripped by `src/lib/telemetryPrivacy.ts` | diagnostics |
 
 Notably **not** sent anywhere: the device's position is never included in telemetry, never written
 to the widget's snapshot, and never part of the watch hand-off.
@@ -100,7 +100,7 @@ optional OS background refresh. Neither client creates a push token.
 
 ## 4. Retention
 
-### 4.1 Tile-server access logs — retained for ~24 hours
+### 4.1 Tile-server access logs, retained for ~24 hours
 
 The forecast, nowcast, storm-prefetch and inspect paths contain the rounded position, and the tile
 server logs them:
@@ -113,7 +113,7 @@ server logs them:
   exports through `otel-gateway` to Loki.
 - `loki-stack/ConfigMap/loki` sets `retention_period: 24h`, `retention_delete_delay: 2h` and
   `retention_enabled: true` (compaction every 10 min). Storage is S3.
-- On the node, kubelet keeps `containerLogMaxSize: 10Mi` × `containerLogMaxFiles: 5` per container —
+- On the node, kubelet keeps `containerLogMaxSize: 10Mi` × `containerLogMaxFiles: 5` per container,
   size-bounded, not time-bounded, and removed with the pod.
 
 Net effect: a rounded position is queryable in the homelab's Loki for roughly 24–26 hours, and
@@ -153,7 +153,7 @@ will need once it exists:
 
 - **Location → Approximate location.** Collected, not shared, encrypted in transit, required for app
   functionality, ephemeral processing. Not used for advertising.
-- **Location → Precise location.** Collected, same handling — or drop this row if alerts move to 2
+- **Location → Precise location.** Collected, same handling, or drop this row if alerts move to 2
   decimals.
 - **Data deletion.** No account and no server-side user record, so there is nothing for a user to
   request deletion of; the access-log retention in §4.1 is the one caveat and it is bounded at ~24 h.
@@ -161,26 +161,26 @@ will need once it exists:
   independently.
 - `ACCESS_FINE_LOCATION` is requested alongside `ACCESS_COARSE_LOCATION`. The app asks for
   `Location.Accuracy.Balanced`, so check whether `ACCESS_FINE_LOCATION` is still needed before
-  answering — an unnecessary permission is an easy rejection.
+  answering. An unnecessary permission is an easy rejection.
 
 ## 7. Open items
 
 1. NWS `User-Agent` contact address (blocked on the user supplying one).
 2. Privacy policy URL for both stores (blocked on the user; no such page exists yet).
-3. ~~Esri satellite terms~~ — resolved: satellite is self-hosted USGS imagery (D7, task S.1).
+3. ~~Esri satellite terms~~, resolved: satellite is self-hosted USGS imagery (D7, task S.1).
 4. `ACCESS_FINE_LOCATION` necessity on Android.
 5. Retention at the S3 backend for Loki (§4.1, UNVERIFIED).
 6. **The privacy manifest exists but declares no collected data.** `frontend/ios/radarng/PrivacyInfo.xcprivacy`
    is generated during `pod install` (aggregated from the CocoaPods manifests, because
    `expo-build-properties`' `apple.privacyManifestAggregationEnabled` defaults to `true`), and is
    referenced from `project.pbxproj`. It declares the three required-reason API types the native
-   pods need — `UserDefaults`/`CA92.1`, `SystemBootTime`/`35F9.1`, `FileTimestamp`/`C617.1` — plus
+   pods need, `UserDefaults`/`CA92.1`, `SystemBootTime`/`35F9.1`, `FileTimestamp`/`C617.1`, plus
    `NSPrivacyCollectedDataTypes: []` and `NSPrivacyTracking: false`.
 
    The empty collected-data list is the open question the audit (F-R6) flags: the app does send a
    rounded position to a server, so confirm that `NSPrivacyCollectedDataTypes` and the App Store
    Connect answers in §5 say the same thing. Apple treats App Store Connect as authoritative and the
-   manifest list as optional, so an empty list is defensible — an inconsistent one is not.
+   manifest list as optional, so an empty list is defensible. An inconsistent one is not.
 
    Note this file only appears **after** `pod install`. Checking `frontend/ios/` on a tree where the
    prebuild or pods have not been re-run will show no manifest, which is not evidence that the

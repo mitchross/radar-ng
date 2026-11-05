@@ -13,19 +13,19 @@
 </p>
 
 radar-ng is a weather radar app for your phone and browser, like the big weather apps, but the
-data comes from a server **you** run. That server downloads radar, forecasts, alerts and lightning
+data comes from a server you run. That server downloads radar, forecasts, alerts and lightning
 straight from public sources such as NOAA, turns them into map images, and serves them to the app.
 There are no API keys, no accounts and no ads, and analytics stay off unless you turn them on.
 
 ## What you get
 
-- **Live radar** across the US, refreshed about every 2 minutes.
-- **The next hour of rain**, predicted from how the radar is moving (a "nowcast"). It checks itself
+- Live radar across the US, refreshed about every 2 minutes.
+- The next hour of rain, predicted from how the radar is moving (a "nowcast"). It checks itself
   against what actually happened and shows you how accurate it's been.
-- **Forecasts**, hourly and 7-day, plus **air quality**, **lightning**, **severe weather alerts**
-  and **hurricanes**.
-- **"Rain starting soon" notifications**, planned on the phone itself: no push service, no account.
-- **An iPhone/Android app** (with Apple Watch and CarPlay extras) and **a web version**.
+- Forecasts, hourly and 7-day, plus air quality, lightning, severe weather alerts
+  and hurricanes.
+- "Rain starting soon" notifications, planned on the phone itself: no push service, no account.
+- An iPhone/Android app (with Apple Watch and CarPlay extras) and a web version.
 
 New to the weather terms (MRMS, HRRR, nowcast, tiles…)? See the
 [glossary](docs/start/glossary.md).
@@ -43,7 +43,7 @@ New to the weather terms (MRMS, HRRR, nowcast, tiles…)? See the
 | Not sure yet | [docs/start/getting-started.md](docs/start/getting-started.md) |
 
 Every other doc (configuration, tuning, releasing, debugging, architecture, specs) is listed in
-**[docs/README.md](docs/README.md)**.
+[docs/README.md](docs/README.md).
 
 ## Quick start (Docker Compose)
 
@@ -54,15 +54,15 @@ git clone https://github.com/mitchross/radar-ng && cd radar-ng/deploy
 
 It downloads the map once, starts everything, waits for the first radar frame (about 2 minutes) and
 prints the address to put in the app (**Settings → Advanced Mode → Stack URL**). On Apple Silicon or
-another arm64 machine, use `./up.sh --build`. The full walk-through, with how to check it worked and
-what to do if it didn't, is [docs/self-host/compose.md](docs/self-host/compose.md).
+another arm64 machine, use `./up.sh --build`. [docs/self-host/compose.md](docs/self-host/compose.md) has the full walk-through, including how to
+check it worked and what to do if it didn't.
 
 ## How it works
 
 <img src="docs/diagrams/system-architecture.svg" width="100%">
 
-One Rust program, `radar`, does all the server work. Its **workers** download each new radar scan
-and forecast run, render them into map tiles and write them to disk. Its **API** serves those
+One Rust program, `radar`, does all the server work. Its workers download each new radar scan
+and forecast run, render them into map tiles and write them to disk. Its API serves those
 tiles, the basemap and a small JSON API to the app on one port. [Temporal](https://temporal.io)
 schedules and retries every step (no cron).
 
@@ -70,16 +70,16 @@ The nowcast extrapolates the latest MRMS radar scans along their motion field (L
 optical flow plus S-PROG extrapolation) for the next 60 minutes, then scores itself against the
 radar that arrives later.
 
-The component-by-component breakdown, the per-frame pipeline and the caching story are in
-**[docs/reference/architecture.md](docs/reference/architecture.md)**; the backend code is in
+The component-by-component breakdown, the per-frame pipeline and how caching works are in
+[docs/reference/architecture.md](docs/reference/architecture.md). The backend code is in
 [`rust/`](rust/README.md).
 
 ## Data sources
 
-All free and public, no keys: **NOAA MRMS** (radar) · **NOAA HRRR** + **Open-Meteo**
-(forecast, wind, precipitation) · **NOAA NAQFC/AQM** (air quality: PM2.5 + ozone,
-current + 3-day forecast) · **NWS** (alerts) · **NHC** (tropical) ·
-**Blitzortung** (lightning) · **Protomaps** (basemap).
+All free and public, no keys: NOAA MRMS (radar) · NOAA HRRR + Open-Meteo
+(forecast, wind, precipitation) · NOAA NAQFC/AQM (air quality: PM2.5 + ozone,
+current + 3-day forecast) · NWS (alerts) · NHC (tropical) ·
+Blitzortung (lightning) · Protomaps (basemap).
 
 Prebuilt server images: `ghcr.io/mitchross/radar-ng-{tile-server,temporal-worker,open-meteo-worker}`.
 

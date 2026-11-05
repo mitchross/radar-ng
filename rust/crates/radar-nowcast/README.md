@@ -188,9 +188,9 @@ best run is reported.
 
 | | Original (3 runs) | Optimised (3 runs) | Best original | Best optimised |
 |---|---|---|---|---|
-| `estimate_motion`, stride 2 | 21.0, 37.0, 18.9 s | 6.8, 7.5, 3.8 s | 18.9 s | **3.8 s** |
+| `estimate_motion`, stride 2 | 21.0, 37.0, 18.9 s | 6.8, 7.5, 3.8 s | 18.9 s | 3.8 s |
 | `forecast`, 12 leads | 21.3, 22.8, 16.1 s | 21.0, 20.1, 15.6 s | 16.1 s | 15.6 s (no measurable change) |
-| Total | | | 35.0 s | **19.4 s** |
+| Total | | | 35.0 s | 19.4 s |
 
 The spec estimate is 15 s total on the production host (section 12). Under this load the total is
 19.4 s. The machine is shared, so this is not a clean single-tenant figure.

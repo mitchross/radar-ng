@@ -43,7 +43,7 @@ radar parity --python-root A --rust-root B    # decode and compare two tile pyra
 ```
 
 Configuration is environment variables (`TILE_DIR`, `STATE_DIR`, `GRID_DIR`, `TEMPORAL_ADDRESS`,
-`WORKER_ROLE`, and so on). Each crate's README lists the variables it reads; `docs/self-host/configuration.md`
+`WORKER_ROLE`, and so on). Each crate's README lists the variables it reads. `docs/self-host/configuration.md`
 covers the ones operators usually set.
 
 ## Crates

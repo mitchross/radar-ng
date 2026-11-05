@@ -6,8 +6,8 @@ which the `radar` binary calls. It is a port of the former Python debug harness,
 human and JSON output, and exit codes (0 healthy, 1 any `fail`). Operator guide:
 `docs/reference/debug-harness.md`.
 
-It inspects a **live** stack the way the app does. HTTP checks go through the public serving path
-(`radar api` on the tile-server port), so the numbers are client-perceived numbers.
+It inspects a live stack the way the app does. HTTP checks go through the public serving path
+(`radar api` on the tile-server port), so the numbers match what clients see.
 
 ## Commands
 
@@ -62,14 +62,14 @@ radar parity --python-root A --rust-root B --layer radar --palette classic \
 | `--json` | one JSON document (`frames`, `frames_only_python`, `frames_only_rust`, `manifest`, `summary`) |
 | `--threads` | decoder threads (default: all cores) |
 
-**Discovery.** Hidden entries are skipped: `.render-publish-locks`, the `.<ts>.tmp-<hex>` staging dirs,
-the completion markers. Any `.png` deeper than `<layer>/<palette>/` whose last three components are
+**Discovery.** Discovery skips hidden entries: `.render-publish-locks`, the `.<ts>.tmp-<hex>` staging dirs,
+and the completion markers. Any `.png` deeper than `<layer>/<palette>/` whose last three components are
 `<z>/<x>/<y>.png` is a tile, and the components before them are the frame path, so multi-segment
-paths (HRRR) work. Other `.png` files are counted in `summary.ignored_files`. Symlinks are followed.
+paths (HRRR) work. `summary.ignored_files` counts other `.png` files. Discovery follows symlinks.
 
 **Per frame** (each `(layer, palette, frame)` present on both sides):
 
-- tile sets: counts and the first 20 tiles on one side only. A one-sided tile is compared against a
+- tile sets: counts and the first 20 tiles on one side only. The tool compares a one-sided tile against a
   fully transparent tile, because the renderers only elide fully transparent tiles and a client sees
   a 404 as transparent.
 - every PNG decoded to 8-bit RGBA on rayon, whatever its encoding (indexed with PLTE and tRNS, grey,
@@ -167,7 +167,7 @@ cargo test -p radar-debug --test parity -- --ignored --nocapture   # 1200-pair t
 
 ## Deviations from the Python
 
-Each is deliberate. Where a Python defect is fixed, it is marked as such.
+Each is deliberate. Fixed Python defects are marked.
 
 1. **Tile URL template uses `{path}` (defect fixed).** The live manifest advertises
    `/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png`. The Python formatted only `{timestamp}`, so `tiles`,

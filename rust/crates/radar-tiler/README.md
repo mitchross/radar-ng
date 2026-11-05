@@ -64,7 +64,7 @@ pyramids; see Deviations.
    identity is `ExistingValid` (exact match) or `ExistingForeign` (anything else). The tile
    count of the existing tree is returned. Foreign trees are never rewritten, and no
    `PyramidIdentityConflict` is raised. The Python rules for mixed or partial palette sets
-   (13.2) are therefore not reproduced; the absent palettes are rendered.
+   (13.2) are therefore not reproduced. The absent palettes are rendered.
    `existing_compatible` is never returned.
 4. **No adoption of unbound trees (H6).** A non-empty final without a v2 marker (including
    a v1 `.render-complete.json`) fails with `TilerError::Unbound` before anything is
@@ -81,7 +81,7 @@ pyramids; see Deviations.
    Python digests. They are foreign to Python in any case.
 9. **Projected geometry uses `radar_geo`'s spherical formulas, not pyproj (spec 19.2).**
    Transforms may differ from pyproj by about one ULP, which can flip a rare nearest or
-   classify edge case. The golden projected fixture is EPSG:3857 only; the HRRR
+   classify edge case. The golden projected fixture is EPSG:3857 only. The HRRR
    Lambert-conformal path has no Python fixture yet.
 10. **zlib bytes.** PNG bytes come from `flate2` at the configured level with adaptive
     row filters. Byte parity with Pillow is not a goal (spec 7.1). Decoded class indices
@@ -167,5 +167,5 @@ palettes classic/muted/vivid, 615 tiles per palette, 1.59 s wall. Run with:
 - Fault-injection hooks for the fsync order and the EIO/EINVAL/ENOTEMPTY publish paths, so
   the Python durability and race tests can be ported.
 - A Python fixture for the Lambert-conformal (HRRR) projected path.
-- HRRR real-data parity; the fixtures are synthetic. (MRMS was checked against live data with
+- HRRR real-data parity. The fixtures are synthetic. (MRMS was checked against live data with
   `radar parity --exact`, see `radar-grib/README.md`.)

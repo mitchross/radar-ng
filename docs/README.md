@@ -1,6 +1,6 @@
 # radar-ng docs
 
-Start with **[Getting started](start/getting-started.md)** if you're new: it helps you pick a path and
+Start with **[Getting started](start/getting-started.md)** if you're new. It helps you pick a path and
 links to the guide for it.
 
 ## I want to…

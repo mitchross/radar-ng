@@ -1,6 +1,6 @@
 # Capacity acceptance
 
-The current target is 100 concurrently active map users; it is an acceptance
+The current target is 100 concurrently active map users. It is an acceptance
 target, not a claim about measured production traffic. Run the k6 scenario
 against a staging hostname backed by the same storage class and gateway:
 
@@ -17,8 +17,8 @@ It passes only when server errors stay below 0.5%, total request failures below
 Record CPU, memory, MRMS age, nowcast duration, Temporal queue backlog, PVC
 latency, and gateway throughput during the run. A passing API test is invalid
 if MRMS freshness breaches 10 minutes or the nowcast/HRRR schedules fall
-behind—the system must serve users without starving publication.
+behind. The system must serve users without starving publication.
 
-The RWO tile PVC deliberately caps the current API at one pod. Static delivery
-must move to immutable object storage/CDN before calling this multi-node or HA;
-the single-pod test establishes headroom only for the present topology.
+The RWO tile PVC caps the current API at one pod. Static delivery
+must move to immutable object storage/CDN before you call this multi-node or HA.
+The single-pod test establishes headroom only for the present topology.

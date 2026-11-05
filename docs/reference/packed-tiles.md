@@ -11,20 +11,20 @@ back to PNG rasters otherwise.
 
 ## Tile format
 
-- PNG, 8-bit **RGB** (color type 2), no alpha, no gamma/ICC chunks. Each channel holds one frame
+- PNG, 8-bit RGB (color type 2), no alpha, no gamma/ICC chunks. Each channel holds one frame
   (slot), so one pixel carries 3 slots. Alpha is avoided because decoders premultiply it.
-- One tile covers one Web Mercator XYZ tile at `tile_size` = **512** px. A 512 tile at zoom `z`
+- One tile covers one Web Mercator XYZ tile at `tile_size` = 512 px. A 512 tile at zoom `z`
   matches MapLibre's zoom `z` at 1:1.
-- **Atlas layout:** slots are grouped into blocks of 3 (`block = slot / 3`, `channel = slot % 3`,
+- **Atlas layout.** Slots are grouped into blocks of 3 (`block = slot / 3`, `channel = slot % 3`,
   R=0 G=1 B=2). Blocks are laid out row-major in a grid `cols` = 2 blocks wide, so the image is
   `512 * cols` wide and `512 * ceil(blocks / cols)` tall. With `max_slots` = 24 (8 blocks) the
   largest image is 1024 x 2048, within the WebGL2 minimum texture size.
 - Pixel (px, py) of slot `s` is at atlas x = `(block % cols) * 512 + px`, y = `(block / cols) * 512 + py`.
-- **Value:** `q` = 0 means missing or below the table's lowest value. Otherwise
+- **Value.** `q` = 0 means missing or below the table's lowest value. Otherwise
   `value = offset + q * scale`. Unused slots are 0.
-- **Sampling:** the same as the colored tiles: bilinear at native zooms, max-pooled footprint
+- **Sampling.** The same as the colored tiles: bilinear at native zooms, max-pooled footprint
   where source cells are finer than a pixel (`Overview::Max`), nearest for categorical layers.
-- A tile whose every slot is 0 is not written.
+- The worker does not write a tile whose every slot is 0.
 
 ## Quantization per palette key
 
@@ -48,26 +48,26 @@ The client decodes `value = offset + q * scale`, the bottom of the code's bin. A
 (0.05 in), which is in the same band. The manifest carries `scale` and `offset`; `floor` is
 server-only.
 
-- **Floor:** the lowest value any palette draws. Values below it are transparent anyway. On a real
+- **Floor.** The lowest value any palette draws. Values below it are transparent anyway. On a real
   MRMS frame, clear-air noise below 5 dBZ made the tiles 15% larger.
-- **Truncation, not rounding:** palette edges are multiples of `scale` from `offset`, so every value
+- **Truncation, not rounding.** Palette edges are multiples of `scale` from `offset`, so every value
   lands in the same color band as on the server's PNG tiles.
-- **Coarsest exact step for model layers:** the palettes are stepped, and readouts use
-  `/api/inspect`, not packed values. So each HRRR key uses the largest step that hits every band
+- **Coarsest exact step for model layers.** The palettes are stepped, and readouts use
+  `/api/inspect`, not packed values. Each HRRR key uses the largest step that hits every band
   edge: the packed colors equal the PNG colors with the fewest bytes. Offsets are chosen so the
   lowest band starts at code 1. On a real HRRR run (20261015_22, f01 to f04), steps of 0.5 instead
   of 5 or 10 made the wind bucket 3.4x and the humidity bucket 4.6x larger. A smoother palette needs
   a finer step; clients read `scale` and `offset` from the manifest, so only the server changes.
-- **Edges not hit:** a value at or above such an edge can decode into the band below it (or, past
-  the coded range, into the top coded band). Each is listed in the table and checked by the tiler,
-  web and app tests. They are out of physical range (humidity above 100.01 %, cloud above 100 %,
+- **Edges not hit.** A value at or above such an edge can decode into the band below it (or, past
+  the coded range, into the top coded band). The table lists each, and the tiler, web and app
+  tests check them. They are out of physical range (humidity above 100.01 %, cloud above 100 %,
   more than 20 in of rain, ozone of 600 ppb or more) except `pm25`: its edges have a 0.1 µg/m³
   grid that 8 bits cannot cover up to 500. The step of 1 hits the AQI category edges 35.5, 55.5,
   125.5 and 225.5 exactly; the sub-band edges are off by up to 0.5 µg/m³, and 9.1 by 0.4.
-- **Categorical layers** (`precip-type`) are not packed. Category ids 1 to 4 would fit in one
+- Categorical layers (`precip-type`) are not packed. Category ids 1 to 4 would fit in one
   code with nearest sampling, but the palette keys colors by name and v1 clients skip
   `categorical: true`. A later version can add the id-to-name map to the manifest.
-- **2.5 dBZ step:** on a real full-CONUS MRMS frame (2026-10-15), one packed slot is 1.26 MB.
+- **2.5 dBZ step.** On a real full-CONUS MRMS frame (2026-10-15), one packed slot is 1.26 MB.
   0.5 dBZ steps give 2.09 MB, and 5 dBZ steps 1.05 MB. Packing takes about 100 ms with `png`
   `Compression::Balanced`; `High` saves 2% for twice the time.
 
@@ -84,7 +84,7 @@ slots then hold typed codes, and the manifest says `"version": 2` with a `types`
   still missing. With `stride` 32, `q` <= 31 covers 5 to 77.5 dBZ, past the top palette band (75).
 - A client decodes `class = code / stride` and `q = code % stride`, then colors `q` with that class's
   ramp. `no_data_below` applies to the rain ramp only, as on the server.
-- **Compatibility:** v1 clients accept only `version` 1, so they draw a v2 layer from the PNG rasters,
+- **Compatibility.** v1 clients accept only `version` 1, so they draw a v2 layer from the PNG rasters,
   which are typed too. A v2 client accepts version 1 without `types` and version 2 with them.
 - One bucket holds one code space. Its `.packed-bucket-v1.json` has `"types": 32` when it is typed.
   A frame whose encoding differs from its bucket's is not packed (raster path). When a layer's layout
@@ -120,11 +120,11 @@ A bucket is one directory of packed tiles: up to `max_slots` frames of one layer
   frames. The id of part 0 is `<run>`; part `k` (k >= 1) is `<run>.p<k>`. For the nowcast, `<run>`
   is the anchor timestamp as it appears in the frame paths, e.g. `2026-10-15T18:30:38+00:00`. For
   HRRR and AQM it is the run id, e.g. `20261015_12`.
-- **HRRR:** forecast hour `fhr` goes to part `(fhr - 1) / 24`: an 18 h run has one bucket, a 48 h
+- **HRRR.** Forecast hour `fhr` goes to part `(fhr - 1) / 24`: an 18 h run has one bucket, a 48 h
   run two. Hours render in parallel, so slots fill in completion order. Each layer of an hour is
   packed after its PNG render. An hour whose PNG tiles exist but whose slot is missing renders
   again.
-- **AQM:** chunk `k` (messages `24k` to `24k + 23`) is part `k`: three buckets per 72-hour run.
+- **AQM.** Chunk `k` (messages `24k` to `24k + 23`) is part `k`: three buckets per 72-hour run.
 - **Cost (2026-10-15, one machine, `tests/hrrr_packed_live.rs` and `tests/aqm_packed_live.rs`):**
   HRRR run 20261015_22, 18 hours, 9 packed layers: render 151 s, render and pack 208 s. Packing
   one hour takes about 0.5 s at slot 1 and 3 to 5 s near slot 18, because each new slot re-encodes
@@ -145,8 +145,8 @@ packed/<layer>/<bucket id>/.packed-bucket-v1.json   # {"v": n, "slots": [timesta
 packed/<layer>/<bucket id>/<z>/<x>/<y>.png
 ```
 
-Every tile file and the bucket file are written to a temporary name and renamed. The bucket file is
-rewritten after all of that update's tiles are in place.
+The worker writes every tile file and the bucket file to a temporary name, then renames it. It
+rewrites the bucket file after all of that update's tiles are in place.
 
 ## Serving
 
@@ -224,11 +224,11 @@ multiplies by the layer opacity. A later version may crossfade two slots.
 
 ## Clients
 
-- **Web:** a MapLibre custom layer (WebGL2) under the label layers. It draws one quad per visible
+- **Web.** A MapLibre custom layer (WebGL2) under the label layers. It draws one quad per visible
   tile. It fetches every bucket the playback sequence needs, for the tiles in view at
   `clamp(floor(zoom), min_zoom, max_zoom)`, and keeps parent tiles while children load.
   Frames without a packed slot use the existing raster path.
-- **App:** the **In-map** engine, used whenever Settings → **Fast radar** is on. Each (frame,
+- **App.** The **In-map** engine, used whenever Settings → **Fast radar** is on. Each (frame,
   tile) is colored once by an SkSL `RuntimeEffect` (atlas and table are image shaders) into a
   512 x 512 offscreen Skia surface and saved as a PNG at
   `<cache>/radar-inmap/<layer>/<frameKey>/<gen>/{z}/{x}/{y}.png`. Every frame is a normal
