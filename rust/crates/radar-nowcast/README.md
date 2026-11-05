@@ -4,7 +4,7 @@ The radar-ng nowcast, in two layers:
 
 - **Numerical core** (pure computation on `Field2` buffers): pyramidal Lucas-Kanade motion,
   semi-Lagrangian advection, FFT cascade, AR(2), CDF probability matching, S-PROG, verification
-  scores. A from-scratch replacement for the pysteps pieces the Python nowcast used.
+  scores. It is written from scratch and replaces the pysteps pieces the old Python nowcast used.
 - **Activity glue** (`nowcast_run`): input grid selection, grid reads, preprocessing, motion and
   forecast, point grids and tile pyramids, the atomic manifest swap, the status file and the
   post-commit skill scoring. A plain async function with no Temporal types; the worker wraps it.
@@ -82,8 +82,8 @@ to float precision. "Approximate" means an independent re-implementation, not bi
 - **probmatch** (`probmatch.rs`): threshold from `np.percentile` linear with the `_lerp` formula;
   CDF matching assigns the top-k sorted target values to wet cells in ascending initial order.
   Exact in the matched values; ties in the initial field may land on a different tied cell (see
-  deviations). Matches the `probmatch.json` cases up to tied cells.
-- **motion** (`motion/`): an own re-implementation of the OpenCV path used by pysteps:
+  Behavior notes). Matches the `probmatch.json` cases up to tied cells.
+- **motion** (`motion/`): its own re-implementation of the OpenCV path used by pysteps:
   - Shi-Tomasi `goodFeaturesToTrack`: 5x5 block min-eigenvalue, 3x3 Sobel, REFLECT_101 borders,
     local maximum, greedy minimum-distance selection. Approximate.
   - Morphological opening with a 3x3 ellipse (a cross) on the echo mask; erosion ignores out-of-image
@@ -100,18 +100,18 @@ to float precision. "Approximate" means an independent re-implementation, not bi
 - **sprog** (`sprog.rs`): S-PROG with AR(2) per level, CDF probability matching against the
   precipitation climatology, the dry-window rule, and the forecast assembled from the summed levels.
 - **skill** (`skill.rs`): contingency table (unknown = NaN or `<= -100`, fill is dry), POD / FAR / CSI /
-  bias, Python `round(x, 3)` via `format!("{:.3}")`, point-grid stride rule, nearest resampling
+  bias, `round(x, 3)` semantics via `format!("{:.3}")`, point-grid stride rule, nearest resampling
   (`rint`), summary with headline lead nearest 30 min, minimum 6 runs, `no_rain_observed` reason.
   Verified by unit tests only. pysteps has no equivalent, so the spec's definitions are the reference.
 
 ## Activity glue (`run.rs`, `select.rs`, `inputs.rs`, `render.rs`, `score.rs`, `status.rs`)
 
-Follows `docs/develop/specs/spec-nowcast.md` sections 2 to 5, 8 to 11 and 13, and the former Python nowcast activity.
+Follows sections 2 to 5, 8 to 11 and 13 of the design history in `docs/archive/rust-migration/specs/spec-nowcast.md`.
 
 1. **Setup**: the processed-anchor file (`nowcast.json`, last 100 anchors) short-circuits an anchor
    already committed. `select_input_grids` (spec 4.2) picks the input grids on the 5-minute marks, with
    the earlier gap at most `0.6 * step`, tolerance `0.45 * step`, falling back to the newest N. Too few
-   grids writes `warming_up`. A cadence violation (gap above `max(6, 1.5 * 5) = 7.5` min) is `degraded`
+   grids writes `warming_up`. A cadence violation (gap above `max(6, 1.5 * 5) = 7.5` min) is `degraded`,
    and nothing runs.
 2. **Inputs**: grid dumps are read with radar-core `grid_read`. Values below -100 become NaN, and fill is
    normalised to -9999. The grid geometry must match across frames.
@@ -134,11 +134,11 @@ Follows `docs/develop/specs/spec-nowcast.md` sections 2 to 5, 8 to 11 and 13, an
    baseline from `runs/<anchor>/observed`, each observation matched once), appended to the skill log, and
    summarised as Prometheus text. Scoring failures are logged, not fatal.
 
-Deviations from the Python reference are listed under Deviations, items 11 to 20.
+Items 11 to 20 under Behavior notes cover the glue.
 
 ## Golden tests (`tests/golden.rs`)
 
-Fixtures live in `testdata/` and are written by `testdata/gen_golden.py`.
+Fixtures live in `testdata/`. `testdata/gen_golden.py` writes them with pysteps (see Regenerating the fixtures).
 
 | Test | Reference | Result |
 |---|---|---|
@@ -210,7 +210,7 @@ What changed:
 - **Advection** (`advection.rs`). The two velocity components are sampled at the same point with shared
   corner arithmetic. Same arithmetic per component.
 
-The first three changes keep the arithmetic unchanged, apart from the `sqrt` note in deviation 14. All
+The first three changes leave the arithmetic unchanged, apart from the `sqrt` note in item 14 under Behavior notes. All
 golden tests pass, and the crate's test suites pass in release.
 
 Forecast breakdown, from an instrumented run made after the IDW change and before the FFT and sampler
@@ -221,7 +221,7 @@ changes (under load, approximate):
   0.35 to 0.4 s, state update the rest), advection plus warp about 0.5 s (15 segments in total,
   including the pre-advection of frames 0 and 1)
 
-The forecast is bound by full-domain f64 passes and by the number of FFTs, not by a single hot loop.
+Full-domain f64 passes and the number of FFTs bound the forecast, not a single hot loop.
 The FFT and sort changes did not show up in the wall-clock A/B. The remaining options, each of which
 changes numerics and needs a golden re-check:
 
@@ -232,10 +232,12 @@ changes numerics and needs a golden re-check:
 
 Motion now costs about 1.3 s per pair after the IDW fix. Most of that is pyramidal LK: 1000 points,
 50 x 50 window, 10 Newton iterations and `epsilon = 0`, which is about 1.3e8 bilinear samples per pair.
-That is the fidelity setting (OpenCV's `TermCriteria`), so it is left as is. A specialised window
+That is the fidelity setting (OpenCV's `TermCriteria`), so it stays as is. A specialised window
 sampler (the bilinear weights are the same across the window) is the next step there.
 
-## Deviations from the spec text
+## Behavior notes
+
+These items record where the code departs from the spec text.
 
 1. **`adjust_lag2`** uses `2*g1*g2 - 1` as pysteps does, not the spec's `2*g1^2 - 1`. The golden
    values come from pysteps, so the code follows pysteps (see `ar.rs` module docs).
@@ -244,7 +246,7 @@ sampler (the bilinear weights are the same across the window) is the next step t
    produce NaN fields.
 3. **Exact translation** makes the Yule-Walker system singular (gamma1 = 1). pysteps raises
    `LinAlgError` here too. The crate returns `ArFit`, not a forecast. Real radar data is not exactly
-   rigid, but this path is reachable in principle.
+   rigid, but the path is reachable in principle.
 4. **D1, low wet-area ratio**: pysteps raises `IndexError` in `percentile` when `war` is near 0 or
    small. The fix keeps the maximum cell(s) as the threshold (`thr = max`). Matches the spec's intent
    that the forecast does not fail. Covered by `percentile_mask_matches_pysteps`.
@@ -259,8 +261,7 @@ sampler (the bilinear weights are the same across the window) is the next step t
    not bit-exact. The `opencv` crate is the fallback if exact parity is required. Its absence is the
    reason the motion tests use measured bounds.
 10. **Precision**: internal arithmetic is f64 (DEC-6); stored fields are f32, as in the spec.
-11. **Renderer**: tiles use radar-tiler `indexed-rs1`, as specified for this port, not the Python
-    default renderer. `NowcastResult` palettes are the rendered union over accepted leads.
+11. **Renderer**: tiles use radar-tiler `indexed-rs1`, as specified for this port. The old Python code used its default renderer. `NowcastResult` palettes are the rendered union over accepted leads.
 12. **D2 in the glue**: a dry input window counts as ran (`ran = true`), renders nothing, reports
     `leadtimes = 0`, and replaces the layer with an empty frame set. The status is `ok` with reason
     `no_rain` and detail "no cell above 5 dBZ in the input window". `no_rain` is an extension of the
@@ -273,8 +274,8 @@ sampler (the bilinear weights are the same across the window) is the next step t
 14. **IDW `powf(0.5)`**: the default exponent is evaluated as `sqrt`. Results may differ from `powf` by
     one ulp. Other exponents use `powf`.
 15. **Persistence fallback**: implemented but off by default. `NOWCAST_ALLOW_PERSISTENCE_FALLBACK`
-    accepts `1`, `true`, `yes` or `on`. The Python code accepted only `1`.
-16. **Observed bounds** for scoring are taken from the full axes, as in Python `skill.py`. Point-grid
+    accepts `1`, `true`, `yes` or `on`. The old Python code accepted only `1`.
+16. **Observed bounds** for scoring are taken from the full axes, as the old Python `skill.py` did. Point-grid
     loads for scoring skip the fill rewrite, and the loop stops at the first load failure.
 17. **Heartbeat**: the callback is `Fn()`, so it carries no phase details. It fires every 30 s while the
     blocking work runs, through `radar_core::heartbeat`.
@@ -291,9 +292,9 @@ sampler (the bilinear weights are the same across the window) is the next step t
 - **Temporal wrapper**: `nowcast_run` is a plain function. The worker in `radar-worker` wraps it in an
   activity and supplies the heartbeat.
 - **Spec 13 items 28 and 29** (API invariants): owned by radar-api.
-- **Python vs Rust timing parity**: `bench_nowcast` provides the Rust side. The comparison with the
-  Python timings is not in this crate.
-- **OpenCV exact parity** (deviation 9).
+- **Python vs Rust timing parity**: `bench_nowcast` provides the Rust side. This crate holds no comparison with the
+  old Python timings.
+- **OpenCV exact parity** (Behavior notes, item 9).
 - **Performance follow-ups** listed under Performance: f32 storage, fused passes, spectral correlations,
   and a window sampler for LK.
 
@@ -309,5 +310,5 @@ cd rust/crates/radar-nowcast/testdata
 <venv>/bin/python -I gen_golden.py
 ```
 
-`-I` keeps the script from importing modules from the current directory. The generator writes
+`-I` stops the script importing modules from the current directory. The generator writes
 the fixture files and `manifest.json`. After regenerating, rerun `cargo test -p radar-nowcast`.

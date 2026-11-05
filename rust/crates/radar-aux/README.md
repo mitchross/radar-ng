@@ -2,14 +2,16 @@
 
 Plain async Rust bodies for four groups of ingest activities:
 
-| Activity | Former Python module | Module |
-|---|---|---|
-| `aqm_find_latest_run`, `aqm_render_chunk`, `aqm_publish_run`, `aqm_mark_processed`, `aqm_cleanup` | `backend/ingest_airquality/activities.py` | `aqm` |
-| `tropical_fetch_and_publish` | `backend/ingest_tropical/activities.py` | `tropical` |
-| `tile_cleanup_sweep` | `backend/tile_cleanup/activities.py`, `cleanup.sh` (retired, D-2) | `tile_cleanup` |
-| `open_meteo_sync` | `backend/open_meteo_sync/activities.py` | `open_meteo` |
+| Activity | Module |
+|---|---|
+| `aqm_find_latest_run`, `aqm_render_chunk`, `aqm_publish_run`, `aqm_mark_processed`, `aqm_cleanup` | `aqm` |
+| `tropical_fetch_and_publish` | `tropical` |
+| `tile_cleanup_sweep` | `tile_cleanup` |
+| `open_meteo_sync` | `open_meteo` |
 
-Spec: `docs/develop/specs/spec-ingest-aux.md` sections 2-5, 7-9, 11-16. Lightning (section 6) and NWS alerts (section 10) are
+`tile_cleanup_sweep` replaces the retired `cleanup.sh` (D-2).
+
+Design history: `docs/archive/rust-migration/specs/spec-ingest-aux.md` sections 2-5, 7-9, 11-16 (not the current spec). Lightning (section 6) and NWS alerts (section 10) are
 not here. There are no Temporal types in this crate. The worker crate wraps these functions and owns retry
 policy, scheduling and the AQM concurrency limit.
 
@@ -41,15 +43,15 @@ Helpers that are useful on their own: `aqm::grib::{split_messages, valid_time}`,
 `tile_cleanup::{LAYER_RETENTION_MIN, parse_stamp, sweep_layer}`, `tropical::build_geojson` (pure, takes
 the feed JSON and a GIS map), `tropical::{num, first_present, saffir_simpson, knots_to_mph}`.
 
-Heartbeats: `beat::Beat = Arc<dyn Fn(serde_json::Value) + Send + Sync>`. Long activities call it with the
-Python detail dictionaries (`{phase, run_id, layer, start_msg}` for AQM, `{model, elapsed_s}` for Open-Meteo).
+Heartbeats: `beat::Beat = Arc<dyn Fn(serde_json::Value) + Send + Sync>`. Long activities call it with
+detail objects (`{phase, run_id, layer, start_msg}` for AQM, `{model, elapsed_s}` for Open-Meteo).
 `beat::with_heartbeats` covers async waits and `radar_core::heartbeat::run_blocking_with_heartbeat` covers
 blocking work (`spawn_blocking`). `beat::no_beat()` is a no-op.
 
 Error types: `aqm::AqmError`, `tropical::TropicalError`, `tile_cleanup::CleanupError`, `open_meteo::OpenMeteoError`.
 All are `thiserror` enums.
 
-## Behaviour
+## Behavior
 
 **AQM.** Each chunk renders messages `start..min(start+24, 72)` (starts 0, 24, 48) of one layer
 (`air-quality` = `ave_1hr_pm25_bc`, `ozone` = `ave_1hr_o3_bc`). The code splits messages by hand from the GRIB2 file.
@@ -75,7 +77,7 @@ last 50 lines. A `[ CRITICAL ]` or `[ ERROR ]` line in the kept lines fails the 
 A non-zero exit fails with the last 500 characters of stderr. The child has `kill_on_drop`, so cancelling the
 future kills it.
 
-## Deviations from the spec / Python
+## Behavior notes
 
 - **D-5** AQM download falls through to the next source on any non-2xx or transport error. radar-grib's
   `download_product` falls back only on 404, while NOAA may answer 403 for a missing key. The fallback is implemented
@@ -87,20 +89,18 @@ future kills it.
 - **D-7** radar-core `write_grid` sorts longitudes only when the maximum is above 180. The AQM grid is already
   normalised, so the ascending-column reorder is done in `aqm/render.rs` before writing.
 - **D-8** The HTTP read timeout applies per read (`read_timeout`), not as a total request deadline. This matches
-  the Python httpx behaviour the spec describes.
-- **D-9** Cancellation of `open_meteo_sync` kills the child process (SIGKILL through `kill_on_drop`). The Python
-  activity had no kill path.
-- **D-10** Tropical writes through a unique temp name with `tempfile` and fsyncs the file and directory. Python
-  used a fixed `tropical.tmp` with no fsync.
+  the behavior the spec describes.
+- **D-9** Cancellation of `open_meteo_sync` kills the child process (SIGKILL through `kill_on_drop`).
+- **D-10** Tropical writes through a unique temp name with `tempfile` and fsyncs the file and directory.
 - **D-11** The crate treats non-finite numbers (NaN, inf) as missing and accepts a numeric string. A `0` is kept, which
   matters for the `first_present` fallback. A latitude or longitude that fails to parse skips the position feature,
   but the storm is still counted.
 - **D-13** Top-level staging entries (`.<name>.tmp-*` or `*.tmp`) directly under a layer directory are swept by
   mtime after one hour, as spec 8.5 says. The 8.2 pseudocode would treat them as palette directories and never
   remove them.
-- **Q-12** Only the last 50 lines of each stream are kept, as Python `deque(maxlen=50)` does.
+- **Q-12** Only the last 50 lines of each stream are kept.
 - **Q-13** Error messages keep the last 500 characters, counted in code points.
-- **Time parsing.** The crate reads naive timestamps as UTC. Python's local-time `.timestamp()` is not reproduced.
+- **Time parsing.** The crate reads naive timestamps as UTC.
 - **Run ids** are parsed by hand as `YYYYMMDD_CC`, because chrono's `%H` pattern requires minutes.
 
 ### Bug found while testing

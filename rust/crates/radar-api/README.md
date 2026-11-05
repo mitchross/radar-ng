@@ -3,7 +3,7 @@
 The radar-ng HTTP server (`radar api`, the tile-server image). One axum process serves the tile
 pyramids, the basemap (PMTiles, styles, fonts, imagery proxy), `/api/*`, `/v1/*` and `/api/metrics`.
 It replaced the Python stack's Caddy, FastAPI/uvicorn and go-pmtiles processes; routes, parameters,
-JSON shapes, status codes and headers follow `docs/develop/specs/spec-api.md`, so the app and
+JSON shapes, status codes and headers follow `docs/archive/rust-migration/specs/spec-api.md` (design history), so the app and
 the web radar did not change.
 
 ## Public API
@@ -17,8 +17,7 @@ Config::from_env() -> anyhow::Result<Config>;
 Config::defaults_for(state_dir, grid_dir, tile_dir) -> Config;
 ```
 
-Errors: `anyhow` at the `serve` and `AppState` boundaries. Handlers answer with the same bodies
-the Python code gave, built in `respond.rs`.
+Errors: `anyhow` at the `serve` and `AppState` boundaries. Handlers build their response bodies in `respond.rs`.
 
 ## Build and test
 
@@ -27,8 +26,8 @@ cd rust
 cargo test -p radar-api            # 78 unit tests, 26 HTTP tests (tests/http.rs)
 ```
 
-The HMAC vectors in `testdata/hmac_vectors.json` were produced by the former Python
-`authenticated_user`. The Rust side replays them in `workflows::auth::vector_tests`.
+The HMAC vectors in `testdata/hmac_vectors.json` were produced by the Python
+`authenticated_user` before its removal. The Rust side replays them in `workflows::auth::vector_tests`.
 
 ## Routes
 
@@ -80,7 +79,7 @@ The static lane sets ACAO `*`. It overrides errors to
 
 ## Caddy to axum mapping (spec 3.8)
 
-| Caddy behavior | Port |
+| Caddy behavior | radar api |
 |---|---|
 | `trusted_proxies static private_ranges` and `trusted_proxies_strict` | `client_ip::resolve`: walk `X-Forwarded-For` right to left, stop at the first untrusted address. Trusted ranges are RFC1918, loopback and `fd00::/8`, plus `TRUSTED_PROXIES`. |
 | `header_up X-Client-IP {client_ip}` | Not forwarded. The client IP is computed in-process for the rate limiter (D22). |
@@ -93,12 +92,12 @@ The static lane sets ACAO `*`. It overrides errors to
 | Unmatched path returns 200 empty | Top-level fallback returns 404 (D13). Known templates with a trailing slash get a 307. |
 | uvicorn `X-Forwarded-Proto` handling (`request.base_url` for storm-prefetch URLs) | `prefetch::request_base` reads `X-Forwarded-Proto` (default `http`) and `Host`. |
 
-## Deviations
+## Behavior notes
 
-Item numbers match `docs/develop/specs/spec-api.md` section 16. "Fixed" means the port does not
-reproduce the Python bug. "Kept" means the port matches Python on purpose.
+Item numbers match `docs/archive/rust-migration/specs/spec-api.md` section 16 (design history). "Fixed" means the server does not
+reproduce a bug of the old Python stack. "Kept" means it keeps the old behavior on purpose.
 
-| ID | Decision | What the port does |
+| ID | Decision | What radar api does |
 |---|---|---|
 | D1 | Fixed, unverified | A closed watch can be started again. The start uses `AllowDuplicate`. Not checked against a live Temporal. |
 | D2 | Fixed | "already completed" on unpin counts as success (204). |
@@ -112,7 +111,7 @@ reproduce the Python bug. "Kept" means the port matches Python on purpose.
 | D10 | Kept | The style endpoint sends no Cache-Control and no ACAO. |
 | D12 | Kept | Gzip precompression stays inert. |
 | D13 | Fixed | Unmatched paths are 404. Imagery non-matches are a bare 404. |
-| D14 | Fixed | The alert detail base is `NWS_ALERT_DETAIL_BASE`. Default is the NWS host. The `bad_id` prefix check still uses the NWS host, as Python does. |
+| D14 | Fixed | The alert detail base is `NWS_ALERT_DETAIL_BASE`. Default is the NWS host. The `bad_id` prefix check still uses the NWS host. |
 | D15 | Kept | Briefing and explain responses are `Cache-Control: public`. |
 | D16 | Kept | Briefing single-flight followers get no Cache-Control. |
 | D17 | Fixed | A null `tracking_confidence` is coerced to 0, so the briefing does not fail. |
@@ -125,14 +124,14 @@ reproduce the Python bug. "Kept" means the port matches Python on purpose.
 | D26 | Kept | Forecast cache hits send the full TTL as `max-age`. |
 | D28 | Changed | Place caches are shared across a 3-dp cell. Alerts come from one cached national feed, matched per 3-dp point (see below). |
 
-Other differences:
+Other behavior:
 
-- Disk usage for `tiles_disk` is `total - f_bavail * frsize`, as the Python code computes it.
-  The spec text says `f_bfree`. This follows the code.
+- Disk usage for `tiles_disk` is `total - f_bavail * frsize`.
+  The spec text says `f_bfree`. The code uses `f_bavail`.
 - The HMAC token decoder is strict. Padding and characters outside the URL-safe alphabet are
-  rejected. A non-finite `exp` is rejected. Python accepted both (vector cases mark these).
+  rejected. A non-finite `exp` is rejected. The vector cases mark these.
 - Imagery misses use `image/jpeg` as the content type.
-- The imagery cache is on by default at 128 MiB (`IMAGERY_CACHE_MAX_BYTES`). Size the memory limit with that in mind, and set the variable to 0 to turn it off. Caddy did not cache imagery at all.
+- The imagery cache is on by default at 128 MiB (`IMAGERY_CACHE_MAX_BYTES`). Size the memory limit with that in mind, and set the variable to 0 to turn it off.
 - **Alerts.** `/api/alerts` and `/api/alerts/map` share one national feed (`NWS_POINT_ALERTS_URL`, no query),
   fetched at most once per `ALERTS_TTL_S`. A point gets what NWS's `?point=` returns: polygon alerts by
   containment, zone alerts by the point's county, forecast zone and fire zone (`NWS_POINTS_URL`, cached a day).
@@ -164,8 +163,8 @@ Other differences:
   Replace the archive by writing a temp file and renaming it over `BASEMAP_PMTILES`.
 - **F7 metrics.** `forecast_requests_total` is counted once per `/api/forecast` request, before validation. The
   briefing path still counts through `forecast_for`. Test: four requests, including two 422s, count as four.
-- **F9 push tokens.** The write is still a direct SQLite write, as in Python (`routes_workflows.py` calls `upsert`
-  and does not start `RegisterPushTokenWorkflow`). If `STATE_DIR` is read-only (`access(W_OK)` is `EROFS`, `EACCES`
+- **F9 push tokens.** The write is a direct SQLite write. The route calls `upsert`
+  and does not start `RegisterPushTokenWorkflow`. If `STATE_DIR` is read-only (`access(W_OK)` is `EROFS`, `EACCES`
   or `EPERM`), the route answers 503 and logs one error line. Enabling `/v1/push-tokens` needs a writable `STATE_DIR`
   mount.
 - **F10 imagery.** The cache default is 128 MiB (`IMAGERY_CACHE_MAX_BYTES`), and 0 turns it off. Each cached entry keeps

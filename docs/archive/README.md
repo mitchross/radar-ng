@@ -14,4 +14,4 @@ For current docs, start at [../README.md](../README.md).
 | `carplay-review-22361864/`, `carplay-request-2026-09-21.md` | CarPlay App Review evidence and request |
 | `mobile-2.0-release.md` | Release notes for mobile 2.0.0 |
 | `reliability-and-scale-plan.md` | The 2026-09 reliability plan (written for the Python backend) |
-| `rust-migration/` | Migration plan, reviews and benchmarks. The current handoff is [../develop/rust-backend-handoff.md](../develop/rust-backend-handoff.md); the API and worker specs moved to [../develop/specs/](../develop/specs/) |
+| `rust-migration/` | Migration plan, reviews and benchmarks. The current handoff is [../develop/rust-backend-handoff.md](../develop/rust-backend-handoff.md). `rust-migration/specs/` holds the API and worker specs written for the port |

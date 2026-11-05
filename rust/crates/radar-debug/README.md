@@ -2,8 +2,7 @@
 
 Live-stack diagnostics behind `radar debug <check>`, plus the offline tile-pyramid comparison behind
 `radar parity` (see below). It is a library with one entry point, `run(DebugArgs) -> anyhow::Result<i32>`,
-which the `radar` binary calls. It is a port of the former Python debug harness, with the same checks,
-human and JSON output, and exit codes (0 healthy, 1 any `fail`). Operator guide:
+which the `radar` binary calls. Output is human or JSON. Exit codes are 0 for healthy and 1 for any `fail`. Operator guide:
 `docs/reference/debug-harness.md`.
 
 It inspects a live stack the way the app does. HTTP checks go through the public serving path
@@ -126,7 +125,7 @@ can reach it: `checks::pipeline_checks`, `checks::slippy`, `checks::tile_url`, `
 
 ## Output
 
-Human output matches the Python: `== section ==`, then `  ✓|⚠|✗ name: detail`, then `N checks · F fail ·
+Human output is `== section ==`, then `  ✓|⚠|✗ name: detail`, then `N checks · F fail ·
 W warn` for `doctor`. The JSON form is one document per section, `json.dumps(indent=2)` with ASCII escapes
 and Python float reprs (`1500`, `10.0`, `1e-05`):
 
@@ -134,7 +133,7 @@ and Python float reprs (`1500`, `10.0`, `1e-05`):
 {"section": "...", "status": "ok|warn|fail", "checked_at": "...", "checks": [{"name", "status", "detail", "data"}]}
 ```
 
-`pretty_json` is a Python `indent=2` writer, so a diff against the Python output is a byte diff.
+`pretty_json` is a Python `indent=2` writer, so a diff against the former Python harness's output is a byte diff.
 
 ## Tests
 
@@ -154,53 +153,50 @@ cargo test -p radar-debug --test parity -- --ignored --nocapture   # 1200-pair t
   nothing-to-compare exit 2; layer, palette, frame and zoom filters; undecodable and size-mismatched
   tiles; manifest comparison (timing vs entry mismatches, malformed manifest); JSON shape. Staging
   dirs, lock dirs and markers are present in every fixture and must be ignored.
-
 - `model`: percentiles (half-even index rounding), ISO parsing, `quote_ts`, `age_str` (including negative
   ages with Python's floor division), exit code, Python reprs, pretty JSON byte layout.
-- `checks`: slippy tile at z4, template filling, `pipeline_checks` (the Python `test_pipeline_freshness_logic`
-  case, unknown layers, health reasons, zero horizon), and the cache contract constants.
+- `checks`: slippy tile at z4, template filling, `pipeline_checks` (the pipeline freshness case,
+  unknown layers, health reasons, zero horizon), and the cache contract constants.
 - `disk`: tempdir fixtures for missing mounts, usage, ghost and hidden frames, uneven palettes, stale and
   fresh `.tmp` dirs, malformed manifests (fail closed), state-file age, leaked scratch dirs.
 - `temporal`: first-seen ordering of failure counts, Python enum names, the expected schedule set, the stall
-  threshold. Live Temporal behaviour is not covered by unit tests (see Deviations and Not verified).
+  threshold. Live Temporal behaviour is not covered by unit tests (see Not verified).
 - lib: clap parsing of every subcommand and flag, and `Command::debug_assert`.
 
-## Deviations from the Python
+## Behavior notes
 
-Each is deliberate. Fixed Python defects are marked.
+Each is deliberate. Fixed defects of the old Python harness are marked.
 
 1. **Tile URL template uses `{path}` (defect fixed).** The live manifest advertises
-   `/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png`. The Python formatted only `{timestamp}`, so `tiles`,
-   `client` and `doctor` raised `KeyError` on the real stack. The Rust fills `{path}` with the frame's `path`
-   (defaulting to its timestamp) and still accepts `{timestamp}`.
-2. **Schedule set from `radar-types` (defect fixed).** The Python fell back to a hard-coded list of 10 when
-   the repo was not on `sys.path`, and that list had already drifted (it lacked `ingest-airquality` and
-   `open-meteo-sync-gfs025`). The Rust reads the 13 schedules of `radar_types::schedules::all_schedules()`,
-   the same table the seeder uses.
-3. **Disk palettes.** The per-layer palette set is the stored `palettes` key (radar-core keeps it verbatim,
-   as the Python reader does). If that key is absent, the frames' palettes are used, then `classic`. The
-   Python used `["classic"]` in that case.
-4. **Deterministic ordering.** Palette and file lists are sorted. The Python followed `iterdir()` order,
-   which is arbitrary, so the frame-count dict in `disk.tiles.<layer>` prints palettes in name order.
+   `/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png`. The code fills `{path}` with the frame's `path`
+   (defaulting to its timestamp) and still accepts `{timestamp}`. Formatting only `{timestamp}` made `tiles`,
+   `client` and `doctor` raise `KeyError` on the real stack.
+2. **Schedule set from `radar-types` (defect fixed).** A hard-coded list of 10 had already drifted (it lacked
+   `ingest-airquality` and `open-meteo-sync-gfs025`), so the code reads the 13 schedules of
+   `radar_types::schedules::all_schedules()`, the same table the seeder uses.
+3. **Disk palettes.** The per-layer palette set is the stored `palettes` key (radar-core keeps it verbatim).
+   If that key is absent, the frames' palettes are used, then `classic`.
+4. **Deterministic ordering.** Palette and file lists are sorted, so the frame-count dict in
+   `disk.tiles.<layer>` prints palettes in name order.
 5. **Disk reads through radar-core.** `Paths::from_env` for the roots and `read_manifest` for the manifest.
-   The manifest read fails closed, which reports `disk.manifest` FAIL as the Python did for unparseable JSON.
-   `processed_set` and `grid_dump` are not read: no Python check looks at them. Adding a check for them would
+   The manifest read fails closed, which reports `disk.manifest` FAIL for unparseable JSON.
+   `processed_set` and `grid_dump` are not read: no check looks at them. Adding a check for them would
    change the output, so it is left for a deliberate decision.
-6. **Temporal last-action handle.** The Python described the last action's workflow by its
-   `first_execution_run_id`. The Rust API exposes the action's `run_id`, so a continued-as-new chain is
-   described at the run that was started. The status line stays the same kind of answer.
+6. **Temporal last-action handle.** The Rust API exposes the action's `run_id`, so the code
+   describes a continued-as-new chain at the run that was started. The old harness used
+   `first_execution_run_id`. The status line stays the same kind of answer.
 7. **Heartbeat detail.** Rendered with Python-style reprs of the decoded JSON value, cut to 120 characters.
-   Python's `str()` of a dict is the same for the simple values the ingest heartbeats send.
-8. **Transport error labels.** `URLError`, `TimeoutError` and `Error` are the Python exception names that
-   `reqwest` errors map onto. The wording after the label is reqwest's, not urllib's.
-9. **Request timeout.** 15 s total per request (`reqwest`), where urllib's timeout applied per socket
-   operation. For a healthy server the difference does not matter.
+   This equals Python's `str()` of a dict for the simple values the ingest heartbeats send.
+8. **Transport error labels.** `reqwest` errors are labeled `URLError`, `TimeoutError` or `Error`, the Python
+   exception names. The wording after the label is reqwest's.
+9. **Request timeout.** 15 s total per request (`reqwest`), not per socket operation. For a healthy
+   server the difference does not matter.
 10. **Temporal connect timeout.** 10 s on the frontend connection, so an unreachable address fails instead of
-    hanging. The Python had no timeout.
-11. **Unknown-layer hint.** Points at `crates/radar-debug/src/checks.rs` (where `LAYER_EXPECTATIONS` now lives).
-12. **Client sim `--frames 0`.** Replicates the Python `timestamps[-0:]` quirk: zero selects every frame.
-13. **`temporal` warning when `temporalio` is missing** is gone. The Rust build has the client compiled in.
-14. **Transport.** TLS certificate verification is off for probes, as in the Python (self-signed stacks).
+    hanging.
+11. **Unknown-layer hint.** Points at `crates/radar-debug/src/checks.rs` (where `LAYER_EXPECTATIONS` lives).
+12. **Client sim `--frames 0`.** Zero selects every frame, like Python's `timestamps[-0:]`.
+13. **No missing-client warning.** The Rust build has the Temporal client compiled in.
+14. **Transport.** TLS certificate verification is off for probes (self-signed stacks).
 
 ## Not verified
 

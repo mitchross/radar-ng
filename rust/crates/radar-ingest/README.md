@@ -4,7 +4,7 @@ MRMS and HRRR ingest activity bodies for radar-ng, as plain async functions. The
 types. The worker crate wraps these functions as activities and supplies the `ActivityInfo` and heartbeat
 sink.
 
-Source of truth: `docs/develop/specs/spec-ingest-mrms-hrrr.md`. Defect decisions: `docs/archive/rust-migration/PLAN.md` (Python defects table).
+Design history: `docs/archive/rust-migration/specs/spec-ingest-mrms-hrrr.md`. Defect decisions: `docs/archive/rust-migration/PLAN.md` (Python defects table).
 
 ## Coverage
 
@@ -27,7 +27,7 @@ overrides, a switch that ignores Range, and a request log of `"METHOD /path"`) a
   `.idx` built from the message offsets.
 
 The fixture's REFC is a uniform -10 dBZ, which is below every bin of the classic reflectivity palette. The
-radar layer therefore only produces tiles from a varied grid. The radar tests use a synthetic 10 to 49 dBZ
+radar layer therefore produces tiles only from a varied grid. The radar tests use a synthetic 10 to 49 dBZ
 field (`refc_grid` in `tests/hrrr_activities.rs`). Tests that run the real decode path assert on
 temperature and wind, which the fixture fills.
 
@@ -81,7 +81,7 @@ exist but whose slot is missing is rendered again. `publish_run` lists the bucke
 layer's frames come from (the extended tail included) in the same manifest write as the frames.
 `cleanup` deletes buckets of unreferenced runs past the retention, as it does run directories.
 
-`global_model` activities (Rust-only, `IngestGlobalModelWorkflow`; `Product` is `radar-gfs` or `uv`):
+`global_model` activities (`IngestGlobalModelWorkflow`; `Product` is `radar-gfs` or `uv`):
 
 - `find_latest_run(ctx, product, now) -> GlobalModelFindResult` (run id and the hours to process)
 - `process_hour(ctx, product, run_id, fhr, hb) -> ForecastHourResult`
@@ -95,18 +95,18 @@ complete empty pyramid. Tests: `src/global_model/state.rs` and `tests/global_mod
 
 Payload types come from `radar-types`. Each activity returns `anyhow::Result`.
 
-## Deviations from the Python
+## Behavior notes
 
 Renderer and palettes:
 
 - Only the indexed renderer (`indexed-rs1`) is implemented. `TILE_RENDERER` is read by no code in this crate.
-- Pyramids written by the Python renderer are never adopted by this crate. A complete pyramid from another
+- The crate never adopts pyramids written by the old Python renderer. A complete pyramid from another
   renderer resumes only when its algorithm, palette digest, tile spec digest and semantic digest all match
   (policy is excluded, spec 6.8.2). Otherwise the hour re-renders. H14 (adoption of a fresh legacy render)
   is N/A because the Rust renderer does not write legacy pyramids.
-- `PALETTES` names are de-duplicated, first occurrence wins. If none load, `classic` is used.
+- `PALETTES` names are de-duplicated, and the first occurrence wins. If none load, `classic` is used.
 
-Defects (PLAN.md):
+Defects (PLAN.md). "Replicated" means the crate keeps the old Python behavior. "Fixed" means it does not.
 
 - D2 (replicated). An HRRR hour is published only when every palette that has the color key rendered.
   A partial or empty set makes the hour count as not rendered, and the publish prefix stops there. An MRMS
@@ -119,7 +119,7 @@ Defects (PLAN.md):
 - D5 (fixed). A ranged read that does not return 206 is an error. The crate never writes a whole object
   once per range.
 - D21 (fixed). The MRMS key is parsed before the download.
-- D6 (percent-encoding of listing prefix and continuation token) lives in `radar-grib`, not in this crate.
+- D6 (percent-encoding of the listing prefix and continuation token) lives in `radar-grib`, not in this crate.
 
 Other:
 

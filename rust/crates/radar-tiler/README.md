@@ -1,12 +1,11 @@
 # radar-tiler
 
-radar-ng's tile renderer (ported from the former Python `tiler.py`, `png_palette.py` and
-`palettes.py`). It renders one source grid into one Web Mercator XYZ pyramid per palette,
-published atomically, with indexed (palette-mode) PNG tiles. Behavior follows
-`docs/develop/specs/spec-tiler.md`; the decisions in `docs/archive/rust-migration/PLAN.md` override it where they differ.
+The radar-ng tile renderer. It renders one source grid into one Web Mercator XYZ pyramid per palette,
+published atomically, with indexed (palette-mode) PNG tiles. Behavior follows the design history in
+`docs/archive/rust-migration/specs/spec-tiler.md`; the decisions in `docs/archive/rust-migration/PLAN.md` override it where they differ.
 
-Renderer identity: `"indexed-rs1"` (PLAN option B). Rust never reuses or adopts Python
-pyramids; see Deviations.
+Renderer identity: `"indexed-rs1"` (PLAN option B). The crate never reuses or adopts pyramids
+from another renderer, such as the old Python one; see Behavior notes.
 
 ## Coverage
 
@@ -17,13 +16,13 @@ pyramids; see Deviations.
 | Max-pooled footprint overview | 4.4, 4.5 | done, `overview = max` only |
 | Class model, categorical model, transparent collapse | 5.1 to 5.3 | done (`classify.rs`) |
 | Palette loader, validation, shipped JSON | 6 | done (`palettes.rs`, assets embedded) |
-| Indexed PNG encode, palette rewrite, chunk iteration | 7.1, 7.3, 7.4 | done (`png.rs`); 7.2 legacy RGBA dropped |
+| Indexed PNG encode, palette rewrite, chunk iteration | 7.1, 7.3, 7.4 | done (`png.rs`); 7.2 legacy RGBA not implemented |
 | Tile emission and elision | 8 | done |
-| Render orchestration (`render_frame_palettes`) | 9.2 to 9.5 | done (`render.rs`); legacy branch dropped |
+| Render orchestration (`render_frame_palettes`) | 9.2 to 9.5 | done (`render.rs`); no legacy branch |
 | Canonical JSON, digests, identity documents | 10 | done (`identity.rs`), renderer `indexed-rs1` |
 | Completion marker v2 (write, inspect, tamper detection) | 11 | done (`marker.rs`) |
 | On-disk layout, staging names, lock stripes | 12, 13.1 | done (`publish.rs`) |
-| Atomic publish decision table, durability order | 13.2 to 13.8 | done with per-palette collision rule (see Deviations) |
+| Atomic publish decision table, durability order | 13.2 to 13.8 | done with per-palette collision rule (see Behavior notes) |
 | Environment parsing | 14 | done (`env.rs`), pure functions, no `set_var` |
 | Geometry cache, single flight, negative caching | 15.1 | done (`cache.rs`) |
 | rayon tile parallelism, per-thread scratch | 15.3 | done (`render.rs`, `map_init`) |
@@ -50,56 +49,58 @@ pyramids; see Deviations.
   colored tiles), `sample_tiles`, `Quantizer`, `slot_position`, `atlas_dims`, and `pack_frames`, which
   merges slots into a bucket under `<layer dir>/.packed.lock` and writes `.packed-bucket-v1.json` last.
 - Errors: `TilerError::{Invalid, Conflict, Unbound, Corrupt, Io}`. Callers branch on the
-  variant. `Unbound` means a pre-marker tree sits at a final path and needs Python adoption.
+  variant. `Unbound` means a pre-marker tree sits at a final path. The crate does not adopt it.
 
-## Deviations from the Python reference
+## Behavior notes
 
-1. **Legacy RGBA renderer dropped.** `render_tiles`, `apply_color_table`,
+These items record where the crate departs from the spec or from the old Python renderer that produced the golden fixtures.
+
+1. **No legacy RGBA renderer.** `render_tiles`, `apply_color_table`,
    `apply_categorical_color_table`, `render_tiles_atomic` and the `rgba-bilinear-v1`
    identity are not implemented. `TileRenderer::Legacy` exists only so role routing can
-   send a role back to Python.
-2. **Renderer identity `indexed-rs1` (PLAN option B).** A complete Python `indexed` pyramid
-   is a foreign winner, not a reusable one.
+   name the legacy renderer.
+2. **Renderer identity `indexed-rs1` (PLAN option B).** A complete `indexed` pyramid
+   from the old Python renderer is a foreign winner, not a reusable one.
 3. **Collision rule (PLAN).** For each palette, a final with a complete marker of any
-   identity is `ExistingValid` (exact match) or `ExistingForeign` (anything else). The tile
-   count of the existing tree is returned. Foreign trees are never rewritten, and no
-   `PyramidIdentityConflict` is raised. The Python rules for mixed or partial palette sets
-   (13.2) are therefore not reproduced. The absent palettes are rendered.
+   identity is `ExistingValid` (exact match) or `ExistingForeign` (anything else). The result reports the tile
+   count of the existing tree. Foreign trees are never rewritten, and no
+   `PyramidIdentityConflict` is raised. The spec's rules for mixed or partial palette sets
+   (13.2) are therefore not implemented. The crate renders the absent palettes.
    `existing_compatible` is never returned.
 4. **No adoption of unbound trees (H6).** A non-empty final without a v2 marker (including
    a v1 `.render-complete.json`) fails with `TilerError::Unbound` before anything is
-   rendered or renamed. Adoption stays with Python.
-5. **Frame model over the full palette set (H3).** Class numbering is built from every
-   palette of the frame, including the ones already bound. The Python overview path
-   builds it from the staging subset only, which renumbers classes; Rust does not.
-6. **Overview modes.** Only `max` exists, as the `Overview` enum. The Python `"mean"` error
+   rendered or renamed. The crate never adopts such a tree.
+5. **Frame model over the full palette set (H3).** Class numbering uses every
+   palette of the frame, including the ones already bound. The old Python overview path
+   built it from the staging subset only, which renumbers classes. This crate does not.
+6. **Overview modes.** Only `max` exists, as the `Overview` enum. The old Python `"mean"` error
    case cannot be expressed.
 7. **Value type.** Continuous values are `f32` (`Grid` storage). The f64 classify variant of
    the checklist is not ported. Spec 4.2 casts values to f32 before sampling anyway.
 8. **Categorical source digest.** The categorical source digest hashes the `f32` storage
    (`<f4`), not the caller's integer dtype. Categorical identities therefore do not match
-   Python digests. They are foreign to Python in any case.
+   the old Python digests. They are foreign to Python in any case.
 9. **Projected geometry uses `radar_geo`'s spherical formulas, not pyproj (spec 19.2).**
    Transforms may differ from pyproj by about one ULP, which can flip a rare nearest or
    classify edge case. The golden projected fixture is EPSG:3857 only. The HRRR
-   Lambert-conformal path has no Python fixture yet.
+   Lambert-conformal path has no golden fixture yet.
 10. **zlib bytes.** PNG bytes come from `flate2` at the configured level with adaptive
     row filters. Byte parity with Pillow is not a goal (spec 7.1). Decoded class indices
-    match Python exactly on every golden fixture.
-11. **Shared IDAT across palettes.** The tile is encoded once; each palette file is
-    `header + PLTE/tRNS + shared IDAT/IEND`. This is the same bytes the Python
-    `replace_palette` path produces, with fresh CRCs.
+    match the Python-generated fixture exactly on every golden fixture.
+11. **Shared IDAT across palettes.** The tile is encoded once, and each palette file is
+    `header + PLTE/tRNS + shared IDAT/IEND`. These are the same bytes the old Python
+    `replace_palette` path produced, with fresh CRCs.
 12. **Footprint allocation.** The overview path allocates two small vectors per tile in the
     reduction helpers. The native paths reuse per-worker buffers.
 13. **Geometry cache env.** The process cache sizes itself from
     `TILE_GEOMETRY_CACHE_MB` and `TILE_GEOMETRY_CACHE_ENTRIES` on first use
     (`OnceLock`). Later environment changes do not resize it.
-14. **Publish staging.** The final's parent is created (durably) before rendering, so the
-    staging sibling can be renamed into place. Staging is removed on every failure path.
+14. **Publish staging.** The crate creates the final's parent durably before rendering, so the
+    staging sibling can be renamed into place. It removes staging on every failure path.
     Renamed palettes are not rolled back (13.7).
-15. **Categorical frames with `overview`** are rejected up front, as the spec requires.
-16. **Anyhow.** Not used. All errors are `TilerError`, which implements `std::error::Error`
-    and converts cleanly into `anyhow::Error` at call sites.
+15. **Categorical frames with `overview`** fail up front, as the spec requires.
+16. **Anyhow.** The crate does not use it. All errors are `TilerError`, which implements `std::error::Error`
+    and converts into `anyhow::Error` at call sites.
 
 ## Checklist (spec section 17, 79 items)
 
@@ -129,8 +130,8 @@ palette; the symlink lock test now expects an overlap error; `atomic_helpers_all
 now checks that extra palettes are ignored; the pyproj-skip test checks that a repeated
 frame adds no misses.
 
-Covered by Python-generated fixtures instead of a live SciPy call: the continuous, categorical
-and projected reference tests (`tests/golden.rs`). Cleanup on failure is covered by a unit
+The continuous, categorical
+and projected reference tests (`tests/golden.rs`) use Python-generated fixtures, not a live SciPy call. Cleanup on failure is covered by a unit
 test for the single-palette case only.
 
 ## Tests
@@ -153,7 +154,7 @@ palettes classic/muted/vivid, 615 tiles per palette, 1.59 s wall. Run with:
 ## Regenerating the golden fixtures
 
 `testdata/gen_golden.py` imports the Python reference from a radar-ng checkout from before the Python removal (for example commit `5b3cb39`) and writes
-`testdata/` (it never writes into that checkout):
+`testdata/`. It never writes into that checkout:
 
     python3 -m venv <venv>
     <venv>/bin/pip install numpy Pillow scipy pyproj
@@ -165,7 +166,7 @@ palettes classic/muted/vivid, 615 tiles per palette, 1.59 s wall. Run with:
 ## TODO
 
 - Fault-injection hooks for the fsync order and the EIO/EINVAL/ENOTEMPTY publish paths, so
-  the Python durability and race tests can be ported.
-- A Python fixture for the Lambert-conformal (HRRR) projected path.
+  the old Python durability and race tests can be ported.
+- A golden fixture for the Lambert-conformal (HRRR) projected path.
 - HRRR real-data parity. The fixtures are synthetic. (MRMS was checked against live data with
   `radar parity --exact`, see `radar-grib/README.md`.)

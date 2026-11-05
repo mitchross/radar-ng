@@ -1,10 +1,10 @@
 # radar-worker
 
-Temporal control plane for radar-ng. It holds the 13 workflow types, the activity implementers that wrap
+The Temporal control plane for radar-ng. It holds the 13 workflow types, the activity implementers that wrap
 the sibling ingest, aux, alerts, nowcast and smoke crates, the schedule seeder, the schedule watchdog, and the
 worker process. The wire contract (names, payload shapes, retry constants, schedule definitions, queues,
-and environment variable names) comes from `radar-types`. Behaviour follows
-`docs/develop/specs/spec-temporal.md`. Deviations are listed below.
+and environment variable names) comes from `radar-types`. Behavior follows the design history in
+`docs/archive/rust-migration/specs/spec-temporal.md`. Behavior notes are below.
 
 ## Coverage
 
@@ -23,7 +23,7 @@ and environment variable names) comes from `radar-types`. Behaviour follows
 
 - `WorkerConfig`, `WorkerConfig::from_env()`: validated settings for one process.
 - `run_worker(cfg: WorkerConfig) -> anyhow::Result<()>`: serves the role's queue until SIGTERM or SIGINT.
-  Background tasks start after a short grace period (see deviations).
+  Background tasks start after a short grace period (see Behavior notes).
 - `seed_schedules(cfg: WorkerConfig) -> anyhow::Result<BTreeMap<String, Outcome>>`: one-shot seeding for an
   operator or job. It ignores `SEED_SCHEDULES`.
 - `run_watchdog(cfg: WorkerConfig) -> anyhow::Result<()>`: runs the read-only schedule watchdog forever.
@@ -32,14 +32,13 @@ and environment variable names) comes from `radar-types`. Behaviour follows
   `worker::WorkflowTarget` (`WorkerOptions` or the SDK's `WorkflowReplayerOptions`). The worker and the replay
   gate share it.
 - `workflows::OptionalArg<T>`: an optional single workflow argument that also accepts a start with no payloads,
-  as Python's `args: T | None = None` does.
+  the way the old Python workflow's `args: T | None = None` did.
 - `SeedError`, `Outcome`: seeding failure and per-schedule result.
 
 ## Role to registrations
 
 Every role except `legacy` and `all` also registers `RadarDeploymentSmokeWorkflow` and
-`radar_deployment_smoke`. The open-meteo pool is not a `WORKER_ROLE` key in Python. It is selected here
-with `WORKER_ROLE=open-meteo`, and it serves only `open_meteo_sync`.
+`radar_deployment_smoke`. `WORKER_ROLE=open-meteo` selects the open-meteo pool, which serves only `open_meteo_sync`. The old Python worker had no such `WORKER_ROLE` key.
 
 | Role | Queue (default) | Workflows | Activities |
 |---|---|---|---|
@@ -83,11 +82,13 @@ on the build that started it. Only new work, and Continue-as-New with `AUTO_UPGR
 moves to a new build. The controller promotes a build after `RadarDeploymentSmokeWorkflow` passes on it.
 Operator notes: `docs/develop/temporal-safe-deployments.md` and `deploy/RUNBOOK.md`.
 
-## Deviations from the spec
+## Behavior notes
+
+These items record where the code departs from the spec or from the old Python worker.
 
 1. **Supervision.** The SDK's `Worker::run` future is not `Send`, so it runs on the supervising task. The SDK
    exposes no running-state check, so background work starts after `POLLER_START_GRACE` (250 ms) instead of
-   the Python `is_running` poll. A worker that exits within that window starts no background work. Background
+   polling `is_running`, as the Python worker did. A worker that exits within that window starts no background work. Background
    work is aborted when the worker returns.
 2. **Tropical activity thread.** `radar_aux::tropical::fetch_gis` has a closure whose elided `&str` tuple
    element is not `Send` for every lifetime. The activity macro rejects it. The activity therefore runs its
@@ -104,13 +105,13 @@ Operator notes: `docs/develop/temporal-safe-deployments.md` and `deploy/RUNBOOK.
    but its failure point differs.
 5. **`seed_schedules` returns `anyhow::Result`.** A connection failure surfaces as its real cause, and seeding
    failures carry the `SeedError`.
-6. **Local-activity and Nexus slots.** The Python worker does not set them. This port uses 100, which is an
+6. **Local-activity and Nexus slots.** The old Python worker did not set them. This crate uses 100, an
    assumed SDK default that has not been checked against the Python SDK.
 7. **Open-meteo pool.** It runs through `run_worker` with role `open-meteo`, not as a separate binary (spec D1
    allows this). It registers no metrics or tracing and uses a 25 s drain. It runs the same health loop as the
    main pool, from the start, so `/tmp/worker-alive` is touched every 30 s during a sync (F2).
-8. **Deployment smoke.** The palette, PNG, grid and volume checks are native. The Python gate also imported
-   pysteps and ecCodes; the Rust build has no such runtime modules, so those checks have no counterpart.
+8. **Deployment smoke.** The palette, PNG, grid and volume checks are native. The old Python gate also imported
+   pysteps and ecCodes. The Rust build has no such runtime modules, so those checks have no counterpart.
 9. **Metrics.** Prometheus is served at `TEMPORAL_METRICS_BIND` (default `0.0.0.0:9464`, `off` disables it).
    OTLP tracing is deferred.
 
@@ -121,12 +122,12 @@ Operator notes: `docs/develop/temporal-safe-deployments.md` and `deploy/RUNBOOK.
   open-meteo image target copies in busybox, and the probe timings are looser (`deploy`). Not covered by a
   test: the loop needs a live Temporal client.
 - **F3 bounded fan-out.** `workflows::bounded` is a hand-written sliding window in input order, not `buffered`.
-  A slot frees when any in-flight item finishes, as `Semaphore` plus `gather` does in Python. Results come back in
+  A slot frees when any in-flight item finishes, as `Semaphore` plus `gather` did in Python. Results come back in
   input order. The window uses no futures-util combinators, so the SDK's deterministic-polling rules are the only
   ones that apply. Command order (spec 10.2): the first `limit` items are scheduled in input order, and each later
   item is scheduled when a slot frees, in the same workflow task that processed the completion.
   - **Replay.** Completion order comes from history, so replay of this code is deterministic. The window is
-    also what Python's `Semaphore(N)` plus `gather` does (FIFO waiters, the next item is scheduled in the task
+    also what Python's `Semaphore(N)` plus `gather` did (FIFO waiters, the next item is scheduled in the task
     that processed the completion). Every recorded Python history of MRMS, HRRR and AQM replays on it,
     v1.1.49 included (see "Replay" below). Only runs started on an earlier Rust build that used `buffered`
     could diverge. That matters only if such a build ever served a real namespace. No new patch ID was
@@ -134,13 +135,13 @@ Operator notes: `docs/develop/temporal-safe-deployments.md` and `deploy/RUNBOOK.
   - Tests: a freed slot starts the next item while a slow head is still pending, the limit is never exceeded,
     results stay in input order, and a zero limit is treated as one.
 - **F8 schedule arguments.** `json_payload` writes canonical JSON with sorted keys at every depth, as Python's
-  `json.dumps(sort_keys=True)` does. `comparable()` compares the arguments as parsed JSON values, so key order
+  `json.dumps(sort_keys=True)` did. `comparable()` compares the arguments as parsed JSON values, so key order
   does not count as a change, and re-seeding does not rewrite unchanged schedules.
 
 ## Replay
 
 `tests/replay.rs` is the offline determinism gate. It needs no Temporal server. It replays the histories in
-`testdata/replay_fixtures/<WorkflowType>/<version>/<scenario>.json[.gz]`, which were recorded from the Python
+`testdata/replay_fixtures/<WorkflowType>/<version>/<scenario>.json[.gz]`, which were recorded from the old Python
 worker releases (see `testdata/replay_fixtures/README.md`). There are 143 histories: versions
 v1.1.26, v1.1.27 and v1.1.49 for every workflow, plus `src-e8c8659` for WatchStorm and the deployment smoke
 workflow.
@@ -213,8 +214,8 @@ Not covered by fixtures (reasoned, not proven):
 
 ## Known gaps and TODOs
 
-- **Live workflow scenario tests are not implemented.** Replay compatibility with the recorded Python
-  histories is verified offline (see "Replay"). The integration suite covers schedule seeding (idempotent
+- **Live workflow scenario tests are not implemented.** The replay gate verifies compatibility with the recorded Python
+  histories offline (see "Replay"). The integration suite covers schedule seeding (idempotent
   re-seed), the health probe, visibility listing, and signalling a missing watch. Running the spec 10.1
   scenarios against a server with fake activities, and porting the WatchStorm version-handoff test, are still
   open.
@@ -225,5 +226,5 @@ Not covered by fixtures (reasoned, not proven):
   ID format, `AUTO_UPGRADE` behaviour, and heartbeat payload shapes.
 - **Spec D3 and D19.** The API routes watches to the alerts queue regardless of `USE_ISOLATED_TASK_QUEUES`.
   The worker does not detect a missing alerts pool. That check belongs in the API or the deployment.
-- **Spec D15.** APNS collapse IDs are truncated as in Python (kept for compatibility).
+- **Spec D15.** APNS collapse IDs are truncated as they were in Python (kept for compatibility).
 - **Deferred:** OTLP tracing.
