@@ -32,16 +32,16 @@ The Watch target has no CarPlay entitlement requirement.
 The radar page uses a basemap image rendered by the home cluster
 (`maps.vanillax.me/raster`, tileserver-gl over VersaTiles) plus the latest
 self-hosted MRMS raster tiles. No third-party map service is involved. The Digital Crown and +/- buttons change zoom; refresh fetches a new
-manifest. Only tiles intersecting the screen are loaded. Swiping up opens a native
+manifest. The app loads only tiles that intersect the screen. Swiping up opens a native
 SwiftUI forecast page. Its hourly strip starts at the forecast's current hour;
 its next-hour precipitation uses four upcoming 15-minute samples, not the first
-60 samples from midnight. Missing data and location fallback are explicitly labeled.
+60 samples from midnight. The app labels missing data and location fallback.
 Forecast and radar use the Radar API; Watch alerts still use NWS directly.
 Location refreshes reject stale/inaccurate fixes, discard weather responses for a
 previous location, and label the fallback or last-known location. A missing radar
 tile (404) means no precipitation there and draws nothing.
-Loading/failure states are visible; radar older than 15 minutes is hidden. Expired
-alerts are omitted and failed alert requests are labelled unavailable.
+The app shows loading and failure states and hides radar older than 15 minutes. It omits
+expired alerts and labels failed alert requests unavailable.
 
 Native UI tests and launch measurements:
 
@@ -91,7 +91,7 @@ The profile must contain `com.apple.developer.carplay-maps = true`, match
 the entitlement locally cannot grant Apple's approval. To return to ordinary
 signing, run prebuild without `RADAR_CARPLAY`; the plugin removes any previously
 generated maps entitlement and compiles no CarPlay sources. The iPhone window scene
-stays declared either way — only the CarPlay roles are gated, so an ordinary release
+stays declared either way. Only the CarPlay roles are gated, so an ordinary release
 cannot ship background modes that App Review cannot see.
 
 The September 21 request is prepared in the signed-in browser, category Navigation,
@@ -99,7 +99,7 @@ with an honest planned-feature description and labelled iPhone development-previ
 images. It awaits the account owner's agreement/submission unless separately
 confirmed. See [the request and validation record](../archive/carplay-request-2026-09-21.md).
 
-A **radar widget** is another supported path for displaying radar in the user's
+A radar widget is another supported path for displaying radar in the user's
 car without turning Radar NG into a full navigation app. iOS 26+ CarPlay can show
 `.systemSmall` widgets from ordinary iPhone apps. A widget can show a timestamped
 radar snapshot; system-scheduled widget refreshes are not a continuous animation.
@@ -173,7 +173,7 @@ connected phone. Both phones had the same user-visible name. Xcode reported an
 integrity/install failure rather than identifying the device mismatch in its first
 error line. Changing the app's CarPlay entitlement did not refresh those old exports.
 
-Use `xcrun devicectl list devices` to identify the connected **physical** phone by
+Use `xcrun devicectl list devices` to identify the connected physical phone by
 UDID, then build for that explicit destination so automatic signing can register it:
 
 ```sh

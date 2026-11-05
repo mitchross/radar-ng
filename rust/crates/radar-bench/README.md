@@ -31,7 +31,7 @@ target/release/bench_tile --input-dir <inputs> --out-root <out> --warmup 1 --ite
 
 - wall time: `std::time::Instant` around one call;
 - CPU: `getrusage(RUSAGE_SELF)` user plus system time, through a single `libc` call (rustix 1.1 does not
-  expose it); this is measurement-only `unsafe`;
+  expose it). This is measurement-only `unsafe`;
 - memory: `VmRSS` and `VmHWM` from `/proc/self/status`;
 - median, p90 (linear interpolation), min and cold-call time.
 
@@ -40,7 +40,7 @@ Inputs are read in 1 MB chunks into the final vector, so peak RSS is the data, n
 ## Notes
 
 - The tile runner removes earlier iteration trees outside the timed loop; only the last tree stays.
-- The storms runner writes a normalised summary (ids, peaks, pixel counts, areas, bboxes, coordinates).
+- The storms runner writes a normalized summary (ids, peaks, pixel counts, areas, bboxes, coordinates).
   It does not time that write.
 - The nowcast runner writes the forecast with NaN replaced by -9999.
 - The GRIB multi-message runner splits the file by the 8-byte GRIB2 total length, because

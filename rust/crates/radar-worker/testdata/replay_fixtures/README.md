@@ -3,7 +3,7 @@
 Layout: `<WorkflowType>/<version>/<scenario>.json` (`.json.gz` above 512 KiB).
 `version` is the worker release whose workflow code produced the history
 (`v1.1.26`), or `src-<sha>` for an unreleased checkout. A version directory is
-never regenerated or edited: the replay gate (`tests/replay.rs`) proves the
+never regenerated or edited. The replay gate (`tests/replay.rs`) proves the
 current workflows still replay every retained release.
 
 The histories of the Python-era workflows were recorded from the Python worker

@@ -29,19 +29,19 @@ The `watch` module (`pub mod watch`) also exposes `compare_radar_frames`, `detec
 
 Each fix was reproduced in the Python source first. The golden fixtures record the Python behaviour, and the Rust tests assert the corrected behaviour and the difference.
 
-- **D1, nowcast tile paths.** The prefetch plan takes a nowcast frame's tile path from the manifest frame's `path` field. Python rebuilt it from the layer and timestamp, which broke for run-scoped paths (`runs/<anchor>/<valid>`). Path segments are percent-encoded one at a time, so `/` survives, and the quote-safe set is `:+-.T_`. The fixed output is checked against an oracle in `testdata/gen_golden.py`. Covered by `golden::nowcast_run_paths_produce_tiles_d1` and `invariants::d1_nowcast_paths_come_from_the_manifest_frame`.
+- **D1, nowcast tile paths.** The prefetch plan takes a nowcast frame's tile path from the manifest frame's `path` field. Python rebuilt it from the layer and timestamp, which broke for run-scoped paths (`runs/<anchor>/<valid>`). The code percent-encodes path segments one at a time, so `/` survives, and the quote-safe set is `:+-.T_`. An oracle in `testdata/gen_golden.py` checks the fixed output. Covered by `golden::nowcast_run_paths_produce_tiles_d1` and `invariants::d1_nowcast_paths_come_from_the_manifest_frame`.
 - **D2, no-data samples.** A window with no valid pixels, or one outside the grid, produces a `-inf` max sample with `has_data == false`. `detect_change` returns no event for a sample without data, so no-data can never report dissipating or intensifying. Covered by `golden::detect_change_matches_python_table_except_d2`, `golden::compare_radar_frames_matches_python_except_d2`, and `invariants::d2_no_data_never_produces_a_change`.
 - **D3, monotonic cell IDs.** `storms.json` carries `next_cell_id`. New IDs are `max(previous IDs) + 1`, raised to the stored counter, so an ID is never reused after its track disappears. Covered by `golden::d3_reuse_reference_ids_are_monotonic` and `invariants::drv06_matched_keep_id_and_new_cells_take_max_plus_one`.
 
 Other behaviour changes or decisions:
 
 - **D5, empty frames.** Python writes a short payload (no `threshold_dbz` or `cell_count`) when no pixel reaches the threshold. The Rust writer keeps that shape. A frame where every component is filtered out by `min_pixels` keeps the full shape, as Python does. `next_cell_id` is written on every payload so the counter survives empty frames. Covered by `invariants::empty_frame_keeps_the_python_short_shape_and_the_counter` and `invariants::components_all_filtered_by_size_keep_the_full_shape`.
-- **D6 and D16, naive timestamps.** A timestamp with no offset is read as UTC. Mixed naive and aware timestamps do not crash. Covered by `invariants::mixed_naive_and_aware_timestamps_do_not_crash`.
+- **D6 and D16, naive timestamps.** The crate reads a timestamp with no offset as UTC. Mixed naive and aware timestamps do not crash. Covered by `invariants::mixed_naive_and_aware_timestamps_do_not_crash`.
 - **D7, manifest without layers.** A manifest that is not an object, has no `layers`, or cannot be parsed returns `StormsError::Manifest` and fails closed. A missing manifest file is read as empty. Covered by `invariants::d7_manifest_without_layers_fails_closed`.
-- **D8, durability.** The `storms.json` temp file is fsynced before the rename, and the directory is fsynced after it. `EINVAL` on the directory fsync is ignored.
+- **D8, durability.** The writer fsyncs the `storms.json` temp file before the rename and the directory after it. `EINVAL` on the directory fsync is ignored.
 - **D4, 111.32 versus 110.574 km per degree.** Not unified. Storm area and distance use 110.574 km per degree of latitude, as Python does. The watch sampler keeps 111.32 for latitude, as in Python. This still needs a decision.
 - **D17, appeared and disappeared events.** Not produced, as in Python.
-- **Mode 0600.** `storms.json` is written with mode 0600, as Python's `mkstemp` does.
+- **Mode 0600.** The writer gives `storms.json` mode 0600, as Python's `mkstemp` does.
 
 ## Notes on numerics and ordering
 

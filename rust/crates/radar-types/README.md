@@ -90,18 +90,18 @@ the push code, not in this crate.
 
 ## Deferred
 
-- **Replay fixtures** are not checked in this crate. Wire compatibility with the retained histories is
+- Replay fixtures are not checked in this crate. Wire compatibility with the retained histories is
   proven by the replay gate in `radar-worker` (`tests/replay.rs`).
-- **Heartbeat detail shapes** (spec-ingest-mrms-hrrr section 2.4, spec-nowcast section 2.1). They
+- Heartbeat detail shapes (spec-ingest-mrms-hrrr section 2.4, spec-nowcast section 2.1). They
   are informational and not modelled.
-- **Lenient decoding** of `NaN` or `Infinity` in old payloads, which may need a custom parser if
+- Lenient decoding of `NaN` or `Infinity` in old payloads, which may need a custom parser if
   a fixture ever contains them.
-- **Python SDK defaults** that spec-temporal lists as `[VERIFY-SDK]`: `None` encoding,
+- Python SDK defaults that spec-temporal lists as `[VERIFY-SDK]`: `None` encoding,
   whether `None` fields are emitted, and the missing and unknown key behaviour. The crate follows the
   spec's choices (emit all fields, ignore unknown keys).
-- **`ScheduleSpec` semantic equality, jitter comparison and the seeder's RPC behaviour** belong to the
+- `ScheduleSpec` semantic equality, jitter comparison and the seeder's RPC behaviour belong to the
   worker crate. This crate only supplies the definitions.
-- **`send_push_notification`** has a payload model (`PushToken`, `PushPayload`) but no workflow
+- `send_push_notification` has a payload model (`PushToken`, `PushPayload`) but no workflow
   uses it. The name is reserved.
 
 ## Tests

@@ -5,7 +5,7 @@
 > replay compatibility, concurrency traps and the image contract, in one place. This page is the
 > history behind those rules.
 
-Read this first if you're an engineer or an LLM picking up radar-ng after the Python → Rust migration
+Read this first if you're an engineer or an LLM picking up radar-ng after the Python to Rust migration
 (October 2026). It records what changed, where things live now, and the gotchas the migration hit.
 
 ## State (2026-10-14)
@@ -13,7 +13,7 @@ Read this first if you're an engineer or an LLM picking up radar-ng after the Py
 - **The backend is Rust only.** The Python backend (`backend/`, `temporal/`, `tools/debug_harness`),
   Caddy, FastAPI/uvicorn and the go-pmtiles sidecar in the api pod are gone from the repo. To read the
   old Python, check out `5b3cb39`, the last commit before removal (PR #92).
-- **Production runs the Rust images**: `ghcr.io/mitchross/radar-ng-{temporal-worker,tile-server,open-meteo-worker}`.
+- **Production runs the Rust images.** `ghcr.io/mitchross/radar-ng-{temporal-worker,tile-server,open-meteo-worker}`.
   The `v2.x` line is Rust; `v1.x` was Python.
 - **The app (`frontend/`) and web radar (`web/`) did not change.** The Rust API serves the same URLs, JSON
   and tiles.
@@ -45,14 +45,14 @@ Read this first if you're an engineer or an LLM picking up radar-ng after the Py
 1. Merge to `master` in radar-ng. `ci-rust.yml` checks:
    - `lint-test`: fmt, clippy `-D warnings`, the tests, and the offline replay gate.
    - `temporal`: integration tests against a real server.
-   - `live-noaa`: the newest real MRMS and HRRR files are decoded and rendered.
+   - `live-noaa`: decodes and renders the newest real MRMS and HRRR files.
    - `images`: every target builds and starts.
 2. `ghcr-*.yml` publishes the next `vX.Y.Z` and prints `ghcr.io/...:vX.Y.Z@sha256:...` as a notice.
-3. Open a PR in talos-argocd-proxmox that changes only the `image:` lines. Pin tag **and** digest; never
+3. Open a PR in talos-argocd-proxmox that changes only the `image:` lines. Pin tag and digest; never
    `latest`. Use the worker pools in `temporal-workers/worker-pools.yaml` (5 lines), `deployment-tile-server.yaml`
    and `deployment-open-meteo.yaml` (2 lines). The owner merges, and Argo CD syncs.
-4. **GitOps only:** no `kubectl apply` and no hand edits to the cluster.
-5. **Forward-only:** no rollbacks. Fix a bad release with a new release.
+4. **GitOps only.** No `kubectl apply` and no hand edits to the cluster.
+5. **Forward-only.** No rollbacks. Fix a bad release with a new release.
 
 ## Gotchas found during the migration
 

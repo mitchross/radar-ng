@@ -1,8 +1,8 @@
 # Forking radar-ng
 
 Your own copy of radar-ng: your app name on your phone, pointing at your server, published under
-your GitHub account. Nothing here is needed to **run** the backend; that's
-[docs/self-host/](docs/self-host/compose.md). This page is for when you build and ship **the app**.
+your GitHub account. Nothing here is needed to run the backend; that's
+[docs/self-host/](docs/self-host/compose.md). This page is for when you build and ship the app.
 
 Every value below falls back to the upstream project's own value when you don't set it, so an
 unchanged clone still builds exactly like upstream.

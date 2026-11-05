@@ -1,12 +1,12 @@
 # Running radar-ng on Kubernetes
 
-**Just want it running?** Use [deploy/kubernetes/](../../deploy/kubernetes/README.md): one
+Want it running fast? Use [deploy/kubernetes/](../../deploy/kubernetes/README.md): one
 `kubectl apply -k` and a step-by-step README. This page is the background for running it on your
 own production cluster: what to bring, storage, sizing, probes and schedules.
 
 Compared with [Docker Compose](compose.md) (everything on one computer), Kubernetes adds controlled
 rollouts, separate worker pools, disruption rules and Prometheus monitoring. It does **not** give you
-a highly available tile server for free: while the workers and the API share disks that only one
+a highly available tile server for free. While the workers and the API share disks that only one
 machine can mount at a time (ReadWriteOnce), they all have to run on the same node. Nothing here
 needs the author's own Talos/Argo CD setup. Unfamiliar terms are in the
 [glossary](../start/glossary.md).
@@ -45,16 +45,16 @@ frontend):
 | file | purpose |
 |---|---|
 | `temporal-workers/worker-pools.yaml` | five `WorkerDeployment`s (`mrms`, `nowcast`, `hrrr`, `aux`, `alerts`) running `radar-ng-temporal-worker`, each with a smoke-workflow rollout gate |
-| `temporal-workers/configmap-temporal-config.yaml` | worker tunables (palettes, cadences, NWS URLs — see [configuration.md](configuration.md)) |
+| `temporal-workers/configmap-temporal-config.yaml` | worker tunables (palettes, cadences, NWS URLs; see [configuration.md](configuration.md)) |
 | `temporal-workers/temporal-connection.yaml` | `TemporalConnection` for the Worker Controller |
 | `deployment-tile-server.yaml` | `radar api`, plus `hpa-tile-server.yaml` and `pdb-tile-server.yaml` |
 | `deployment-open-meteo.yaml` | Open-Meteo serve container with the `sync-worker` sidecar (`radar worker --role open-meteo`) |
 | `deployment-basemap.yaml` | go-pmtiles serving the CONUS basemap archive; a `fetch-basemap` init container fills it |
 | `pvcs.yaml`, `services.yaml`, `httproute.yaml` | storage, Services, Gateway API route |
 
-The pattern is app repo (this one: code, Dockerfile, CI that publishes images) plus GitOps repo
-(manifests watched by Argo CD or Flux; deploying is bumping a pinned image tag in a PR). A local
-kustomization works too; the split is a workflow choice, not a requirement.
+The pattern is an app repo (this one: code, Dockerfile, CI that publishes images) plus a GitOps repo
+(manifests watched by Argo CD or Flux; deploying means bumping a pinned image tag in a PR). A local
+kustomization works too. The split is a workflow choice, not a requirement.
 
 ## Deploy steps
 
@@ -67,9 +67,9 @@ write your own manifests or need to know why a piece is there.
    - `temporalio/auto-setup` for a quick single-pod Temporal
    - a Temporal you already run, or Temporal Cloud
 
-   Temporal needs **PostgreSQL** (a `postgres:16` StatefulSet, CloudNativePG or managed PG) or Cassandra. The Helm chart and auto-setup can create it for you. Create the namespace the workers use (default `default`; production uses `radar-ng`). The reference uses the Temporal Worker Controller (`TemporalConnection` + `WorkerDeployment` CRs) so each release is smoke-tested before promotion; plain Deployments running `radar worker` also work.
-3. **Config.** The worker tunables go in a ConfigMap. **Set `NWS_USER_AGENT` to your email.** Everything else has working defaults; see [configuration.md](configuration.md) and [tuning.md](tuning.md).
-4. **Workers.** Run either one worker with `WORKER_ROLE=legacy` (every workflow on queue `radar-ng`), or five role pools (`mrms`, `nowcast`, `hrrr`, `aux`, `alerts`) with `USE_ISOLATED_TASK_QUEUES=1`, as production does. Add the open-meteo worker (`--role open-meteo`). Temporal dispatches by registration; there's nothing else to wire.
+   Temporal needs **PostgreSQL** (a `postgres:16` StatefulSet, CloudNativePG or managed PG) or Cassandra. The Helm chart and auto-setup can create it. Create the namespace the workers use (default `default`; production uses `radar-ng`). The reference uses the Temporal Worker Controller (`TemporalConnection` + `WorkerDeployment` CRs) so each release is smoke-tested before promotion; plain Deployments running `radar worker` also work.
+3. **Config.** Put the worker tunables in a ConfigMap. **Set `NWS_USER_AGENT` to your email.** Everything else has working defaults; see [configuration.md](configuration.md) and [tuning.md](tuning.md).
+4. **Workers.** Run either one worker with `WORKER_ROLE=legacy` (every workflow on queue `radar-ng`), or five role pools (`mrms`, `nowcast`, `hrrr`, `aux`, `alerts`) with `USE_ISOLATED_TASK_QUEUES=1`, as production does. Add the open-meteo worker (`--role open-meteo`). Temporal dispatches by registration, so there's nothing else to wire.
 5. **Tile-server, open-meteo and basemap.** Add the serve Deployments, Services, PVCs (see [Storage](#storage)) and your Ingress or Gateway (for example `radar-ng-api.example.com` → tile-server `:8080`).
 6. **Basemap.** Fetch the PMTiles extract once into the basemap volume so the map isn't gray (same step as [Compose](compose.md)).
 7. **Schedules.** Exactly one worker seeds the Temporal Schedules on boot; see [Schedules](#schedules).
@@ -87,9 +87,9 @@ Verify against your ingress host: `/api/livez`, `/api/health`, `/api/manifest.js
 | `openmeteo-data` | 60 Gi | open-meteo serve + sync sidecar (rw) |
 | `pmtiles` | 50 Gi | basemap (rw) |
 
-If these PVCs are ReadWriteOnce, use `strategy: Recreate`, keep the tile-server at one replica, and co-locate every pod that mounts them (`podAffinity` or a `nodeSelector`). With an RWX class (NFS, CephFS, Longhorn RWX) the tile-server and workers can run on different nodes. `openmeteo-data` is fine on RWO: the reference runs the sync worker as a sidecar in the open-meteo serve pod for exactly this reason. Do not combine an RWO data plane with a multi-replica HPA. For horizontal scale, publish immutable tiles to S3-compatible object storage and keep the serving tier stateless; RWX storage is a smaller migration but still leaves the shared filesystem on the request path.
+If these PVCs are ReadWriteOnce, use `strategy: Recreate`, keep the tile-server at one replica, and co-locate every pod that mounts them (`podAffinity` or a `nodeSelector`). With an RWX class (NFS, CephFS, Longhorn RWX) the tile-server and workers can run on different nodes. `openmeteo-data` is fine on RWO. The reference runs the sync worker as a sidecar in the open-meteo serve pod for exactly this reason. Do not combine an RWO data plane with a multi-replica HPA. For horizontal scale, publish immutable tiles to S3-compatible object storage and keep the serving tier stateless; RWX storage is a smaller migration but still leaves the shared filesystem on the request path.
 
-Pods mount the PVCs at `/data/tiles`, `/data/grids`, `/data/state` — keep those paths or override `TILE_DIR`/`GRID_DIR`/`STATE_DIR`. The images run as uid 1000 (open-meteo: 999); set `fsGroup` to match.
+Pods mount the PVCs at `/data/tiles`, `/data/grids`, `/data/state`. Keep those paths or override `TILE_DIR`/`GRID_DIR`/`STATE_DIR`. The images run as uid 1000 (open-meteo: 999); set `fsGroup` to match.
 
 The basemap PMTiles archive needs the same one-time extract as compose (see [self-hosting.md](compose.md)). Either mount it in the tile-server and set `BASEMAP_PMTILES`, or run go-pmtiles as a `basemap` Service and let the api proxy `/basemap/tiles/*` to `BASEMAP_TILES_UPSTREAM` (default `http://basemap:8081`), as the reference does.
 
@@ -105,11 +105,11 @@ Starting points; validate them against your source cadence and a load test:
 | open-meteo serve | 0.2 cpu · 512 Mi | 2 cpu · 2 Gi |
 | basemap | 50 m · 64 Mi | 500 m · 256 Mi |
 
-With role pools, size each pool from its own queue latency and publication freshness; the reference manifests carry the current values. Undersizing the MRMS worker's CPU shows up as stale radar — the 2-minute MRMS cadence needs the render to finish in under 2 minutes. See [tuning.md](tuning.md).
+With role pools, size each pool from its own queue latency and publication freshness; the reference manifests carry the current values. Undersizing the MRMS worker's CPU shows up as stale radar, because the render must finish in under 2 minutes to match the MRMS cadence. See [tuning.md](tuning.md).
 
 ## Probes
 
-Tile-server: point liveness at **`/api/livez`** on port 8080. Do **not** probe `/api/health`. It returns 503 when radar *data* is stale — a condition shared by every replica at once. Wiring it to liveness would restart the fleet the moment NOAA has a slow day; wiring it to readiness would drain all endpoints simultaneously. `/api/health` is for humans, dashboards, and the app's "data delayed" banner. The reference uses a TCP readiness check so a slow API never empties the single-replica Service.
+Tile-server: point liveness at **`/api/livez`** on port 8080. Do **not** probe `/api/health`. It returns 503 when radar *data* is stale, which affects every replica at once. As a liveness probe it would restart the fleet the moment NOAA has a slow day. As a readiness probe it would drain all endpoints simultaneously. `/api/health` is for humans, dashboards, and the app's "data delayed" banner. The reference uses a TCP readiness check so a slow API never empties the single-replica Service.
 
 Workers: liveness execs `sh -c "test $(find /tmp/worker-alive -mmin -3)"` (the health loop touches it every 30 s); `/tmp/temporal-healthy` tracks Temporal reachability. The images carry busybox `sh`, `find` and `test` for these probes.
 
@@ -121,7 +121,7 @@ For worker scale, run the five role pools with `USE_ISOLATED_TASK_QUEUES=1` inst
 
 ## Schedules
 
-Exactly one worker seeds the Temporal Schedules on boot (`SEED_SCHEDULES=1`; the reference sets it on the `aux` pool, the others set `SKIP_SCHEDULE_SEED=1`). Seeding is create-or-update per schedule ID — there are no CronJobs. Set `SKIP_SCHEDULE_SEED=1` on the seeder too if you need to hand-edit a schedule in the Temporal UI without it being rewritten on the next restart.
+Exactly one worker seeds the Temporal Schedules on boot (`SEED_SCHEDULES=1`; the reference sets it on the `aux` pool, the others set `SKIP_SCHEDULE_SEED=1`). Seeding is create-or-update per schedule ID, and there are no CronJobs. To hand-edit a schedule in the Temporal UI without the next restart rewriting it, set `SKIP_SCHEDULE_SEED=1` on the seeder too.
 
 Verify after a rollout:
 
@@ -133,5 +133,5 @@ temporal --address <temporal-frontend>:7233 --namespace <ns> schedule list
 ## Observability
 
 - the tile-server exports Prometheus metrics at `/api/metrics`; workers at `:9464/metrics` (`TEMPORAL_METRICS_BIND`)
-- every process logs one-line JSON to stdout — any log pipeline that scrapes container stdout works
+- every process logs one-line JSON to stdout, so any log pipeline that scrapes container stdout works
 - `radar debug doctor` ([debug-harness.md](../reference/debug-harness.md)) checks freshness, serving, Temporal and disk in one sweep

@@ -42,9 +42,9 @@ endpoint staying up is not evidence of permission. This is a real, if historical
 licensing gap, and the risk it carries is a takedown or an App Store complaint rather than a
 runtime failure.
 
-On retirement: Esri's published sunsetting applies to **World Imagery Prime** and **Clarity**, which
+On retirement: Esri's published sunsetting applies to World Imagery Prime and Clarity, which
 are different services. No retirement date is announced for the standard `World_Imagery/MapServer`
-endpoint — but that is not the same as support for new account-free applications, which is
+endpoint, but that is not the same as support for new account-free applications, which is
 **UNVERIFIED**. Do not apply the Prime/Clarity dates, or the older generic migration deadlines, to
 this endpoint.
 
@@ -57,7 +57,7 @@ ArcGIS Location Platform, per its own licensing page
   location service requests"* and *"Ensure all service calls are authenticated."*
 - MapLibre GL JS is explicitly a supported client, so no ArcGIS SDK or runtime licence string is
   needed for the tiles alone.
-- Attribute with **"Powered by Esri"** plus the data-source credits. Esri states you cannot remove
+- Attribute with "Powered by Esri" plus the data-source credits. Esri states you cannot remove
   required attribution while using their resources.
 - Metering (`https://developers.arcgis.com/pricing/`, `https://location.arcgis.com/pricing/`):
   **2,000,000 basemap tiles/month free, then $0.15 per 1,000 tiles.** Basemap sessions are metered
@@ -71,8 +71,8 @@ fork would need their own key. The keyed imagery URL is
 Metering is billed to the operator's subscription.
 
 Not verified from a primary source: Esri's retention of tile-request logs, and whether the legacy
-`services.arcgisonline.com` endpoint has a published retirement date (see above — the announced
-retirements are for different services). Treat both as **UNVERIFIED**.
+`services.arcgisonline.com` endpoint has a published retirement date (see above). The announced
+retirements are for different services. Treat both as **UNVERIFIED**.
 
 ### Options
 
@@ -96,8 +96,8 @@ already serves a PMTiles archive for the vector basemap.
 
 What C still needs before it can replace the Esri tiles:
 
-1. A **raster** archive plus its own route and style document. Today's `/basemap/tiles/*` route
-   fronts the *vector* PMTiles archive (then through Caddy; today `radar api` reads the archive
+1. A raster archive plus its own route and style document. Today's `/basemap/tiles/*` route
+   fronts the vector PMTiles archive (then through Caddy; today `radar api` reads the archive
    itself), but the delivery mechanism is already there: a PMTiles archive on a volume, served over
    HTTP range requests. A second archive and a raster style is an
    extension of that, not a new subsystem.
@@ -112,27 +112,27 @@ What C still needs before it can replace the Esri tiles:
 
 The data volumes are the real reason this was never done. For scale:
 
-- The self-hosted **vector** basemap is a `pmtiles extract` of a CONUS bounding box up to zoom 14: **~9 GB**
+- The self-hosted vector basemap is a `pmtiles extract` of a CONUS bounding box up to zoom 14: ~9 GB
   (`deploy/docker-compose.yml`, `docs/self-host/compose.md`).
-- NAIP as a program is on the order of **16 PB**, and a single CONUS vintage is on the order of
-  **~180 TB** uncompressed at native resolution (USDA FPAC/NGAC presentation, 2024; BigData Earth
-  analysis). That is the wrong number to plan against, though — a weather map does not need 0.6 m
+- NAIP as a program is on the order of 16 PB, and a single CONUS vintage is on the order of
+  ~180 TB uncompressed at native resolution (USDA FPAC/NGAC presentation, 2024; BigData Earth
+  analysis). That is the wrong number to plan against, though. A weather map does not need 0.6 m
   imagery, and downsampling is exactly what the conversion step does. The useful precedent is the
-  ESA WorldCover toolchain, which turns **116 GB** of GeoTIFFs into a single PMTiles archive with
+  ESA WorldCover toolchain, which turns 116 GB of GeoTIFFs into a single PMTiles archive with
   `geotiff2pmtiles` (pure Go, no system dependencies). A CONUS raster basemap downsampled to the
   zooms a radar map actually uses lands in the hundreds of GB, not petabytes.
 
 4. Until that exists, the transitional state is "no satellite in shipped builds", which is a
    user-visible feature removal and needs its own release note.
 
-So the gap is a **volume and pipeline** problem, not a licensing one for the US, and not an
+So the gap is a volume and pipeline problem, not a licensing one for the US, and not an
 architectural one for the app.
 
 `World Imagery Prime` and `Clarity` are not alternatives; they are the services Esri is retiring.
 
 ## 2. NWS User-Agent
 
-`api.weather.gov` asks for a `User-Agent` that identifies the application **and a contact**.
+`api.weather.gov` asks for a `User-Agent` that identifies the application and a contact.
 `src/lib/api.ts` (`fetchAlerts`) and `targets/watch/WatchAPI.swift` currently send
 `radar-ng/2.0 (self-hosted-weather-radar)` with no address. This is a policy request rather than a
 licence, it is cheap to satisfy, and it is blocked only on the user supplying an address to use.
@@ -140,7 +140,7 @@ licence, it is cheap to satisfy, and it is blocked only on the user supplying an
 ## 3. Nominatim
 
 No longer applicable. Task 1.4 replaced reverse geocoding with the platform geocoder, so public
-Nominatim is no longer called at all — see `docs/app/privacy.md` §3. The usage-policy problem is gone.
+Nominatim is no longer called at all. See `docs/app/privacy.md` §3. The usage-policy problem is gone.
 
 ## 4. Related
 

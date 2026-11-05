@@ -7,7 +7,7 @@ radar-ng has two halves:
 - **The apps** that show it: the phone app (`frontend/`, iPhone and Android) and the web radar (`web/`).
 
 All the weather data (NOAA radar and forecasts, NWS alerts, Open-Meteo, Blitzortung lightning) is
-free, with **no API keys and no accounts.** The only thing you must set is a contact email, because
+free, with no API keys and no accounts. The only thing you must set is a contact email, because
 the NWS asks for one.
 
 Unfamiliar word? See the [glossary](glossary.md).
@@ -16,22 +16,22 @@ Unfamiliar word? See the [glossary](glossary.md).
 
 | I want to… | Path | Time | Guide |
 |---|---|---|---|
-| Run the server on one computer | **Docker Compose** | ~10 min (mostly the map download), then ~2 min for the first radar frame | [Path A](#path-a-docker-compose-one-computer) → [compose.md](../self-host/compose.md) |
-| Run the server on my Kubernetes cluster | **Kubernetes** | ~30 min on a test cluster (kind, k3d, k3s) | [Path B](#path-b-kubernetes) → [deploy/kubernetes](../../deploy/kubernetes/README.md) |
-| See it in a browser, against a server I run | **Web radar** | ~5 min | [app/web-radar.md](../app/web-radar.md) |
-| Use the phone app with a server I run | **Phone app** | 30–60 min the first time (native build) | [Running the phone app](#running-the-phone-app) |
-| Change the code | **Develop** | | [CONTRIBUTING.md](../../CONTRIBUTING.md) |
-| Ship my own copy of the app | **Fork** | | [FORKING.md](../../FORKING.md) |
+| Run the server on one computer | Docker Compose | ~10 min (mostly the map download), then ~2 min for the first radar frame | [Path A](#path-a-docker-compose-one-computer) and [compose.md](../self-host/compose.md) |
+| Run the server on my Kubernetes cluster | Kubernetes | ~30 min on a test cluster (kind, k3d, k3s) | [Path B](#path-b-kubernetes) and [deploy/kubernetes](../../deploy/kubernetes/README.md) |
+| See it in a browser, against a server I run | Web radar | ~5 min | [app/web-radar.md](../app/web-radar.md) |
+| Use the phone app with a server I run | Phone app | 30–60 min the first time (native build) | [Running the phone app](#running-the-phone-app) |
+| Change the code | Develop | | [CONTRIBUTING.md](../../CONTRIBUTING.md) |
+| Ship my own copy of the app | Fork | | [FORKING.md](../../FORKING.md) |
 
 ## What you need
 
-- **Git**, and a clone of this repo.
-- **For the server:** Docker with Compose v2 (Path A) or a Kubernetes cluster (Path B). You do **not**
+- Git, and a clone of this repo.
+- For the server, Docker with Compose v2 (Path A) or a Kubernetes cluster (Path B). You do not
   need Rust installed: the images are published to GHCR, and Compose builds inside Docker.
-- **For the phone app:** [Bun](https://bun.sh), plus Xcode (iPhone, macOS only) or Android Studio
-  (Android). The app uses native map code, so it **can't run in Expo Go**: you build it once onto a
+- For the phone app, [Bun](https://bun.sh), plus Xcode (iPhone, macOS only) or Android Studio
+  (Android). The app uses native map code, so it **can't run in Expo Go**. You build it once onto a
   simulator or your phone.
-- About **3–4 GB of disk** for the US basemap and a working set of radar tiles.
+- About 3–4 GB of disk for the US basemap and a working set of radar tiles.
 
 ## Path A: Docker Compose (one computer)
 
@@ -45,16 +45,16 @@ The first run creates `deploy/.env` and asks you to set your contact email in it
 the background map once (~9 GB), starts everything from ready-made images, and waits for the first
 radar frame.
 
-**How to know it worked:** `up.sh` ends by printing the address for the app. You can also check
-`curl localhost:8080/api/health`: `degraded` at first, then `ok` about 2 minutes later.
+It worked when `up.sh` ends by printing the address for the app. You can also run
+`curl localhost:8080/api/health`. It says `degraded` at first, then `ok` about 2 minutes later.
 
 The full guide, with hardware sizing, the manual steps and what to do if it didn't work, is
-**[self-host/compose.md](../self-host/compose.md)**; common problems are in
+[self-host/compose.md](../self-host/compose.md). Common problems are in
 [troubleshooting.md](../self-host/troubleshooting.md).
 
 ## Path B: Kubernetes
 
-Ready-to-apply manifests live in **[deploy/kubernetes/](../../deploy/kubernetes/README.md)**. To
+Ready-to-apply manifests live in [deploy/kubernetes/](../../deploy/kubernetes/README.md). To
 try them on a laptop cluster (kind, k3d, k3s):
 
 ```bash
@@ -75,9 +75,9 @@ bun run android      # or: Android emulator / a plugged-in Android phone
 
 The first build takes a while; after that it's quick. Then point the app at your server:
 
-- **In the app:** **Settings → Advanced Mode → Stack URL**, and enter `http://<host>:8080`
+- In the app, go to **Settings → Advanced Mode → Stack URL** and enter `http://<host>:8080`
   (Compose) or your public URL (e.g. `https://radar-ng-api.example.com`). No rebuild needed.
-- **As the default for every install:** set `EXPO_PUBLIC_RADAR_DEFAULT_URL` and rebuild
+- To make it the default for every install, set `EXPO_PUBLIC_RADAR_DEFAULT_URL` and rebuild
   (see [FORKING.md](../../FORKING.md)).
 
 Running on a real phone, simulator tips, CarPlay and Apple Watch:
@@ -101,4 +101,4 @@ for the one-time basemap download. Map data is downloaded when you set up, not b
 
 ## Where to go next
 
-Everything else is indexed in **[docs/README.md](../README.md)**.
+Everything else is indexed in [docs/README.md](../README.md).

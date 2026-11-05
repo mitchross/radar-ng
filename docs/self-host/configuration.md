@@ -7,7 +7,7 @@ Kubernetes, edit [`deploy/kubernetes/base/settings.env`](../../deploy/kubernetes
 are the code defaults unless marked "compose". Each crate README under
 `rust/crates/` lists every variable that crate reads.
 
-**Only one value must be set**; everything else has a working default:
+Set one value. Everything else has a working default:
 
 | Must set | Why |
 |---|---|
@@ -17,9 +17,9 @@ are the code defaults unless marked "compose". Each crate README under
 
 ## The basemap download
 
-This is the **Protomaps basemap**: the vector map (roads, water, city labels) drawn *under* the radar.
-`build.protomaps.com` serves **date-stamped daily planet builds** (`YYYYMMDD.pmtiles`) with **~6-day
-retention** and **no `latest` alias**, so the bootstrap finds the newest build itself: Compose's
+This is the Protomaps basemap: the vector map (roads, water, city labels) drawn under the radar.
+`build.protomaps.com` serves date-stamped daily planet builds (`YYYYMMDD.pmtiles`) with about 6 days of
+retention and no `latest` alias. The bootstrap finds the newest build itself. Compose's
 `basemap-bootstrap` and the Kubernetes `fetch-basemap` init container run the same script
 (`deploy/kubernetes/base/fetch-basemap.sh`). It extracts your `BASEMAP_BBOX` (default CONUS up to zoom 14, ~9 GB) to
 a temp file and renames it over `basemap.pmtiles`, which the api serves. A marker file makes re-runs a
@@ -72,25 +72,25 @@ no-op until the bbox, the max zoom (or, on Kubernetes, `REFRESH`) changes.
 
 ### Frontend basemap provider (bundled vs external)
 
-The app ships **batteries-included**: by default the map renders the **bundled**
-Protomaps basemap served by your own tile-server (`/basemap/styles/*` and
+By default the map renders the bundled
+Protomaps basemap served by your own tile server (`/basemap/styles/*` and
 `/basemap/tiles/*`, backed by the `basemap-bootstrap` archive above). Forks and upstream users set nothing.
 
-Optionally, the frontend can point at an **external** MapLibre style URL instead
-— e.g. a self-hosted [VersaTiles](https://versatiles.org) instance shared across
-several apps — without deploying the bundled basemap at all. These are **frontend
-build-time** vars (`EXPO_PUBLIC_*`, inlined into the app bundle by Expo, same as
-the telemetry vars); they are **not** backend/compose settings. Leave them unset
+Optionally, the frontend can point at an external MapLibre style URL instead,
+for example a self-hosted [VersaTiles](https://versatiles.org) instance shared across
+several apps. Then you need not deploy the bundled basemap. These are frontend
+build-time vars (`EXPO_PUBLIC_*`, inlined into the app bundle by Expo, same as
+the telemetry vars). They are not backend or compose settings. Leave them unset
 for bundled mode.
 
 | Var (build-time `EXPO_PUBLIC_*`) | Default | Notes |
 |---|---|---|
-| `EXPO_PUBLIC_BASEMAP_LIGHT_STYLE_URL` | _(unset → bundled)_ | Absolute MapLibre style URL for the **light** theme. |
-| `EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL` | _(unset → bundled)_ | Absolute MapLibre style URL for the **dark** theme. |
+| `EXPO_PUBLIC_BASEMAP_LIGHT_STYLE_URL` | _(unset → bundled)_ | Absolute MapLibre style URL for the light theme. |
+| `EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL` | _(unset → bundled)_ | Absolute MapLibre style URL for the dark theme. |
 | `EXPO_PUBLIC_BASEMAP_SATELLITE_STYLE_URL` | _(unset → bundled)_ | Optional. The bundled style uses public-domain USGS imagery that the tile server fetches and serves at `/basemap/imagery`, so the app never contacts a third party. |
 
-Each style resolves independently: set only light+dark to move the vector
-basemap external while keeping the bundled satellite. An external style must be
+Each style resolves independently. Set only light and dark to move the vector
+basemap external and keep the bundled satellite. An external style must be
 a complete absolute document (its own `sources`/`glyphs`/`sprite`); the app
 loads it directly instead of rewriting relative tile paths. The provider serving
 it must allow the app's origin via CORS. Example (build the app with):

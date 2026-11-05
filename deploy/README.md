@@ -75,7 +75,7 @@ commented block at the end of `docker-compose.yml` shows that layout for compose
   writable. Compose and the cluster mount `state` read-only in the api, so enabling push tokens needs a
   writable mount.
 - **Workers run as uid 1000.** The compose `volume-init` service chowns the named volumes.
-- **Worker liveness** is `/tmp/worker-alive`, touched every 30 s from startup, including during a long
+- **Worker liveness.** The worker touches `/tmp/worker-alive` every 30 s from startup, including during a long
   Open-Meteo sync.
-- **Environment names** are the ones the crates read; each crate README lists them.
+- **Environment names.** Use the names the crates read; each crate README lists them.
   `WATCH_RADIUS_KM` and `MRMS_RENDER_WORKERS` are not read.

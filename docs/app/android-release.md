@@ -1,6 +1,6 @@
 # Android release builds (local, no cloud)
 
-Builds run on this machine with Gradle. Google Play App Signing holds the app signing key; we sign uploads with an **upload key** that lives outside the repo.
+Builds run on this machine with Gradle. Google Play App Signing holds the app signing key; we sign uploads with an upload key that lives outside the repo.
 
 ## One-time setup
 

@@ -74,7 +74,7 @@ Static lane (not under `/api`):
 | `/tiles/satellite/{time}/{z}/{x}/{y}.png` | NASA GIBS GOES GeoColor proxy (`satellite.rs`): GOES-East east of 106.1° W, GOES-West west of it, seam tiles spliced. `time` is a 10-minute step in the last 6 h; `z` is 0 to 7. Moka cache (`SATELLITE_CACHE_MAX_BYTES`) | `public, max-age=86400, immutable` |
 | `/basemap/tiles/{z}/{x}/{y}.mvt` | `pmtiles` crate reading `BASEMAP_PMTILES` through a positioned-read backend (F6); proxied to `BASEMAP_TILES_UPSTREAM` (default `http://basemap:8081`) when no local archive exists | `public, max-age=86400` |
 
-ACAO `*` is set on the static lane. Errors on the static lane are overridden to
+The static lane sets ACAO `*`. It overrides errors to
 `Cache-Control: no-store` with a text body `"{code} {reason}"`. Imagery non-matches are a bare
 404 with no headers.
 
@@ -95,7 +95,7 @@ ACAO `*` is set on the static lane. Errors on the static lane are overridden to
 
 ## Deviations
 
-Items are numbered as in `docs/develop/specs/spec-api.md` section 16. "Fixed" means the port does not
+Item numbers match `docs/develop/specs/spec-api.md` section 16. "Fixed" means the port does not
 reproduce the Python bug. "Kept" means the port matches Python on purpose.
 
 | ID | Decision | What the port does |

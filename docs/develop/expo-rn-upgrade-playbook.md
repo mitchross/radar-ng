@@ -1,6 +1,6 @@
 # Playbook: big Expo / React Native upgrades with an LLM
 
-Lessons from upgrading Radar NG (September 2026) through Expo SDK 57 → 58 preview, React Native 0.86 → 0.88, native tabs, Liquid Glass, and iOS 27 / Android 16. The work also covered a WidgetKit widget, a watchOS app and CarPlay. Written for an LLM that will carry out a similar upgrade on another app. Copy it into that repo's `AGENTS.md`/`CLAUDE.md`, or paste it as the first message.
+Lessons from upgrading Radar NG (September 2026) through Expo SDK 57 to 58 preview, React Native 0.86 to 0.88, native tabs, Liquid Glass, and iOS 27 / Android 16. The work also covered a WidgetKit widget, a watchOS app and CarPlay. Written for an LLM that will carry out a similar upgrade on another app. Copy it into that repo's `AGENTS.md`/`CLAUDE.md`, or paste it as the first message.
 
 ---
 
@@ -71,7 +71,7 @@ Lessons from upgrading Radar NG (September 2026) through Expo SDK 57 → 58 prev
 
 ## 7. Layout and accessibility
 
-- **Absolutely positioned children ignore their `SafeAreaView` parent's padding.** Compute offsets from `useSafeAreaInsets()`. Make it one hook that returns `{top, bottom, left, right}` edges for chrome, tuned so a notched iPhone looks the same as before; Android status and navigation bars and landscape cutouts then get correct room.
+- **Absolutely positioned children ignore their `SafeAreaView` parent's padding.** Compute offsets from `useSafeAreaInsets()`. Make it one hook that returns `{top, bottom, left, right}` edges for chrome. Tune it so a notched iPhone looks the same as before. Android status and navigation bars and landscape cutouts then get correct room.
 - Cap Dynamic Type only on dense overlay chrome (`maxFontSizeMultiplier` ≈ 1.3), not on sheets or screens.
 - Honour Reduce Motion for autoplay.
 - Let a full-screen map set its own status-bar style, only while its tab is focused.
@@ -81,10 +81,10 @@ Lessons from upgrading Radar NG (September 2026) through Expo SDK 57 → 58 prev
 
 - If `app.json` enables it, **turn the React Compiler lint rules back on** (`react-hooks/refs`, `purity`, `immutability`, `set-state-in-effect`) and fix what they find. Then run `bunx react-compiler-healthcheck`.
 - Typical fixes:
-  - `Date.now()` in render → a `useNow(intervalMs)` hook.
-  - `useRef(new X()).current` → `useState(() => new X())[0]`.
-  - setState in an effect body → derive the value, or key it to its inputs.
-  - A ref written during render → state updated during render from the previous value.
+  - Replace `Date.now()` in render with a `useNow(intervalMs)` hook.
+  - Replace `useRef(new X()).current` with `useState(() => new X())[0]`.
+  - Replace setState in an effect body by deriving the value, or key it to its inputs.
+  - Replace a ref written during render with state updated during render from the previous value.
 - Code that intentionally mutates on the UI thread (Reanimated or Skia buffers) gets per-line disables with a reason, not a global off switch.
 
 ## 9. Native targets (widget, Watch, CarPlay)

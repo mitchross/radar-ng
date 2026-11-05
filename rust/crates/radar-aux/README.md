@@ -52,18 +52,18 @@ All are `thiserror` enums.
 ## Behaviour
 
 **AQM.** Each chunk renders messages `start..min(start+24, 72)` (starts 0, 24, 48) of one layer
-(`air-quality` = `ave_1hr_pm25_bc`, `ozone` = `ave_1hr_o3_bc`). Messages are split by hand from the GRIB2 file.
+(`air-quality` = `ave_1hr_pm25_bc`, `ozone` = `ave_1hr_o3_bc`). The code splits messages by hand from the GRIB2 file.
 Each message's valid time comes from its reference time, product template and forecast time (template 4.0),
 or from the end of the time range (template 4.8, one range only). The AQI breakpoint tables come from radar-tiler
-palettes, keyed by `pm25` or `ozone`. A frame is recorded only when every palette rendered. Grids are written to
+palettes, keyed by `pm25` or `ozone`. A frame is recorded only when every palette rendered. The crate writes grids to
 `GRID_DIR` with ascending longitudes. Publication writes a layer only when it has exactly 72 frames, with
-`runs/<run>/<ts>` paths, `lead_minutes` from the run, `source: "aqm"` and `complete: true`. A run is marked
-processed only by `aqm_mark_processed`. The worker must call it after the air-quality layer is published.
+`runs/<run>/<ts>` paths, `lead_minutes` from the run, `source: "aqm"` and `complete: true`. Only `aqm_mark_processed`
+marks a run processed. The worker must call it after the air-quality layer is published.
 
 **Tropical.** The feed is required. GIS layers are best effort: index failure gives positions only, and one failed
 layer drops only that layer. Output is compact JSON, `tropical.json`, mode 0644, written atomically with fsync.
 
-**Tile cleanup.** Follows spec 8.2-8.6. For each expired timestamp directory the manifest entry is removed
+**Tile cleanup.** This follows spec 8.2-8.6. For each expired timestamp directory the manifest entry is removed
 first (`remove_frame`, which takes `manifest.lock`), then the directory is deleted. If the manifest write fails
 the directory stays and the sweep errors. A corrupt manifest aborts before anything is removed. Versioned runs in
 `<layer>/<palette>/runs/` are removed when older than the cutoff, unless they are the layer's current manifest run.
@@ -80,19 +80,19 @@ future kills it.
 - **D-5** AQM download falls through to the next source on any non-2xx or transport error. radar-grib's
   `download_product` falls back only on 404, while NOAA may answer 403 for a missing key. The fallback is implemented
   locally in `aqm/download.rs`.
-- **D-6** The per-attempt temp directory is replaced by a per-run cache, `AQM_TMP_ROOT/cache/<run>/<product>.grib2`.
+- **D-6** A per-run cache, `AQM_TMP_ROOT/cache/<run>/<product>.grib2`, replaces the per-attempt temp directory.
   One fetch covers all three chunks of a layer. A `flock` on `.<product>.lock` makes concurrent chunks wait for the
   single download. The partial file is `<product>.grib2.part`, renamed on success and removed on failure. Cache
-  retention keeps only the newest run directory and is run from `aqm_cleanup`.
+  retention keeps only the newest run directory and runs from `aqm_cleanup`.
 - **D-7** radar-core `write_grid` sorts longitudes only when the maximum is above 180. The AQM grid is already
   normalised, so the ascending-column reorder is done in `aqm/render.rs` before writing.
-- **D-8** The HTTP read timeout is applied per read (`read_timeout`), not as a total request deadline. This matches
+- **D-8** The HTTP read timeout applies per read (`read_timeout`), not as a total request deadline. This matches
   the Python httpx behaviour the spec describes.
 - **D-9** Cancellation of `open_meteo_sync` kills the child process (SIGKILL through `kill_on_drop`). The Python
   activity had no kill path.
 - **D-10** Tropical writes through a unique temp name with `tempfile` and fsyncs the file and directory. Python
   used a fixed `tropical.tmp` with no fsync.
-- **D-11** Non-finite numbers (NaN, inf) are treated as missing. A numeric string is accepted. A `0` is kept, which
+- **D-11** The crate treats non-finite numbers (NaN, inf) as missing and accepts a numeric string. A `0` is kept, which
   matters for the `first_present` fallback. A latitude or longitude that fails to parse skips the position feature,
   but the storm is still counted.
 - **D-13** Top-level staging entries (`.<name>.tmp-*` or `*.tmp`) directly under a layer directory are swept by
@@ -100,7 +100,7 @@ future kills it.
   remove them.
 - **Q-12** Only the last 50 lines of each stream are kept, as Python `deque(maxlen=50)` does.
 - **Q-13** Error messages keep the last 500 characters, counted in code points.
-- **Time parsing.** Naive timestamps are read as UTC. Python's local-time `.timestamp()` is not reproduced.
+- **Time parsing.** The crate reads naive timestamps as UTC. Python's local-time `.timestamp()` is not reproduced.
 - **Run ids** are parsed by hand as `YYYYMMDD_CC`, because chrono's `%H` pattern requires minutes.
 
 ### Bug found while testing

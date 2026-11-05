@@ -51,7 +51,7 @@ with `WORKER_ROLE=open-meteo`, and it serves only `open_meteo_sync`.
 | `alerts` | `radar-ng-alerts` | `PollAlertsWorkflow`, `WatchStormWorkflow`, `RegisterPushTokenWorkflow`, `DeletePushTokenWorkflow`, smoke | `persist_push_token`, `delete_push_token`, `compare_radar_frames`, `detect_storm_change`, `fan_out_push_to_user`, `fetch_nws_active_alerts`, `mark_alerts_seen`, `signal_matching_storm_watches`, `send_push_notification`, smoke |
 | `open-meteo` | `radar-ng-open-meteo` (`TEMPORAL_TASK_QUEUE` overrides) | none | `open_meteo_sync` |
 
-The table is enforced by unit tests (`worker::tests`). Those tests check exact pool contents, that each
+Unit tests (`worker::tests`) enforce the table. They check exact pool contents, that each
 workflow and activity has one owner (smoke has five), and that every name matches a `radar_types::wire`
 constant.
 
@@ -77,8 +77,8 @@ Set `TEMPORAL_TEST_NAMESPACE` to use a namespace other than `default`.
 
 ## Worker Versioning
 
-Versioning turns on only when both `TEMPORAL_DEPLOYMENT_NAME` and `TEMPORAL_WORKER_BUILD_ID` are non-empty;
-in production the Temporal Worker Controller sets them. Workflows default to `PINNED` (spec 3.6): a run stays
+Versioning turns on only when both `TEMPORAL_DEPLOYMENT_NAME` and `TEMPORAL_WORKER_BUILD_ID` are non-empty.
+In production the Temporal Worker Controller sets them. Workflows default to `PINNED` (spec 3.6), so a run stays
 on the build that started it. Only new work, and Continue-as-New with `AUTO_UPGRADE` (the WatchStorm handoff),
 moves to a new build. The controller promotes a build after `RadarDeploymentSmokeWorkflow` passes on it.
 Operator notes: `docs/develop/temporal-safe-deployments.md` and `deploy/RUNBOOK.md`.
@@ -127,7 +127,7 @@ Operator notes: `docs/develop/temporal-safe-deployments.md` and `deploy/RUNBOOK.
   item is scheduled when a slot frees, in the same workflow task that processed the completion.
   - **Replay.** Completion order comes from history, so replay of this code is deterministic. The window is
     also what Python's `Semaphore(N)` plus `gather` does (FIFO waiters, the next item is scheduled in the task
-    that processed the completion), and every recorded Python history of MRMS, HRRR and AQM replays on it,
+    that processed the completion). Every recorded Python history of MRMS, HRRR and AQM replays on it,
     v1.1.49 included (see "Replay" below). Only runs started on an earlier Rust build that used `buffered`
     could diverge. That matters only if such a build ever served a real namespace. No new patch ID was
     added, because spec 10.2 forbids that without a matching existing one.
@@ -164,12 +164,12 @@ What it checks:
 `ALLOWLIST` in the test holds fixtures that are known not to replay, each with its reason. It is empty. An
 allowlisted fixture that starts replaying fails the test, so the list cannot go stale.
 
-JSON decoding: the histories are proto3 JSON (camelCase fields, enum names, base64 payload `data`, int64 as
+The histories are proto3 JSON (camelCase fields, enum names, base64 payload `data`, int64 as
 strings). In temporalio-protos 0.10 the history messages derive plain serde (snake_case fields, numeric enums),
 so `WorkflowHistory::from_json` cannot read them. The test decodes them with `prost-reflect` against the
 SDK's own descriptor set, then re-decodes the binary encoding into `History`. Unknown fields are rejected. The
 descriptor set reaches the test through `build.rs`, which reads `DEP_TEMPORALIO_PROTOS_DESCRIPTOR_PATH`. That
-is why `temporalio-protos` is a direct dependency; it is the same version the SDK already uses.
+is why `temporalio-protos` is a direct dependency. It is the same version the SDK already uses.
 
 Result: all 143 histories replay, with no allowlist.
 
@@ -193,7 +193,7 @@ Two workflow fixes were needed. Before them, 23 histories failed: 3 MRMS and 20 
    Python's `wait_condition(fn, timeout=...)`, which creates the timer first and so uses up a timer sequence
    number, then cancels it. A timer cancelled in the same activation is never sent: Core drops it, for both
    SDKs. A timer cancelled in a later task records `TimerCanceled` before the next iteration's commands. This
-   was also a live defect: an in-flight Python execution signalled mid-iteration would have hit a
+   was also a live defect. An in-flight Python execution signalled mid-iteration would have hit a
    nondeterminism error after cutover.
 2. **MRMS optional input.** Python's `run(self, args: IngestMrmsArgs | None = None)` accepts a start with no
    arguments. The SDK decodes `Option<T>` only from exactly one payload. `empty-backlog` (no input) therefore

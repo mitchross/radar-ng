@@ -1,22 +1,22 @@
 # Contributing to radar-ng
 
-Thanks for your interest! radar-ng is a monorepo with a Rust ingest/tile pipeline and API, an Expo
+radar-ng is a monorepo with a Rust ingest/tile pipeline and API, an Expo
 mobile app, and a web radar. This doc covers how to get set up and the conventions the project
 follows.
 
 ## Getting set up
 
-See **[docs/start/getting-started.md](docs/start/getting-started.md)** — it covers running the stack
+See [docs/start/getting-started.md](docs/start/getting-started.md). It covers running the stack
 (Docker Compose or Kubernetes) and the mobile app.
 
-- **Backend / pipeline:** Rust, one Cargo workspace in `rust/` (toolchain pinned in `rust/rust-toolchain.toml`; `protoc` required). See [rust/README.md](rust/README.md).
+- **Backend / pipeline.** Rust, one Cargo workspace in `rust/` (toolchain pinned in `rust/rust-toolchain.toml`; `protoc` required). See [rust/README.md](rust/README.md).
   ```bash
   cd rust
   cargo fmt --all -- --check
   cargo clippy --workspace --all-targets -- -D warnings
   cargo test --workspace
   ```
-- **Frontend:** Expo (SDK 58 preview) + TypeScript, package manager is **[Bun](https://bun.sh)**.
+- **Frontend.** Expo (SDK 58 preview) + TypeScript, package manager is [Bun](https://bun.sh).
   ```bash
   cd frontend
   bun install
@@ -33,9 +33,9 @@ See **[docs/start/getting-started.md](docs/start/getting-started.md)** — it co
 
 ## Making changes
 
-1. **Branch** off `master`.
+1. Branch off `master`.
 2. Keep changes focused; match the style and comment density of the surrounding code.
-3. **Verify before you push:**
+3. Verify before you push:
    - Frontend: `bunx tsc --noEmit`, `bun run test`, and `bun run lint` must all pass.
    - Web (`web/`): `bun run build` (typecheck + Vite build) and `bun run test`.
    - Backend: `cargo fmt --check`, `cargo clippy -D warnings` and `cargo test` for the crates you touched. CI (`ci-rust.yml`) also runs the Temporal integration tests, the live-NOAA check and the image builds.
@@ -57,7 +57,7 @@ its entitlement is pending.
 ## Commit / PR conventions
 
 - Conventional-commit-style prefixes are appreciated (`fix:`, `feat:`, `docs:`, `perf:`, `refactor:`).
-- Explain *why* in the body when the change isn't obvious — this repo's comments and commit messages lean toward capturing rationale, not just what changed.
+- Explain *why* in the body when the change isn't obvious. This repo's comments and commit messages capture rationale, not only what changed.
 
 ## Images & releases
 

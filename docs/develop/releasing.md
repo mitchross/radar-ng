@@ -1,7 +1,7 @@
-# Releasing — code to running pods
+# Releasing: code to running pods
 
 Production releases come from GitHub Actions, GHCR, and the `talos-argocd-proxmox` GitOps repository.
-Releases are **forward-only**: a bad release is fixed by merging a fix and shipping the next version.
+Releases are **forward-only**. Fix a bad release by merging a fix and shipping the next version.
 The step-by-step runbook is [deploy/RUNBOOK.md](../../deploy/RUNBOOK.md).
 
 ## Normal path
@@ -19,7 +19,7 @@ merge a tested PR into mitchross/radar-ng:master
 
 There is no release commit or git tag. Each image workflow reads its existing GHCR semver tags and
 allocates the next patch version; the three backend images never go below `v2.0.0`, where the Rust
-backend starts. Each workflow is serialized so two builds cannot choose the same version. `workflow_dispatch` accepts an
+backend starts. Each workflow is serialized, so two builds cannot choose the same version. `workflow_dispatch` accepts an
 explicit version for a deliberate rebuild.
 
 The workflow `on.push.paths` blocks decide which change builds which image. A change under `rust/`
@@ -38,11 +38,10 @@ Never deploy `latest`. GitOps pins `vX.Y.Z@sha256:…`.
 ## Before merging source
 
 1. `ci-rust.yml` must be green: fmt, clippy, tests, the Temporal integration tests, the live-NOAA check,
-   and the image builds with their smoke runs. App changes run `ci-frontend.yml`; the web image is
-   built by `ghcr-web.yml`.
+   and the image builds with their smoke runs. App changes run `ci-frontend.yml`. `ghcr-web.yml` builds the web image.
 2. Keep one release per image in flight at a time.
 3. For workflow-code changes, the replay gate must pass (below). If it fails, use a reviewed patch
-   marker rather than editing fixtures. A unit test is not a history-compatibility proof.
+   marker instead of editing fixtures. A unit test does not prove history compatibility.
 
 Watch the release:
 
@@ -51,7 +50,7 @@ gh run list --repo mitchross/radar-ng --branch master --limit 10
 gh run watch <run-id> --repo mitchross/radar-ng
 ```
 
-Read the published version (and, for the backend images, `tag@digest`) from the completed run; do not
+Read the published version (and, for the backend images, `tag@digest`) from the completed run. Do not
 predict the tag.
 
 ## Temporal worker replay gate
@@ -59,7 +58,7 @@ predict the tag.
 `ghcr-backend.yml` runs `cargo test --release -p radar-worker --test replay` before it builds the
 binary, so no image exists unless its workflow code replays every retained history under
 `rust/crates/radar-worker/testdata/replay_fixtures/`. A local `deploy/Dockerfile` build runs the same
-gate (`REPLAY_GATE=1`). CI's `lint-test` job runs the same test. The
+gate (`REPLAY_GATE=1`), and so does CI's `lint-test` job. The
 images carry the label `io.radar-ng.replay-gate=rust-offline-replay`, which CI checks.
 
 ## GitOps rollout
@@ -83,7 +82,7 @@ stays on its current build until a fixed release replaces the candidate.
 
 ## Live verification
 
-Argo being Healthy is necessary, not sufficient:
+A Healthy Argo status is necessary but not sufficient:
 
 ```bash
 radar debug doctor --server https://radar.vanillax.me --temporal-address <temporal-frontend>:7233 --namespace radar-ng
@@ -91,7 +90,7 @@ radar debug doctor --server https://radar.vanillax.me --temporal-address <tempor
 
 Also check that every WorkerDeployment reports its target version, every pod is Ready, and every
 container `imageID` matches the published digest, with pollers on each task queue. Then verify the
-behaviour that justified the release, for example:
+behavior that justified the release, for example:
 
 - MRMS/nowcast: freshness stays inside the ten-minute budget through at least two natural cadences.
 - HRRR: a natural ingest publishes a non-empty consecutive `radar-hrrr` manifest prefix and a
@@ -102,7 +101,7 @@ behaviour that justified the release, for example:
   route.
 
 Watch restarts, OOMs, Temporal backlog and Schedule errors during the rollout. Pinned executions
-started on the previous build may be terminated; the GitOps repo's radar-ng `RUNBOOK.md` covers
+started on the previous build may be terminated. The GitOps repo's radar-ng `RUNBOOK.md` covers
 orphaned pinned executions.
 
 ## When something goes wrong
@@ -112,14 +111,14 @@ orphaned pinned executions.
 | Release workflow failed before pushing | Fix and re-run the source workflow. Do not invent a tag by hand. |
 | A release is bad in production | Fix forward: merge the fix, let the next `vX.Y.Z` publish, bump GitOps. |
 | Renovate updated only some references | Do not merge. Update all references together. |
-| Git has the new image but Argo renders an old manifest | Request a normal refresh; use a hard refresh only when the repo-server cache is proven stale. |
+| Git has the new image but Argo renders an old manifest | Request a normal refresh. Use a hard refresh only when the repo-server cache is proven stale. |
 | Worker resource-only change does not produce a new build ID | Publish a new worker image or use the Worker Controller mechanism documented in GitOps. Do not patch the generated Deployment. |
 | New image runs but the feature is absent | Compare pod `imageID`, OCI source revision, env flags, task-queue pollers and the product output. |
 
 ## Special cases
 
-The basemap archive is fetched by the `basemap` Deployment's init container from the newest Protomaps
-build; it is not an image. Bump its `REFRESH` env to re-extract.
+The `basemap` Deployment's init container fetches the basemap archive from the newest Protomaps
+build. It is not an image. Bump its `REFRESH` env to re-extract.
 
 Open-Meteo is a filesystem-coupled, single-pod `Recreate` workload. Keep its serve and sync containers
 on the same image, merge its rollout between sync runs, and budget for one cold pull plus volume attach.
