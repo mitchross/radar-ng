@@ -8,7 +8,7 @@
 //   TypeError: this._listeners.forEach is not a function (it is undefined)
 //
 // The throw is harmless (those subclasses don't actually need __callListeners
-// to fire — they fan updates out via their own x/y children), but it pollutes
+// to fire. They fan updates out via their own x/y children), but it pollutes
 // the dev red-screen and bloats the OTEL error log. Patch the prototype so
 // the method no-ops when `_listeners` doesn't have a Map-shaped forEach.
 // Re-check on RN upgrades: AnimatedValueXY.js still does `this._listeners = {}`.

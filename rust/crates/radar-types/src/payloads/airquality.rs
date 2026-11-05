@@ -1,6 +1,4 @@
 //! Air-quality (NAQFC AQM) payloads (`IngestAirQualityWorkflow` and the `aqm_*` activities).
-//!
-//! Source: `temporal/workflows/ingest_airquality.py`, `backend/ingest_airquality/activities.py`.
 
 use serde::{Deserialize, Serialize};
 

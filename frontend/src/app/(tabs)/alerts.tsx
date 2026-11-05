@@ -1,5 +1,5 @@
 /**
- * Cumulus Alerts tab — Redesigned for Editorial Light.
+ * Cumulus Alerts tab, Editorial Light design.
  * NWS active alerts list with Simple/Advanced gating.
  */
 import { useCallback, useState } from "react";

@@ -1,6 +1,6 @@
 /**
- * Storm cell markers — dots at the centroid of each connected region ≥40 dBZ,
- * sized by area and coloured by peak intensity — plus, for history-backed
+ * Storm cell markers: dots at the centroid of each connected region ≥40 dBZ,
+ * sized by area and coloured by peak intensity, plus, for history-backed
  * tracks, a 60-minute forecast path with 15-minute ticks and the past track
  * (same maths as the web site: lib/stormTracks).
  *
@@ -60,7 +60,7 @@ export function StormCellsOverlay({ onSelect }: { onSelect?: (cell: StormCellInf
         }
       }}
     >
-      {/* Halo — soft glow sized by area_km2 */}
+      {/* Halo: soft glow sized by area_km2 */}
       <Layer
         type="circle"
         id="storms-halo"

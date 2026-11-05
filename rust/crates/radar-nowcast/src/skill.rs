@@ -83,7 +83,7 @@ pub struct Scores {
     pub bias: Option<f64>,
 }
 
-/// Scores from counts (spec 10.3 `scores_from_counts`).
+/// Scores from counts (spec 10.3).
 pub fn scores(c: &Counts) -> Scores {
     let (h, m, f) = (c.hits as f64, c.misses as f64, c.false_alarms as f64);
     Scores {
@@ -106,7 +106,7 @@ fn ratio(num: u64, den: u64) -> Option<f64> {
     }
 }
 
-/// Python `round(x, 3)`: correctly rounded to 3 decimals, ties to even on the exact binary value.
+/// Rounds to 3 decimals like Python's `round(x, 3)`: ties to even on the exact binary value.
 pub fn round3(x: f64) -> Option<f64> {
     if !x.is_finite() {
         return None;
@@ -155,7 +155,7 @@ pub struct GridBounds {
 }
 
 /// Nearest-neighbour resampling of `src` (with bounds `src_b`) onto the grid `dst_b` of
-/// shape `dst_h x dst_w` (spec 10.2 step 3; pysteps-free `resample_nearest`). Indices use
+/// shape `dst_h x dst_w` (spec 10.2 step 3). Indices use
 /// `rint` (ties to even) and are clipped to the source.
 pub fn resample_nearest(
     src: &Field2<f32>,

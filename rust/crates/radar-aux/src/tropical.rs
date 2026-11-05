@@ -5,7 +5,7 @@
 //!
 //! Deliberate deviations (README): the output temp file is unique and fsynced (D-10); a zero latitude,
 //! longitude, wind or pressure is kept (D-11); a non-finite or unparseable number is treated as missing
-//! (Python would write NaN or crash); the file is written 0644 as `Path.write_text` does.
+//! (the original Python wrote NaN or crashed); the file is written 0644, as before.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -23,7 +23,7 @@ use tracing::{info, warn};
 pub const OUT_FILE: &str = "tropical.json";
 /// Knots to miles per hour (`KT_TO_MPH`).
 pub const KT_TO_MPH: f64 = 1.15078;
-/// GIS layer suffixes per kind, in Python order.
+/// GIS layer suffixes per kind, in the original Python order.
 pub const GIS_LAYERS: [(&str, &str); 3] = [
     ("cone", "Forecast Cone"),
     ("track", "Forecast Track"),
@@ -103,7 +103,7 @@ pub enum TropicalError {
     Io(#[from] std::io::Error),
 }
 
-/// Storms in the feed: `activeStorms`, or `storms` when that is empty or absent (Python `or` chain).
+/// Storms in the feed: `activeStorms`, or `storms` when that is empty or absent (first non-empty wins).
 pub fn storms_of(feed: &Value) -> &[Value] {
     for key in ["activeStorms", "storms"] {
         if let Some(list) = feed
@@ -134,7 +134,7 @@ pub fn gis_bins(feed: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Python `_num`: a finite float from a JSON number or numeric string. Anything else is `None`.
+/// A finite float from a JSON number or numeric string. Anything else is `None`.
 pub fn num(value: Option<&Value>) -> Option<f64> {
     let parsed = match value? {
         Value::Number(n) => n.as_f64(),
@@ -144,8 +144,8 @@ pub fn num(value: Option<&Value>) -> Option<f64> {
     parsed.filter(|f| f.is_finite())
 }
 
-/// Python `a or b or ...` on JSON values, with one deliberate change (D-11): a numeric `0` is a value,
-/// not a miss. Null and the empty string fall through, as before.
+/// The first present value of `candidates`, with one deliberate change from Python's `or` (D-11):
+/// a numeric `0` is a value, not a miss. Null and the empty string fall through, as before.
 pub fn first_present<'a>(candidates: &[Option<&'a Value>]) -> Option<&'a Value> {
     candidates
         .iter()
@@ -154,7 +154,7 @@ pub fn first_present<'a>(candidates: &[Option<&'a Value>]) -> Option<&'a Value> 
         .find(|v| !v.is_null() && v.as_str() != Some(""))
 }
 
-/// Python truthiness for the GeoJSON checks (`if geometry`, `if fc`).
+/// Truthiness as in Python, for the GeoJSON checks (`if geometry`, `if fc`).
 fn truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
@@ -180,7 +180,7 @@ pub fn saffir_simpson(kt: Option<f64>) -> Option<i64> {
     )
 }
 
-/// `round(kt * 1.15078)` with Python's round-half-even.
+/// `round(kt * 1.15078)` with round-half-even, so output matches the golden fixtures.
 pub fn knots_to_mph(kt: f64) -> i64 {
     round_half_even(kt * KT_TO_MPH) as i64
 }
@@ -196,11 +196,10 @@ pub struct BuiltGeoJson {
     pub feature_count: usize,
 }
 
-/// Python `_build_geojson`: the feed plus optional GIS layers into one FeatureCollection.
+/// Builds the feed plus optional GIS layers into one FeatureCollection.
 ///
 /// Per storm, features are appended in this order: position, cones, tracks, forecast points. A storm
-/// whose bin has no GIS layers gets only its position. `generated_at` is passed in (`time.time()` in the
-/// Python).
+/// whose bin has no GIS layers gets only its position. `generated_at` is passed in.
 pub fn build_geojson(feed: &Value, gis: &GisMap, generated_at: f64) -> BuiltGeoJson {
     let storms = storms_of(feed);
     let mut features: Vec<Value> = Vec::new();
@@ -327,7 +326,7 @@ pub fn build_geojson(feed: &Value, gis: &GisMap, generated_at: f64) -> BuiltGeoJ
     }
 }
 
-/// Features of one GIS kind for a bin, keeping only those with truthy geometry (Python `_gis_features`).
+/// Features of one GIS kind for a bin, keeping only those with truthy geometry.
 fn gis_features<'a>(layers: Option<&'a BTreeMap<String, Value>>, kind: &str) -> Vec<&'a Value> {
     layers
         .and_then(|l| l.get(kind))
@@ -389,7 +388,7 @@ pub async fn tropical_fetch_and_publish(
     })
 }
 
-/// Best-effort GIS fetch (Python `_fetch_gis`). Any failure of the index returns an empty map. A failed layer
+/// Best-effort GIS fetch Any failure of the index returns an empty map. A failed layer
 /// contributes nothing.
 pub async fn fetch_gis(http: &reqwest::Client, cfg: &TropicalConfig, bins: &[String]) -> GisMap {
     if bins.is_empty() {
@@ -403,8 +402,8 @@ pub async fn fetch_gis(http: &reqwest::Client, cfg: &TropicalConfig, bins: &[Str
             return GisMap::new();
         }
     };
-    // Python: {layer["name"]: layer["id"]} raises KeyError on a layer without either key, which drops the
-    // whole index. Keep that behaviour.
+    // A layer without a `name` or `id` key drops the whole index, as in the original Python
+    // (KeyError). Keep that behaviour.
     let mut ids: BTreeMap<String, i64> = BTreeMap::new();
     for layer in index
         .get("layers")

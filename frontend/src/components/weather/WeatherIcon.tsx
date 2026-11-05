@@ -1,11 +1,11 @@
 /**
- * Cumulus WeatherIcon — View-only port of icons.jsx (no react-native-svg).
+ * Cumulus WeatherIcon: View-only port of icons.jsx (no react-native-svg).
  * Icons are drawn with absolutely-positioned Views inside a square container
  * that scales linearly with the `size` prop.
  *
  * Supported kinds: sun, moon, partlyCloudy, cloudy, overcast, rain, heavyRain,
  * storm, snow, fog, hail, and unknown (a faint dashed ring when the source has
- * no weather code — never a guessed condition).
+ * no weather code, never a guessed condition).
  */
 import { View } from "react-native";
 import { cumulus, type IconKind } from "../../lib/cumulusTheme";
@@ -16,7 +16,7 @@ interface Props {
   time?: "day" | "night";
 }
 
-/** Shared cloud silhouette — a stack of 3 rounded blobs. */
+/** Shared cloud silhouette, a stack of 3 rounded blobs. */
 function Cloud({
   size,
   cx,

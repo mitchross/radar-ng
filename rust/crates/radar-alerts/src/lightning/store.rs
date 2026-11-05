@@ -54,7 +54,7 @@ impl StrikeBuffer {
         self.strikes.push_back(strike);
     }
 
-    /// Drop strikes from the front while `t < cutoff`. Only the front is inspected, as Python's `_prune` does.
+    /// Drop strikes from the front while `t < cutoff`. Only the front is inspected.
     pub fn prune_before(&mut self, cutoff: f64) {
         while self.strikes.front().is_some_and(|s| s.t < cutoff) {
             self.strikes.pop_front();
@@ -80,8 +80,7 @@ impl StrikeBuffer {
     }
 }
 
-/// Strikes still inside the retention window of the last published file (spec 6.10, Python
-/// `_load_existing_strikes`).
+/// Strikes still inside the retention window of the last published file (spec 6.10).
 ///
 /// A missing file, invalid JSON, or a non-object top level gives an empty list. Features that cannot be read are
 /// skipped one by one. Non-finite times are skipped too. The result is sorted by time and keeps the newest
@@ -131,7 +130,7 @@ fn seed_from_feature(feature: &Value) -> Option<Strike> {
     if !t.is_finite() {
         return None;
     }
-    // Python: int(props.get("polarity", 0)). An explicit null raises and the feature is skipped.
+    // Like `int(props.get("polarity", 0))`: an explicit null raises and the feature is skipped.
     let pol = match props.get("polarity") {
         None => 0,
         Some(v) => py_int(v)?,
@@ -149,8 +148,8 @@ fn seed_from_feature(feature: &Value) -> Option<Strike> {
     })
 }
 
-/// The `lightning.json` document for `strikes` at time `now` (spec 6.9). Written with Python's default
-/// `json.dumps` separators, so the bytes match the Python writer.
+/// The `lightning.json` document for `strikes` at time `now` (spec 6.9). Written with the default
+/// `json.dumps` separators, so the bytes match the original writer.
 #[must_use]
 pub fn render_geojson(strikes: &[Strike], now: f64, retention_min: i64) -> String {
     let features: Vec<Json> = strikes

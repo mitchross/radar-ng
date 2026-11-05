@@ -9,12 +9,12 @@
 //! one `fsync` per tile and directory. On ext4 (Longhorn) each `fsync` is a journal commit and a
 //! device flush, so a 630-tile frame paid 630 of them. Elsewhere every file is synced in turn.
 //!
-//! Deliberate deviations from the Python publisher (see README):
+//! Deliberate deviations from the original Python publisher (see README):
 //! * a final that already holds a complete marker of *any* identity is reported as
 //!   [`PublishStatus::ExistingForeign`] with its tile count, instead of raising a conflict
 //!   that would retry forever (PLAN collision rule);
 //! * unbound (pre-v2) trees are never adopted: the call fails with [`TilerError::Unbound`]
-//!   and adoption stays with Python (spec H6);
+//!   (spec H6);
 //! * only the indexed identity is produced, so `existing_compatible` and `adopted` are never
 //!   returned.
 
@@ -45,15 +45,15 @@ pub enum PublishStatus {
     Created,
     /// A complete pyramid with exactly this identity already existed.
     ExistingValid,
-    /// A complete pyramid with a different identity exists (for example Python's
-    /// `indexed` winner). It is left untouched and reported.
+    /// A complete pyramid with a different identity exists (for example the Python
+    /// `indexed` renderer's). It is left untouched and reported.
     ExistingForeign,
     /// The render produced no tiles, so nothing was published.
     Empty,
 }
 
 impl PublishStatus {
-    /// Stable snake_case name, as the Python publisher spells it.
+    /// Stable snake_case name, as the original Python publisher spelled it.
     pub fn as_str(self) -> &'static str {
         match self {
             PublishStatus::Created => "created",
@@ -156,7 +156,7 @@ pub fn fsync_file(file: &File) -> Result<()> {
     Ok(())
 }
 
-/// `fsync` a directory, ignoring `EINVAL`/`ENOTSUP` as the Python publisher does.
+/// `fsync` a directory, ignoring `EINVAL`/`ENOTSUP` as the original Python publisher did.
 pub fn fsync_directory(path: &Path) -> Result<()> {
     let handle = match File::open(path) {
         Ok(h) => h,
@@ -281,7 +281,7 @@ struct PublicationLocks {
 
 impl Drop for PublicationLocks {
     fn drop(&mut self) {
-        // Release in reverse acquisition order, as the Python publisher does.
+        // Release in reverse acquisition order.
         while let Some(file) = self.files.pop() {
             let _ = flock(&file, FlockOperation::Unlock);
         }
@@ -417,7 +417,7 @@ where
             unresolved.push(i);
             continue;
         }
-        // Unbound and corrupt trees propagate: the Python publisher adopts unbound ones (H6).
+        // Unbound and corrupt trees propagate: Rust never adopts unbound ones (H6).
         let inspection = inspect_complete_pyramid(final_path, None)?;
         fsync_bound_publication(final_path, &locks.roots[i])?;
         let status = if identity_for(name) == Some(&inspection.identity) {

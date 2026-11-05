@@ -33,7 +33,7 @@ fn rects(h: usize, w: usize, cells: &[(usize, usize, usize, usize, f32)]) -> Vec
     data
 }
 
-/// Same placement as `test_storms._cell_frame`, as one 5x5 (or `size`) block.
+/// One 5x5 (or `size`) block of hot pixels.
 fn cell_frame(lon_center: f64, size: usize) -> Vec<f32> {
     let lat_center = 42.0_f64;
     let r = ((lat_center - 41.0) / 0.01).round_ties_even() as usize;

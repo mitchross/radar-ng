@@ -1,5 +1,5 @@
 // animatedFix patches RN's AnimatedNode.__callListeners and must run before
-// anything constructs an Animated node — keep it as the very first import.
+// anything constructs an Animated node. Keep it as the very first import.
 import "../lib/animatedFix";
 // Telemetry must be imported next so OTEL providers are registered before
 // any component code runs fetch() or starts a span.

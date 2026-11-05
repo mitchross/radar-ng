@@ -9,12 +9,13 @@
 //!   `ave_1hr_pm25_bc` file (`naqfc::find_latest_run`, `download_product`). It also HEADs a key that
 //!   does not exist in the HRRR, NAQFC and MRMS buckets and records the status (403 or 404), and HEADs
 //!   both NAQFC sources for the latest run. Files go to a cache directory and are reused.
-//! - `dump`: decodes those files with `radar-grib` and writes what `bench/py/verify_noaa.py`
-//!   compares against pygrib: values (f32 LE), axes and meshes (f64 LE), per-message metadata and
-//!   value hashes, `.idx` record picks and selector picks for the 13 HRRR variables.
+//! - `dump`: decodes those files with `radar-grib` and writes what the removed
+//!   `verify_noaa.py` compared against pygrib: values (f32 LE), axes and meshes (f64 LE),
+//!   per-message metadata and value hashes, `.idx` record picks and selector picks for the 13
+//!   HRRR variables.
 //!
 //! Hashes are SHA-256 of the little-endian f32 values with every NaN written as `0x7fc00000`,
-//! the same canonical form the Python side hashes.
+//! the same canonical form the pygrib side hashed.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -32,7 +33,7 @@ use radar_grib::s3::S3Client;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-/// The 13 HRRR variables in the Python `IDX_MATCHERS` order.
+/// The 13 HRRR variables, in the `IDX_MATCHERS` order of the removed Python code.
 const ALL_VARS: [HrrrVar; 13] = [
     HrrrVar::Refc,
     HrrrVar::T2m,
@@ -79,7 +80,7 @@ enum Cmd {
         #[arg(long)]
         json: PathBuf,
     },
-    /// Decode the files and write values, axes and selections for verify_noaa.py.
+    /// Decode the files and write values, axes and selections for the pygrib comparison.
     Dump {
         /// MRMS `.grib2.gz` (or a raw `.grib2`).
         #[arg(long)]

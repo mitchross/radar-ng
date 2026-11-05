@@ -1,6 +1,4 @@
 //! Tile and grid cleanup payloads (`TileCleanupWorkflow` and `tile_cleanup_sweep`).
-//!
-//! Source: `temporal/workflows/tile_cleanup.py`, `backend/tile_cleanup/activities.py`.
 
 use serde::{Deserialize, Serialize};
 

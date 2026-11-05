@@ -3,7 +3,7 @@
 //! The middleware runs for every request, including 404s and 405s:
 //! 1. Resolve the client IP (strict `X-Forwarded-For` walk from the socket peer).
 //! 2. Token bucket per client, for `/api/*` and `/v1/*` only (`/api/livez` exempt). Static lanes
-//!    are never limited, as in the Python stack where Caddy served them. A limited request answers
+//!    are never limited (Caddy used to serve them). A limited request answers
 //!    429 and consumes no token.
 //! 3. The handler runs. Its metrics are recorded under the matched route template, or `unmatched`.
 //! 4. A JSON access log line for every request except `/api/livez` and `/api/health`.

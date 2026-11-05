@@ -1,5 +1,5 @@
 /**
- * Storm-cell tracks and "arriving in N min" — same maths as web/src/overlays.ts
+ * Storm-cell tracks and "arriving in N min", same maths as web/src/overlays.ts
  * so the site and the app draw and warn identically.
  */
 const KMH_TO_MPH = 0.621371;
@@ -115,7 +115,7 @@ export function hailLabel(peakDbz: number): string | null {
   return null;
 }
 
-/** "Hail-producing storm arriving in ~20 min" — shared wording for the Home card. */
+/** "Hail-producing storm arriving in ~20 min", shared wording for the Home card. */
 export function describeIncoming(t: IncomingStorm): { headline: string; sub: string; severe: boolean } {
   const what = t.peakDbz >= 60 ? "Hail-producing storm" : t.peakDbz >= 50 ? "Heavy storm" : "Rain";
   return {

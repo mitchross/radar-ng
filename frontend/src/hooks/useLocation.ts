@@ -5,7 +5,7 @@ import { useWeatherStore } from "../stores/useWeatherStore";
 import { reverseGeocode } from "../lib/geocoding";
 import { shouldRefreshFix } from "../lib/locationStatus";
 
-// A fresh GPS fix can take a long time — or never arrive — indoors or on an
+// A fresh GPS fix can take a long time, or never arrive, indoors or on an
 // emulator with no location set. Bound the wait so screens never get stuck.
 const FRESH_FIX_TIMEOUT_MS = 10_000;
 

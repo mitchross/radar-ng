@@ -59,7 +59,7 @@ pub fn build_grid(spec: &Value, h: usize, w: usize) -> Vec<f32> {
     }
 }
 
-/// Relative-or-absolute float closeness used for all Python comparisons (spec 15.2 tolerance).
+/// Relative-or-absolute float closeness used for all golden comparisons (spec 15.2 tolerance).
 pub fn close(a: f64, b: f64) -> bool {
     if a == b {
         return true;

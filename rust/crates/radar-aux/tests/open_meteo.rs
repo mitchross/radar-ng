@@ -149,7 +149,7 @@ async fn only_the_last_50_lines_of_each_stream_are_kept() {
 
 #[tokio::test]
 async fn critical_line_outside_the_kept_window_does_not_fail() {
-    // Python keeps the last 50 stdout lines: a CRITICAL printed earlier is not inspected.
+    // Only the last 50 stdout lines are kept: a CRITICAL printed earlier is not inspected.
     let f = fake(
         "echo '[ CRITICAL ] early'\ni=1; while [ $i -le 60 ]; do echo \"[ INFO ] step $i\"; i=$((i+1)); done\nexit 0\n",
     );

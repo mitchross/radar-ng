@@ -1,6 +1,6 @@
 //! Storm detection benchmark, Rust side: `radar_storms::detect_storms` with tracking.
 //!
-//! Same two-frame sequence as `bench/py/bench_storms.py`: frame A with no previous document,
+//! Same two-frame sequence as the recorded Python benchmark: frame A with no previous document,
 //! then frame B with A's document as `previous`. Timing covers both calls.
 
 use std::path::PathBuf;
@@ -32,7 +32,7 @@ struct Args {
     json: PathBuf,
 }
 
-/// Same shape as the Python `normalise` in bench_storms.py.
+/// Same shape as the Python benchmark's `normalise`.
 fn normalise(doc: &StormsDoc) -> Result<Value> {
     let v = serde_json::to_value(doc)?;
     let mut feats = Vec::new();

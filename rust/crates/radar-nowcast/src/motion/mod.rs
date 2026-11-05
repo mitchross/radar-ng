@@ -1,5 +1,5 @@
 //! Dense Lucas-Kanade motion estimation (pysteps `motion.lucaskanade.dense_lucaskanade`)
-//! and radar-ng's stride-2 wrapper (`activities._estimate_motion`).
+//! and radar-ng's stride-2 wrapper.
 //!
 //! Pipeline per consecutive frame pair (spec 6.2): NaN masking, binary morphological
 //! opening, Shi-Tomasi corner detection, pyramidal LK. Then all sparse vectors from all

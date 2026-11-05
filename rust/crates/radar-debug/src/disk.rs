@@ -1,9 +1,8 @@
 //! On-disk checks: run these where the PVCs are mounted (a `radar api` or worker pod, or the compose
 //! host against the named volumes).
 //!
-//! Port of `tools/debug_harness/disk_checks.py`. The data layout comes from `radar-core`: the
-//! `Paths` roots from the environment, and the manifest through `read_manifest`, which fails closed
-//! on a malformed file (the Python read it raw and reported it the same way).
+//! The data layout comes from `radar-core`: the `Paths` roots from the environment, and the
+//! manifest through `read_manifest`, which fails closed on a malformed file.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -25,7 +24,7 @@ pub const ORPHAN_TMP_AGE_S: f64 = 30.0 * 60.0;
 pub struct DiskRoots {
     /// Rendered tile pyramid (`TILE_DIR`).
     pub tile: PathBuf,
-    /// Grid dumps (`GRID_DIR`). Only headroom is checked, as in the Python.
+    /// Grid dumps (`GRID_DIR`). Only headroom is checked.
     pub grid: PathBuf,
     /// State directory (`STATE_DIR`): manifest and state files.
     pub state: PathBuf,
@@ -34,7 +33,7 @@ pub struct DiskRoots {
 }
 
 impl DiskRoots {
-    /// Resolve from the environment with the same defaults as the Python.
+    /// Resolve from the environment with the usual defaults.
     pub fn from_env() -> Self {
         let paths = Paths::from_env();
         Self {
@@ -417,7 +416,7 @@ pub fn check_disk(roots: &DiskRoots, now: SystemTime) -> Vec<Check> {
     checks
 }
 
-/// Sum of regular-file sizes under `dir` (`rglob` + `is_file`).
+/// Sum of regular-file sizes under `dir`.
 fn dir_bytes(dir: &Path) -> u64 {
     WalkDir::new(dir)
         .into_iter()
@@ -448,7 +447,7 @@ fn str_array(items: &[String]) -> Json {
     Json::Array(items.iter().map(|s| Json::Str(s.clone())).collect())
 }
 
-/// Short text for a manifest error, as the Python `str(exc)` would show.
+/// Short text for a manifest error.
 fn describe(err: &ManifestError) -> String {
     err.to_string()
 }
@@ -555,7 +554,7 @@ mod tests {
             "schema_version": 2,
             "updated_at": "2026-10-14T12:10:00+00:00",
             "layers": {
-                // Shaped like the Python writer's output: layer-level `timestamps`, `latest` and
+                // Shaped like a real manifest: layer-level `timestamps`, `latest` and
                 // `palettes` are written alongside `frames`, and the reader trusts the stored keys.
                 "radar": {
                     "timestamps": [t1, t2, t3],

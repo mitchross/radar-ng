@@ -1,6 +1,4 @@
 //! Nowcast payloads (`NowcastWorkflow` and `nowcast_run`).
-//!
-//! Source: `temporal/workflows/nowcast.py`, `backend/nowcast/activities.py`.
 
 use serde::{Deserialize, Serialize};
 

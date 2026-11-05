@@ -1,5 +1,5 @@
 /**
- * Wind particles — Skia-canvas overlay of advecting particles that follow
+ * Wind particles: Skia-canvas overlay of advecting particles that follow
  * HRRR's U/V vector field at 10m AGL. Runs on the UI thread via Reanimated
  * worklets; no JS-thread work per frame.
  *
@@ -8,7 +8,7 @@
  *   - trail: short line from previous to current position
  *
  * Rendering: one pass per frame bakes the particles into four compound Skia
- * paths, one per speed bucket — 1200 React components would wreck the reconciler.
+ * paths, one per speed bucket. 1200 React components would wreck the reconciler.
  *
  * Camera tracking: parent owns a SharedCamera (lon/lat/zoom shared values)
  * written from MapLibre's `onCameraChanged`. Each frame re-projects particles
@@ -109,7 +109,7 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
   const field: WindField | null =
     fieldData && fieldData.ok ? (fieldData as WindField) : null;
 
-  // Typed-array particle buffer — allocated once, mutated in place by the
+  // Typed-array particle buffer, allocated once, mutated in place by the
   // UI-thread frame callback.
   const particles = useMemo<ParticleBuffer>(
     () => ({
@@ -152,7 +152,7 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
     const { lonMin, lonMax, latMin, latMax } = seedBox(field, camera, width, height);
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const age = particles.ages[i] + 1;
-      // Respawn either on age or on drift out of the seed box — keeps particle
+      // Respawn either on age or on drift out of the seed box. Keeps particle
       // density following the camera as the user pans.
       const outOfBox =
         particles.lons[i] < lonMin ||
@@ -233,7 +233,7 @@ function ActiveWindParticles({ camera }: { camera: SharedCamera }) {
       style={[StyleSheet.absoluteFill, styles.canvas]}
       pointerEvents="none"
     >
-      {/* dark outline pass — ensures trails are visible on ANY background
+      {/* dark outline pass so trails are visible on ANY background
           (green heatmap, blue water, dark basemap) */}
       <Path path={pathSlow} color="rgba(10,15,30,0.85)" style="stroke" strokeWidth={4.0} />
       <Path path={pathMed} color="rgba(10,15,30,0.85)" style="stroke" strokeWidth={4.4} />

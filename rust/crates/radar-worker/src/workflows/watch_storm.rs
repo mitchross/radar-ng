@@ -1,11 +1,11 @@
 //! `WatchStormWorkflow` (spec 4.11). One entity run per (user, storm cell), lifetime hours to days.
 //!
 //! Replay rules that must hold (spec 10.2, 4.11.5):
-//! - `patched()` is evaluated at the same points, in the same order, as the Python code.
+//! - `patched()` is evaluated at the same points, in the same order, as the recorded Python histories.
 //! - The version-boundary check reads `patched` only when `continue_requested` is already true.
 //! - Each loop iteration: optional alert push, compare, optional detect and change push, then the wait.
 //!
-//! Deviation: the Python `__init__` raises on an unknown handoff schema. The SDK `#[init]` cannot fail, so
+//! Deviation: the original Python `__init__` raised on an unknown handoff schema. The SDK `#[init]` cannot fail, so
 //! the check runs at the top of `run` and fails the execution with a non-retryable error. Nothing else
 //! runs before that check, so the observable result is the same.
 
@@ -90,7 +90,7 @@ pub fn latch_continue(current: bool, suggested: bool, version_changed: bool) -> 
 }
 
 /// Continue-as-new condition (spec 4.11.3). `boundary_patched` is evaluated only when the latch is set and
-/// the first two terms are false, so the patch marker is read at the same points as Python.
+/// the first two terms are false, so the patch marker is read at the same points as the recorded histories.
 pub fn should_rollover(
     polls_this_run: u32,
     now: SystemTime,
@@ -342,23 +342,23 @@ fn observe(ctx: &WorkflowContext<WatchStormWorkflow>) {
 
 /// Wait up to `POLL_WAIT` for an unpin or a pending alert. Timeout is the normal outcome.
 ///
-/// Command order matches Python's `wait_condition(fn, timeout=POLL_S)` (replay gate, `tests/replay.rs`):
-/// Python creates the timer first, which consumes a timer sequence number, and cancels it when the condition
+/// Command order matches the recorded Python histories (replay gate, `tests/replay.rs`).
+/// The workflow creates the timer first, which consumes a timer sequence number, and cancels it when the condition
 /// wins. The timer command is pushed when `ctx.timer` is called, and dropping the future does not cancel it,
 /// so the condition branch must cancel it explicitly:
 /// - condition already true (unpin or alert arrived during the iteration): the timer is created and cancelled
 ///   in the same activation, so Core drops the unsent `StartTimer` and no timer event is recorded;
 /// - condition becomes true in a later task: a `CancelTimer` command (`TimerCanceled` event) precedes the next
-///   iteration's commands, as in Python.
+///   iteration's commands, as in those histories.
 ///
-/// Without the cancel, the run recorded a `StartTimer` that Python never sends and failed replay of every
+/// Without the cancel, the run recorded a `StartTimer` that Python never sent and failed replay of every
 /// Python history in which a signal arrived during an iteration.
 async fn wait_for_poll(ctx: &WorkflowContext<WatchStormWorkflow>) {
     let mut timer = pin!(ctx.timer(POLL_WAIT));
     let mut condition =
         pin!(ctx.wait_condition(|s: &WatchStormWorkflow| s.unpinned || !s.pending.is_empty()));
     // `select!` polls top to bottom, so a condition that is already true wins over a timer fired in the same
-    // activation, as the Python condition check does.
+    // activation, as in the recorded histories.
     select! {
         _ = condition.as_mut() => timer.cancel(),
         _ = timer.as_mut() => {}

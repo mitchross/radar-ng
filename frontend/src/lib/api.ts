@@ -36,7 +36,7 @@ export async function fetchWithTimeout(
 }
 
 /**
- * Forecast — always proxied through the tile-server → open-meteo container.
+ * Forecast, always proxied through the tile-server → open-meteo container.
  * Rounds here rather than at the call sites so no caller can leak a full fix.
  */
 export async function fetchForecast(
@@ -159,7 +159,7 @@ export interface ServerStatus {
 
 export type HealthLevel = "ok" | "degraded" | "error";
 
-/** /api/health answers 503 with a JSON body when data is merely stale — only "no body" means down. */
+/** /api/health answers 503 with a JSON body when data is merely stale. Only "no body" means down. */
 export function healthLevelOf(status: ServerStatus | null | undefined): HealthLevel {
   if (!status) return "error";
   return status.status === "ok" ? "ok" : "degraded";

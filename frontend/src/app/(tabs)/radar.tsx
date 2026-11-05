@@ -1,5 +1,5 @@
 /**
- * Cumulus radar screen — full-bleed MapLibre with Apple-Weather polish.
+ * Cumulus radar screen: full-bleed MapLibre map.
  *
  *   • LayerLegendCard  (top-left, layer-aware vertical scale)
  *   • LayerLocationMarker  (user location pill w/ live layer value + tail)
@@ -191,7 +191,7 @@ export default function RadarScreen() {
         </Text>
       ) : null}
 
-      {/* Wind particles — Skia canvas overlay, active on the wind layer */}
+      {/* Wind particles: Skia canvas overlay, active on the wind layer */}
       <WindParticlesOverlay enabled={windParticlesOn} camera={camera} />
 
       {/* Vertical legend card (top-left) */}
@@ -205,7 +205,7 @@ export default function RadarScreen() {
 
       <MapOptionsSheet visible={mapOptionsOpen} onClose={() => setMapOptionsOpen(false)} />
 
-      {/* Timeline — past observed + nowcast + HRRR forecast in one stream */}
+      {/* Timeline: past observed + nowcast + HRRR forecast in one stream */}
       <TimelineBar />
       <TropicalDetailSheet
         storm={selectedTropical}

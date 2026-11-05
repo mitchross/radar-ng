@@ -10,7 +10,7 @@ use radar_types::payloads::airquality::AqmCleanupResult;
 
 use super::{AQM_LAYER_SPECS, AqmConfig, AqmError, parse_run_id};
 
-/// Python `aqm_cleanup`: for each layer and palette, removes run directories whose issue time is before
+/// For each layer and palette, removes run directories whose issue time is before
 /// `now - retention_hours`, except the layer's current manifest run. Only whole run directories go.
 /// Directories whose names are not run ids are left alone.
 pub(crate) fn cleanup_blocking(
@@ -18,7 +18,7 @@ pub(crate) fn cleanup_blocking(
     retention_hours: i64,
     now: SystemTime,
 ) -> Result<AqmCleanupResult, AqmError> {
-    // Corrupt manifest: error (fail closed), as Python's read_manifest_file raises.
+    // Corrupt manifest: error (fail closed), as the original Python did.
     let manifest = read_manifest(&cfg.state_dir)?;
     let now_secs = unix_secs(now);
     let cutoff = now_secs - (retention_hours as f64) * 3600.0;

@@ -13,7 +13,7 @@ use radar_types::payloads::hrrr::ForecastHourResult;
 /// Layer whose frames decide resume and coherence.
 pub const RADAR_HRRR: &str = "radar-hrrr";
 
-/// Resume an incomplete run younger than 3 h (spec §12.2 `_resume_incomplete_run`). Returns the
+/// Resume an incomplete run younger than 3 h (spec §12.2). Returns the
 /// `radar-hrrr` run id when the layer is incomplete (`complete` present and falsy), its run id parses,
 /// and `now - init <= 3 h`. An absent `complete` key means complete.
 pub fn resume_incomplete_run(manifest: &Manifest, now: DateTime<Utc>) -> Option<String> {
@@ -49,8 +49,8 @@ pub fn publishable_prefix(results: &[ForecastHourResult]) -> Vec<&ForecastHourRe
         .collect()
 }
 
-/// Frames of an older extended run that stay valid after this run's last valid time (spec §11.3 R5,
-/// `_extended_tail`). Keeps frames whose run is an earlier extended (00/06/12/18z) run no more than 12 h
+/// Frames of an older extended run that stay valid after this run's last valid time (spec §11.3 R5).
+/// Keeps frames whose run is an earlier extended (00/06/12/18z) run no more than 12 h
 /// before this run, and whose valid time is strictly after `last_valid`.
 pub fn extended_tail(layer: Option<&Layer>, run_id: &str, last_valid: &str) -> Vec<FrameSpec> {
     let Some(layer) = layer else {
@@ -95,7 +95,7 @@ pub fn extended_tail(layer: Option<&Layer>, run_id: &str, last_valid: &str) -> V
     out
 }
 
-/// Runs referenced by a layer: its own `run_id` plus each frame's `run_id` (spec §12.2 `_referenced_runs`).
+/// Runs referenced by a layer: its own `run_id` plus each frame's `run_id` (spec §12.2).
 pub fn referenced_runs(layer: Option<&Layer>) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let Some(layer) = layer else { return out };
@@ -110,7 +110,7 @@ pub fn referenced_runs(layer: Option<&Layer>) -> BTreeSet<String> {
     out
 }
 
-/// Variables needed by the enabled layers, sorted unique by key (spec §12.2 `_needed_vars`).
+/// Variables needed by the enabled layers, sorted unique by key (spec §12.2).
 pub fn needed_vars(enabled: &[String]) -> Vec<HrrrVar> {
     let mut vars: Vec<HrrrVar> = Vec::new();
     for layer in enabled {

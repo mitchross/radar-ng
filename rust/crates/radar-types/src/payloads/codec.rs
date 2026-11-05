@@ -29,24 +29,24 @@ pub(crate) fn finite_opt_f64<S: Serializer>(
 }
 
 /// Deserializes a JSON object, mapping `null` (or absent, via `#[serde(default)]`)
-/// to an empty object. Matches the Python `geometry or {}` normalisation.
+/// to an empty object. Matches the original Python `geometry or {}`.
 pub(crate) fn null_as_empty_object<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Map<String, Value>, D::Error> {
     Ok(Option::<Map<String, Value>>::deserialize(deserializer)?.unwrap_or_default())
 }
 
-/// Python default `1` (for example `OpenMeteoSyncArgs.past_days`).
+/// Default `1` (for example `OpenMeteoSyncArgs.past_days`).
 pub(crate) fn default_one() -> i64 {
     1
 }
 
-/// Python default for `IngestMrmsArgs.mrms_prefix`: env `MRMS_PREFIX` or the QC base product.
+/// Default for `IngestMrmsArgs.mrms_prefix`: env `MRMS_PREFIX` or the QC base product.
 pub(crate) fn default_mrms_prefix() -> String {
     std::env::var("MRMS_PREFIX").unwrap_or_else(|_| super::mrms::DEFAULT_MRMS_PREFIX.to_owned())
 }
 
-/// Python default for `IngestMrmsArgs.layer_name`: env `LAYER_NAME` or `radar`.
+/// Default for `IngestMrmsArgs.layer_name`: env `LAYER_NAME` or `radar`.
 pub(crate) fn default_layer_name() -> String {
     std::env::var("LAYER_NAME").unwrap_or_else(|_| super::mrms::DEFAULT_LAYER_NAME.to_owned())
 }

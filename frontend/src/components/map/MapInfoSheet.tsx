@@ -1,5 +1,5 @@
 /**
- * Bottom sheet for a tapped map feature (storm cell, warning polygon) —
+ * Bottom sheet for a tapped map feature (storm cell, warning polygon), in the
  * same card language as TropicalDetailSheet.
  */
 import type { ReactNode } from "react";

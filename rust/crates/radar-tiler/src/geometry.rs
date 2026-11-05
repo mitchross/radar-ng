@@ -52,7 +52,7 @@ pub fn tile_bounds(x: u32, y: u32, zoom: u32) -> (f64, f64, f64, f64) {
 
 /// Pixel-center longitudes and latitudes of a tile (spec 3.3), `tile` samples each.
 ///
-/// Evaluation order follows the Python reference so the doubles match bit for bit.
+/// Evaluation order matches the original Python so the doubles match bit for bit.
 pub fn tile_pixel_axes(tx: u32, ty: u32, zoom: u32, tile: usize) -> (Vec<f64>, Vec<f64>) {
     let n = f64::from(1u32 << zoom);
     let t = tile as f64;

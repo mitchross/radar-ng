@@ -17,7 +17,7 @@ use crate::geo::{advance, haversine_km, translate_bbox};
 use crate::numeric::{degrees, np_mean_f64, np_sum_f64, py_float, py_int, round_digits};
 use crate::time::{Instant, parse_timestamp};
 
-/// Distance used for impossible pairs (no prediction). Same magnitude as the Python `1e9`.
+/// Distance used for impossible pairs (no prediction). Same magnitude as the original `1e9`.
 const NO_PREDICTION_KM: f64 = 1e9;
 
 /// Scale for converting kilometres to the integer costs `kuhn_munkres` needs (1 mm).
@@ -53,7 +53,7 @@ struct PrevFeature<'a> {
 /// the caller stores as `next_cell_id`.
 ///
 /// `previous` is the parsed previous `storms.json` (or `None`). `wall_now` is
-/// used as "now" only when `timestamp` does not parse, as in the Python code.
+/// used as "now" only when `timestamp` does not parse.
 #[must_use]
 pub fn assign_tracking(
     candidates: &[Candidate],
@@ -182,7 +182,7 @@ fn build_feature(
     }
 }
 
-/// Map each matched current index to its previous index (`_attach_tracking` steps 1 to 5).
+/// Map each matched current index to its previous index.
 fn match_candidates(
     candidates: &[Candidate],
     prev: &[PrevFeature<'_>],
@@ -242,7 +242,7 @@ fn optimal_pairs(dist: &[Vec<f64>]) -> Vec<(usize, usize)> {
     }
 }
 
-/// Position of a previous cell advanced to the current time (`_advance` of `old` coords).
+/// Position of a previous cell advanced to the current time.
 fn predicted_position(prev: &PrevFeature<'_>, elapsed_minutes: f64) -> Option<(f64, f64)> {
     let coords = prev.geometry?.get("coordinates")?.as_array()?;
     if coords.len() != 2 {
@@ -254,7 +254,7 @@ fn predicted_position(prev: &PrevFeature<'_>, elapsed_minutes: f64) -> Option<(f
     Some(advance(lon, lat, east, north, elapsed_minutes))
 }
 
-/// `_previous_motion`: `(east, north)` from `tracking_vector`, or `(0, 0)` when unusable.
+/// Previous motion as `(east, north)` from `tracking_vector`, or `(0, 0)` when unusable.
 fn previous_motion(props: Option<&Map<String, Value>>) -> (f64, f64) {
     let Some(vector) = props
         .and_then(|p| p.get("tracking_vector"))
@@ -294,10 +294,10 @@ fn retained_history(
         .collect()
 }
 
-/// Least-squares motion over `[epoch_s, lon, lat]` samples (`storms._fit_motion`).
+/// Least-squares motion over `[epoch_s, lon, lat]` samples.
 ///
 /// Returns `(east_kmh, north_kmh, rms_km)`. The sums use numpy's association so
-/// the results agree with Python to the last bit in practice.
+/// the results match the golden fixtures to the last bit in practice.
 #[must_use]
 pub fn fit_motion(history: &[[f64; 3]]) -> (f64, f64, f64) {
     if history.len() < 2 {

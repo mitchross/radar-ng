@@ -1,5 +1,5 @@
 /**
- * Tropical cyclone overlay — three layered styles keyed by `kind`:
+ * Tropical cyclone overlay: three layered styles keyed by `kind`:
  *   cone     → soft red translucent polygon (forecast uncertainty)
  *   track    → dashed red linestring (forecast positions)
  *   position → red pulsing symbol + storm name label
@@ -35,7 +35,7 @@ export function TropicalOverlay({
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   // Label glyphs must come from the active basemap's own glyph server.
   const { labelFont } = useBasemapStyle(serverUrl, mapStyle);
-  // Always mounted (empty collection off-season) — see lib/emptyGeoJSON.
+  // Always mounted (empty collection off-season). See lib/emptyGeoJSON.
   const geojson = data && data.features.length > 0
     ? (data as GeoJSON.FeatureCollection)
     : EMPTY_FEATURE_COLLECTION;
@@ -96,7 +96,7 @@ export function TropicalOverlay({
         }}
         paint={{ "text-color": "#111827" }}
       />
-      {/* Current storm position — circle + stroke */}
+      {/* Current storm position: circle + stroke */}
       <Layer
         type="circle"
         id="tropical-position"

@@ -56,8 +56,7 @@ impl AlertsActivities {
     }
 }
 
-/// Map a push failure to the activity error class the Python code raises (`ApplicationError`
-/// non-retryable versus `RuntimeError`).
+/// Map a push failure to an activity error: non-retryable stays non-retryable, anything else is retryable.
 pub fn push_failure(err: PushError) -> ActivityError {
     match err {
         PushError::NonRetryable(message) => non_retryable(message),

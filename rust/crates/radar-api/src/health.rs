@@ -4,7 +4,7 @@
 //! summary, and `statvfs` on `TILE_DIR`. It answers 200 when everything is fine and 503 with the
 //! same body otherwise. There is no `Cache-Control`.
 //!
-//! Disk usage follows the Python code, which computes `used = total - disk_usage().free` and
+//! Disk usage computes `used = total - disk_usage().free` and
 //! `free` is `f_bavail`. So `used_bytes` excludes only the blocks available to the calling user,
 //! not the root-reserved blocks. Spec 18.1 suggested `f_bfree`; the README records the choice.
 

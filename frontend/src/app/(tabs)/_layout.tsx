@@ -1,5 +1,5 @@
 /**
- * Native tabs — Home · Nowcast · Radar · Alerts · Settings.
+ * Native tabs: Home, Nowcast, Radar, Alerts, Settings.
  * iOS 26+ draws the Liquid Glass tab bar with SF Symbols; Android draws a
  * Material bottom bar with Material Symbols. The bar hides on the
  * full-screen Radar route.

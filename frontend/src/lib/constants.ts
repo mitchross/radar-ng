@@ -2,7 +2,7 @@ import type { LayerConfig } from "../types/weather";
 
 export type MapStyleId = "light" | "dark" | "satellite";
 
-// BUNDLED basemap (the default — "batteries included"). These relative style
+// BUNDLED basemap (the default, "batteries included"). These relative style
 // documents are served by your own tile-server image at /srv/basemap/styles/;
 // resolveMapStyleUrl joins them to the active serverUrl. Forks and upstream
 // users need set nothing to get a working map. The satellite document
@@ -13,8 +13,8 @@ export const MAP_STYLES_SELFHOSTED: Record<MapStyleId, string> = {
   satellite: "/basemap/styles/satellite.json",
 };
 
-// EXTERNAL basemap (opt-in). Point these at absolute MapLibre style URLs — e.g.
-// a self-hosted VersaTiles instance — to render an external basemap instead of
+// EXTERNAL basemap (opt-in). Point these at absolute MapLibre style URLs, e.g.
+// a self-hosted VersaTiles instance, to render an external basemap instead of
 // the bundled one. Set at BUILD time via EXPO_PUBLIC_* env (Expo inlines them
 // into the bundle, the same mechanism telemetry.ts uses):
 //
@@ -98,7 +98,7 @@ export const SELF_HOSTED = {
 // `radar` layer's forecast mode already merges past + nowcast + HRRR into
 // a single timeline.
 // minZoom: 4 across the board because the cluster's tile pyramids start
-// at z=4 (CONUS-only data — there's no meaningful sub-z=4 world tile).
+// at z=4 (CONUS-only data; there's no meaningful sub-z=4 world tile).
 // Setting this to 1 made MapLibre fire 404-bound /1/0/0.png and
 // /2/.../.png requests through the public Cloudflare hop, each costing
 // ~250 ms RTT and frequently triggering MapLibre's per-source timeout.

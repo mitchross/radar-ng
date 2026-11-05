@@ -1,14 +1,12 @@
 //! MRMS ingest payloads (`IngestMrmsWorkflow` and the `mrms_*` activities).
-//!
-//! Source: `temporal/workflows/ingest_mrms.py`, `backend/ingest_mrms/activities.py`.
 
 use serde::{Deserialize, Serialize};
 
 use super::codec::{default_layer_name, default_mrms_prefix, finite_f64};
 
-/// Python default `CONUS/MergedBaseReflectivityQC_00.50` (used when env `MRMS_PREFIX` is unset).
+/// Default `CONUS/MergedBaseReflectivityQC_00.50` (used when env `MRMS_PREFIX` is unset).
 pub const DEFAULT_MRMS_PREFIX: &str = "CONUS/MergedBaseReflectivityQC_00.50";
-/// Python default `radar` (used when env `LAYER_NAME` is unset).
+/// Default `radar` (used when env `LAYER_NAME` is unset).
 pub const DEFAULT_LAYER_NAME: &str = "radar";
 /// `RETENTION_HOURS` passed to `mrms_cleanup`.
 pub const RETENTION_HOURS: i64 = 4;
@@ -17,7 +15,7 @@ pub const RETENTION_HOURS: i64 = 4;
 /// accepts `null` and means `IngestMrmsArgs()`) and to `mrms_list_unprocessed_keys`.
 ///
 /// `Default` and missing keys both read env `MRMS_PREFIX` / `LAYER_NAME` at call
-/// time, as the Python dataclass defaults do at import time.
+/// time. The original Python dataclass read them at import time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IngestMrmsArgs {
     /// S3 prefix of the MRMS product.

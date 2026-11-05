@@ -8,7 +8,7 @@ use radar_grib::s3::S3Client;
 
 use crate::config::IngestConfig;
 
-/// Triggers the nowcast schedule (Python `kick_nowcast`). The worker implements this with its Temporal
+/// Triggers the nowcast schedule (the `kick_nowcast` step). The worker implements this with its Temporal
 /// client, connecting lazily inside `trigger`. This crate has no Temporal types.
 #[async_trait]
 pub trait NowcastKicker: Send + Sync {

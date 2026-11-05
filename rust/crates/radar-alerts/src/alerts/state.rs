@@ -4,7 +4,7 @@
 //! - `alerts_active_snapshot.json`: sorted JSON array of every ID active in the last fetch. `mark_alerts_seen` reads
 //!   it to decide which seen IDs have expired.
 //!
-//! Both are written with the same temp-file-then-rename protocol as the Python version. Default `json.dump`
+//! Both are written with the same temp-file-then-rename protocol as before. Default `json.dump`
 //! separators are used.
 
 use std::collections::BTreeSet;
@@ -224,7 +224,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         write_active_snapshot(dir.path(), &set(&["urn:b", "urn:a", "é-x"])).unwrap();
         let text = std::fs::read_to_string(dir.path().join(SNAPSHOT_FILE)).unwrap();
-        // Python json.dump uses ensure_ascii=True, so the non-ASCII character is escaped.
+        // `json.dump` uses ensure_ascii=True, so the non-ASCII character is escaped.
         assert_eq!(text, r#"["urn:a", "urn:b", "\u00e9-x"]"#);
     }
 }

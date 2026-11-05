@@ -140,7 +140,7 @@ export function WeatherMap({
         {Children.toArray(children).filter(isValidElement)}
       </Map>
 
-      {/* Manual zoom controls — pinch still works, this is for one-handed use. */}
+      {/* Manual zoom controls. Pinch still works, this is for one-handed use. */}
       <MapChromeSurface
         style={[styles.zoomWrap, { right: chrome.right, bottom: chrome.aboveTimeline }]}
         fallbackStyle={styles.zoomFill}

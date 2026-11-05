@@ -1,4 +1,4 @@
-//! Schedule parity with `temporal/schedules/seed.py` (spec-temporal section 6.2 and section 11, items 1 to 6 and 18),
+//! Schedule parity with the original Python seed list (spec-temporal section 6.2 and section 11, items 1 to 6 and 18),
 //! plus the two Rust-only global-model schedules.
 
 use radar_types::schedules::{

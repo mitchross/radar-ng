@@ -1,7 +1,7 @@
 //! Process configuration, read once at startup from the environment.
 //!
 //! Names and defaults follow `spec-api.md` section 14 (the **code** defaults, where the docs
-//! disagree). Python reads most of these at import time; the port reads them once in
+//! disagree). The server reads them once in
 //! [`Config::from_env`]. Numeric values use the strict `radar_core::env` parsers: a value that
 //! does not parse is a startup error, not a silent default.
 
@@ -261,7 +261,7 @@ impl Config {
     }
 }
 
-/// A string variable that keeps an empty value (Python `os.environ.get(name, default)` semantics).
+/// A string variable that keeps an empty value (`std::env::var` with a default).
 fn str_var(name: &str, default: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| default.to_string())
 }

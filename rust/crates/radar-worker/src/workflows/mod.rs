@@ -65,9 +65,9 @@ pub fn options_on_queue(spec: &ActivityCallSpec, queue: &str) -> ActivityOptions
     opts
 }
 
-/// An optional single workflow argument, as Python's `run(self, args: T | None = None)`.
+/// An optional single workflow argument.
 ///
-/// Python lets a start (or a schedule) pass no arguments at all, and the workflow then sees `None`. The SDK
+/// A start or a schedule may pass no arguments at all, and the workflow then sees `None`. The SDK
 /// decodes `Option<T>` only from exactly one payload, so a zero-payload start failed with "Failed to create
 /// workflow execution" (replay gate, `IngestMrmsWorkflow/*/empty-backlog`). This wrapper accepts zero
 /// payloads, a `binary/null` payload, or one `json/plain` payload (JSON `null` included). It serialises
@@ -134,7 +134,7 @@ impl<T: serde::Serialize> TemporalSerializable for OptionalArg<T> {
 
 /// Run `f` over `items` with at most `limit` futures in flight, returning results in input order.
 ///
-/// This is the deterministic replacement for Python `Semaphore(N)` plus `gather` (F3). A slot is freed as soon as
+/// This is the deterministic equivalent of a semaphore of `limit` slots plus a gather (F3). A slot is freed as soon as
 /// ANY in-flight item finishes, so one slow item does not hold the other slots. The old `buffered` version did
 /// hold them, because it refilled only after the head item was yielded.
 ///

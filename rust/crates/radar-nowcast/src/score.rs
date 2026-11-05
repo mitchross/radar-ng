@@ -1,4 +1,4 @@
-//! Post-commit verification (spec-nowcast section 10, Python `backend/nowcast/skill.py`).
+//! Post-commit verification (spec-nowcast section 10).
 //!
 //! After a run commits, the observation it started from is scored against every retained run that
 //! forecast this valid time. Counts go to the rolling log in `nowcast-skill.json` (radar-core). The
@@ -29,7 +29,7 @@ pub const OBSERVED_KEY: &str = "observed";
 /// - the persistence baseline is the run's own `observed` grid, or `null` when it is missing.
 ///
 /// `observed` is the full-resolution science grid; `lats`/`lons` are its full axes. Its bounds (not the
-/// downsampled axes) are used for resampling, as in Python.
+/// downsampled axes) are used for resampling.
 pub fn score_observation(
     cfg: &NowcastConfig,
     observed: &Field2<f32>,
@@ -170,7 +170,7 @@ fn align(
     skill::resample_nearest(src, src_bounds, obs.height(), obs.width(), obs_bounds)
 }
 
-/// Raw point-grid read (Python `load_point_grid`: no fill rewrite).
+/// Raw point-grid read (no fill rewrite).
 fn load_point(meta_path: &Path) -> Option<(Field2<f32>, radar_core::grid_read::GridMeta)> {
     let dump = read_grid(meta_path).ok()?;
     let values = Field2::new(dump.meta.width, dump.meta.height, dump.values).ok()?;
@@ -186,7 +186,7 @@ fn bounds_of_meta(meta: &radar_core::grid_read::GridMeta) -> GridBounds {
     }
 }
 
-/// Bounds of the full axes (`_observed_meta`: min and max of each axis).
+/// Bounds of the full axes (min and max of each axis).
 fn axis_bounds(lats: &[f64], lons: &[f64]) -> GridBounds {
     let min = |v: &[f64]| v.iter().copied().fold(f64::INFINITY, f64::min);
     let max = |v: &[f64]| v.iter().copied().fold(f64::NEG_INFINITY, f64::max);

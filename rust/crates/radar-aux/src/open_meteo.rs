@@ -61,12 +61,12 @@ impl OpenMeteoConfig {
     }
 }
 
-/// Failure of one sync. `retryable` mirrors Python's `ApplicationError(non_retryable=False)`: the workflow's
-/// retry policy applies.
+/// Failure of one sync. `retryable` is true when the workflow's retry policy applies (Temporal
+/// `ApplicationError` with `non_retryable=false`).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct OpenMeteoError {
-    /// Message, in the Python format (spec 9.3).
+    /// Message, in the format of spec 9.3.
     pub message: String,
     /// Whether the workflow may retry.
     pub retryable: bool,
@@ -84,7 +84,7 @@ pub fn command_argv(cfg: &OpenMeteoConfig, args: &OpenMeteoSyncArgs) -> Vec<Stri
     ]
 }
 
-/// The first line containing `[ CRITICAL ]` or `[ ERROR ]`, as it was printed (Python `critical_error`).
+/// The first line containing `[ CRITICAL ]` or `[ ERROR ]`, as it was printed.
 pub fn critical_error<'a, I>(lines: I) -> Option<&'a str>
 where
     I: IntoIterator<Item = &'a str>,
@@ -94,7 +94,7 @@ where
         .find(|line| line.contains("[ CRITICAL ]") || line.contains("[ ERROR ]"))
 }
 
-/// The last `n` characters of `s` (Python `s[-n:]`, counted in code points).
+/// The last `n` characters of `s` (counted in code points).
 pub fn last_chars(s: &str, n: usize) -> String {
     let count = s.chars().count();
     if count <= n {
@@ -202,7 +202,7 @@ pub async fn open_meteo_sync(
     })
 }
 
-/// Python `returncode or 0`, with a signal reported as the negative signal number.
+/// The exit code, or 0 when absent, with a signal reported as the negative signal number.
 fn return_code(status: &std::process::ExitStatus) -> i32 {
     if let Some(code) = status.code() {
         return code;

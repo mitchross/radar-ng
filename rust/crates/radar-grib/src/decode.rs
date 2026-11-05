@@ -4,10 +4,10 @@
 //! Supported values: whatever the `grib` crate decodes (5.0, 5.2, 5.3, 5.40, 5.41, 5.42, 5.200).
 //!
 //! Grid orientation is returned as stored in the file. For regular grids `lats` is in stored
-//! order (MRMS: north first, descending). Call [`crate::mrms::ensure_south_up`] to get the Python
-//! "flip when lats[0] > lats[-1]" normalisation.
+//! order (MRMS: north first, descending). Call [`crate::mrms::ensure_south_up`] to flip
+//! rows when `lats[0] > lats[-1]`.
 //!
-//! Longitudes are normalised exactly as the Python does: any value `> 180` becomes `value - 360`.
+//! Longitudes are normalised: any value `> 180` becomes `value - 360`.
 //! Missing values (bitmap or packed missing) are NaN.
 //!
 //! Known gap: decoded values come from the `grib` crate, which computes the scale in `f32`. pygrib
@@ -51,9 +51,9 @@ pub struct MessageInfo {
 
 /// Selects messages by discipline, category, number, first-surface type and level value.
 ///
-/// Every field that is `Some` must match. This replaces the Python selector dict
-/// (`shortName`, `typeOfLevel`, `level`) with the GRIB2 codes those names stand for, so it does not
-/// depend on the eccodes version's name tables. See the README for the mapping.
+/// Every field that is `Some` must match. Selecting by GRIB2 codes instead of
+/// eccodes names (`shortName`, `typeOfLevel`, `level`) avoids depending on the eccodes version's
+/// name tables. See the README for the mapping.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MessageSelector {
     /// Discipline (Section 0).
@@ -123,7 +123,7 @@ pub struct DecodedMessage {
 }
 
 impl DecodedMessage {
-    /// True when u/v winds are resolved relative to the grid axes (Python: `flags & 8`).
+    /// True when u/v winds are resolved relative to the grid axes (`flags & 8`).
     pub fn uv_grid_relative(&self) -> bool {
         self.info.resolution_flags & 8 != 0
     }
@@ -149,9 +149,8 @@ pub fn decode_first_message(bytes: &[u8]) -> Result<DecodedMessage> {
 
 /// Returns the first message that matches `selector`, decoding only that message.
 ///
-/// `Ok(None)` means no message matched. A decode failure of a matching message is an `Err`;
-/// the Python code logs and returns None in that case. Callers that want the Python behaviour map
-/// the error to None and log it.
+/// `Ok(None)` means no message matched. A decode failure of a matching message is an `Err`.
+/// Callers that prefer None on failure map the error to None and log it.
 pub fn find_message(bytes: &[u8], selector: &MessageSelector) -> Result<Option<DecodedMessage>> {
     let file = parse_file(bytes)?;
     for (_, sub) in file.iter() {
@@ -354,13 +353,13 @@ pub(crate) fn grid_deg(v: f64, basic_angle: u32, subdivisions: u32) -> f64 {
     }
 }
 
-/// Python: `lons = np.where(lons > 180.0, lons - 360.0, lons)`.
+/// Shifts a longitude above 180 down by 360.
 #[inline]
 pub(crate) fn normalize_lon(lon: f64) -> f64 {
     if lon > 180.0 { lon - 360.0 } else { lon }
 }
 
-/// Regular lat/lon axes from the header, as `_grid_axes` does for `regular_ll`:
+/// Regular lat/lon axes from the header:
 /// `linspace(first, last, Nj)` and `linspace(first, last, Ni)`, lons normalised.
 fn regular_axes(
     t: &grib::def::grib2::template::Template3_0,
@@ -393,7 +392,7 @@ fn regular_axes(
     Ok((ni, nj, lats, lons))
 }
 
-/// Lat/lon of every grid point, in stored order, longitudes normalised like the Python.
+/// Lat/lon of every grid point, in stored order, longitudes normalised.
 fn lambert_latlons<R: Grib2Read>(
     sub: &SubMessage<'_, R>,
     expected: usize,
@@ -411,12 +410,12 @@ fn lambert_latlons<R: Grib2Read>(
     Ok(pts)
 }
 
-/// Builds a projected grid for a Lambert template (spec §5.3 `_extract_native_projection`).
+/// Builds a projected grid for a Lambert template (spec §5.3).
 ///
 /// The projected axes are the spec's regular axes: `x0` and `x1` are the nanmedians of the first and
 /// last columns of projected x, `y0` and `y1` the nanmedians of the first and last rows of projected
 /// y, and `linspace` builds the 1-D axes. If that procedure fails (non-finite medians or a span below
-/// 1e-6 m), the grid falls back to 1-D lat/lon axes, as the Python does.
+/// 1e-6 m), the grid falls back to 1-D lat/lon axes.
 fn lambert_grid(
     t: &grib::def::grib2::template::Template3_30,
     ni: usize,
@@ -478,7 +477,7 @@ fn lambert_grid(
             },
         })
     } else {
-        // Python fallback: 1-D axes from column 0 (lats) and row 0 (lons).
+        // Fallback: 1-D axes from column 0 (lats) and row 0 (lons).
         let lats: Vec<f64> = (0..nj).map(|r| lat_mesh[at(r, 0)]).collect();
         let lons: Vec<f64> = (0..ni).map(|c| lon_mesh[at(0, c)]).collect();
         Ok(Grid {

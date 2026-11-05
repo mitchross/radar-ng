@@ -1,5 +1,5 @@
 //! `tropical_fetch_and_publish` against a local fake NHC feed and ArcGIS server.
-//! Fixtures: `testdata/tropical/` (the Python `test_activities.py` FEED, CONE, TRACK and POINTS).
+//! Fixtures: `testdata/tropical/` (FEED, CONE, TRACK and POINTS from the original Python tests).
 
 mod common;
 

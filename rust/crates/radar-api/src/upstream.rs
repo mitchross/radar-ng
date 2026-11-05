@@ -1,7 +1,7 @@
 //! One helper for outbound GETs: a timeout, optional headers, the status, and the body bytes.
 //!
 //! Callers decide the failure mapping (502 `upstream_unavailable`, a soft `available:false`, a
-//! `null` place, and so on). Python does the same through `httpx` plus `raise_for_status()`.
+//! `null` place, and so on).
 
 use std::time::Duration;
 
@@ -28,7 +28,7 @@ impl Fetched {
         self.status.is_success()
     }
 
-    /// The body parsed as JSON. `None` when it is not JSON (Python's `resp.json()` raising).
+    /// The body parsed as JSON. `None` when it is not JSON (a body that fails to parse).
     #[must_use]
     pub fn json(&self) -> Option<Value> {
         serde_json::from_slice(&self.body).ok()

@@ -47,7 +47,7 @@ interface WeatherState {
   temperatureUnit: TemperatureUnit;
   mapStyle: MapStyle;
   activePalette: Palette;
-  // Power-user overlays — off by default. Lightning + storm-cell dots
+  // Power-user overlays, off by default. Lightning + storm-cell dots
   // overwhelm the radar view for casual users; opt-in via this flag.
   extrasVisible: boolean;
   /** GOES satellite imagery under the radar (manifest `satellite` layer). */

@@ -1,6 +1,6 @@
 //! Heartbeat plumbing shared by the long activities.
 //!
-//! A [`Beat`] receives the heartbeat details (a JSON value, as Python sends a dict). The worker crate
+//! A [`Beat`] receives the heartbeat details (a JSON value). The worker crate
 //! turns it into `activity.heartbeat(details)`. Tests record the calls.
 
 use std::future::Future;
@@ -21,7 +21,7 @@ pub fn no_beat() -> Beat {
 /// Drive `fut` to completion while calling `beat` about every `every`.
 ///
 /// This is the async counterpart of `run_sync_with_heartbeat`. The first beat fires one full interval
-/// after the call, as in the Python. Beats stop when `fut` completes. Dropping the returned future drops
+/// after the call. Beats stop when `fut` completes. Dropping the returned future drops
 /// `fut`.
 pub async fn with_heartbeats<F, B>(fut: F, every: Duration, beat: B) -> F::Output
 where

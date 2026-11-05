@@ -1,7 +1,7 @@
 //! Tile and grid retention: `tile_cleanup_sweep` (spec-ingest-aux section 8).
 //!
-//! The Python activity is canonical. `cleanup.sh` is retired (DECIDE D-2): it ignored manifest state,
-//! never removed versioned runs, and used directory mtime.
+//! `cleanup.sh` is retired (DECIDE D-2): it ignored manifest state, never removed versioned runs,
+//! and used directory mtime.
 //!
 //! Ordering rule (spec 8.2): for each expired timestamp directory, the manifest entry is removed first
 //! (`remove_frame`, which takes `manifest.lock`), then the directory is deleted. The API therefore never
@@ -109,7 +109,7 @@ pub async fn tile_cleanup_sweep(
 }
 
 /// [`tile_cleanup_sweep`] with an explicit clock for the tile sweep. Grid retention uses the system clock
-/// (radar-core), as the Python does.
+/// (radar-core), as the original Python did.
 pub fn tile_cleanup_sweep_at(
     cfg: &TileCleanupConfig,
     now: SystemTime,
@@ -165,7 +165,7 @@ pub fn sweep_layer(
             continue;
         }
         let name = file_name(&entry);
-        // Staging leftovers (8.5) are candidates wherever they sit. Python's pseudocode would descend into a
+        // Staging leftovers (8.5) are candidates wherever they sit. The original Python pseudocode would descend into a
         // top-level `.tmp-` entry as if it were a palette directory and never remove it (deviation D-13).
         if is_staging(&name) || name.as_bytes().first().is_some_and(u8::is_ascii_digit) {
             candidates.push(entry);
@@ -224,7 +224,7 @@ pub fn sweep_layer(
 }
 
 /// Parses a frame or run directory name as a timestamp. ISO 8601 with an offset is exact. A naive value or a
-/// bare date is taken as UTC (the container is UTC; Python's naive `.timestamp()` would use local time).
+/// bare date is taken as UTC (the container is UTC; a naive `.timestamp()` would use local time).
 pub fn parse_stamp(name: &str) -> Option<DateTime<Utc>> {
     if let Some(dt) = parse_iso_as_utc(name) {
         return Some(dt);

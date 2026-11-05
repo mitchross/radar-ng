@@ -36,7 +36,7 @@ pub const NOWCAST_INPUT_LAYER: &str = "radar-nowcast-input";
 /// Budget for listing and downloading the PrecipFlag file of a frame.
 pub const FLAG_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
-/// Palette tables for MRMS (spec §6.1 `_load_palette_tables`): the `reflectivity` key of each name in
+/// Palette tables for MRMS (spec §6.1): the `reflectivity` key of each name in
 /// `PALETTES`, skipping missing names with a `palette_missing` warning. Falls back to `classic` when
 /// nothing loads. Duplicate names are dropped (first occurrence wins) because the publisher needs
 /// distinct output directories.
@@ -215,7 +215,7 @@ pub async fn process_frame(
         },
     )
     .await?;
-    // Tiles are done; the scratch download is no longer needed (Python removes it in `finally`).
+    // Tiles are done; the scratch download is no longer needed.
     scratch.remove().await;
 
     let rendered_set: BTreeSet<String> = rendered.iter().cloned().collect();

@@ -1,7 +1,7 @@
 //! Error type shared by every tiler module.
 //!
 //! Callers branch on the variant, not on message text: `Unbound` means "a pre-v2 tree
-//! needs Python adoption", `Conflict` means "the immutable path belongs to other inputs",
+//! needs adoption", `Conflict` means "the immutable path belongs to other inputs",
 //! `Corrupt` means fail-closed on-disk inconsistency.
 
 use std::io;
@@ -16,7 +16,7 @@ pub enum TilerError {
     #[error("pyramid identity conflict: {0}")]
     Conflict(String),
     /// A non-empty pre-v2 (unmarked) pyramid sits at a final path. Rust never adopts such
-    /// trees (spec-tiler H6); adoption stays with the Python publisher.
+    /// trees (spec-tiler H6).
     #[error("unbound pyramid requires Python adoption: {0}")]
     Unbound(String),
     /// On-disk state is inconsistent (marker mismatch, staged tile count, bad PNG, ...).

@@ -48,7 +48,7 @@ use crate::status::write_status;
 pub const LAYER: &str = "nowcast";
 /// Processed-anchor file in the state directory.
 pub const PROCESSED_FILE: &str = "nowcast.json";
-/// Entries kept in the processed set (`ProcessedSet(max_entries=100)`).
+/// Entries kept in the processed set (`ProcessedSet`, 100 entries).
 pub const PROCESSED_MAX: usize = 100;
 /// Method label of the S-PROG forecast (`pysteps-sprog`).
 pub const METHOD_SPROG: &str = "pysteps-sprog";
@@ -263,7 +263,7 @@ struct Inputs {
     interval_min: f64,
 }
 
-/// Steps 1 to 8 of spec 4.3 (`_setup`). Writes `warming_up` and `degraded` statuses where Python does.
+/// Steps 1 to 8 of spec 4.3. Writes the `warming_up` and `degraded` statuses.
 fn setup(cfg: &NowcastConfig) -> anyhow::Result<Setup> {
     std::fs::create_dir_all(&cfg.paths.tile_dir)?;
     std::fs::create_dir_all(&cfg.paths.state_dir)?;
@@ -425,7 +425,7 @@ fn run_pysteps(
     }
 }
 
-/// Palettes that have a `reflectivity` table (spec 8.3 and `_load_palette_tables`).
+/// Palettes that have a `reflectivity` table (spec 8.3).
 struct PaletteSet {
     tables: Vec<(String, ColorTable)>,
     expected: BTreeSet<String>,

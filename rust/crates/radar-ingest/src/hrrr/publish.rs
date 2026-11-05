@@ -1,4 +1,4 @@
-//! Coherent HRRR publication to the manifest (spec §11.3 R1 to R6, §12.2 `_publish_hrrr_run_sync`).
+//! Coherent HRRR publication to the manifest (spec §11.3 R1 to R6, §12.2).
 
 use std::path::Path;
 

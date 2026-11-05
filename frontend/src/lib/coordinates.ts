@@ -1,9 +1,9 @@
 /**
  * The one place where a device coordinate is narrowed before it leaves the app.
  *
- * Every outbound request that carries a position — the forecast/nowcast paths,
- * the storm-prefetch query, the inspector point, and the NWS `point=` parameter
- * — must use a value from here, and so must every react-query key that depends
+ * Every outbound request that carries a position (the forecast/nowcast paths,
+ * the storm-prefetch query, the inspector point, and the NWS `point=` parameter)
+ * must use a value from here, and so must every react-query key that depends
  * on position. Keeping both on the same rounded value is what stops GPS jitter
  * from creating a new cache entry (and a new request) every few metres.
  *
@@ -15,9 +15,9 @@
  * across a warning boundary.
  */
 export const PRECISION = {
-  /** ≈1.1 km — forecast, nowcast, storm prefetch. */
+  /** ≈1.1 km: forecast, nowcast, storm prefetch. */
   WEATHER: 2,
-  /** ≈110 m — NWS alerts and the inspector sample point. */
+  /** ≈110 m: NWS alerts and the inspector sample point. */
   POINT: 3,
 } as const;
 

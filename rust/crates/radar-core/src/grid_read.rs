@@ -1,8 +1,8 @@
 //! Grid readers: parse `<key>.meta.json`, read the immutable `.bin`, and bilinear-sample a point.
 //!
 //! Readers take no lock. They rely on the atomic metadata pointer (spec-shared §5.9). The sampler follows
-//! spec-api §9.2 (`_sample_grid_point`) operation for operation, including the top-corner fill quirk, so the
-//! inspector and nowcast output match Python bit-for-bit. Known deviations are listed in README.md.
+//! spec-api §9.2 operation for operation, including the top-corner fill quirk, so the
+//! inspector and nowcast output match the original Python bit-for-bit. Known deviations are listed in README.md.
 
 use crate::grid_dump;
 use crate::pycompat::py_int;

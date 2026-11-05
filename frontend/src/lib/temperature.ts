@@ -2,7 +2,7 @@ import type { TemperatureUnit } from "../types/weather";
 
 /**
  * The forecast API returns Fahrenheit; convert only at the display boundary.
- * A missing value stays null — it must render as "—", never as 0°.
+ * A missing value stays null. It must render as "—", never as 0°.
  */
 export function displayTemperature(
   fahrenheit: number | null | undefined,

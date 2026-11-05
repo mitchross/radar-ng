@@ -1,6 +1,4 @@
 //! WatchStorm payloads (`WatchStormWorkflow`, its handoff, and the frame and change activities).
-//!
-//! Source: `temporal/workflows/watch_storm.py`, `backend/api/api/storm_watch_activities.py`.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -16,7 +14,7 @@ pub const MAX_RUN_DURATION_S: u64 = 24 * 60 * 60;
 /// The only accepted `WatchStormHandoff.schema_version`.
 pub const WATCH_STORM_HANDOFF_SCHEMA_VERSION: i64 = 1;
 
-/// Error for a handoff with an unsupported schema version. Non-retryable in Python.
+/// Error for a handoff with an unsupported schema version. Non-retryable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("Unsupported storm-watch handoff schema")]
 pub struct UnsupportedHandoffSchema {

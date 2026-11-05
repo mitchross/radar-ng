@@ -1,4 +1,4 @@
-//! NAQFC / AQMv7 access (spec-ingest-aux §5; Python `ingest_airquality/activities.py`).
+//! NAQFC / AQMv7 access (spec-ingest-aux §5).
 //!
 //! AQM CONUS runs publish one GRIB2 per product on grid 227. The AWS mirror is tried first, then
 //! NOMADS. Discovery and download use plain HTTPS HEAD/GET, not the ListObjectsV2 client.
@@ -15,9 +15,9 @@ use crate::http::{FULL_FILE_TIMEOUT, HEAD_TIMEOUT};
 pub const AQM_BASE: &str = "https://noaa-nws-naqfc-pds.s3.amazonaws.com/AQMv7/CS";
 /// NOMADS fallback for the same products.
 pub const AQM_NOMADS_BASE: &str = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aqm/prod";
-/// Cycles searched by the latest-run finder, newest first (Python `AQM_CYCLES`).
+/// Cycles searched by the latest-run finder, newest first.
 pub const AQM_CYCLES: [u32; 2] = [12, 6];
-/// Product used to probe for a run (Python `_find_latest_run_sync`).
+/// Product used to probe for a run.
 pub const PROBE_PRODUCT: &str = "ave_1hr_pm25_bc";
 
 /// Base URLs for the two sources. Tests can point both at a local server.
@@ -49,8 +49,7 @@ pub fn split_run_id(run_id: &str) -> Result<(&str, &str)> {
 }
 
 impl AqmSources {
-    /// Candidate URLs for one product of a run, in try order: AWS, then NOMADS
-    /// (Python `_grib_urls`).
+    /// Candidate URLs for one product of a run, in try order: AWS, then NOMADS.
     pub fn grib_urls(&self, run_id: &str, product: &str) -> Result<Vec<String>> {
         let (date, cc) = split_run_id(run_id)?;
         Ok(vec![
@@ -66,7 +65,7 @@ impl AqmSources {
     }
 }
 
-/// Latest AQM run with a 200 HEAD on the probe product (Python `_find_latest_run_sync`).
+/// Latest AQM run with a 200 HEAD on the probe product.
 ///
 /// Looks at the last three UTC days, cycles 12 then 6, skipping cycles later than `now`. Each cycle
 /// probes AWS then NOMADS. A non-200 status or a transport error moves on to the next URL, with no
@@ -103,11 +102,10 @@ fn run_start(date: NaiveDate, cycle: u32) -> DateTime<Utc> {
     )
 }
 
-/// Downloads one product of a run as a whole GRIB2 file (Python `_download` in
-/// `aqm_render_chunk`, 300 s timeout).
+/// Downloads one product of a run as a whole GRIB2 file (300 s timeout).
 ///
-/// Falls back to the next URL only on 404, as the Python does. The last source's 404 is an error.
-/// Unlike the Python, the body is returned in memory rather than streamed to a temp file.
+/// Falls back to the next URL only on 404. The last source's 404 is an error.
+/// The body is returned in memory, not streamed to a temp file.
 pub async fn download_product(
     http: &reqwest::Client,
     sources: &AqmSources,

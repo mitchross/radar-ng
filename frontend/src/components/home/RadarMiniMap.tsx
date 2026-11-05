@@ -1,5 +1,5 @@
 /**
- * Home-screen mini-radar — compact, non-interactive MapLibre preview.
+ * Home-screen mini-radar: compact, non-interactive MapLibre preview.
  *
  * Live data source: tile-server manifest gives latest radar timestamp,
  * then the same basemap + raster overlay stack as the dedicated Radar tab
@@ -20,7 +20,7 @@ import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import { RadarStatusChip } from "../map/RadarStatusChip";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 
-// City/metro level — matches the dedicated map's default zoom.
+// City/metro level, matches the dedicated map's default zoom.
 const MINI_ZOOM = 8;
 const MINI_SOURCE_MIN_ZOOM = 4;
 const MINI_SOURCE_MAX_ZOOM = 7;

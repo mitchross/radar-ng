@@ -4,7 +4,7 @@
 //! `num:offset:d=YYYYMMDDHH:VAR:level:fcst_time:...`. A record matches a matcher when every term of
 //! the matcher is a substring of the raw line. Each matching record becomes one byte range from its
 //! offset to the next record's offset minus one. The last record has an open end. Ranges are not
-//! merged, as in the Python.
+//! merged.
 
 use crate::error::{GribError, Result};
 
@@ -54,10 +54,10 @@ impl ByteRange {
     }
 }
 
-/// Parses an `.idx` document (Python `_get_idx_sync`).
+/// Parses an `.idx` document.
 ///
 /// Lines are split with `strip().splitlines()`. A line with fewer than five colon-separated fields
-/// is skipped. A non-integer `num` or `offset` is an error, which the Python raises as ValueError.
+/// is skipped. A non-integer `num` or `offset` is an error.
 pub fn parse_idx(text: &str) -> Result<Vec<IdxRecord>> {
     let mut out = Vec::new();
     for raw in text.trim().lines() {
@@ -92,7 +92,7 @@ pub fn parse_idx(text: &str) -> Result<Vec<IdxRecord>> {
 /// Plans the byte ranges for the records matching any of `matchers`, in file order.
 ///
 /// A matcher is a slice of terms; a record matches when every term is contained in its raw line
-/// (Python `_pick_ranges`). Each range runs to the next parsed record's offset minus one; the last
+///. Each range runs to the next parsed record's offset minus one; the last
 /// record gets an open end.
 pub fn pick_ranges(records: &[IdxRecord], matchers: &[&[&str]]) -> Vec<ByteRange> {
     let mut out = Vec::new();

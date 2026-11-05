@@ -1,5 +1,5 @@
 /**
- * Inspector/eyedropper client — asks the self-hosted tile-server for the
+ * Inspector/eyedropper client. Asks the self-hosted tile-server for the
  * interpolated layer value at a point.
  */
 import type { LayerType } from "../types/weather";

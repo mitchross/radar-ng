@@ -1,7 +1,7 @@
 //! Tile render benchmark, Rust side: `radar_tiler::render::render_frame_palettes`.
 //!
-//! Same scene, palettes, zooms, overview and iteration rules as `bench/py/bench_tile.py`.
-//! Each iteration writes a fresh pyramid tree; the last one is kept for `bench/py/verify.py`.
+//! Each iteration writes a fresh pyramid tree; the last one is kept for comparison.
+//! Scene, palettes, zooms, overview and iteration rules match the recorded Python benchmark.
 
 use std::fs;
 use std::path::PathBuf;
@@ -23,7 +23,7 @@ const ZOOMS: [u32; 4] = [4, 5, 6, 7];
 
 #[derive(Parser)]
 struct Args {
-    /// Directory written by bench/py/gen_inputs.py (contains manifest.json).
+    /// Directory of generated inputs (contains manifest.json).
     #[arg(long)]
     input_dir: PathBuf,
     /// Root for the pyramid trees (one subdirectory per iteration).

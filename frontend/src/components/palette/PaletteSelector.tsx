@@ -1,5 +1,5 @@
 /**
- * Three-swatch palette picker — Classic (NWS), Vivid (CARROT-style),
+ * Three-swatch palette picker: Classic (NWS), Vivid (CARROT-style),
  * Muted (viridis, colorblind-safe). Lives in Settings.
  */
 import { useMemo } from "react";

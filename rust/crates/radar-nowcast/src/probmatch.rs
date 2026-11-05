@@ -2,14 +2,14 @@
 //! pysteps `nowcasts.utils.compute_percentile_mask` and
 //! `postprocessing.probmatching.nonparam_match_empirical_cdf`).
 //!
-//! Selection replaces the full sorts of the Python code. Only order statistics are needed:
+//! Selection replaces the full sorts. Only order statistics are needed:
 //! one for the threshold, one for the percentile, and the top-k values for the CDF map.
 //!
 //! D1 fix (spec 1.4): pysteps indexes `precip_s[i+1]` after choosing `i`. When the wet
 //! fraction is below `1.5/N` the chosen index is `N-1` and that lookup raises. The tie
 //! rule only changes which index holds the threshold value, never the value itself, so
 //! the threshold is `s[i]` and no lookahead is needed. The mask is identical whenever
-//! Python succeeds.
+//! pysteps succeeds.
 
 use rayon::prelude::*;
 

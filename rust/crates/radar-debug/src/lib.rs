@@ -1,4 +1,4 @@
-//! radar-debug: the live-stack debug harness, the Rust port of `tools/debug_harness`.
+//! radar-debug: the live-stack debug harness.
 //!
 //! It inspects a running radar-ng stack for performance and health problems: data freshness, the
 //! API latency budget, tile serving and the `Cache-Control` contract, the app's playback pattern,
@@ -24,7 +24,7 @@ use clap::{Args, Subcommand};
 use disk::DiskRoots;
 use model::{Check, Http, exit_code, render_checks, summary_line, utcnow};
 
-/// Version of the harness (`__version__` in the Python).
+/// Version of the harness.
 pub const VERSION: &str = "0.1.0";
 
 /// The `radar debug` arguments: one check to run.
@@ -35,7 +35,7 @@ pub struct DebugArgs {
     pub check: DebugCheck,
 }
 
-/// Flags shared by every check (the Python `common` parent parser).
+/// Flags shared by every check.
 #[derive(Debug, Clone, Args)]
 pub struct Common {
     /// Tile-server base URL, the same one the app uses.

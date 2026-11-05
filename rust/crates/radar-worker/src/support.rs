@@ -22,7 +22,7 @@ pub type UnitBeat = Arc<dyn Fn() + Send + Sync>;
 ///
 /// The forwarder task ends when the last clone of the closure is dropped, which is when the activity
 /// body finishes. Heartbeat recording errors (cancellation already requested, or the attempt is gone)
-/// are logged at debug level and otherwise ignored, matching Python's fire-and-forget `heartbeat()`.
+/// are logged at debug level and otherwise ignored, because a heartbeat is fire-and-forget.
 pub fn json_heartbeat(ctx: &ActivityContext) -> JsonBeat {
     let (tx, mut rx) = mpsc::unbounded_channel::<Value>();
     let forwarder = ctx.clone();
@@ -38,7 +38,7 @@ pub fn json_heartbeat(ctx: &ActivityContext) -> JsonBeat {
     })
 }
 
-/// Heartbeat closure that sends `null` details. Used where the Python code heartbeats without data.
+/// Heartbeat closure that sends `null` details. Used where the activity heartbeats without data.
 pub fn unit_heartbeat(ctx: &ActivityContext) -> UnitBeat {
     let beat = json_heartbeat(ctx);
     Arc::new(move || beat(Value::Null))
@@ -70,7 +70,7 @@ pub fn activity_info(ctx: &ActivityContext) -> radar_ingest::ActivityInfo {
     }
 }
 
-/// A failure the workflow must not retry (Python `ApplicationError(non_retryable=True)`).
+/// A failure the workflow must not retry (`ApplicationError` with `non_retryable`).
 pub fn non_retryable(message: impl Into<String>) -> ActivityError {
     ActivityError::application(ApplicationFailure::non_retryable(message.into()))
 }

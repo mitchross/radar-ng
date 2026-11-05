@@ -337,7 +337,7 @@ pub fn replace_palette(png: &[u8], rgb: &[u8], alpha: Option<&[u8]>) -> Result<V
 }
 
 /// Decode an indexed PNG's raw class indices (one byte per pixel) and its palette, for tests
-/// and the parity tools. Only colour type 3 is accepted.
+/// and the golden comparison. Only colour type 3 is accepted.
 pub fn decode_indexed(png: &[u8]) -> Result<DecodedIndexed> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(png));
     decoder.set_transformations(png::Transformations::IDENTITY);

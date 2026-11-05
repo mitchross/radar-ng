@@ -3,7 +3,7 @@
 // is configured. Location attributes are dropped before export.
 //
 // The OTLP/HTTP exporters use fetch() under the hood, which RN provides
-// natively — no polyfills required. We don't use any auto-instrumentation
+// natively, no polyfills required. We don't use any auto-instrumentation
 // that depends on DOM (PerformanceObserver, window, etc.), so this is
 // entirely manual tracing via trace() / logEvent() helpers below.
 

@@ -1,11 +1,11 @@
 //! Push-token store (spec-shared §9): one SQLite file at `<STATE_DIR>/push_tokens.sqlite`.
 //!
-//! Every operation opens a new connection, as the Python version does. The schema is idempotent
-//! (`CREATE TABLE IF NOT EXISTS`) and byte-identical to the Python one, so both can share the file.
+//! Every operation opens a new connection. The schema is idempotent
+//! (`CREATE TABLE IF NOT EXISTS`).
 //!
 //! Policy (defect D14, decided here): `token` remains the **global** primary key. Registering a token for
 //! another user reassigns it (`ON CONFLICT(token) DO UPDATE`). Changing the key would change the on-disk
-//! schema that the Python workers still read during cutover. The Python docstring is wrong, not the schema.
+//! schema of existing deployments.
 
 use rusqlite::{Connection, params};
 use std::path::{Path, PathBuf};
@@ -17,8 +17,8 @@ pub const DB_FILE: &str = "push_tokens.sqlite";
 /// SQLite busy timeout (spec §15.1: 5 s).
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// The idempotent schema (spec §9.2). The text matches the Python string byte for byte, including the
-/// indentation that SQLite keeps in `sqlite_master.sql`.
+/// The idempotent schema (spec §9.2). The text is kept byte for byte, including the
+/// indentation that SQLite stores in `sqlite_master.sql`, so existing databases match.
 pub const SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS push_tokens (
             user_id    TEXT NOT NULL,

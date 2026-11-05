@@ -1,7 +1,7 @@
 //! Runtime configuration for `nowcast_run` (spec-nowcast section 2.3).
 //!
-//! [`NowcastConfig::from_env`] reads the variables with the spec defaults. Values Python clamps
-//! (`max(3, ...)` for the input frames, `max(1, ...)` for the stride) are clamped the same way.
+//! [`NowcastConfig::from_env`] reads the variables with the spec defaults. The input frame count is
+//! clamped to at least 3 and the motion stride to at least 1.
 
 use std::time::Duration;
 
@@ -12,9 +12,9 @@ use radar_tiler::palettes::parse_palette_names;
 
 /// Layer that holds the 5-minute science grids (`NOWCAST_GRID_INPUT_LAYER`).
 pub const DEFAULT_INPUT_LAYER: &str = "radar-nowcast-input";
-/// Lead-time zoom levels (spec 8.5, `ZOOM_LEVELS`).
+/// Lead-time zoom levels (spec 8.5).
 pub const ZOOM_LEVELS: [u32; 3] = [4, 5, 6];
-/// Minimum number of input grids S-PROG needs (`N_INPUT_FRAMES` clamp).
+/// Minimum number of input grids S-PROG needs.
 pub const MIN_INPUT_FRAMES: usize = 3;
 
 /// Every knob of one nowcast run.

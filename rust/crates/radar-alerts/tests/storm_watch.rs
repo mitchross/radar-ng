@@ -1,5 +1,5 @@
 //! Storm-watch frame comparison and change detection against synthetic radar grids (spec-shared section 8,
-//! spec-temporal 8.5 and 8.6, Python `storm_watch_activities.py`).
+//! spec-temporal 8.5 and 8.6).
 
 use std::path::Path;
 

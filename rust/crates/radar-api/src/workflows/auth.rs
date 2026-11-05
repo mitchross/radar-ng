@@ -2,10 +2,10 @@
 //!
 //! Token format: `base64url_nopad(json) + "." + base64url_nopad(HMAC-SHA256(key, payload_part_text))`.
 //! Only `sub` and `exp` are checked. The decoder is strict: a token with `=` padding or characters
-//! outside the URL-safe alphabet is rejected. The Python code accepted padding, but no issuer
+//! outside the URL-safe alphabet is rejected. The original code accepted padding, but no issuer
 //! produces it (spec 6.2, which recommends strict decoding).
 //!
-//! Deviation: a non-finite `exp` (`NaN`, `inf`) is rejected. Python's `nan <= now` is false, so it
+//! Deviation: a non-finite `exp` (`NaN`, `inf`) is rejected. `nan <= now` is false, so it
 //! accepted such a token.
 
 use std::time::{SystemTime, UNIX_EPOCH};

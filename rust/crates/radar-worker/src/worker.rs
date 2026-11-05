@@ -64,7 +64,7 @@ use crate::workflows::tropical::IngestTropicalWorkflow;
 use crate::workflows::watch_storm::WatchStormWorkflow;
 
 /// How long the worker runs alone before background work starts. The SDK exposes no running-state check, so
-/// this stands in for the Python `is_running` poll (spec 3.4). A worker that fails within this window starts
+/// this delay replaces a running-state poll (spec 3.4). A worker that fails within this window starts
 /// no background work.
 pub const POLLER_START_GRACE: Duration = Duration::from_millis(250);
 
@@ -72,14 +72,14 @@ pub const POLLER_START_GRACE: Duration = Duration::from_millis(250);
 /// The restart releases the flocks and memory that work holds.
 pub const ABANDONED_WORK_GRACE: Duration = Duration::from_secs(60);
 
-/// Grace period for the open-meteo pool, which the Python worker hard-codes to 25 s.
+/// Grace period for the open-meteo pool, which is fixed at 25 s.
 pub const OPEN_METEO_GRACEFUL_SHUTDOWN: Duration = Duration::from_secs(25);
-/// Local-activity and Nexus slot counts. The Python worker does not set them (spec 3.3), so 100 is an assumed
-/// SDK default that this port has not verified against the Python SDK.
+/// Local-activity and Nexus slot counts. The original Python worker did not set them (spec 3.3). 100 is an assumed
+/// SDK default, not verified.
 pub const DEFAULT_SLOTS: usize = 100;
 
 /// Workflow and activity names one role registers (spec 3.2). The open-meteo pool is not a
-/// `ROLE_CONFIG` key in Python; it registers only `open_meteo_sync`.
+/// role in the registration table; it registers only `open_meteo_sync`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Registration {
     /// Workflow type names.
@@ -92,7 +92,7 @@ pub struct Registration {
 const SMOKE_ACTIVITY: &str = wire::ACTIVITY_RADAR_DEPLOYMENT_SMOKE;
 const SMOKE_WORKFLOW: &str = wire::WORKFLOW_DEPLOYMENT_SMOKE;
 
-/// Registration table for a role (spec 3.2, `worker.py:140-216`). `legacy` and `all` register everything
+/// Registration table for a role (spec 3.2). `legacy` and `all` register everything
 /// except `open_meteo_sync`, which runs only on the open-meteo pool.
 pub fn registration(role: WorkerRole) -> Registration {
     let mut workflows: Vec<&'static str> = match role {

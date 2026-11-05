@@ -1,8 +1,8 @@
 //! `storms.json` persistence: `storms.lock` flock, stale-frame guard, atomic replace.
 //!
 //! Semantics follow spec-shared 0.3, 0.4 and 6.9. The lock is `flock(2)` on the
-//! sidecar `storms.lock`, which is never deleted, so Python writers interoperate.
-//! Unlike the Python writer, the replacement is fsynced (tmp file, rename, then
+//! sidecar `storms.lock`, which is never deleted, so a Python writer can share it.
+//! The replacement is fsynced (tmp file, rename, then
 //! directory), as spec-shared D8 recommends.
 
 use std::fs::{self, File, OpenOptions};
@@ -64,8 +64,8 @@ impl Drop for LockGuard {
 /// Detect storms and atomically advance `state_dir/storms.json`.
 ///
 /// The frame is skipped when the stored timestamp is equal or newer. A missing,
-/// unreadable or non-JSON previous file is treated as "no previous frame", as in
-/// Python. Such a file is logged, not fatal.
+/// unreadable or non-JSON previous file is treated as "no previous frame".
+/// Such a file is logged, not fatal.
 ///
 /// # Errors
 /// Returns [`StormsError::Io`] on filesystem failures and [`StormsError::Json`]
@@ -139,7 +139,7 @@ fn stored_timestamp(previous: Option<&Value>) -> Option<crate::time::Instant> {
 
 /// Write `bytes` to a temp file in `dir`, fsync it, rename it over `target`, and fsync `dir`.
 ///
-/// The temp file is created with mode 0600, as Python's `mkstemp` does.
+/// The temp file is created with mode 0600.
 ///
 /// # Errors
 /// Returns the first I/O error. The temp file is removed on failure.

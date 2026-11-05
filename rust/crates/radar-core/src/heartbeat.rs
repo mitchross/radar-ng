@@ -1,7 +1,7 @@
 //! Keep a long blocking job alive while it runs: [`run_blocking_with_heartbeat`] (spec-shared §12).
 //!
-//! The Python version (`run_sync_with_heartbeat`) runs `func` in a thread and beats from the event loop
-//! every `heartbeat_every` seconds. The first beat fires after one full interval, not at t=0. Beats stop
+//! The blocking function runs in a thread and beats from the event loop every `heartbeat_every`
+//! seconds. The first beat fires after one full interval, not at t=0. Beats stop
 //! once the work finishes.
 //!
 //! Fix (D18): a failing beat never affects the result. The beat runs on its own task. Panics inside the beat
@@ -38,7 +38,7 @@ fn exit_abandoned(grace: Duration) {
 ///
 /// Returns `f`'s result. Panics in `f` propagate. Panics in `beat` are caught and logged, and never mask the
 /// result. Dropping the returned future aborts the beat, but the blocking thread keeps running (threads are
-/// not cancellable), as in Python, unless [`exit_when_abandoned_after`] is set.
+/// not cancellable), unless [`exit_when_abandoned_after`] is set.
 pub async fn run_blocking_with_heartbeat<T, F, B>(f: F, interval: Duration, beat: B) -> T
 where
     T: Send + 'static,

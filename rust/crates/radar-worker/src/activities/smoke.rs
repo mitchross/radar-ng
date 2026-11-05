@@ -1,6 +1,6 @@
 //! Deployment smoke activity (spec section 9.2).
 //!
-//! The Python check imports pysteps and pygrib. The Rust build replaces them with native checks:
+//! The original Python check imported pysteps and pygrib. The Rust build uses native checks instead:
 //! palette files resolve through `radar_tiler`, a 2x2 indexed PNG is recoloured and decoded, and
 //! every volume is probed by a write, fsync, rename and read-back. The pysteps and ecCodes checks
 //! have no native counterpart here and are not performed (see the crate README).
@@ -17,7 +17,7 @@ use temporalio_sdk::activities::{ActivityContext, ActivityError};
 
 use crate::support::with_cancel;
 
-/// Roles that the Python check accepts (`check_release`).
+/// Roles that `check_release` accepts.
 pub const KNOWN_ROLES: [&str; 7] = ["mrms", "nowcast", "hrrr", "aux", "alerts", "legacy", "all"];
 /// Palettes checked when `PALETTES` is unset.
 pub const DEFAULT_PALETTES: &str = "classic,muted,vivid";
@@ -46,7 +46,7 @@ impl SmokeActivities {
     }
 }
 
-/// Run the release checks against an injectable environment lookup. Returns the Python result shape.
+/// Run the release checks against an injectable environment lookup. Returns `{ok, role}`.
 pub fn check_release(
     env: &dyn Fn(&str) -> Option<String>,
 ) -> anyhow::Result<DeploymentSmokeResult> {

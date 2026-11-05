@@ -1,6 +1,6 @@
 //! Temporal Schedule definitions and seeding gates (spec-temporal sections 2.2, 6 and 10.5).
 //!
-//! [`all_schedules`] reproduces `temporal/schedules/seed.py` exactly: the same
+//! [`all_schedules`] reproduces the original Python seed list exactly: the same
 //! 12 schedules, in the same order, with the same intervals, jitter, catch-up
 //! windows, execution timeouts, queues and arguments. Three schedules were added
 //! since: `ingest-mrms-qpe-24h`, and the Rust-only `ingest-gfs-radar` and
@@ -48,12 +48,12 @@ pub const SCHEDULE_INGEST_GFS_RADAR: &str = "ingest-gfs-radar";
 /// Schedule ID of the UV Index schedule (`uv`).
 pub const SCHEDULE_INGEST_UV: &str = "ingest-uv";
 
-/// `GFS013_VARIABLES` (`seed.py`), exact comma-joined list.
+/// `GFS013_VARIABLES`, exact comma-joined list.
 pub const GFS013_VARIABLES: &str = "temperature_2m,relative_humidity_2m,precipitation,showers,snowfall_water_equivalent,frozen_precipitation_percent,cloud_cover,wind_u_component_10m,wind_v_component_10m,shortwave_radiation,uv_index";
-/// `GFS025_SURFACE_VARIABLES` (`seed.py`), exact comma-joined list.
+/// `GFS025_SURFACE_VARIABLES`, exact comma-joined list.
 pub const GFS025_SURFACE_VARIABLES: &str =
     "wind_gusts_10m,pressure_msl,cape,lifted_index,visibility,categorical_freezing_rain";
-/// `HRRR_VARIABLES` (`seed.py`), exact comma-joined list.
+/// `HRRR_VARIABLES`, exact comma-joined list.
 pub const HRRR_VARIABLES: &str = "temperature_2m,relative_humidity_2m,precipitation,snowfall_water_equivalent,frozen_precipitation_percent,categorical_freezing_rain,cloud_cover,wind_u_component_10m,wind_v_component_10m,wind_gusts_10m,pressure_msl,cape,lifted_index,visibility,shortwave_radiation";
 
 /// Catch-up window of the fast (1 to 2 minute) schedules: 5 minutes.
@@ -153,7 +153,7 @@ pub fn action_workflow_id(schedule_id: &str) -> String {
     format!("{SCHEDULE_ACTION_ID_PREFIX}{schedule_id}")
 }
 
-/// The 15 schedules: `seed.py` order with `ingest-mrms-qpe-24h` after the reflectivity ones, then
+/// The 15 schedules: original seed order with `ingest-mrms-qpe-24h` after the reflectivity ones, then
 /// the two global-model ones. Seed-time queue routing is applied by [`schedule_action_queue`], not here.
 pub fn all_schedules() -> Vec<ScheduleDef> {
     vec![
@@ -301,14 +301,14 @@ pub fn all_schedules() -> Vec<ScheduleDef> {
 }
 
 /// The task queue a schedule's action uses: the declared queue when
-/// `use_isolated` is true, otherwise the legacy queue (`seed.py:297-301`).
+/// `use_isolated` is true, otherwise the legacy queue.
 pub fn schedule_action_queue(def: &ScheduleDef, use_isolated: bool) -> &str {
     wire::schedule_task_queue(def.task_queue, use_isolated)
 }
 
 /// Whether this process seeds schedules.
 ///
-/// Mirrors `temporal/worker.py`: `SEED_SCHEDULES == "1"` seeds; when unset,
+/// `SEED_SCHEDULES == "1"` seeds; when unset,
 /// only the `legacy` and `all` roles seed; any other set value disables seeding.
 /// `SKIP_SCHEDULE_SEED == "1"` always disables seeding. Values are passed raw
 /// (no trimming), and both match exactly.

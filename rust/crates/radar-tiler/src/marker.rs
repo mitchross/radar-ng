@@ -169,8 +169,8 @@ fn py_int(v: Option<&Value>) -> Option<i64> {
 
 /// Validate a v2 pyramid (spec 11, `_inspect_complete_pyramid`).
 ///
-/// Returns [`TilerError::Unbound`] when the marker is missing (the only case the Python
-/// publisher may adopt). Every other failure is `Corrupt` or `Conflict`, which fail closed.
+/// Returns [`TilerError::Unbound`] when the marker is missing (the only case the original
+/// Python publisher adopted). Every other failure is `Corrupt` or `Conflict`, which fail closed.
 pub fn inspect_complete_pyramid(
     dir: &Path,
     expected: Option<&PyramidIdentity>,

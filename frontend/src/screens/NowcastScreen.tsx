@@ -1,5 +1,5 @@
 /**
- * Cumulus Nowcast screen — 60-minute precipitation outlook.
+ * Cumulus Nowcast screen: 60-minute precipitation outlook.
  * Redesigned for Editorial Light. Gated cards in Simple/Advanced mode.
  */
 import { useCallback, useState } from "react";

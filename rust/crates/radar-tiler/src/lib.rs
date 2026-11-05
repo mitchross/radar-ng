@@ -3,7 +3,7 @@
 //! The production entry point is [`render_frame_palettes`]. It renders one source grid into
 //! one atomically published, indexed-PNG pyramid per palette, and never adopts a tree that
 //! lacks a completion marker. Renderer identity is `"indexed-rs1"`; see README.md for the
-//! deviations from the Python implementation.
+//! deviations from the original Python implementation.
 
 pub mod cache;
 pub mod classify;

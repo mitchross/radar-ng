@@ -1,5 +1,5 @@
-//! Runtime configuration read from the same environment variables as the Python
-//! modules (spec-shared section 0.5). Defaults are the Python defaults.
+//! Runtime configuration read from environment variables (spec-shared section 0.5).
+//! Defaults match the original Python.
 
 use std::path::PathBuf;
 

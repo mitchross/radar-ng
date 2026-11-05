@@ -5,7 +5,7 @@ export interface RadarFrame {
   /** Valid time stays separate because immutable model paths include run_id. */
   timestamp: string;
   /**
-   * Optional source layer — only set on merged radar timelines so the
+   * Optional source layer. Only set on merged radar timelines so the
    * overlay knows which subtree to pull from (past=radar, nowcast=nowcast,
    * future=radar-hrrr, then radar-gfs to 72 h). Omitted on single-source timelines.
    */

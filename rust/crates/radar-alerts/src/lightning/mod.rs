@@ -4,7 +4,7 @@
 //! `lightning.json` atomically, and returns counters. A background task beats every 30 s, which prunes, flushes
 //! and reports stats through the caller's heartbeat callback. Cancellation is cooperative through a
 //! [`CancellationToken`]. A cancelled run returns [`LightningError::Cancelled`] without a final flush, as the
-//! Python `CancelledError` path does.
+//! original `CancelledError` path did.
 
 mod config;
 mod decode;
@@ -49,12 +49,12 @@ pub enum LightningError {
     /// The cancellation token fired. The worker should report a cancelled activity.
     #[error("lightning stream cancelled")]
     Cancelled,
-    /// A file, task or configuration problem that Python would raise as an exception.
+    /// A file, task or configuration problem that the original raised as an exception.
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
 
-/// Counters reported in every heartbeat. The key names match the Python `stats` dict.
+/// Counters reported in every heartbeat. The key names match the original `stats` dict.
 #[derive(Debug, Default, Clone, Copy, Serialize)]
 pub(crate) struct Stats {
     msgs: i64,
@@ -110,7 +110,7 @@ impl Shared {
     }
 }
 
-/// Drop strikes older than the retention window (Python `_prune`).
+/// Drop strikes older than the retention window.
 pub(crate) fn prune_buffer(buffer: &mut StrikeBuffer, retention_min: i64) {
     buffer.prune_before(now_epoch() - retention_min as f64 * 60.0);
 }
@@ -157,7 +157,7 @@ where
             }
             shared.prune_and_count();
             if let Err(err) = flush(&shared).await {
-                // A write error must not stop heartbeats (Python logs geojson_flush_failed).
+                // A write error must not stop heartbeats (it logs geojson_flush_failed).
                 tracing::warn!(event = "geojson_flush_failed", error = %format!("{err:#}"));
             }
             let details = serde_json::to_value(shared.stats()).unwrap_or(serde_json::Value::Null);
@@ -248,7 +248,7 @@ where
                 delay
             }
             None => {
-                // A clean close, or the run deadline, arrives here. Python takes this path as well.
+                // A clean close, or the run deadline, arrives here. The original did too.
                 let delay = if delivered {
                     picker.succeeded(&url)
                 } else {

@@ -4,7 +4,7 @@
 //! parsing, the manifest snapshot, the request origin, and the style document.
 //!
 //! D1 fix: the style document resolves each tile path from the manifest frame's `path` (for a
-//! nowcast frame, `runs/<anchor>/<valid>`). Python always used the timestamp, so a run-scoped
+//! nowcast frame, `runs/<anchor>/<valid>`). The old code always used the timestamp, so a run-scoped
 //! frame had no tiles. The `style_url` query still carries `timestamp`, as the contract requires.
 //! D9 fix: a corrupt manifest with no last-good copy no longer 500s when no storm is selected.
 

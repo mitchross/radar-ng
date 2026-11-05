@@ -1,5 +1,5 @@
 /**
- * Apple-Weather-style "My Location" marker — pill shows a layer-aware value
+ * Apple-Weather-style "My Location" marker. The pill shows a layer-aware value
  * with a triangular tail pointing down to the user dot on the map.
  *
  *   Wind:        stacked "<dir> / <mph> / MPH"

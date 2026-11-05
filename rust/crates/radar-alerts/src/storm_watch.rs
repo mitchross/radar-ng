@@ -1,5 +1,4 @@
-//! Storm-watch activities (spec-shared sections 8 and 9, spec-temporal sections 4.11 and 8.1, Python
-//! `backend/api/api/storm_watch_activities.py`).
+//! Storm-watch activities (spec-shared sections 8 and 9, spec-temporal sections 4.11 and 8.1).
 //!
 //! - [`persist_push_token`], [`delete_push_token`]: the push-token store (`radar-core`).
 //! - [`compare_radar_frames`], [`detect_storm_change`]: frame sampling and classification (`radar-storms`).

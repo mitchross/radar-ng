@@ -2,7 +2,7 @@
 //!
 //! Names and defaults follow spec §0.5. An unset or empty variable means "use the default"
 //! (Kubernetes often sets empty strings). A set but unparseable value is an error, so the process
-//! fails at startup instead of silently running with a surprising value. Python would raise at import.
+//! fails at startup instead of silently running with a surprising value.
 
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -25,8 +25,8 @@ pub fn var(name: &str) -> Option<String> {
 }
 
 /// Parse a boolean flag. Accepts `1`, `true`, `yes`, `on` (any case) as true and `0`, `false`, `no`, `off`
-/// as false. Anything else is rejected. (PLAN temporal D5: the Python `PUSH_DISABLED` check was truthy
-/// for everything except `"1"`.)
+/// as false. Anything else is rejected. (PLAN temporal D5: the original Python `PUSH_DISABLED` check
+/// was truthy for everything except `"1"`.)
 pub fn parse_bool(name: &str, value: &str) -> Result<bool, EnvError> {
     match value.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => Ok(true),
