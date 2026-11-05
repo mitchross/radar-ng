@@ -4,7 +4,7 @@ The whole radar-ng backend is one Cargo workspace that builds one binary, `radar
 (tiles, basemap, `/api`, `/v1`, `/metrics`), the Temporal workers, the schedule seeder and watchdog, and
 the operator diagnostics. The app (`frontend/`) and the web radar (`web/`) talk to it over HTTP.
 
-Images, compose and releases: [`deploy/`](../deploy/README.md). Migration history:
+Images, compose and releases: [`deploy/`](../deploy/README.md). Migration design history:
 `docs/archive/rust-migration/` (PLAN, REVIEW, specs, benchmark-results).
 
 ## Build and test

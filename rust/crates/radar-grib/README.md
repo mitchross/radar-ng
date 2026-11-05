@@ -1,7 +1,7 @@
 # radar-grib
 
 GRIB2 decoding and NOAA data access for radar-ng: MRMS, HRRR and NAQFC listing, download, `.idx`
-range planning and decoding, on the pure-Rust `grib` crate plus anonymous S3 over HTTPS. Specs:
+range planning and decoding, on the pure-Rust `grib` crate plus anonymous S3 over HTTPS. Design history (not the current spec):
 `docs/archive/rust-migration/specs/spec-ingest-mrms-hrrr.md` (sections 4, 5, 12, 17) and
 `docs/archive/rust-migration/specs/spec-ingest-aux.md` (section 5).
 
@@ -65,24 +65,23 @@ Run from `rust`: `cargo test -p radar-grib`.
 The golden fixtures are generated GRIB2 files, not NOAA downloads. They cover the packing
 templates and the codes, not the byte-level details of real HRRR or MRMS files.
 
-## Deviations from the Python and spec
+## Behavior notes
 
-- User-Agent is `radar-ng-ingest/0.1 (radar-grib; rust)`. httpx sent its own default. NOAA does
+- User-Agent is `radar-ng-ingest/0.1 (radar-grib; rust)`. NOAA does
   not require a specific value.
-- No in-process retries. Temporal's activity retry policy owns retries, as in the Python.
-- PLAN D4: the HRRR `.idx` falls back to the whole object only on HTTP 404. Python falls back on
-  any HTTP error, which can download about 130 MB on a 5xx or a timeout. Other index errors fail.
+- No in-process retries. Temporal's activity retry policy owns retries.
+- PLAN D4: the HRRR `.idx` falls back to the whole object only on HTTP 404. Other index errors fail,
+  because a fallback on any error can download about 130 MB on a 5xx or a timeout.
 - PLAN D5: ranged GET requires 206. A Content-Range start that differs from the request, or a body
   whose length differs from the range, is an error. Without this, a server that ignores Range
   would be written once per range.
 - PLAN D6: the S3 prefix and continuation token are percent-encoded by reqwest's query encoder.
-  The Python interpolates them raw into the URL.
-- PLAN D21: `fetch_gz` parses the MRMS key timestamp before downloading. Python parses it after.
-- Python's `_list_keys_sync` filter is kept (`.grib2.gz` only). `list_recent_keys` does not
+- PLAN D21: `fetch_gz` parses the MRMS key timestamp before downloading.
+- The listing filter keeps `.grib2.gz` only. `list_recent_keys` does not
   validate timestamps; `fetch_gz` does.
-- MRMS and AQM downloads are returned in memory. Python streams the AQM file to a temp file.
+- MRMS and AQM downloads are returned in memory.
 - `decode_message` decodes the first message. Use `find_message` with a `MessageSelector` for
-  name-based selection. Python selects by eccodes name (`shortName`, `typeOfLevel`, `level`).
+  name-based selection.
 - HRRR selectors use GRIB2 codes (discipline, category, number, first-surface type, level), not
   name strings. Name strings differ between eccodes versions ("TMP" and "2 metre temperature").
   The code list is in `hrrr::HrrrVar::selector`.
@@ -99,13 +98,12 @@ templates and the codes, not the byte-level details of real HRRR or MRMS files.
   (section 5, octet 22), missing-value management (in-line 1 or 2), predefined bitmaps, and any
   template not listed above.
 - Lambert lat/lon come from the `grib` crate's `latlons_unchecked`. Longitudes are normalised to
-  -180..180. Projected axes use the spec 5.3 procedure, with the Python 1-D fallback.
-- MRMS south-up flip is `ensure_south_up`, applied by the caller, as in the Python.
+  -180..180. Projected axes use the spec 5.3 procedure, with the 1-D fallback.
+- MRMS south-up flip is `ensure_south_up`, applied by the caller.
 
 ## Deferred
 
-- NAQFC: the Python `_extract_native_projection` path for the grid-227 curvilinear layout is not
-  ported. The crate decodes the message through the same template path as HRRR. The result for
+- NAQFC: the grid-227 curvilinear native-projection path is not implemented. The crate decodes the message through the same template path as HRRR. The result for
   the real file is unverified.
 - NAQFC chunked rendering (`aqm_render_chunk` with `start_msg`). `download_product` returns the
   whole file, and per-message-range selection is left to the caller.
@@ -116,7 +114,7 @@ templates and the codes, not the byte-level details of real HRRR or MRMS files.
 
 ## Notes for the integrator
 
-- All error paths return `GribError`. Map `is_not_found()` to "pending" only where the Python does.
+- All error paths return `GribError`. Map `is_not_found()` to "pending" only where a missing object means the data is not published yet.
 - `hrrr::fetch_hour` returns bytes. Writing them to a temp file and calling `decode` is the caller's job.
 - `S3Client::new(http::client()?, hrrr::BASE_URL)` is the production setup. Tests can point it at a
   local server.

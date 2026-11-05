@@ -6,9 +6,9 @@ Layout: `<WorkflowType>/<version>/<scenario>.json` (`.json.gz` above 512 KiB).
 never regenerated or edited. The replay gate (`tests/replay.rs`) proves the
 current workflows still replay every retained release.
 
-The histories of the Python-era workflows were recorded from the Python worker
-releases (v1.1.26, v1.1.27, v1.1.49, and `src-e8c8659`) before the Python code
-was removed. `IngestGlobalModelWorkflow` is Rust-only: its `src-<sha>` histories
+Python worker releases (v1.1.26, v1.1.27, v1.1.49, and `src-e8c8659`) recorded
+the histories of the Python-era workflows, before the Python code
+was removed. `IngestGlobalModelWorkflow` has no Python version: its `src-<sha>` histories
 come from the Rust workflow with scripted fake activities on a local
 `temporal server start-dev`, exported with `temporal workflow show --output json`.
 
@@ -36,7 +36,7 @@ keep, each with the event or activity that proves it took the named path.
 ## Generator
 
 `generate.py` runs the Python workflow code against Temporal's time-skipping
-test server, so it only works inside a Python worker image (`v1.1.x`), for
+test server. It works only inside a Python worker image (`v1.1.x`), for
 example:
 
 ```sh
@@ -47,5 +47,5 @@ docker run --rm --user "$(id -u):$(id -g)" \
   /gen/generate.py --version v1.1.49 --out /out
 ```
 
-There is no generator for histories recorded from the Rust workers yet.
+There is no generator for Rust worker histories yet.
 `generate.py` refuses to write into an existing version directory.

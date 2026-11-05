@@ -14,9 +14,9 @@ them is part of the service.
 | `noaa_dump` | `fetch`: newest MRMS key and object, latest HRRR run with `.idx` and the ranged subset, latest NAQFC run, and a HEAD of a missing key per bucket. `dump`: MRMS decode and south-up flip, every HRRR message decoded and hashed, `.idx` picks for the 13 variables, values, axes and the Lambert mesh | real NOAA files (used by `rust/scripts/live-noaa-check.sh`) |
 | `bench_api_server` | `radar_api::serve(Config::from_env())`, for timing the API from outside with a load tool | environment only: `LISTEN_ADDR`, `TILE_DIR`, `STATE_DIR`, `GRID_DIR`, `API_RATE_LIMIT_RPS` |
 
-Common flags: `--warmup`, `--iters`, `--json <file>`. Each run is one process: warmup calls, then timed
+Common flags: `--warmup`, `--iters`, `--json <file>`. Each run is one process that makes warmup calls, then timed
 calls. Input arrays are raw little-endian `f32`/`f64` (numpy `tofile` layout). The synthetic-input
-generator and the Python comparison runners were removed with the Python backend; the recorded results
+generator and the Python comparison runners were removed with the Python backend. The recorded results
 are in `docs/archive/rust-migration/benchmark-results.md`.
 
 ```sh
@@ -39,7 +39,7 @@ Inputs are read in 1 MB chunks into the final vector, so peak RSS is the data, n
 
 ## Notes
 
-- The tile runner removes earlier iteration trees outside the timed loop; only the last tree stays.
+- The tile runner removes earlier iteration trees outside the timed loop. Only the last tree stays.
 - The storms runner writes a normalized summary (ids, peaks, pixel counts, areas, bboxes, coordinates).
   It does not time that write.
 - The nowcast runner writes the forecast with NaN replaced by -9999.
