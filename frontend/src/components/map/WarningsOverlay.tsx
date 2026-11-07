@@ -12,6 +12,8 @@ import { useIsFocused } from "expo-router";
 import { fetchMapAlerts } from "../../lib/api";
 import { useAlerts } from "../../hooks/useAlerts";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { useBasemapStyle } from "../../hooks/useBasemapStyle";
+import { warningTagExpression } from "../../lib/warningTags";
 import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 export const WARNING_COLORS: [string, string][] = [
@@ -40,6 +42,8 @@ export interface WarningDetails {
 export function WarningsOverlay({ onSelect }: { onSelect?: (w: WarningDetails) => void }) {
   const extrasVisible = useWeatherStore((s) => s.extrasVisible);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
+  const mapStyle = useWeatherStore((s) => s.mapStyle);
+  const { labelFont } = useBasemapStyle(serverUrl, mapStyle);
   const focused = useIsFocused();
   const { data: local } = useAlerts();
   const { data } = useQuery({
@@ -69,6 +73,14 @@ export function WarningsOverlay({ onSelect }: { onSelect?: (w: WarningDetails) =
     >
       <Layer type="fill" id="warnings-fill" paint={{ "fill-color": colorExpr, "fill-opacity": 0.14 }} />
       <Layer type="line" id="warnings-line" paint={{ "line-color": colorExpr, "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1.5, 9, 3] as never }} />
+      {/* Type tag (TOR/SVR/FFW...) so colour is not the only signal; minzoom keeps the zoomed-out map clean. */}
+      <Layer
+        type="symbol"
+        id="warnings-labels"
+        minzoom={5.5}
+        layout={{ "text-field": warningTagExpression() as never, "text-font": labelFont, "text-size": 12, "text-padding": 4 }}
+        paint={{ "text-color": "#ffffff", "text-halo-color": "#111827", "text-halo-width": 1.6 }}
+      />
     </GeoJSONSource>
   );
 }

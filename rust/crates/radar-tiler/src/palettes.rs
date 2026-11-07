@@ -265,6 +265,39 @@ mod tests {
         }
     }
 
+    /// Colour must never be the only signal: `muted` (viridis) is the colour-blind-safe family, so any
+    /// colour key a palette defines must exist in every family. Iterates the embedded files, so a
+    /// table added for a new layer to one palette fails here until `muted` has it too.
+    #[test]
+    fn every_palette_defines_the_same_color_keys_with_usable_tables() {
+        let loaded: Vec<(String, Palette)> = EMBEDDED_PALETTES
+            .iter()
+            .map(|(name, _)| ((*name).to_string(), load_palette(name).unwrap()))
+            .collect();
+        let mut all: Vec<&str> = loaded.iter().flat_map(|(_, p)| p.color_keys()).collect();
+        all.sort_unstable();
+        all.dedup();
+        let muted = &loaded
+            .iter()
+            .find(|(n, _)| n == "muted")
+            .expect("muted palette")
+            .1;
+        for key in &all {
+            for (name, palette) in &loaded {
+                assert!(
+                    palette.color_keys().any(|k| k == *key),
+                    "palette {name} has no table for {key}"
+                );
+            }
+            let table = muted.color_table(key).unwrap();
+            assert!(
+                table.ranges().is_some_and(|r| !r.is_empty())
+                    || table.categories().is_some_and(|c| !c.is_empty()),
+                "muted.{key} has no bands"
+            );
+        }
+    }
+
     #[test]
     fn rgba_truncates_floats_and_rejects_overflow() {
         let t = ColorTable::from_value(&serde_json::json!({

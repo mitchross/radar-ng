@@ -11,6 +11,9 @@
 import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useMemo } from "react";
 import { useAlerts } from "../../hooks/useAlerts";
+import { useBasemapStyle } from "../../hooks/useBasemapStyle";
+import { warningTagExpression } from "../../lib/warningTags";
+import { useWeatherStore } from "../../stores/useWeatherStore";
 import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 const SEVERITY_FILL: Record<string, string> = {
@@ -40,6 +43,9 @@ function classifyEvent(event: string): "warning" | "watch" | "advisory" | "state
 // Always mounted (empty collection when there are no alerts). See lib/emptyGeoJSON.
 export function AlertPolygon() {
   const { data: alertData } = useAlerts();
+  const serverUrl = useWeatherStore((s) => s.serverUrl);
+  const mapStyle = useWeatherStore((s) => s.mapStyle);
+  const { labelFont } = useBasemapStyle(serverUrl, mapStyle);
 
   const geojson = useMemo<GeoJSON.FeatureCollection>(() => {
     const withGeometry = alertData?.features.filter((f) => f.geometry !== null) ?? [];
@@ -141,6 +147,14 @@ export function AlertPolygon() {
           "line-width": 1.5,
           "line-dasharray": [1, 2] as never,
         }}
+      />
+      {/* Type tag (TOR/SVR/FFW...) so colour is not the only signal. */}
+      <Layer
+        type="symbol"
+        id="alert-labels"
+        minzoom={5.5}
+        layout={{ "text-field": warningTagExpression() as never, "text-font": labelFont, "text-size": 12, "text-padding": 4 }}
+        paint={{ "text-color": "#ffffff", "text-halo-color": "#111827", "text-halo-width": 1.6 }}
       />
     </GeoJSONSource>
   );
