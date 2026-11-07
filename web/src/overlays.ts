@@ -6,6 +6,7 @@
 import type { Feature, FeatureCollection } from "geojson";
 import type { GeoJSONSource, Map as MLMap, MapGeoJSONFeature } from "maplibre-gl";
 import { escapeHtml as esc } from "./html";
+import { warningTagExpression } from "./shared/warningTags";
 
 export type OverlayId = "outlook" | "warnings" | "storms" | "lightning" | "tropical";
 type FC = FeatureCollection;
@@ -192,6 +193,8 @@ export class Overlays {
     m.addLayer({ id: "ov-outlook-line", type: "line", source: "ov-outlook", layout: { visibility: vis("outlook") }, paint: { "line-color": ["coalesce", ["get", "stroke"], "#55bb55"] as never, "line-width": 1.5 } });
     m.addLayer({ id: "ov-warnings-fill", type: "fill", source: "ov-warnings", layout: { visibility: vis("warnings") }, paint: { "fill-color": warningColor, "fill-opacity": 0.14 } });
     m.addLayer({ id: "ov-warnings-line", type: "line", source: "ov-warnings", layout: { visibility: vis("warnings") }, paint: { "line-color": warningColor, "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1.5, 9, 3] } });
+    // Type tag (TOR/SVR/FFW...) so colour is not the only signal; hidden when zoomed far out to avoid clutter.
+    m.addLayer({ id: "ov-warnings-labels", type: "symbol", source: "ov-warnings", minzoom: 5.5, layout: { visibility: vis("warnings"), "text-field": warningTagExpression() as never, "text-font": FONT, "text-size": 12, "text-padding": 4, "symbol-placement": "point" }, paint: { "text-color": "#ffffff", "text-halo-color": "#111827", "text-halo-width": 1.6 } });
 
     m.addLayer({ id: "ov-tropical-cone", type: "fill", source: "ov-tropical", filter: ["==", ["get", "kind"], "cone"], layout: { visibility: vis("tropical") }, paint: { "fill-color": "#ffffff", "fill-opacity": 0.22 } });
     m.addLayer({ id: "ov-tropical-cone-line", type: "line", source: "ov-tropical", filter: ["==", ["get", "kind"], "cone"], layout: { visibility: vis("tropical") }, paint: { "line-color": "#ffffff", "line-width": 1.5, "line-dasharray": [3, 2] } });

@@ -637,7 +637,8 @@ function renderSheet() {
     <div class="sheet-section"><div class="section-label">RADAR</div>
       ${composite ? seg("product", (Object.keys(PRODUCTS) as ProductId[]).map((id) => [id, PRODUCTS[id].name, PRODUCTS[id].hint]), state.product) : ""}
       <p class="hint">${PRODUCTS[state.product].hint}</p>
-      ${seg("palette", (Object.keys(PALETTES) as PaletteId[]).map((id) => [id, PALETTES[id].name]), state.palette)}
+      ${seg("palette", (Object.keys(PALETTES) as PaletteId[]).map((id) => [id, PALETTES[id].name, id === "muted" ? "Colorblind-safe (viridis)" : undefined]), state.palette)}
+      <p class="hint">Muted is the colorblind-safe palette (viridis). Warning outlines are also labelled TOR, SVR or FFW.</p>
       <label class="range-row"><span>Opacity</span><input id="opacity" type="range" min="0.3" max="1" step="0.05" value="${state.opacity}" aria-label="Radar opacity" /></label>
     </div>
     <div class="sheet-section"><div class="section-label">OVERLAYS</div>
