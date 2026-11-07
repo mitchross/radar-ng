@@ -151,10 +151,10 @@ pub fn layer_enabled(cfg: &IngestConfig, layer: &str) -> bool {
     }
 }
 
-/// MESH or QPE-style millimetres to inches is [`qpe_mm_to_inches`]. Rotation track is already in
-/// s^-1; MRMS writes negative codes where there is no coverage, which become NaN.
+/// MESH or QPE-style millimetres to inches is [`qpe_mm_to_inches`]. MRMS stores rotation track in
+/// 0.001 s^-1 (NSSL GRIB2 table); scale to s^-1. Negative no-coverage codes become NaN.
 pub fn rotation_value(v: f32) -> f32 {
-    if v < 0.0 { f32::NAN } else { v }
+    if v < 0.0 { f32::NAN } else { v / 1000.0 }
 }
 
 /// Echo-top kilometres to kilofeet; negative missing codes become NaN.
@@ -439,7 +439,7 @@ mod tests {
     fn severe_conversions_use_inches_s_inverse_and_kilofeet() {
         assert_eq!(product_for(HAIL_LAYER).unwrap().prefix, HAIL_PREFIX);
         assert!((qpe_mm_to_inches(44.45) - 1.75).abs() < 1e-6, "golf ball");
-        assert_eq!(rotation_value(0.012), 0.012);
+        assert_eq!(rotation_value(12.0), 0.012);
         assert!(rotation_value(-3.0).is_nan());
         assert!((echo_top_km_to_kft(10.0) - 32.8084).abs() < 1e-3);
         assert!(echo_top_km_to_kft(-3.0).is_nan());
