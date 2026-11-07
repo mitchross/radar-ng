@@ -56,6 +56,7 @@ interface WeatherState {
   aiNarration: boolean;
   /** "Rain starts in N min" local notifications planned on this phone from the radar nowcast. */
   rainAlertsEnabled: boolean;
+  stormNoticeEnabled: boolean;
   /** How many minutes ahead of the first wet minute the notification shows. */
   rainAlertLeadMinutes: RainAlertLeadMinutes;
   serverUrl: string;
@@ -85,6 +86,7 @@ interface WeatherState {
   setSatelliteVisible: (on: boolean) => void;
   setAiNarration: (on: boolean) => void;
   setRainAlertsEnabled: (on: boolean) => void;
+  setStormNoticeEnabled: (on: boolean) => void;
   setRainAlertLeadMinutes: (minutes: RainAlertLeadMinutes) => void;
   setActiveLayer: (layer: LayerType) => void;
   setServerUrl: (url: string) => void;
@@ -170,6 +172,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   satelliteVisible: getString("satelliteVisible", "0") === "1",
   aiNarration: getString("aiNarration", "1") === "1",
   rainAlertsEnabled: getString("rainAlertsEnabled", "0") === "1",
+  stormNoticeEnabled: getString("stormNoticeEnabled", "0") === "1",
   rainAlertLeadMinutes: parseRainAlertLead(getString("rainAlertLeadMinutes", ""), DEFAULT_RAIN_ALERT_LEAD),
   serverUrl: parseServerUrl(getString("serverUrl", SELF_HOSTED.DEFAULT_URL), SELF_HOSTED.DEFAULT_URL),
   viewMode: parseViewMode(getString("viewMode", "simple")),
@@ -307,6 +310,10 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setRainAlertsEnabled: (on) => {
     setString("rainAlertsEnabled", on ? "1" : "0");
     set({ rainAlertsEnabled: on });
+  },
+  setStormNoticeEnabled: (on) => {
+    setString("stormNoticeEnabled", on ? "1" : "0");
+    set({ stormNoticeEnabled: on });
   },
   setRainAlertLeadMinutes: (minutes) => {
     setString("rainAlertLeadMinutes", String(minutes));

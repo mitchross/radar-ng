@@ -6,6 +6,22 @@
 import type { Feature, FeatureCollection } from "geojson";
 import type { GeoJSONSource, Map as MLMap, MapGeoJSONFeature } from "maplibre-gl";
 import { escapeHtml as esc } from "./html";
+import {
+  advance,
+  distanceKm,
+  incomingStorm,
+  isTracked,
+  stormConeFeatures,
+  stormLayerOpacity,
+  stormTrackTimeSec,
+  TRACK_MINUTES,
+  type IncomingStorm,
+  type StormCell,
+} from "./shared/stormCone";
+
+export { advance, distanceKm, incomingStorm, isTracked };
+export type { StormCell };
+export type Threat = IncomingStorm;
 
 export type OverlayId = "outlook" | "warnings" | "storms" | "lightning" | "tropical";
 type FC = FeatureCollection;
@@ -13,8 +29,6 @@ type FC = FeatureCollection;
 const FONT = ["Noto Sans Regular"];
 const EMPTY: FC = { type: "FeatureCollection", features: [] };
 const KMH_TO_MPH = 0.621371;
-const TRACK_MINUTES = [15, 30, 45, 60];
-const MIN_TRACK_CONFIDENCE = 0.4;
 
 export const OVERLAYS: { id: OverlayId; name: string; hint: string; refreshMs: number }[] = [
   { id: "outlook", name: "Severe outlook", hint: "SPC day-1 thunderstorm risk areas", refreshMs: 10 * 60_000 },
@@ -40,20 +54,6 @@ const warningColor = ["match", ["get", "event"], ...WARNING_COLORS.flat(), "#9aa
 
 // ---------- data shaping (pure; unit tested) ----------
 
-export interface StormCell {
-  id: number;
-  lon: number;
-  lat: number;
-  peakDbz: number;
-  areaKm2: number;
-  speedMph: number;
-  bearing: number;
-  confidence: number;
-  eastKmh: number;
-  northKmh: number;
-  history: [number, number, number][];
-}
-
 export function parseStorms(fc: FC): StormCell[] {
   return fc.features.flatMap((f) => {
     if (f.geometry.type !== "Point") return [];
@@ -76,16 +76,7 @@ export function parseStorms(fc: FC): StormCell[] {
   });
 }
 
-export function advance(lon: number, lat: number, eastKmh: number, northKmh: number, minutes: number): [number, number] {
-  const h = minutes / 60;
-  return [lon + (eastKmh * h) / Math.max(1e-6, 111.32 * Math.cos((lat * Math.PI) / 180)), lat + (northKmh * h) / 110.574];
-}
-
-// History-backed fits only: one-step vectors from older servers were noise.
-export const isTracked = (c: StormCell) =>
-  c.history.length >= 3 && c.confidence >= MIN_TRACK_CONFIDENCE && c.speedMph >= 3 && c.speedMph <= 90;
-
-export function stormGeoJSON(cells: StormCell[]): { cells: FC; tracks: FC; ticks: FC; past: FC } {
+export function stormGeoJSON(cells: StormCell[]): { cells: FC; tracks: FC; ticks: FC; past: FC; cones: FC } {
   const tracks: Feature[] = [];
   const ticks: Feature[] = [];
   const past: Feature[] = [];
@@ -112,42 +103,8 @@ export function stormGeoJSON(cells: StormCell[]): { cells: FC; tracks: FC; ticks
     tracks: { type: "FeatureCollection", features: tracks },
     ticks: { type: "FeatureCollection", features: ticks },
     past: { type: "FeatureCollection", features: past },
+    cones: { type: "FeatureCollection", features: stormConeFeatures(cells) as Feature[] },
   };
-}
-
-const R_EARTH_KM = 6371.0088;
-export function distanceKm(a: [number, number], b: [number, number]): number {
-  const toR = Math.PI / 180;
-  const dLat = (b[1] - a[1]) * toR;
-  const dLon = (b[0] - a[0]) * toR;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[1] * toR) * Math.cos(b[1] * toR) * Math.sin(dLon / 2) ** 2;
-  return 2 * R_EARTH_KM * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
-export interface Threat {
-  minutes: number;
-  peakDbz: number;
-  speedMph: number;
-  bearing: number;
-}
-
-/** The soonest tracked cell whose next-hour path passes within `radiusKm` of a place. */
-export function incomingStorm(cells: StormCell[], place: [number, number], radiusKm = 12): Threat | null {
-  let best: Threat | null = null;
-  for (const c of cells) {
-    if (distanceKm([c.lon, c.lat], place) <= radiusKm) {
-      if (!best || best.minutes > 0) best = { minutes: 0, peakDbz: c.peakDbz, speedMph: c.speedMph, bearing: c.bearing };
-      continue;
-    }
-    if (!isTracked(c)) continue;
-    for (let m = 5; m <= 60; m += 5) {
-      if (distanceKm(advance(c.lon, c.lat, c.eastKmh, c.northKmh, m), place) <= radiusKm) {
-        if (!best || m < best.minutes) best = { minutes: m, peakDbz: c.peakDbz, speedMph: c.speedMph, bearing: c.bearing };
-        break;
-      }
-    }
-  }
-  return best;
 }
 
 export function lightningWithAge(fc: FC, nowSec: number): FC {
@@ -167,9 +124,22 @@ export const compass = (deg: number) => ["N", "NE", "E", "SE", "S", "SW", "W", "
 const SOURCES: Record<OverlayId, string[]> = {
   outlook: ["ov-outlook"],
   warnings: ["ov-warnings"],
-  storms: ["ov-storm-past", "ov-storm-tracks", "ov-storm-ticks", "ov-storm-cells"],
+  storms: ["ov-storm-cones", "ov-storm-past", "ov-storm-tracks", "ov-storm-ticks", "ov-storm-cells"],
   lightning: ["ov-lightning"],
   tropical: ["ov-tropical"],
+};
+
+/** Storm layers that fade together: [paint property, full-strength value] per layer. */
+const STORM_FADE: Record<string, [string, number][]> = {
+  "ov-storm-cone-fill": [["fill-opacity", 0.16]],
+  "ov-storm-cone-line": [["line-opacity", 0.8]],
+  "ov-storm-past": [["line-opacity", 1]],
+  "ov-storm-track-casing": [["line-opacity", 0.6]],
+  "ov-storm-tracks": [["line-opacity", 1]],
+  "ov-storm-ticks": [["circle-opacity", 1], ["circle-stroke-opacity", 1]],
+  "ov-storm-tick-labels": [["text-opacity", 1]],
+  "ov-storm-cells": [["circle-opacity", 1], ["circle-stroke-opacity", 1]],
+  "ov-storm-labels": [["text-opacity", 1]],
 };
 
 export class Overlays {
@@ -177,6 +147,9 @@ export class Overlays {
   private timers = new Map<OverlayId, number>();
   private pulse = 0;
   cells: StormCell[] = [];
+  /** Epoch seconds of the scan the tracks were built from. */
+  trackSec: number | null = null;
+  private frameSec: number | null = null;
   onStorms: () => void = () => {};
 
   constructor(private map: MLMap, public enabled: Set<OverlayId>) {}
@@ -202,6 +175,8 @@ export class Overlays {
     m.addLayer({ id: "ov-tropical-position", type: "circle", source: "ov-tropical", filter: ["==", ["get", "kind"], "position"], layout: { visibility: vis("tropical") }, paint: { "circle-radius": 11, "circle-color": catColor as never, "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 } });
     m.addLayer({ id: "ov-tropical-name", type: "symbol", source: "ov-tropical", filter: ["==", ["get", "kind"], "position"], layout: { visibility: vis("tropical"), "text-field": ["concat", ["get", "name"], ["case", ["to-boolean", ["get", "category"]], ["concat", " · Cat ", ["to-string", ["get", "category"]]], ""]], "text-font": FONT, "text-size": 13, "text-offset": [0, 1.6], "text-anchor": "top" }, paint: { "text-color": "#ffffff", "text-halo-color": "#111827", "text-halo-width": 1.6 } });
 
+    m.addLayer({ id: "ov-storm-cone-fill", type: "fill", source: "ov-storm-cones", minzoom: 5, layout: { visibility: vis("storms") }, paint: { "fill-color": ["case", ["get", "severe"], "#ff3b6b", "#ffffff"] as never, "fill-opacity": 0.16 } });
+    m.addLayer({ id: "ov-storm-cone-line", type: "line", source: "ov-storm-cones", minzoom: 5, layout: { visibility: vis("storms") }, paint: { "line-color": ["case", ["get", "severe"], "#ff3b6b", "#ffffff"] as never, "line-width": 1, "line-dasharray": [3, 2], "line-opacity": 0.8 } });
     m.addLayer({ id: "ov-storm-past", type: "line", source: "ov-storm-past", minzoom: 6, layout: { visibility: vis("storms") }, paint: { "line-color": "#6b7280", "line-width": 1.5, "line-dasharray": [1, 1.5] } });
     m.addLayer({ id: "ov-storm-track-casing", type: "line", source: "ov-storm-tracks", minzoom: 5, layout: { visibility: vis("storms"), "line-cap": "round" }, paint: { "line-color": "#111827", "line-width": 4.5, "line-opacity": 0.6 } });
     m.addLayer({ id: "ov-storm-tracks", type: "line", source: "ov-storm-tracks", minzoom: 5, layout: { visibility: vis("storms"), "line-cap": "round" }, paint: { "line-color": ["case", ["get", "severe"], "#ff3b6b", "#ffffff"], "line-width": 2 } });
@@ -215,6 +190,7 @@ export class Overlays {
     const ageColor = ["step", ["get", "age_s"], "#ffffff", 120, "#ffe14d", 300, "#ff9f1c", 600, "#ff4d4d"];
     m.addLayer({ id: "ov-lightning-pulse", type: "circle", source: "ov-lightning", filter: ["<", ["get", "age_s"], 90], layout: { visibility: vis("lightning") }, paint: { "circle-radius": 10, "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5, "circle-stroke-opacity": 0.8 } });
     m.addLayer({ id: "ov-lightning", type: "circle", source: "ov-lightning", layout: { visibility: vis("lightning") }, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 1.8, 9, 4], "circle-color": ageColor as never, "circle-stroke-color": "#111827", "circle-stroke-width": 0.8, "circle-opacity": ["interpolate", ["linear"], ["get", "age_s"], 0, 1, 900, 0.35] } });
+    this.applyStormFade();
   }
 
   /** Layer ids a click should hit, most specific first. */
@@ -250,6 +226,20 @@ export class Overlays {
     this.timers.set(id, window.setInterval(() => void this.refresh(id), spec.refreshMs));
   }
 
+  /** Tell the storm layers which radar frame is on screen; they fade when it is far from the track time. */
+  setFrameTime(sec: number | null) {
+    this.frameSec = sec;
+    this.applyStormFade();
+  }
+
+  private applyStormFade() {
+    const k = stormLayerOpacity(this.frameSec, this.trackSec);
+    for (const [layer, props] of Object.entries(STORM_FADE)) {
+      if (!this.map.getLayer(layer)) continue;
+      for (const [prop, base] of props) this.map.setPaintProperty(layer, prop as never, (base * k) as never);
+    }
+  }
+
   private set(id: string, fc: FC) {
     this.data[id] = fc;
     (this.map.getSource(id) as GeoJSONSource | undefined)?.setData(fc);
@@ -273,6 +263,9 @@ export class Overlays {
       this.set("ov-storm-tracks", g.tracks);
       this.set("ov-storm-ticks", g.ticks);
       this.set("ov-storm-past", g.past);
+      this.set("ov-storm-cones", g.cones);
+      this.trackSec = stormTrackTimeSec(fc as { timestamp?: unknown });
+      this.applyStormFade();
       this.onStorms();
     } else if (id === "lightning") {
       this.set("ov-lightning", lightningWithAge(fc, Date.now() / 1000));
