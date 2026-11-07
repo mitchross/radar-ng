@@ -13,6 +13,9 @@ const LAYER_TABLES: Record<string, { title: string; unit: string; whole?: boolea
   "precip-accum": { title: "Rain total", unit: "in" },
   "precip-24h": { title: "Past 24 hr precip", unit: "in" },
   cloud: { title: "Clouds", unit: "%" },
+  "hail-size": { title: "Hail size", unit: "in" },
+  "rotation-track": { title: "Rotation", unit: "1/s" },
+  "echo-top": { title: "Echo tops", unit: "kft" },
   // Band edges sit halfway between whole index values (0.5, 2.5, ...); label the whole values.
   uv: { title: "UV index", unit: "WHO", whole: true },
 };
@@ -23,7 +26,8 @@ export interface LayerLegend {
   labels: [string, string];
 }
 
-const fmt = (v: number) => String(Number(v.toFixed(2)));
+/** Two decimals, or two significant digits below 0.1 so rotation values (0.003 s⁻¹) keep their meaning. */
+const fmt = (v: number) => String(Number(Math.abs(v) > 0 && Math.abs(v) < 0.1 ? v.toPrecision(2) : v.toFixed(2)));
 
 /** `serverKey` is the manifest layer's `palette_key`; older servers omit it and the local map is used. */
 export function layerLegend(

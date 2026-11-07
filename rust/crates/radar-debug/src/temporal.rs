@@ -511,7 +511,7 @@ mod tests {
         // The old hard-coded fallback list omitted these two; the schedule set must include them.
         assert!(ids.iter().any(|i| i == "ingest-airquality"));
         assert!(ids.iter().any(|i| i == "open-meteo-sync-gfs025"));
-        assert_eq!(ids.len(), 15);
+        assert_eq!(ids.len(), 18);
     }
 
     #[test]

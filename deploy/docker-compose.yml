@@ -54,6 +54,8 @@ x-worker-env: &worker-env
   HRRR_ENABLED_LAYERS: ${HRRR_ENABLED_LAYERS:-radar-hrrr,wind,precip-accum,precip-type,temperature,feels-like,dewpoint,cloud}
   # MRMS observed 24-hour precipitation layer (precip-24h).
   MRMS_QPE_24H_ENABLED: ${MRMS_QPE_24H_ENABLED:-1}
+  # MRMS severe layers: hail-size, rotation-track, echo-top.
+  MRMS_SEVERE_ENABLED: ${MRMS_SEVERE_ENABLED:-1}
   NOWCAST_HORIZON_MIN: ${NOWCAST_HORIZON_MIN:-60}
   NOWCAST_STEP_MIN: ${NOWCAST_STEP_MIN:-5}
   NOWCAST_INPUT_FRAMES: ${NOWCAST_INPUT_FRAMES:-4}

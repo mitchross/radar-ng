@@ -37,6 +37,9 @@ back to PNG rasters otherwise.
 | `humidity` (humidity) | 10 | -10 | 0 % | 0 to 2540 % | 100.01 |
 | `cape` (cape) | 500 | 0 | 500 J/kg | 500 to 127500 J/kg | none |
 | `precip_accum` (precip-accum) | 0.05 | 0 | 0.01 in | 0.05 to 12.75 in | 20 |
+| `hail_size` (hail-size; not packed yet, raster only) | 0.125 | 0 | 0.25 in | 0.125 to 31.9 in | none |
+| `rotation_track` (rotation-track; not packed yet, raster only) | 0.001 | 0 | 0.003 s⁻¹ | 0.001 to 0.255 s⁻¹ | none |
+| `echo_top` (echo-top; not packed yet, raster only) | 0.5 | 0 | 5 kft | 0.5 to 127.5 kft | none |
 | `cloud_cover` (cloud) | 5 | 0 | 10 % | 10 to 1275 % | 101 |
 | `pm25` (air-quality) | 1 | 0.5 | 0 µg/m³ | 1.5 to 255.5 µg/m³ | 9.1, 20, 45, 90, 175, 500, 20000 |
 | `ozone` (ozone) | 1 | 0 | 0 ppb | 1 to 255 ppb | 600 |

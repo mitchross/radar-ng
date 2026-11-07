@@ -184,7 +184,10 @@ export type LayerType =
   | "cloud"
   | "uv"
   | "air-quality"
-  | "ozone";
+  | "ozone"
+  | "hail-size"
+  | "rotation-track"
+  | "echo-top";
 
 export interface LayerConfig {
   id: LayerType;
