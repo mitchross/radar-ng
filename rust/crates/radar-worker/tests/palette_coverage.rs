@@ -4,7 +4,6 @@
 use radar_aux::aqm::AQM_LAYER_SPECS;
 use radar_ingest::global_model::Product;
 use radar_ingest::hrrr::state::layer_color_key;
-use radar_ingest::mrms_qpe::QPE_COLOR_KEY;
 use radar_tiler::palettes::load_palette;
 
 #[test]
@@ -25,7 +24,9 @@ fn every_published_layer_has_a_muted_table() {
         let key = layer_color_key(layer).unwrap_or_else(|| panic!("no color key for {layer}"));
         keys.push((layer.to_string(), key));
     }
-    keys.push(("precip-24h".into(), QPE_COLOR_KEY));
+    for p in radar_ingest::mrms_qpe::PRODUCTS {
+        keys.push((p.layer.to_string(), p.color_key));
+    }
     for p in Product::ALL {
         keys.push((p.layer().to_string(), p.color_key()));
     }

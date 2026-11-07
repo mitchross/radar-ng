@@ -277,7 +277,11 @@ mod tests {
         let mut all: Vec<&str> = loaded.iter().flat_map(|(_, p)| p.color_keys()).collect();
         all.sort_unstable();
         all.dedup();
-        let muted = &loaded.iter().find(|(n, _)| n == "muted").expect("muted palette").1;
+        let muted = &loaded
+            .iter()
+            .find(|(n, _)| n == "muted")
+            .expect("muted palette")
+            .1;
         for key in &all {
             for (name, palette) in &loaded {
                 assert!(
