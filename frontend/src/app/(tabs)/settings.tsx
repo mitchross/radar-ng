@@ -35,6 +35,7 @@ import { useActiveLocation } from "../../hooks/useActiveLocation";
 import { SELF_HOSTED } from "../../lib/constants";
 import { PLAYBACK_FPS_RANGE } from "../../lib/persistedPrefs";
 import { RAIN_ALERT_LEAD_OPTIONS, parseRainAlertLead } from "../../lib/rainAlerts";
+import { useStormNoticeOptIn } from "../../hooks/useStormNoticeOptIn";
 import { useRainAlertOptIn } from "../../hooks/useRainAlertOptIn";
 import { isCleartextToPublicHost } from "../../lib/networkSafety";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
@@ -77,6 +78,7 @@ export default function SettingsScreen() {
   const aiNarration = useWeatherStore((s) => s.aiNarration);
   const setAiNarration = useWeatherStore((s) => s.setAiNarration);
   const { enabled: rainAlertsEnabled, blocked: rainAlertsBlocked, setRainAlerts } = useRainAlertOptIn();
+  const { enabled: stormNoticeEnabled, blocked: stormNoticeBlocked, setStormNotice } = useStormNoticeOptIn();
   const rainAlertLeadMinutes = useWeatherStore((s) => s.rainAlertLeadMinutes);
   const setRainAlertLeadMinutes = useWeatherStore((s) => s.setRainAlertLeadMinutes);
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
@@ -425,6 +427,27 @@ export default function SettingsScreen() {
                     options={RAIN_ALERT_LEAD_OPTIONS.map((m) => `${m}m`)}
                     selected={`${rainAlertLeadMinutes}m`}
                     onSelect={(v) => setRainAlertLeadMinutes(parseRainAlertLead(v.replace("m", "")))}
+                  />
+                </Row>
+              </>
+            ) : null}
+          </View>
+
+          <SectionHeader>Storm notice</SectionHeader>
+          <View style={styles.card}>
+            <ToggleRow
+              label="Strong storm heading my way"
+              sub="A notification when a tracked 55+ dBZ cell is on course to pass within 10 km in the next 30 minutes. A radar estimate, not an NWS warning; follow NWS warnings. Worked out on this phone."
+              value={stormNoticeEnabled}
+              onChange={(v) => void setStormNotice(v)}
+            />
+            {stormNoticeBlocked ? (
+              <>
+                <Sep />
+                <Row>
+                  <RowLeft
+                    title="Notifications are off in system settings"
+                    sub="Allow them for Radar NG to get storm notices."
                   />
                 </Row>
               </>

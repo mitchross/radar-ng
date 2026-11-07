@@ -41,11 +41,14 @@ import { describeNowcastSkill } from "./shared/nowcastSkill";
 import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
+import { BrowserStormNotice } from "./stormNotice";
+import { approachCopy } from "./shared/stormCone";
 import { startPeriodic } from "./refresh";
 import { observedFrameTime, radarNoticeCopy, radarStatus } from "./radarStatus";
 import { bootLocationStep, cardAfterGeoError, LOCATION_CARD_COPY, locateClickStep, queryLocationPermission, type LocationCardKind } from "./location";
 
 const rainAlerts = new BrowserRainAlerts();
+const stormNotice = new BrowserStormNotice();
 /** iOS Safari exposes Notification only to pages installed on the Home Screen. */
 const IOS_BROWSER = /iPhone|iPad|iPod/.test(navigator.userAgent) && !matchMedia("(display-mode: standalone)").matches;
 
@@ -287,6 +290,7 @@ function showCurrentFrame() {
   if (!styleReady || state.seq.length === 0) return;
   const frame = currentFrame();
   if (!frame) return;
+  overlays.setFrameTime(frame.time);
   ensurePackedLayer();
   const keep = new Set<string>();
   for (let k = 0; k <= PREFETCH_AHEAD; k++) {
@@ -648,6 +652,9 @@ function renderSheet() {
       <label class="range-row"><span>Notify me before rain</span><select id="rain-alert-lead" aria-label="Rain alert lead time">${RAIN_ALERT_LEAD_OPTIONS.map((lead) => `<option value="${lead}" ${lead === rainAlerts.leadMinutes ? "selected" : ""}>${lead} min</option>`).join("")}</select></label>
       <p class="hint" role="status">${escapeHtml(rainAlerts.supported ? rainAlerts.message : IOS_BROWSER ? "On iPhone, add this page to your Home Screen (Share → Add to Home Screen) to get rain alerts." : "Notifications are unavailable in this browser. Use the app for rain alerts.")}</p>
     </div>
+    <div class="sheet-section"><div class="section-label">STORM NOTICE</div>
+      <label class="toggle"><span><b>Strong storm heading my way</b><small>Radar estimate for 55+ dBZ cells within 10 km in 30 min. Not an NWS warning. On this device only</small></span><input id="storm-notice" type="checkbox" ${stormNotice.enabled ? "checked" : ""} /><i></i></label>
+    </div>
     ${ANALYTICS_AVAILABLE ? `<div class="sheet-section"><div class="section-label">PRIVACY</div>
       <label class="toggle"><span><b>Usage analytics</b><small>Self-hosted PostHog: anonymous events and session replay. Off sends nothing.</small></span><input type="checkbox" id="analytics" ${analyticsEnabled() ? "checked" : ""} /><i></i></label>
     </div>` : ""}
@@ -830,7 +837,9 @@ async function renderBriefing() {
 function renderThreat() {
   const el = document.getElementById("threat");
   if (!el) return;
-  const t = incomingStorm(overlays.cells, [state.place.longitude, state.place.latitude]);
+  const place: [number, number] = [state.place.longitude, state.place.latitude];
+  const approaches = stormNotice.check(overlays.cells, place);
+  const t = incomingStorm(overlays.cells, place);
   if (!t) {
     el.hidden = true;
     return;
@@ -839,7 +848,9 @@ function renderThreat() {
   const when = t.minutes === 0 ? "over you now" : `arriving in ~${t.minutes} min`;
   el.hidden = false;
   el.className = `threat ${t.peakDbz >= 55 ? "severe" : ""}`;
-  el.innerHTML = `<strong>${what} ${when}</strong><span>${Math.round(t.peakDbz)} dBZ · moving ${compass(t.bearing)} at ${Math.round(t.speedMph)} mph</span>`;
+  const near = approaches[0];
+  const notice = near ? `<span class="threat-notice"><b>${escapeHtml(approachCopy(near).title)}.</b> ${escapeHtml(approachCopy(near).body)}</span>` : "";
+  el.innerHTML = `<strong>${what} ${when}</strong><span>${Math.round(t.peakDbz)} dBZ · moving ${compass(t.bearing)} at ${Math.round(t.speedMph)} mph</span>${notice}`;
 }
 
 async function airQualityNow(lat: number, lon: number): Promise<{ pm25: number | null; ozone: number | null }> {
@@ -1099,6 +1110,8 @@ $("sheet-body").addEventListener("change", (e) => {
       renderSheet();
       void renderNextHour();
     });
+  } else if (el.id === "storm-notice") {
+    void stormNotice.setEnabled(el.checked).then(renderThreat);
   } else if (el.id === "rain-alert-lead") {
     rainAlerts.setLead(el.value);
     void renderNextHour();

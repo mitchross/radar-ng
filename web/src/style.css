@@ -277,6 +277,7 @@ kbd { font: 11px var(--ui); padding: 1px 5px; border-radius: 5px; border: 1px so
 .threat span { font-size: 13px; color: var(--ink-2); }
 .threat.severe { background: rgba(229,72,77,0.12); border-color: rgba(229,72,77,0.4); }
 .threat.severe strong { color: #d0434a; }
+.threat .threat-notice { margin-top: 6px; font-size: 12px; }
 
 /* Popup pills */
 .pill { display: inline-block; margin: 4px 0; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }

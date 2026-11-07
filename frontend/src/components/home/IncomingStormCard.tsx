@@ -7,6 +7,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { useIsFocused } from "expo-router";
 import { useStormCells } from "../../hooks/useStormCells";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { approachCopy, stormApproaches } from "../../../../web/src/shared/stormCone";
 import { describeIncoming, incomingStorm, parseStormCells } from "../../lib/stormTracks";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
@@ -22,12 +23,19 @@ export function IncomingStormCard() {
     () => (data && latitude != null && longitude != null ? incomingStorm(parseStormCells(data), [longitude, latitude]) : null),
     [data, latitude, longitude],
   );
+  const stormNoticeEnabled = useWeatherStore((s) => s.stormNoticeEnabled);
+  const approach = useMemo(
+    () => (stormNoticeEnabled && data && latitude != null && longitude != null ? stormApproaches(parseStormCells(data), [longitude, latitude])[0] : null),
+    [stormNoticeEnabled, data, latitude, longitude],
+  );
   if (!threat) return null;
   const { headline, sub, severe } = describeIncoming(threat);
+  const notice = approach ? approachCopy(approach) : null;
   return (
-    <View style={[styles.card, severe ? styles.severe : null]} accessibilityRole="alert" accessibilityLabel={`${headline}. ${sub}`}>
+    <View style={[styles.card, severe ? styles.severe : null]} accessibilityRole="alert" accessibilityLabel={`${headline}. ${sub}${notice ? `. ${notice.body}` : ""}`}>
       <Text style={[styles.headline, severe ? styles.severeText : null]}>{headline}</Text>
       <Text style={styles.sub}>{sub}</Text>
+      {notice ? <Text style={styles.sub}>{notice.body}</Text> : null}
     </View>
   );
 }

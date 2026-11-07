@@ -44,6 +44,7 @@ describe("storm tracks", () => {
     expect(g.cells.features).toHaveLength(4);
     expect(g.tracks.features).toHaveLength(1);
     expect(g.ticks.features.map((f) => f.properties?.label)).toEqual(["15", "30", "45", "60"]);
+    expect(g.cones.features).toHaveLength(1);
   });
 });
 

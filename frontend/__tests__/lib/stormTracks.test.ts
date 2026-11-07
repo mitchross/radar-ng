@@ -29,7 +29,24 @@ describe("stormTracks", () => {
     expect(t!.minutes).toBeLessThanOrEqual(50);
     expect(incomingStorm([cell({ lon: -85.68 })], [-85.67, 42.96])?.minutes).toBe(0);
     expect(incomingStorm([cell({ eastKmh: -60 })], [-85.67, 42.96])).toBeNull();
-    expect(describeIncoming({ minutes: 20, peakDbz: 61, speedMph: 30, bearing: 90 })).toEqual({ headline: "Hail-producing storm arriving in ~20 min", sub: "61 dBZ · moving E at 30 mph", severe: true });
+    expect(describeIncoming({ id: 1, minutes: 20, peakDbz: 61, speedMph: 30, bearing: 90 })).toEqual({ headline: "Hail-producing storm arriving in ~20 min", sub: "61 dBZ · moving E at 30 mph", severe: true });
     expect([0, 44, 91, 180, 270, 359].map(compass)).toEqual(["N", "NE", "E", "S", "W", "N"]);
+  });
+});
+
+describe("storm cone parity with web", () => {
+  it("draws the same polygon the web radar draws for the same cell", () => {
+    // Golden shared with web/src/shared/stormCone.test.ts: both import the one module.
+    const g = stormTrackGeoJSON([cell()]);
+    expect(g.cones.features).toHaveLength(1);
+    const ring = (g.cones.features[0].geometry as GeoJSON.Polygon).coordinates[0];
+    expect(ring.map(([lon, lat]) => [lon.toFixed(4), lat.toFixed(4)])).toEqual([
+      ["-86.2000", "42.9600"], ["-85.4886", "43.1004"], ["-85.4747", "43.0542"], ["-85.4663", "43.0073"],
+      ["-85.4635", "42.9600"], ["-85.4663", "42.9127"], ["-85.4747", "42.8658"], ["-85.4886", "42.8196"],
+      ["-86.2000", "42.9600"],
+    ]);
+  });
+  it("no cone for untracked cells", () => {
+    expect(stormTrackGeoJSON([cell({ confidence: 0.1 }), cell({ history: [] })]).cones.features).toHaveLength(0);
   });
 });
