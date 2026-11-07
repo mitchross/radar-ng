@@ -28,6 +28,9 @@ describe("formatReading", () => {
     const reading = (value: number) => ({ ok: true, value, unit: "in", source: "grid" as const });
     expect(formatReading("precip-24h", reading(1.3405))).toBe("1.34 in");
     expect(formatReading("precip-24h", reading(0.004))).toBe("—");
+    expect(formatReading("hail-size", reading(1.75))).toBe("1.75 in hail");
+    expect(formatReading("rotation-track", reading(0.012))).toBe("0.012 /s");
+    expect(formatReading("echo-top", reading(41.6))).toBe("42 kft");
   });
   it("names PM2.5 with the same rule as the home Air Quality tile", () => {
     const at = (value: number) => formatReading("air-quality", { ok: true, value, unit: "µg/m³", source: "grid" });

@@ -86,6 +86,9 @@ pub struct IngestConfig {
     pub uv_base_url: String,
     /// `MRMS_QPE_24H_ENABLED` (default off): render the `precip-24h` layer from MRMS 24-hour QPE.
     pub mrms_qpe_24h: bool,
+    /// `MRMS_SEVERE_ENABLED` (default off): render the `hail-size`, `rotation-track` and `echo-top`
+    /// layers from MRMS MESH, RotationTrack60min and EchoTop_18.
+    pub mrms_severe: bool,
     /// `PRECIP_TYPE` (default on): color MRMS frames by precipitation type from PrecipFlag.
     pub precip_type: bool,
     /// `PRECIP_FLAG_PREFIX` (default `CONUS/PrecipFlag_00.00`).
@@ -145,6 +148,7 @@ impl IngestConfig {
             uv_last_hour: env::int_var_clamped("UV_LAST_HOUR", 96, 1, 120)? as u32,
             uv_base_url: radar_grib::uvi::BASE_URL.to_string(),
             mrms_qpe_24h: env::bool_var("MRMS_QPE_24H_ENABLED", false)?,
+            mrms_severe: env::bool_var("MRMS_SEVERE_ENABLED", false)?,
             precip_type: env::bool_var("PRECIP_TYPE", true)?,
             precip_flag_prefix: env::var("PRECIP_FLAG_PREFIX")
                 .unwrap_or_else(|| crate::precip_type::PRECIP_FLAG_PREFIX.into()),
@@ -182,6 +186,7 @@ impl IngestConfig {
             uv_last_hour: 96,
             uv_base_url: radar_grib::uvi::BASE_URL.to_string(),
             mrms_qpe_24h: false,
+            mrms_severe: false,
             precip_type: false,
             precip_flag_prefix: crate::precip_type::PRECIP_FLAG_PREFIX.into(),
             paths,

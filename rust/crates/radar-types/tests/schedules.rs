@@ -172,6 +172,36 @@ fn expected_table() -> Vec<Row> {
             "radar-ng-hrrr",
             json!(["uv"]),
         ),
+        (
+            "ingest-mrms-hail",
+            "IngestMrmsWorkflow",
+            60,
+            Some(20),
+            300,
+            360,
+            "radar-ng-mrms",
+            json!([{"mrms_prefix": "CONUS/MESH_Max_60min_00.50", "layer_name": "hail-size"}]),
+        ),
+        (
+            "ingest-mrms-rotation",
+            "IngestMrmsWorkflow",
+            60,
+            Some(20),
+            300,
+            360,
+            "radar-ng-mrms",
+            json!([{"mrms_prefix": "CONUS/RotationTrack60min_00.50", "layer_name": "rotation-track"}]),
+        ),
+        (
+            "ingest-mrms-echo-top",
+            "IngestMrmsWorkflow",
+            60,
+            Some(20),
+            300,
+            360,
+            "radar-ng-mrms",
+            json!([{"mrms_prefix": "CONUS/EchoTop_18_00.50", "layer_name": "echo-top"}]),
+        ),
     ]
 }
 
@@ -179,7 +209,7 @@ fn expected_table() -> Vec<Row> {
 fn all_schedules_matches_spec_table_in_order() {
     let defs = all_schedules();
     let expected = expected_table();
-    assert_eq!(defs.len(), 15);
+    assert_eq!(defs.len(), 18);
     assert_eq!(defs.len(), expected.len());
     for (def, row) in defs.iter().zip(expected.iter()) {
         let (id, wf, interval, jitter, catchup, timeout, queue, args) = row;
@@ -204,7 +234,7 @@ fn execution_timeout_is_at_most_six_intervals() {
 }
 
 #[test]
-fn fast_schedules_are_exactly_three_with_shared_knobs() {
+fn fast_schedules_are_exactly_six_with_shared_knobs() {
     let defs = all_schedules();
     let fast: Vec<&str> = defs
         .iter()
@@ -213,7 +243,14 @@ fn fast_schedules_are_exactly_three_with_shared_knobs() {
         .collect();
     assert_eq!(
         fast,
-        vec!["ingest-mrms-base", "ingest-mrms-composite", "nowcast"]
+        vec![
+            "ingest-mrms-base",
+            "ingest-mrms-composite",
+            "nowcast",
+            "ingest-mrms-hail",
+            "ingest-mrms-rotation",
+            "ingest-mrms-echo-top",
+        ]
     );
     for def in defs.iter().filter(|d| d.interval_s <= 120) {
         assert_eq!(def.catchup_window_s, 300, "{}", def.id);

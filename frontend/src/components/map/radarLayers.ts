@@ -5,8 +5,9 @@
  */
 import type { SymbolViewProps } from "expo-symbols";
 import type { LayerType } from "../../types/weather";
+import { SEVERE_LAYERS, type SevereLayerId } from "../../../../web/src/shared/severe";
 
-export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" | "sun" | "ozone";
+export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" | "sun" | "ozone" | "hail" | "rotation" | "tower";
 
 export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] = [
   { id: "radar", name: "Radar", icon: "rain" },
@@ -22,6 +23,22 @@ export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] =
   { id: "ozone", name: "Ozone", icon: "ozone" },
 ];
 
+/**
+ * The "Severe" group of the layers sheet (NOAA MRMS). Names and hints come from the shared list the
+ * web radar uses; a layer the server has no frames for is not offered.
+ */
+const SEVERE_ICONS: Record<SevereLayerId, LayerIcon> = {
+  "hail-size": "hail",
+  "rotation-track": "rotation",
+  "echo-top": "tower",
+};
+export const SEVERE_OPTIONS: { id: LayerType; name: string; icon: LayerIcon; hint: string }[] = SEVERE_LAYERS.map((l) => ({
+  id: l.id,
+  name: l.name,
+  icon: SEVERE_ICONS[l.id],
+  hint: l.hint,
+}));
+
 export const LAYER_SYMBOLS: Record<LayerIcon, SymbolViewProps["name"]> = {
   rain: { ios: "cloud.rain.fill", android: "rainy" },
   thermo: { ios: "thermometer.medium", android: "thermostat" },
@@ -31,6 +48,9 @@ export const LAYER_SYMBOLS: Record<LayerIcon, SymbolViewProps["name"]> = {
   cloud: { ios: "cloud.fill", android: "cloud" },
   sun: { ios: "sun.max.fill", android: "wb_sunny" },
   ozone: { ios: "sun.haze.fill", android: "hexagon" },
+  hail: { ios: "cloud.hail.fill", android: "weather_hail" },
+  rotation: { ios: "tornado", android: "tornado" },
+  tower: { ios: "arrow.up.to.line", android: "vertical_align_top" },
 };
 
 /** GOES satellite imagery: a switch drawn under any weather layer, not one of the layers above. */
@@ -41,5 +61,5 @@ export const SATELLITE_OVERLAY = {
 };
 
 export function layerOption(id: LayerType) {
-  return LAYER_OPTIONS.find((o) => o.id === id) ?? LAYER_OPTIONS[0];
+  return LAYER_OPTIONS.find((o) => o.id === id) ?? SEVERE_OPTIONS.find((o) => o.id === id) ?? LAYER_OPTIONS[0];
 }

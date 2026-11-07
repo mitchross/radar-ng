@@ -38,6 +38,9 @@ export const LAYER_PALETTE_KEY: Readonly<Record<string, string>> = {
   "precip-24h": "precip_accum",
   cloud: "cloud_cover",
   uv: "uv_index",
+  "hail-size": "hail_size",
+  "rotation-track": "rotation_track",
+  "echo-top": "echo_top",
 };
 
 /** The palette key of a layer: the server's manifest `palette_key` when it sends one, else the local map. */

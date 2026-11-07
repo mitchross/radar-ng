@@ -12,6 +12,7 @@ import { MapChromeSurface } from "../ui/MapChromeSurface";
 import { useServerPalettes } from "../../hooks/useServerPalettes";
 import { precipTypeRamps, serverLegend } from "../../lib/serverPalettes";
 import { useManifestQuery } from "../../hooks/useManifest";
+import { SEVERE_CREDIT, isSevereLayer } from "../../../../web/src/shared/severe";
 
 // Plain-English tag at the top of the legend telling the user whether
 // they're looking at "Now" (live radar), "Soon" (next hour, pysteps
@@ -31,6 +32,9 @@ const LAYER_SOURCE: Record<LayerType, SourceTag> = {
   cape: "Later",
   "precip-accum": "Later",
   "precip-24h": "Now",
+  "hail-size": "Now",
+  "rotation-track": "Now",
+  "echo-top": "Now",
   cloud: "Later",
   uv: "Later",
   "air-quality": "Now",
@@ -152,6 +156,34 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
     title: "Past 24 Hr",
     stops: RAIN_TOTAL_STOPS,
   },
+  // Fallbacks for servers that send no palettes; serverLegend normally replaces these.
+  "hail-size": {
+    title: "Hail Size",
+    stops: [
+      { label: "4+", color: "#6e1e96" },
+      { label: "2", color: "#be143c" },
+      { label: "1", color: "#ffaa28" },
+      { label: "0.5", color: "#3cbe3c" },
+    ],
+  },
+  "rotation-track": {
+    title: "Rotation",
+    stops: [
+      { label: "0.05+", color: "#50147a" },
+      { label: "0.02", color: "#d71e32" },
+      { label: "0.01", color: "#f55a28" },
+      { label: "0.005", color: "#ffc846" },
+    ],
+  },
+  "echo-top": {
+    title: "Echo Tops",
+    stops: [
+      { label: "65+", color: "#be32aa" },
+      { label: "45", color: "#ff9632" },
+      { label: "25", color: "#3cc878" },
+      { label: "5", color: "#78b4ff" },
+    ],
+  },
   cloud: {
     title: "Clouds",
     stops: [
@@ -255,6 +287,11 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
             ))}
           </View>
         </View>
+        {isSevereLayer(activeLayer) && (
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
+            {SEVERE_CREDIT}
+          </Text>
+        )}
         {typeRamps && (
           <View style={styles.types}>
             {typeRamps.map((r) => (
@@ -345,6 +382,13 @@ const styles = StyleSheet.create({
     color: "#3a4258",
     fontVariant: ["tabular-nums"],
     fontWeight: "500",
+  },
+  credit: {
+    marginTop: 6,
+    fontSize: 8,
+    color: "#3a4258",
+    fontWeight: "600",
+    letterSpacing: 0.4,
   },
   types: {
     marginTop: 8,

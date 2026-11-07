@@ -75,6 +75,12 @@ pub fn mm_to_inches(mm: f32) -> f32 {
     mm / 25.4_f32
 }
 
+/// Kilometres to kilofeet: `km * 3.28084`, in f32.
+#[inline]
+pub fn km_to_kft(km: f32) -> f32 {
+    km * 3.280_84_f32
+}
+
 /// Builds the precip-type category grid from the four categorical flags, in this order:
 /// `cat[crain > 0] = 1`, then snow, then freezing rain, then ice pellets. Later assignments win, so
 /// the effective precedence is ice pellets > freezing rain > snow > rain. NaN compares false.
@@ -136,6 +142,7 @@ mod tests {
     fn mph_and_inches() {
         assert!((ms_to_mph(10.0) - 22.37).abs() < 1e-4);
         assert_eq!(mm_to_inches(25.4), 1.0);
+        assert!((km_to_kft(10.0) - 32.8084).abs() < 1e-3);
         assert_eq!(wind_speed_mph(3.0, 4.0), 5.0);
     }
 

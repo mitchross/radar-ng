@@ -118,6 +118,10 @@ export const LAYERS: LayerConfig[] = [
   // NAQFC AQMv7 guidance (~5 km): current hour + 3-day forecast per cycle.
   { id: "air-quality", label: "Air Quality", icon: "Q", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
   { id: "ozone", label: "Ozone", icon: "O", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  // MRMS severe layers (z4-z7): hail size, rotation tracks and echo tops, all raster only.
+  { id: "hail-size", label: "Hail", icon: "L", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 7 },
+  { id: "rotation-track", label: "Rotation", icon: "N", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 7 },
+  { id: "echo-top", label: "Echo Top", icon: "E", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 7 },
 ];
 
 /**

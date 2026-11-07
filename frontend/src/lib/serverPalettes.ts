@@ -15,6 +15,9 @@ const LAYER_TABLES: Partial<Record<LayerType, { title: string; unit: string; who
   "precip-accum": { title: "Rain Total", unit: "in" },
   "precip-24h": { title: "Past 24 Hr", unit: "in" },
   cloud: { title: "Clouds", unit: "%" },
+  "hail-size": { title: "Hail Size", unit: "in" },
+  "rotation-track": { title: "Rotation", unit: "1/s" },
+  "echo-top": { title: "Echo Tops", unit: "kft" },
   // Band edges sit halfway between whole index values (0.5, 2.5, ...); label the whole values.
   uv: { title: "UV Index", unit: "WHO", whole: true },
 };
@@ -27,7 +30,8 @@ export interface ServerLegend {
 
 const hex = ([r, g, b]: ColorRange["rgba"]) =>
   "#" + [r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("");
-const fmt = (v: number) => String(Number(v.toFixed(2)));
+/** Two decimals, or two significant digits below 0.1 so rotation values (0.003 s⁻¹) keep their meaning. */
+const fmt = (v: number) => String(Number(Math.abs(v) > 0 && Math.abs(v) < 0.1 ? v.toPrecision(2) : v.toFixed(2)));
 
 export interface PrecipTypeRamp {
   label: "Rain" | "Snow" | "Mix";

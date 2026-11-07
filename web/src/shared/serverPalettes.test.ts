@@ -24,6 +24,9 @@ describe("LAYER_PALETTE_KEY", () => {
       "precip-24h": "precip_accum",
       cloud: "cloud_cover",
       uv: "uv_index",
+      "hail-size": "hail_size",
+      "rotation-track": "rotation_track",
+      "echo-top": "echo_top",
     });
   });
 
@@ -41,9 +44,9 @@ describe("LAYER_PALETTE_KEY", () => {
     for (const [, layers, key] of fn.slice(0, fn.indexOf("\n}\n")).matchAll(/((?:"[\w-]+"\s*\|?\s*)+)=>\s*"(\w+)"/g)) {
       for (const [, layer] of layers.matchAll(/"([\w-]+)"/g)) server[layer] = key;
     }
-    // uv and precip-24h are MRMS/forecast layers, not HRRR ones.
+    // uv, precip-24h and the severe layers are MRMS/forecast layers, not HRRR ones.
     for (const [layer, key] of Object.entries(LAYER_PALETTE_KEY)) {
-      if (layer in server || !["uv", "precip-24h"].includes(layer)) expect(server[layer], layer).toBe(key);
+      if (layer in server || !["uv", "precip-24h", "hail-size", "rotation-track", "echo-top"].includes(layer)) expect(server[layer], layer).toBe(key);
     }
   });
 });

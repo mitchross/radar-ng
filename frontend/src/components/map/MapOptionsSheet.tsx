@@ -12,7 +12,9 @@ import { selectionHaptic } from "../../lib/haptics";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { MapStyle } from "../../types/weather";
-import { LAYER_OPTIONS, LAYER_SYMBOLS, SATELLITE_OVERLAY } from "./radarLayers";
+import { LAYER_OPTIONS, LAYER_SYMBOLS, SATELLITE_OVERLAY, SEVERE_OPTIONS } from "./radarLayers";
+import { useManifestQuery } from "../../hooks/useManifest";
+import { SEVERE_CREDIT } from "../../../../web/src/shared/severe";
 
 const MAP_STYLES: { id: MapStyle; label: string; color: string }[] = [
   { id: "light", label: "Light", color: "#e8ece5" },
@@ -32,6 +34,10 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
   const toggleExtras = useWeatherStore((s) => s.toggleExtras);
   const satelliteVisible = useWeatherStore((s) => s.satelliteVisible);
   const setSatelliteVisible = useWeatherStore((s) => s.setSatelliteVisible);
+  // The Severe group lists only layers the server has frames for.
+  const manifestLayers = useManifestQuery().data?.layers;
+  const severeOptions = SEVERE_OPTIONS.filter((o) => (manifestLayers?.[o.id]?.frames?.length ?? manifestLayers?.[o.id]?.timestamps?.length ?? 0) > 0);
+  const severeHint = severeOptions.find((o) => o.id === activeLayer)?.hint ?? "Hail, storm rotation and storm height";
   // Match phone sheet insets and keep the iPad form sheet compact.
   const contentWidth = Math.min(500, width - 32);
   const tileWidth = (contentWidth - 2 * 10) / 3;
@@ -78,6 +84,43 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
               );
             })}
           </View>
+
+          {severeOptions.length > 0 && (
+            <>
+              <Text style={styles.section}>SEVERE</Text>
+              <View style={styles.grid}>
+                {severeOptions.map((opt) => {
+                  const active = activeLayer === opt.id;
+                  return (
+                    <Pressable
+                      key={opt.id}
+                      accessibilityRole="radio"
+                      accessibilityLabel={`${opt.name} layer. ${opt.hint}`}
+                      accessibilityState={{ checked: active }}
+                      onPress={() => { selectionHaptic(); setActiveLayer(opt.id); onClose(); }}
+                      style={({ pressed }) => [
+                        styles.layerTile,
+                        { width: tileWidth },
+                        active ? styles.layerTileActive : null,
+                        pressed ? styles.pressed : null,
+                      ]}
+                    >
+                      <SymbolView
+                        name={LAYER_SYMBOLS[opt.icon]}
+                        size={24}
+                        tintColor={active ? theme.colors.accent : theme.colors.text}
+                        type="hierarchical"
+                      />
+                      <Text style={[styles.layerName, active ? { color: theme.colors.accent } : null]} numberOfLines={1}>
+                        {opt.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={styles.tip}>{severeHint} · {SEVERE_CREDIT}</Text>
+            </>
+          )}
 
           <View style={styles.switchRow}>
             <SymbolView name={SATELLITE_OVERLAY.symbol} size={22} tintColor={theme.colors.text} type="hierarchical" />
