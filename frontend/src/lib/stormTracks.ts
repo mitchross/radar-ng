@@ -2,23 +2,25 @@
  * Storm-cell tracks and "arriving in N min", same maths as web/src/overlays.ts
  * so the site and the app draw and warn identically.
  */
-const KMH_TO_MPH = 0.621371;
-export const TRACK_MINUTES = [15, 30, 45, 60];
-const MIN_TRACK_CONFIDENCE = 0.4;
+import {
+  advance,
+  distanceKm,
+  incomingStorm,
+  isTracked,
+  stormConeFeatures,
+  TRACK_MINUTES,
+  type IncomingStorm,
+  type StormCell,
+} from "../../../web/src/shared/stormCone";
 
-export interface StormCellInfo {
-  id: number;
-  lon: number;
-  lat: number;
-  peakDbz: number;
-  areaKm2: number;
-  speedMph: number;
-  bearing: number;
-  confidence: number;
-  eastKmh: number;
-  northKmh: number;
-  history: [number, number, number][];
-}
+// Track rule, cone, incoming-storm search and the approach notice live in one
+// module shared with the web radar. Only the app's parsing and wording stay here.
+export { advance, distanceKm, incomingStorm, isTracked, TRACK_MINUTES };
+export type { IncomingStorm };
+
+const KMH_TO_MPH = 0.621371;
+
+export type StormCellInfo = StormCell;
 
 type Collection = { features: { geometry: { type: string; coordinates: unknown }; properties?: Record<string, unknown> | null }[] };
 
@@ -45,15 +47,6 @@ export function parseStormCells(fc: Collection | undefined | null): StormCellInf
   });
 }
 
-export function advance(lon: number, lat: number, eastKmh: number, northKmh: number, minutes: number): [number, number] {
-  const h = minutes / 60;
-  return [lon + (eastKmh * h) / Math.max(1e-6, 111.32 * Math.cos((lat * Math.PI) / 180)), lat + (northKmh * h) / 110.574];
-}
-
-/** History-backed fits only: one-step vectors from older servers were noise. */
-export const isTracked = (c: StormCellInfo) =>
-  c.history.length >= 3 && c.confidence >= MIN_TRACK_CONFIDENCE && c.speedMph >= 3 && c.speedMph <= 90;
-
 export function stormTrackGeoJSON(cells: StormCellInfo[]) {
   const tracks: GeoJSON.Feature[] = [];
   const ticks: GeoJSON.Feature[] = [];
@@ -70,41 +63,7 @@ export function stormTrackGeoJSON(cells: StormCellInfo[]) {
     );
   }
   const fc = (features: GeoJSON.Feature[]): GeoJSON.FeatureCollection => ({ type: "FeatureCollection", features });
-  return { tracks: fc(tracks), ticks: fc(ticks), past: fc(past) };
-}
-
-export function distanceKm(a: [number, number], b: [number, number]): number {
-  const toR = Math.PI / 180;
-  const dLat = (b[1] - a[1]) * toR;
-  const dLon = (b[0] - a[0]) * toR;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[1] * toR) * Math.cos(b[1] * toR) * Math.sin(dLon / 2) ** 2;
-  return 2 * 6371.0088 * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
-export interface IncomingStorm {
-  minutes: number;
-  peakDbz: number;
-  speedMph: number;
-  bearing: number;
-}
-
-/** The soonest tracked cell whose next-hour path passes within `radiusKm` of a place. */
-export function incomingStorm(cells: StormCellInfo[], place: [number, number], radiusKm = 12): IncomingStorm | null {
-  let best: IncomingStorm | null = null;
-  for (const c of cells) {
-    if (distanceKm([c.lon, c.lat], place) <= radiusKm) {
-      if (!best || best.minutes > 0) best = { minutes: 0, peakDbz: c.peakDbz, speedMph: c.speedMph, bearing: c.bearing };
-      continue;
-    }
-    if (!isTracked(c)) continue;
-    for (let m = 5; m <= 60; m += 5) {
-      if (distanceKm(advance(c.lon, c.lat, c.eastKmh, c.northKmh, m), place) <= radiusKm) {
-        if (!best || m < best.minutes) best = { minutes: m, peakDbz: c.peakDbz, speedMph: c.speedMph, bearing: c.bearing };
-        break;
-      }
-    }
-  }
-  return best;
+  return { tracks: fc(tracks), ticks: fc(ticks), past: fc(past), cones: fc(stormConeFeatures(cells) as GeoJSON.Feature[]) };
 }
 
 export const compass = (deg: number) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round((((deg % 360) + 360) % 360) / 45) % 8];

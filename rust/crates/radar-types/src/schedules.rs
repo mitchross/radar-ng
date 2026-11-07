@@ -23,6 +23,12 @@ pub const SCHEDULE_INGEST_MRMS_BASE: &str = "ingest-mrms-base";
 pub const SCHEDULE_INGEST_MRMS_COMPOSITE: &str = "ingest-mrms-composite";
 /// Schedule ID of the MRMS 24-hour precipitation (QPE) schedule.
 pub const SCHEDULE_INGEST_MRMS_QPE_24H: &str = "ingest-mrms-qpe-24h";
+/// Schedule ID of the MRMS hail size (MESH, past 60 minutes) schedule.
+pub const SCHEDULE_INGEST_MRMS_HAIL: &str = "ingest-mrms-hail";
+/// Schedule ID of the MRMS low-level rotation track (past 60 minutes) schedule.
+pub const SCHEDULE_INGEST_MRMS_ROTATION: &str = "ingest-mrms-rotation";
+/// Schedule ID of the MRMS 18 dBZ echo-top schedule.
+pub const SCHEDULE_INGEST_MRMS_ECHO_TOP: &str = "ingest-mrms-echo-top";
 /// Schedule ID of the HRRR schedule.
 pub const SCHEDULE_INGEST_HRRR: &str = "ingest-hrrr";
 /// Schedule ID of the air-quality schedule.
@@ -153,8 +159,8 @@ pub fn action_workflow_id(schedule_id: &str) -> String {
     format!("{SCHEDULE_ACTION_ID_PREFIX}{schedule_id}")
 }
 
-/// The 15 schedules: original seed order with `ingest-mrms-qpe-24h` after the reflectivity ones, then
-/// the two global-model ones. Seed-time queue routing is applied by [`schedule_action_queue`], not here.
+/// The 18 schedules: original seed order with `ingest-mrms-qpe-24h` after the reflectivity ones, then
+/// the two global-model ones and the three severe MRMS ones. Seed-time queue routing is applied by [`schedule_action_queue`], not here.
 pub fn all_schedules() -> Vec<ScheduleDef> {
     vec![
         ScheduleDef::new(
@@ -297,6 +303,44 @@ pub fn all_schedules() -> Vec<ScheduleDef> {
             HRRR_TASK_QUEUE,
         )
         .with_args(vec![json!("uv")]),
+        // Severe-weather MRMS products (2-minute cadence like reflectivity); the worker skips them
+        // unless `MRMS_SEVERE_ENABLED` is set.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_MRMS_HAIL,
+            wire::WORKFLOW_INGEST_MRMS,
+            MRMS_POLL_INTERVAL_S,
+            6 * 60,
+            MRMS_TASK_QUEUE,
+        )
+        .fast()
+        .with_args(vec![json!({
+            "mrms_prefix": "CONUS/MESH_Max_60min_00.50",
+            "layer_name": "hail-size",
+        })]),
+        ScheduleDef::new(
+            SCHEDULE_INGEST_MRMS_ROTATION,
+            wire::WORKFLOW_INGEST_MRMS,
+            MRMS_POLL_INTERVAL_S,
+            6 * 60,
+            MRMS_TASK_QUEUE,
+        )
+        .fast()
+        .with_args(vec![json!({
+            "mrms_prefix": "CONUS/RotationTrack60min_00.50",
+            "layer_name": "rotation-track",
+        })]),
+        ScheduleDef::new(
+            SCHEDULE_INGEST_MRMS_ECHO_TOP,
+            wire::WORKFLOW_INGEST_MRMS,
+            MRMS_POLL_INTERVAL_S,
+            6 * 60,
+            MRMS_TASK_QUEUE,
+        )
+        .fast()
+        .with_args(vec![json!({
+            "mrms_prefix": "CONUS/EchoTop_18_00.50",
+            "layer_name": "echo-top",
+        })]),
     ]
 }
 

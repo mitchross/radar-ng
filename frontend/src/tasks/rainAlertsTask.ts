@@ -9,6 +9,7 @@
 import * as BackgroundTask from "expo-background-task";
 import * as TaskManager from "expo-task-manager";
 import { installNotificationHandler, refreshRainAlertFromServer } from "../lib/rainAlertScheduler";
+import { refreshStormNoticeFromServer } from "../lib/stormNoticeScheduler";
 
 export const RAIN_ALERTS_TASK = "radar-ng-rain-alerts";
 
@@ -18,6 +19,7 @@ try {
   TaskManager.defineTask(RAIN_ALERTS_TASK, async () => {
     try {
       await refreshRainAlertFromServer();
+      await refreshStormNoticeFromServer();
       return BackgroundTask.BackgroundTaskResult.Success;
     } catch {
       return BackgroundTask.BackgroundTaskResult.Failed;

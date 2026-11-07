@@ -22,10 +22,13 @@ use tracing::info;
 /// Per-layer retention in minutes (`LAYER_RETENTION_MIN`, verbatim, plus `precip-24h` and the two
 /// global-model layers, whose run directories `global_model_cleanup` owns). `air-quality` and `ozone`
 /// are not here: `aqm_cleanup` owns them.
-pub const LAYER_RETENTION_MIN: [(&str, i64); 15] = [
+pub const LAYER_RETENTION_MIN: [(&str, i64); 18] = [
     ("radar", 240),
     ("radar-composite", 240),
     ("precip-24h", 240),
+    ("hail-size", 240),
+    ("rotation-track", 240),
+    ("echo-top", 240),
     ("nowcast", 60),
     ("radar-hrrr", 720),
     ("temperature", 720),
@@ -280,8 +283,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn retention_table_has_fifteen_layers_and_no_aqm() {
-        assert_eq!(LAYER_RETENTION_MIN.len(), 15);
+    fn retention_table_has_eighteen_layers_and_no_aqm() {
+        assert_eq!(LAYER_RETENTION_MIN.len(), 18);
         assert!(
             LAYER_RETENTION_MIN
                 .iter()

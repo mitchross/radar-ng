@@ -51,6 +51,15 @@ describe("layerLegend", () => {
     expect(observed.labels).toEqual(["0.01", "8+"]);
   });
 
+  it("colors each severe layer from its own table in every palette", () => {
+    for (const palette of ["classic", "muted", "vivid"] as const) {
+      expect(layerLegend(palettes, palette, "hail-size")).toMatchObject({ title: "Hail size (in)", labels: ["0.25", "4+"] });
+      expect(layerLegend(palettes, palette, "rotation-track")).toMatchObject({ title: "Rotation (1/s)", labels: ["0.003", "0.05+"] });
+      expect(layerLegend(palettes, palette, "echo-top")).toMatchObject({ title: "Echo tops (kft)", labels: ["5", "65+"] });
+    }
+    expect(layerLegend(palettes, "muted", "hail-size")!.gradient).not.toBe(layerLegend(palettes, "classic", "hail-size")!.gradient);
+  });
+
   it("uses the palette key the server sends, and the local map without one", () => {
     const sent = layerLegend(palettes, "classic", "temperature", "dewpoint")!;
     expect(sent.gradient).toBe(layerLegend(palettes, "classic", "dewpoint")!.gradient);

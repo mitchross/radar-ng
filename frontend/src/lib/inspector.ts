@@ -7,6 +7,7 @@ import { PRECISION, roundCoords } from "./coordinates";
 import { recordSpanError, trace } from "./telemetry";
 import { fetchRadarNowcast, fetchWithTimeout } from "./api";
 import { aqiCategory, usAqiFromPm25 } from "./airQuality";
+import { formatSevereReading } from "../../../web/src/shared/severe";
 
 export interface InspectReading {
   ok: boolean;
@@ -114,6 +115,8 @@ export function formatReading(layer: LayerType, r: InspectReading): string {
   if (layer === "cape") return `${Math.round(v)} ${r.unit || "J/kg"}`;
   if (layer === "precip-type") return "Active";
   if (layer === "precip-accum" || layer === "precip-24h") return v < 0.01 ? "—" : `${v.toFixed(2)} in`;
+  const severe = formatSevereReading(layer, v);
+  if (severe) return severe;
   if (layer === "cloud") return `${Math.round(v)}%`;
   if (layer === "uv") return `UV ${Math.round(v)} · ${describeUV(v)}`;
   if (layer === "air-quality") return `${Math.round(v)} µg/m³ · ${aqiCategory(usAqiFromPm25(v)).label}`;

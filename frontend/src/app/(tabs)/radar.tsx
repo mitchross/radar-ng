@@ -68,6 +68,9 @@ const WEATHER_LAYERS: readonly LayerType[] = [
   "uv",
   "air-quality",
   "ozone",
+  "hail-size",
+  "rotation-track",
+  "echo-top",
 ];
 /** Layers with a fixed opacity; the rest follow the radar opacity setting. */
 const FIXED_LAYER_OPACITY: Partial<Record<LayerType, number>> = {
