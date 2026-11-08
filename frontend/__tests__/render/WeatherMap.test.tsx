@@ -4,13 +4,17 @@ import { WeatherMap } from "../../src/components/map/WeatherMap";
 import { useWeatherStore } from "../../src/stores/useWeatherStore";
 import { renderWithProviders } from "./helpers";
 
+const mockMapHandlers: { onPress?: (event: any) => void; onLongPress?: (event: any) => void } = {};
+
 const mockCamera = { setStop: jest.fn(), fitBounds: jest.fn() };
 
 jest.mock("@maplibre/maplibre-react-native", () => {
   const { forwardRef, useImperativeHandle } = jest.requireActual<typeof import("react")>("react");
   const { View } = jest.requireActual<typeof import("react-native")>("react-native");
   return {
-    Map: forwardRef(function Map({ children }: { children?: React.ReactNode }, _ref) {
+    Map: forwardRef(function Map({ children, onPress, onLongPress }: { children?: React.ReactNode; onPress?: (event: any) => void; onLongPress?: (event: any) => void }, _ref) {
+      mockMapHandlers.onPress = onPress;
+      mockMapHandlers.onLongPress = onLongPress;
       return <View testID="map">{children}</View>;
     }),
     Camera: forwardRef(function Camera(_props, ref) {
@@ -89,4 +93,16 @@ test("a recenter requested while the map is hidden is applied when it comes on s
   // Focusing again without a new request doesn't move the camera again.
   await rerender(<WeatherMap />);
   expect(mockCamera.setStop).toHaveBeenCalledTimes(1);
+});
+
+
+test("a map tap forwards the point while long press keeps its inspector callback", async () => {
+  const tap = jest.fn();
+  const hold = jest.fn();
+  await renderWithProviders(<WeatherMap onPress={tap} onLongPress={hold} />);
+  await act(async () => mockMapHandlers.onPress?.({ nativeEvent: { lngLat: [-85.5, 43] } }));
+  expect(tap).toHaveBeenCalledWith(43, -85.5);
+  expect(hold).not.toHaveBeenCalled();
+  await act(async () => mockMapHandlers.onLongPress?.({ nativeEvent: { lngLat: [-86, 44] } }));
+  expect(hold).toHaveBeenCalledWith(44, -86);
 });

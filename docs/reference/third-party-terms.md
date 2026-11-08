@@ -147,3 +147,20 @@ Nominatim is no longer called at all. See `docs/app/privacy.md` §3. The usage-p
 - `docs/app/privacy.md` §2 lists every destination the app contacts, so this page and that one should
   be updated together.
 - `docs/self-host/configuration.md` documents the `EXPO_PUBLIC_BASEMAP_*` overrides.
+
+## SPC watches, discussions and outlooks
+
+Attribute these products to NOAA/NWS Storm Prediction Center. These federal weather products are free and keyless.
+See [NWS use policy](https://www.weather.gov/disclaimer) and [SPC GIS sources](https://www.spc.noaa.gov/gis/).
+
+The server reads the official [watch index](https://www.spc.noaa.gov/products/watch/) and
+[discussion index](https://www.spc.noaa.gov/products/md/), then their linked HTML products.
+Watch probabilities come from the linked `wwpNNNN.txt` products when published.
+Coordinates come from the products' `LAT...LON` blocks. Watch outlines are SPC aviation approximations;
+WOU defines the official watch counties. Full public text and this distinction appear in both clients.
+The NOAA [discussion MapServer](https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/spc_mesoscale_discussion/MapServer/0)
+was also checked; its empty state uses a `NoArea` placeholder. Clients contact only our server.
+
+`/api/spc/watches` and `/api/spc/discussions` refresh on demand every 60 seconds, without worker schedules.
+Both retain last-good data on failure and remove expired products on every response. `stale` marks fallback data.
+Responses use `no-store` so downstream caches cannot serve expired polygons.

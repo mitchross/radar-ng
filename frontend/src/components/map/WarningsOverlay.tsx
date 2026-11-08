@@ -14,6 +14,7 @@ import { useAlerts } from "../../hooks/useAlerts";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { useBasemapStyle } from "../../hooks/useBasemapStyle";
 import { warningTagExpression } from "../../lib/warningTags";
+import type { PinnedPoint } from "../inspector/Eyedropper";
 import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 export const WARNING_COLORS: [string, string][] = [
@@ -39,7 +40,7 @@ export interface WarningDetails {
   severity?: string;
 }
 
-export function WarningsOverlay({ onSelect }: { onSelect?: (w: WarningDetails) => void }) {
+export function WarningsOverlay({ onSelect }: { onSelect?: (w: WarningDetails, point?: PinnedPoint) => void }) {
   const extrasVisible = useWeatherStore((s) => s.extrasVisible);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
@@ -68,7 +69,10 @@ export function WarningsOverlay({ onSelect }: { onSelect?: (w: WarningDetails) =
         const p = event.nativeEvent.features[0]?.properties;
         if (!p?.id || !p.event) return;
         event.stopPropagation();
-        onSelect?.({ id: String(p.id), event: String(p.event), areaDesc: p.areaDesc ?? undefined, ends: p.ends ?? p.expires ?? undefined, severity: p.severity ?? undefined });
+        const warning = { id: String(p.id), event: String(p.event), areaDesc: p.areaDesc ?? undefined, ends: p.ends ?? p.expires ?? undefined, severity: p.severity ?? undefined };
+        const coordinates = event.nativeEvent.lngLat;
+        if (coordinates) onSelect?.(warning, { lon: coordinates[0], lat: coordinates[1] });
+        else onSelect?.(warning);
       }}
     >
       <Layer type="fill" id="warnings-fill" paint={{ "fill-color": colorExpr, "fill-opacity": 0.14 }} />

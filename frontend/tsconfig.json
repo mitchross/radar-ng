@@ -11,6 +11,9 @@
       ],
       "@/assets/*": [
         "./assets/*"
+      ],
+      "geojson": [
+        "./node_modules/@types/geojson"
       ]
     }
   },

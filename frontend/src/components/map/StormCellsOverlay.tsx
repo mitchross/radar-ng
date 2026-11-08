@@ -13,11 +13,12 @@ import { useStormCells } from "../../hooks/useStormCells";
 import { useBasemapStyle } from "../../hooks/useBasemapStyle";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { useIsFocused } from "expo-router";
+import type { PinnedPoint } from "../inspector/Eyedropper";
 import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 import { parseStormCells, stormTrackGeoJSON, type StormCellInfo } from "../../lib/stormTracks";
 import { stormLayerOpacity, stormTrackTimeSec } from "../../../../web/src/shared/stormCone";
 
-export function StormCellsOverlay({ onSelect }: { onSelect?: (cell: StormCellInfo) => void }) {
+export function StormCellsOverlay({ onSelect }: { onSelect?: (cell: StormCellInfo, point?: PinnedPoint) => void }) {
   const extrasVisible = useWeatherStore((s) => s.extrasVisible);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
@@ -66,7 +67,9 @@ export function StormCellsOverlay({ onSelect }: { onSelect?: (cell: StormCellInf
         const cell = cells.find((c) => c.id === id);
         if (cell) {
           event.stopPropagation();
-          onSelect?.(cell);
+          const coordinates = event.nativeEvent.lngLat;
+          if (coordinates) onSelect?.(cell, { lon: coordinates[0], lat: coordinates[1] });
+          else onSelect?.(cell);
         }
       }}
     >

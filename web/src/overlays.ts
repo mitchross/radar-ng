@@ -6,6 +6,7 @@
 import type { Feature, FeatureCollection } from "geojson";
 import type { GeoJSONSource, Map as MLMap, MapGeoJSONFeature } from "maplibre-gl";
 import { escapeHtml as esc } from "./html";
+import { activeSpc, SPC_OVERLAYS, spcColorExpression, spcTagExpression, spcProduct, spcStyle } from "./shared/spc";
 import { warningTagExpression } from "./shared/warningTags";
 import {
   advance,
@@ -24,7 +25,7 @@ export { advance, distanceKm, incomingStorm, isTracked };
 export type { StormCell };
 export type Threat = IncomingStorm;
 
-export type OverlayId = "outlook" | "warnings" | "storms" | "lightning" | "tropical";
+export type OverlayId = "watches" | "discussions" | "outlook" | "warnings" | "storms" | "lightning" | "tropical";
 type FC = FeatureCollection;
 
 const FONT = ["Noto Sans Regular"];
@@ -32,6 +33,7 @@ const EMPTY: FC = { type: "FeatureCollection", features: [] };
 const KMH_TO_MPH = 0.621371;
 
 export const OVERLAYS: { id: OverlayId; name: string; hint: string; refreshMs: number }[] = [
+  ...SPC_OVERLAYS,
   { id: "outlook", name: "Severe outlook", hint: "SPC day-1 thunderstorm risk areas", refreshMs: 10 * 60_000 },
   { id: "warnings", name: "Warnings", hint: "NWS storm-based warning polygons", refreshMs: 60_000 },
   { id: "storms", name: "Storm tracks", hint: "Tracked cells with 60-minute paths", refreshMs: 60_000 },
@@ -123,6 +125,8 @@ export const compass = (deg: number) => ["N", "NE", "E", "SE", "S", "SW", "W", "
 // ---------- map wiring ----------
 
 const SOURCES: Record<OverlayId, string[]> = {
+  watches: ["ov-watches"],
+  discussions: ["ov-discussions"],
   outlook: ["ov-outlook"],
   warnings: ["ov-warnings"],
   storms: ["ov-storm-cones", "ov-storm-past", "ov-storm-tracks", "ov-storm-ticks", "ov-storm-cells"],
@@ -164,6 +168,11 @@ export class Overlays {
     // SPC ships its own category colors; under the warnings, which are more urgent.
     m.addLayer({ id: "ov-outlook-fill", type: "fill", source: "ov-outlook", layout: { visibility: vis("outlook") }, paint: { "fill-color": ["coalesce", ["get", "fill"], "#c1e9c1"] as never, "fill-opacity": 0.28 } });
     m.addLayer({ id: "ov-outlook-line", type: "line", source: "ov-outlook", layout: { visibility: vis("outlook") }, paint: { "line-color": ["coalesce", ["get", "stroke"], "#55bb55"] as never, "line-width": 1.5 } });
+    for (const { id } of SPC_OVERLAYS) {
+      m.addLayer({ id: `ov-${id}-hit`, type: "fill", source: `ov-${id}`, layout: { visibility: vis(id) }, paint: { "fill-opacity": 0 } });
+      m.addLayer({ id: `ov-${id}-line`, type: "line", source: `ov-${id}`, layout: { visibility: vis(id) }, paint: { "line-color": spcColorExpression() as never, "line-width": 2.5 } });
+      m.addLayer({ id: `ov-${id}-labels`, type: "symbol", source: `ov-${id}`, layout: { visibility: vis(id), "text-field": spcTagExpression() as never, "text-font": FONT, "text-size": 12, "text-padding": 4 }, paint: { "text-color": "#ffffff", "text-halo-color": "#111827", "text-halo-width": 1.6 } });
+    }
     m.addLayer({ id: "ov-warnings-fill", type: "fill", source: "ov-warnings", layout: { visibility: vis("warnings") }, paint: { "fill-color": warningColor, "fill-opacity": 0.14 } });
     m.addLayer({ id: "ov-warnings-line", type: "line", source: "ov-warnings", layout: { visibility: vis("warnings") }, paint: { "line-color": warningColor, "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1.5, 9, 3] } });
     // Type tag (TOR/SVR/FFW...) so colour is not the only signal; hidden when zoomed far out to avoid clutter.
@@ -202,7 +211,7 @@ export class Overlays {
     if (this.enabled.has("tropical")) ids.push("ov-tropical-position", "ov-tropical-points");
     if (this.enabled.has("storms")) ids.push("ov-storm-cells");
     if (this.enabled.has("warnings")) ids.push("ov-warnings-fill");
-    if (this.enabled.has("outlook")) ids.push("ov-outlook-fill");
+    for (const { id } of SPC_OVERLAYS) if (this.enabled.has(id)) ids.push(`ov-${id}-hit`);
     return ids.filter((id) => this.map.getLayer(id));
   }
 
@@ -217,6 +226,7 @@ export class Overlays {
   start() {
     for (const o of OVERLAYS) this.schedule(o.id);
     this.animatePulse();
+    window.setInterval(() => this.expireSpc(), 15_000);
   }
 
   private schedule(id: OverlayId) {
@@ -248,8 +258,16 @@ export class Overlays {
     (this.map.getSource(id) as GeoJSONSource | undefined)?.setData(fc);
   }
 
+  private expireSpc() {
+    for (const { id } of SPC_OVERLAYS) {
+      const key = `ov-${id}`;
+      if (this.data[key]) this.set(key, activeSpc(this.data[key], Date.now()));
+    }
+  }
+
   async refresh(id: OverlayId) {
-    const url = { outlook: "/api/outlooks?day=1", warnings: "/api/alerts/map", storms: "/api/storms", lightning: "/api/lightning", tropical: "/api/tropical" }[id];
+    this.expireSpc();
+    const url = { watches: "/api/spc/watches", discussions: "/api/spc/discussions", outlook: "/api/outlooks?day=1", warnings: "/api/alerts/map", storms: "/api/storms", lightning: "/api/lightning", tropical: "/api/tropical" }[id];
     let fc: FC;
     try {
       const res = await fetch(url);
@@ -273,7 +291,7 @@ export class Overlays {
     } else if (id === "lightning") {
       this.set("ov-lightning", lightningWithAge(fc, Date.now() / 1000));
     } else {
-      this.set(SOURCES[id][0], fc);
+      this.set(SOURCES[id][0], id === "watches" || id === "discussions" ? activeSpc(fc, Date.now()) : fc);
     }
   }
 
@@ -296,6 +314,13 @@ const until = (iso: unknown) => (iso ? new Date(String(iso)).toLocaleString([], 
 
 export function describeFeature(f: MapGeoJSONFeature, cells: StormCell[]): string {
   const p = f.properties as Record<string, any>;
+  if (f.layer.id.startsWith("ov-watches-") || f.layer.id.startsWith("ov-discussions-")) {
+    const product = spcProduct(p, Date.now());
+    if (!product) return "";
+    const style = spcStyle(product.type);
+    const rows = product.probabilities.map((r) => `<tr><td>${esc(r.label)}</td><td>${esc(r.value)}</td></tr>`).join("");
+    return `<div class="readout spc-detail"><b style="color:${style.color}">${esc(style.name)} #${product.number}</b><small>Issued ${esc(until(product.issued))} · Until ${esc(until(product.expires))}</small><p>${esc(product.geometry_note)}</p><pre>${esc(product.text)}</pre>${rows ? `<table aria-label="Watch probabilities">${rows}</table>` : ""}<small>NOAA/NWS Storm Prediction Center</small></div>`;
+  }
   if (f.layer.id === "ov-storm-cells") {
     const c = cells.find((x) => x.id === Number(p.id));
     if (!c) return "";

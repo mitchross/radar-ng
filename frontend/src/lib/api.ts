@@ -242,3 +242,10 @@ export async function explainAlert(
     return null;
   }
 }
+
+/** SPC full-text watch and discussion polygons, fetched only through our API. */
+export async function fetchSpc(serverUrl: string, kind: import("./spc").SpcKind, signal?: AbortSignal): Promise<GeoJSON.FeatureCollection> {
+  const res = await fetchWithTimeout(`${serverUrl}/api/spc/${kind}`, {}, signal, 30_000);
+  if (!res.ok) throw new Error(`SPC ${kind} ${res.status}`);
+  return res.json();
+}

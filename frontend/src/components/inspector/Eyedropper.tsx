@@ -13,6 +13,7 @@ import { cumulus } from "../../lib/cumulusTheme";
 import { formatReading, inspectFrame, inspectSourceFor, type InspectReading } from "../../lib/inspector";
 import type { LayerType } from "../../types/weather";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
+import { PointOutlooks } from "../map/PointOutlooks";
 
 const LAYER_LABEL: Record<LayerType, string> = {
   radar: "REFLECTIVITY",
@@ -187,6 +188,7 @@ export function InspectorPanel({
         </Text>
         <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelSource}>{inspect.sourceLabel}</Text>
       </View>
+      <PointOutlooks lat={pinned.lat} lon={pinned.lon} />
     </View>
   );
 }

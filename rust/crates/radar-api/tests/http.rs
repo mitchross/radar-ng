@@ -2299,3 +2299,203 @@ async fn satellite_layer_lists_shared_frames_and_proxies_tiles() {
     let (status, _, _) = send(&off, get_req(&uri)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+fn spc_fixture(md: bool, expired: bool) -> String {
+    let now = chrono::Utc::now() - chrono::Duration::minutes(if expired { 180 } else { 5 });
+    let end = now + chrono::Duration::minutes(120);
+    let date = now.format("%I%M %p UTC %a %b %e %Y").to_string();
+    let window = format!("{} - {}", now.format("%d%H%MZ"), end.format("%d%H%MZ"));
+    if md {
+        include_str!("fixtures/spc-md.html")
+            .replace("0637 PM CST Sat Nov 07 2026", &date)
+            .replace("080037Z - 080230Z", &window)
+    } else {
+        include_str!("fixtures/spc-watch.html")
+            .replace("735 PM CST Mon Nov 2 2026", &date)
+            .replace("030135Z - 030900Z", &window)
+    }
+}
+
+#[tokio::test]
+async fn spc_http_caches_full_products_and_keeps_last_good_on_errors() {
+    for md in [false, true] {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mode = Arc::new(AtomicUsize::new(0));
+        let dir = if md { "md" } else { "watch" };
+        let file = if md { "md2448" } else { "ww0703" };
+        let index = format!("<a href=\"/products/{dir}/{file}.html\">Active</a>");
+        let empty = if md {
+            "No Mesoscale Discussions are currently in effect"
+        } else {
+            "No watches are currently valid"
+        };
+        let upstream = Router::new()
+            .route(
+                &format!("/{dir}/"),
+                get({
+                    let calls = calls.clone();
+                    let mode = mode.clone();
+                    move || {
+                        let calls = calls.clone();
+                        let mode = mode.clone();
+                        let index = index.clone();
+                        async move {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            match mode.load(Ordering::SeqCst) {
+                                1 => (StatusCode::BAD_GATEWAY, String::new()),
+                                2 => (StatusCode::OK, "<html>maintenance</html>".into()),
+                                3 => (StatusCode::OK, empty.into()),
+                                _ => (StatusCode::OK, index),
+                            }
+                        }
+                    }
+                }),
+            )
+            .route(
+                &format!("/{dir}/{file}.html"),
+                get(move || async move { spc_fixture(md, false) }),
+            )
+            .route(
+                "/watch/wwp0703.txt",
+                get(|| async { include_str!("fixtures/spc-probabilities.txt") }),
+            );
+        let base = mock(upstream).await;
+        let env = Env::new();
+        let state = AppState::new(env.config(|c| c.spc_products_base = base)).unwrap();
+        let app = router(state.clone());
+        let path = if md {
+            "/api/spc/discussions"
+        } else {
+            "/api/spc/watches"
+        };
+        for _ in 0..2 {
+            let (status, headers, body) = get_json(&app, path).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(header_str(&headers, "cache-control"), "no-store");
+            assert_eq!(body["stale"], false);
+            let p = &body["features"][0]["properties"];
+            assert_eq!(p["type"], if md { "md" } else { "tornado" });
+            assert!(
+                p["id"]
+                    .as_str()
+                    .unwrap()
+                    .ends_with(if md { "md-2448" } else { "ww-0703" })
+            );
+            assert!(p["text"].as_str().unwrap().contains(if md {
+                "DISCUSSION..."
+            } else {
+                "Primary threats include"
+            }));
+            assert!(!p["text"].as_str().unwrap().contains("<a"));
+            let ring = body["features"][0]["geometry"]["coordinates"][0]
+                .as_array()
+                .unwrap();
+            assert_eq!(ring.first(), ring.last());
+            assert!(ring[0][0].as_f64().unwrap() < -90.0);
+            if !md {
+                assert_eq!(p["probabilities"].as_array().unwrap().len(), 7);
+                assert_eq!(p["probabilities"][5]["value"], "<05%");
+            }
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        for failure in [1, 2] {
+            mode.store(failure, Ordering::SeqCst);
+            state.spc_products[usize::from(md)].lock().await.checked = None;
+            let (status, _, body) = get_json(&app, path).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(body["stale"], true);
+            assert_eq!(body["features"].as_array().unwrap().len(), 1);
+        }
+        {
+            let mut snapshot = state.spc_products[usize::from(md)].lock().await;
+            snapshot.checked = None;
+            snapshot.body.as_mut().unwrap()["features"][0]["properties"]["expires"] =
+                json!("2000-01-01T00:00:00Z");
+        }
+        let (_, _, expired) = get_json(&app, path).await;
+        assert!(expired["features"].as_array().unwrap().is_empty());
+        assert_eq!(expired["stale"], true);
+        mode.store(3, Ordering::SeqCst);
+        state.spc_products[usize::from(md)].lock().await.checked = None;
+        let (_, _, empty_body) = get_json(&app, path).await;
+        assert!(empty_body["features"].as_array().unwrap().is_empty());
+        assert_eq!(empty_body["stale"], false);
+    }
+}
+
+#[tokio::test]
+async fn spc_http_without_last_good_is_unavailable_and_missing_probabilities_are_optional() {
+    let env = Env::new();
+    let base = mock(Router::new().fallback(|| async { StatusCode::SERVICE_UNAVAILABLE })).await;
+    let app = env.app(|c| c.spc_products_base = base);
+    for path in ["/api/spc/watches", "/api/spc/discussions"] {
+        let (status, headers, _) = get_json(&app, path).await;
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert_eq!(header_str(&headers, "cache-control"), "no-store");
+        let (status, headers, _) = send(&app, get_req(&format!("{path}/"))).await;
+        assert_eq!(status, StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(header_str(&headers, "location"), path);
+    }
+    let base = mock(
+        Router::new()
+            .route(
+                "/watch/",
+                get(|| async { "<a href=\"/products/watch/ww0703.html\">Watch</a>" }),
+            )
+            .route(
+                "/watch/ww0703.html",
+                get(|| async {
+                    spc_fixture(false, false).replace("Tornado Watch", "Severe Thunderstorm Watch")
+                }),
+            ),
+    )
+    .await;
+    let app = env.app(|c| c.spc_products_base = base);
+    let (status, _, body) = get_json(&app, "/api/spc/watches").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["features"][0]["properties"]["type"], "severe");
+    assert!(
+        body["features"][0]["properties"]["probabilities"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn spc_http_filters_expired_products_on_fresh_fetch() {
+    for md in [false, true] {
+        let dir = if md { "md" } else { "watch" };
+        let file = if md { "md2448" } else { "ww0703" };
+        let index = format!("<a href=\"/products/{dir}/{file}.html\">Product</a>");
+        let base = mock(
+            Router::new()
+                .route(
+                    &format!("/{dir}/"),
+                    get(move || {
+                        let index = index.clone();
+                        async move { index }
+                    }),
+                )
+                .route(
+                    &format!("/{dir}/{file}.html"),
+                    get(move || async move { spc_fixture(md, true) }),
+                ),
+        )
+        .await;
+        let env = Env::new();
+        let app = env.app(|c| c.spc_products_base = base);
+        let (status, _, body) = get_json(
+            &app,
+            if md {
+                "/api/spc/discussions"
+            } else {
+                "/api/spc/watches"
+            },
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["stale"], false);
+        assert!(body["features"].as_array().unwrap().is_empty());
+    }
+}

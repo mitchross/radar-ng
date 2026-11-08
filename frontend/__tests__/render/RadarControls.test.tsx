@@ -13,7 +13,7 @@ jest.mock("@expo/ui", () => ({
 }));
 
 beforeEach(() => {
-  useWeatherStore.setState({ mapStyle: "light", activeLayer: "radar", extrasVisible: false, latitude: null, longitude: null });
+  useWeatherStore.setState({ mapStyle: "light", activeLayer: "radar", extrasVisible: false, spcWatchesVisible: false, spcDiscussionsVisible: false, latitude: null, longitude: null });
 });
 
 describe("map options sheet", () => {
@@ -43,6 +43,16 @@ describe("map options sheet", () => {
     await fireEvent.press(screen.getByRole("radio", { name: "Air Quality radar layer" }));
     expect(useWeatherStore.getState().activeLayer).toBe("air-quality");
     expect(onClose).toHaveBeenCalled();
+  });
+
+  test("SPC watches and discussions have separate overlay switches", async () => {
+    await renderWithProviders(<MapOptionsSheet visible onClose={jest.fn()} />);
+    await fireEvent(screen.getByLabelText("Toggle SPC watches"), "valueChange", true);
+    expect(useWeatherStore.getState().spcWatchesVisible).toBe(true);
+    expect(useWeatherStore.getState().spcDiscussionsVisible).toBe(false);
+    expect(useWeatherStore.getState().extrasVisible).toBe(false);
+    await fireEvent(screen.getByLabelText("Toggle Mesoscale discussions"), "valueChange", true);
+    expect(useWeatherStore.getState().spcDiscussionsVisible).toBe(true);
   });
 
   test("the storms switch toggles the overlays", async () => {

@@ -2,13 +2,17 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { cumulus, cumulusFonts } from "../../lib/cumulusTheme";
 import type { TropicalStormDetails } from "./TropicalOverlay";
+import { PointOutlooks } from "./PointOutlooks";
+import type { PinnedPoint } from "../inspector/Eyedropper";
 import { compass } from "../../lib/stormTracks";
 
 export function TropicalDetailSheet({
   storm,
+  point,
   onClose,
 }: {
   storm: TropicalStormDetails | null;
+  point?: PinnedPoint;
   onClose: () => void;
 }) {
   if (!storm) return null;
@@ -64,6 +68,8 @@ export function TropicalDetailSheet({
                 unit="mb"
               />
             </View>
+
+            {point ? <PointOutlooks {...point} /> : null}
 
             <View style={styles.advisory}>
               <Text style={styles.advisoryTitle}>Official NHC advisory</Text>

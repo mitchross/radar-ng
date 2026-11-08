@@ -3,9 +3,10 @@
  * layer, the base map style and the storm/lightning overlays. Replaces the
  * layer popover and the separate style sheet, so the map keeps two buttons.
  */
+import { SPC_OVERLAYS } from "../../lib/spc";
 import { BottomSheet, RNHostView } from "@expo/ui";
 import { useMemo } from "react";
-import { View, Text, StyleSheet, Pressable, Switch, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, Pressable, Switch, ScrollView, useWindowDimensions } from "react-native";
 import { SymbolView } from "expo-symbols";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { selectionHaptic } from "../../lib/haptics";
@@ -23,13 +24,16 @@ const MAP_STYLES: { id: MapStyle; label: string; color: string }[] = [
 ];
 
 export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const setActiveLayer = useWeatherStore((s) => s.setActiveLayer);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const setMapStyle = useWeatherStore((s) => s.setMapStyle);
+  const spcWatchesVisible = useWeatherStore((s) => s.spcWatchesVisible);
+  const spcDiscussionsVisible = useWeatherStore((s) => s.spcDiscussionsVisible);
+  const setSpcVisible = useWeatherStore((s) => s.setSpcVisible);
   const extrasVisible = useWeatherStore((s) => s.extrasVisible);
   const toggleExtras = useWeatherStore((s) => s.toggleExtras);
   const satelliteVisible = useWeatherStore((s) => s.satelliteVisible);
@@ -45,7 +49,7 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
   return (
     <BottomSheet isPresented={visible} onDismiss={onClose} containerColor={theme.colors.surface}>
       <RNHostView matchContents>
-        <View style={[styles.content, { width: contentWidth }]}>
+        <ScrollView style={{ maxHeight: height * 0.85, width: contentWidth, flexGrow: 0 }} contentContainerStyle={styles.content}>
           <View style={styles.header}>
             <Text accessibilityRole="header" style={styles.title}>Map</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Close map options" onPress={onClose} style={styles.done}>
@@ -172,8 +176,20 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
             />
           </View>
 
-          <Text style={styles.tip}>Tip: press and hold the map to read the value at a point.</Text>
-        </View>
+          {SPC_OVERLAYS.map((overlay) => (
+            <View key={overlay.id} style={styles.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.switchTitle}>{overlay.name}</Text>
+                <Text style={styles.switchDetail}>{overlay.hint}</Text>
+              </View>
+              <Switch value={overlay.id === "watches" ? spcWatchesVisible : spcDiscussionsVisible}
+                onValueChange={(on) => setSpcVisible(overlay.id, on)} trackColor={{ true: theme.colors.accent }}
+                accessibilityLabel={`Toggle ${overlay.name}`} />
+            </View>
+          ))}
+
+          <Text style={styles.tip}>Tip: tap the map to read its value and Day 1-3 outlook.</Text>
+        </ScrollView>
       </RNHostView>
     </BottomSheet>
   );
