@@ -5,6 +5,7 @@
 
 import { getCumulusCondition, type CumulusCondition } from "./shared/conditions";
 import { forecastTimeMs } from "./shared/forecastTime";
+import type { AlertFeature } from "./shared/alertLevels";
 
 export interface Forecast {
   /** Seconds east of UTC at the location; `hourly.time` etc. are wall times there with no offset. */
@@ -41,6 +42,7 @@ export interface Place {
 }
 
 export interface Alert {
+  feature?: AlertFeature;
   event: string;
   headline: string;
   severity: string;
@@ -80,8 +82,8 @@ export async function reversePlace(lat: number, lon: number): Promise<Place | nu
 }
 
 export async function fetchAlerts(lat: number, lon: number): Promise<Alert[]> {
-  const body = await json<{ features?: { properties: Alert }[] }>(`/api/alerts?lat=${round(lat, 2)}&lon=${round(lon, 2)}`);
-  return (body.features ?? []).map((f) => f.properties);
+  const body = await json<{ features?: (AlertFeature & { properties: Alert })[] }>(`/api/alerts?lat=${round(lat, 2)}&lon=${round(lon, 2)}`);
+  return (body.features ?? []).map((f) => ({ ...f.properties, feature: f }));
 }
 
 export interface Briefing {

@@ -19,7 +19,11 @@ import { roundCoord } from "../lib/coordinates";
 import { DEFAULT_RAIN_ALERT_LEAD, parseRainAlertLead, type RainAlertLeadMinutes } from "../lib/rainAlerts";
 import { parseDeviceFix, statusForFix, type LocationStatus } from "../lib/locationStatus";
 
+import { parseAlertPreference, type AlertPreference } from "../lib/alertLevels";
+
 interface WeatherState {
+  alertPreference: AlertPreference;
+  setAlertPreference: (value: AlertPreference) => void;
   frames: RadarFrame[];
   currentFrameIndex: number;
   isPlaying: boolean;
@@ -144,6 +148,11 @@ const initialCoords =
 const sameCell = (a: number | null, b: number) => a !== null && roundCoord(a, 3) === roundCoord(b, 3);
 
 export const useWeatherStore = create<WeatherState>()((set, get) => ({
+  alertPreference: parseAlertPreference(getString("alertPreference", "")),
+  setAlertPreference: (value) => {
+    setString("alertPreference", value);
+    set({ alertPreference: value });
+  },
   frames: [],
   currentFrameIndex: -1,
   isPlaying: false,

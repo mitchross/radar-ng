@@ -24,6 +24,8 @@ export class BrowserRainAlerts {
     if (this.registration || typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     try {
       this.registration = await navigator.serviceWorker.register("/sw.js");
+      // A first-use test is immediate, unlike a rain timer: wait until the worker can display it.
+      if (!this.registration.active && navigator.serviceWorker.ready) this.registration = await navigator.serviceWorker.ready;
     } catch { /* insecure context or private mode: fall back to new Notification */ }
   }
 
@@ -68,6 +70,24 @@ export class BrowserRainAlerts {
     const plan = planRainAlert(nowcast, place, { leadMinutes: this.leadMinutes }, now);
     if (!plan || !shouldNotify(plan, parseLastRainAlert(this.read("last")), now)) return;
     this.timer = setTimeout(() => void this.deliver(plan), Math.max(0, plan.fireAt - now));
+  }
+
+  /** Shared transport for local NWS and test alerts, including mobile browsers. */
+  async notify(title: string, options: NotificationOptions, onClick?: () => void): Promise<void> {
+    await this.connect();
+    if (this.registration) await this.registration.showNotification(title, options);
+    else {
+      const notification = new Notification(title, options);
+      notification.onclick = () => { notification.close(); window.focus(); onClick?.(); };
+    }
+  }
+
+  async requestPermission(): Promise<boolean> {
+    if (!this.supported) return false;
+    try {
+      await this.connect();
+      return (Notification.permission === "granted" ? "granted" : await Notification.requestPermission()) === "granted";
+    } catch { return false; }
   }
 
   private async deliver(plan: RainAlertPlan): Promise<void> {

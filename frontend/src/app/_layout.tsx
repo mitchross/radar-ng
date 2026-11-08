@@ -32,6 +32,7 @@ import { useStormTilePrefetch } from "../hooks/useStormTilePrefetch";
 import { useLocationController } from "../hooks/useLocation";
 import { useRainAlerts } from "../hooks/useRainAlerts";
 import { useStormNotice } from "../hooks/useStormNotice";
+import { useAlertNotifications } from "../hooks/useAlertNotifications";
 import { useSharedStatePublisher } from "../hooks/useSharedStatePublisher";
 import { bindAppFocus, bindNetworkOnline } from "../lib/queryLifecycle";
 import { PERSISTED_QUERY_FAMILIES, PERSIST_MAX_AGE_MS, shouldPersistQuery } from "../lib/queryPersistence";
@@ -123,6 +124,7 @@ function ThemedApp() {
   useRainAlerts();
   // Opt-in "strong storm may reach you" notification from tracked cells.
   useStormNotice();
+  useAlertNotifications();
   // Start warming the three predicted storm regions while the user is still
   // on the home screen, before MapLibre mounts on the radar tab.
   useStormTilePrefetch();
