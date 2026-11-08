@@ -5,10 +5,12 @@ import { warningColor, type WarningDetails } from "./WarningsOverlay";
 import { compass, hailLabel, isTracked, type StormCellInfo } from "../../lib/stormTracks";
 import { useAlertExplanation } from "../../hooks/useAlertExplanation";
 import { cumulus } from "../../lib/cumulusTheme";
+import { PointOutlooks } from "./PointOutlooks";
+import type { PinnedPoint } from "../inspector/Eyedropper";
 
 const dbzColor = (dbz: number) => (dbz >= 60 ? "#d02058" : dbz >= 55 ? "#ff4040" : dbz >= 50 ? "#ff8a00" : "#e0a800");
 
-export function StormCellSheet({ cell, onClose }: { cell: StormCellInfo | null; onClose: () => void }) {
+export function StormCellSheet({ cell, point, onClose }: { cell: StormCellInfo | null; point?: PinnedPoint; onClose: () => void }) {
   if (!cell) return null;
   const tracked = isTracked(cell);
   return (
@@ -24,11 +26,13 @@ export function StormCellSheet({ cell, onClose }: { cell: StormCellInfo | null; 
         { label: "SPEED", value: tracked ? `${Math.round(cell.speedMph)}` : "—", unit: "mph" },
       ]}
       onClose={onClose}
-    />
+    >
+      {point ? <PointOutlooks {...point} /> : null}
+    </MapInfoSheet>
   );
 }
 
-export function WarningSheet({ warning, onClose }: { warning: WarningDetails | null; onClose: () => void }) {
+export function WarningSheet({ warning, point, onClose }: { warning: WarningDetails | null; point?: PinnedPoint; onClose: () => void }) {
   const { explanation, loading } = useAlertExplanation(warning?.id);
   if (!warning) return null;
   const until = warning.ends ? new Date(warning.ends).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : null;
@@ -41,6 +45,7 @@ export function WarningSheet({ warning, onClose }: { warning: WarningDetails | n
       accent={warningColor(warning.event)}
       onClose={onClose}
     >
+      {point ? <PointOutlooks {...point} /> : null}
       {explanation ? <PlainEnglish what={explanation.what} doText={explanation.do} /> : null}
       {!explanation && loading ? <Text style={{ marginTop: 12, color: cumulus.inkMuted, fontSize: 12 }}>{"✦"} Explaining…</Text> : null}
     </MapInfoSheet>

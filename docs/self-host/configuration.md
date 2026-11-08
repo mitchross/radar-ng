@@ -186,3 +186,9 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 See also: [docs/start/getting-started.md](../start/getting-started.md) ·
 [self-hosting.md](compose.md) · [tuning.md](tuning.md) (what to change for
 faster/cheaper/fresher).
+
+### SPC product source
+
+`SPC_PRODUCTS_BASE` defaults to `https://www.spc.noaa.gov/products`.
+The API reads watches, mesoscale discussions and published watch probability text from this root.
+Fetching runs on demand, with a 60-second cache and last-good fallback. No worker schedule is required.

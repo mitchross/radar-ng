@@ -51,6 +51,8 @@ Every `/api` route is a GET (`/api/livez` included). A GET-only route answers HE
 | GET | `/api/health` | `health::get_health` | 200 ok or 503 degraded, with reasons |
 | GET | `/api/metrics` | `health::get_metrics` | Prometheus text |
 | GET | `/api/alerts` | `places::get_alerts` | NWS point alerts |
+| GET | `/api/spc/watches` | `spc::watches` | Watch outlines, full text and published probabilities; 60 s server cache, last-good fallback, expiry filtering |
+| GET | `/api/spc/discussions` | `spc::discussions` | Discussion polygons and full text; same cache and fallback policy |
 | GET | `/api/alerts/map` | `places::get_alerts_map` | Shaped alert features, 3-dp cache key |
 | GET | `/api/geocode` | `places::get_geocode` | Geocoder, Photon fallback, settlement filter |
 | GET | `/api/reverse-geocode` | `places::get_reverse_geocode` | Config check before range check |

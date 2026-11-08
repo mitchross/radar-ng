@@ -83,6 +83,8 @@ pub struct Config {
     pub nws_user_agent: String,
     /// `SPC_OUTLOOK_BASE`. Default `https://www.spc.noaa.gov/products/outlook`.
     pub spc_outlook_base: String,
+    /// `SPC_PRODUCTS_BASE`. Default `https://www.spc.noaa.gov/products`.
+    pub spc_products_base: String,
     /// `ALERTS_TTL_S`. Default 60.
     pub alerts_ttl_s: u64,
     /// `ALERTS_CACHE_MAX_BYTES` (new; replaces `ALERTS_CACHE_MAX_ENTRIES`). Budget for the point
@@ -169,6 +171,7 @@ impl Config {
                 "SPC_OUTLOOK_BASE",
                 "https://www.spc.noaa.gov/products/outlook",
             ),
+            spc_products_base: str_var("SPC_PRODUCTS_BASE", "https://www.spc.noaa.gov/products"),
             nws_point_alerts_url: str_var(
                 "NWS_POINT_ALERTS_URL",
                 "https://api.weather.gov/alerts/active",
@@ -241,6 +244,7 @@ impl Config {
             llm_breaker_cooldown_s: 300,
             nws_point_alerts_url: "https://api.weather.gov/alerts/active".into(),
             spc_outlook_base: "https://www.spc.noaa.gov/products/outlook".into(),
+            spc_products_base: "https://www.spc.noaa.gov/products".into(),
             nws_alert_detail_base: "https://api.weather.gov/alerts".into(),
             nws_user_agent: "(radar-ng, admin@example.com)".into(),
             alerts_ttl_s: 60,

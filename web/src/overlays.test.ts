@@ -95,3 +95,20 @@ describe("describeFeature", () => {
     }
   });
 });
+
+describe("SPC product panels", () => {
+  it("shows escaped full text, watch probabilities and source", () => {
+    const f = { layer: { id: "ov-watches-hit" }, properties: { id: "2026-ww-0001", type: "tornado", number: 1,
+      issued: "2026-11-08T00:00:00Z", expires: "2099-01-01T00:00:00Z", text: "Full <script>text</script>",
+      geometry_note: "Aviation watch approximation", probabilities: JSON.stringify([{ label: "Strong tornadoes", value: "<5%" }]) } } as unknown as MapGeoJSONFeature;
+    const html = describeFeature(f, []);
+    expect(html).toContain("Tornado watch #1");
+    expect(html).toContain("Full &lt;script&gt;text&lt;/script&gt;");
+    expect(html).toContain("Strong tornadoes");
+    expect(html).toContain("&lt;5%");
+    expect(html).toContain("NOAA/NWS Storm Prediction Center");
+    expect(html).toContain("Aviation watch approximation");
+    f.properties.expires = "2000-01-01T00:00:00Z";
+    expect(describeFeature(f, [])).toBe("");
+  });
+});

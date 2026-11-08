@@ -61,6 +61,8 @@ pub const ROUTE_TEMPLATES: &[&str] = &[
     "/api/alerts",
     "/api/alerts/map",
     "/api/outlooks",
+    "/api/spc/watches",
+    "/api/spc/discussions",
     "/api/geocode",
     "/api/reverse-geocode",
     "/api/briefing",
@@ -98,6 +100,8 @@ pub fn api_router() -> Router<AppState> {
         .route("/api/alerts", get(alerts::get_alerts))
         .route("/api/alerts/map", get(alerts::get_alerts_map))
         .route("/api/outlooks", get(outlooks::get_outlooks))
+        .route("/api/spc/watches", get(crate::spc::watches))
+        .route("/api/spc/discussions", get(crate::spc::discussions))
         .route("/api/alerts/explain", get(briefing::explain_alert))
         .route("/api/geocode", get(places::get_geocode))
         .route("/api/reverse-geocode", get(places::get_reverse_geocode))

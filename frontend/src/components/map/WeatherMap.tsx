@@ -21,6 +21,7 @@ const ZOOM_MAX = 15;
 
 interface WeatherMapProps {
   children?: React.ReactNode;
+  onPress?: (lat: number, lon: number) => void;
   onLongPress?: (lat: number, lon: number) => void;
   onCameraChanged?: (camera: { lon: number; lat: number; zoom: number; bearing: number }) => void;
   /**
@@ -35,6 +36,7 @@ interface WeatherMapProps {
 export function WeatherMap({
   children,
   onLongPress,
+  onPress,
   onCameraChanged,
   trackCameraContinuously = false,
   allowPitch = true,
@@ -126,6 +128,10 @@ export function WeatherMap({
         attribution={true}
         attributionPosition={{ bottom: chrome.aboveTimeline + 8, left: chrome.left }}
         onLongPress={handleLongPress}
+        onPress={(event) => {
+          const [lon, lat] = event.nativeEvent.lngLat;
+          onPress?.(lat, lon);
+        }}
         touchPitch={allowPitch}
         onRegionIsChanging={trackCameraContinuously ? handleRegionChange : undefined}
         onRegionDidChange={handleRegionChange}

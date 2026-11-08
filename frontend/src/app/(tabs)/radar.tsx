@@ -31,6 +31,8 @@ import { TropicalDetailSheet } from "../../components/map/TropicalDetailSheet";
 import { StormCellsOverlay } from "../../components/map/StormCellsOverlay";
 import { WarningsOverlay, type WarningDetails } from "../../components/map/WarningsOverlay";
 import { OutlookOverlay } from "../../components/map/OutlookOverlay";
+import { SpcOverlay, type SpcSelection } from "../../components/map/SpcOverlay";
+import { SpcSheet } from "../../components/map/SpcSheet";
 import { StormCellSheet, WarningSheet } from "../../components/map/FeatureSheets";
 import type { StormCellInfo } from "../../lib/stormTracks";
 import { WindParticlesOverlay, useSharedCamera } from "../../components/map/WindParticlesOverlay";
@@ -98,6 +100,8 @@ export default function RadarScreen() {
 
   const [pinned, setPinned] = useState<PinnedPoint | null>(null);
   const inspect = useInspectReading(pinned);
+  const [selectedPoint, setSelectedPoint] = useState<PinnedPoint | undefined>();
+  const [selectedSpc, setSelectedSpc] = useState<SpcSelection | null>(null);
   const [selectedTropical, setSelectedTropical] = useState<TropicalStormDetails | null>(null);
   const [selectedCell, setSelectedCell] = useState<StormCellInfo | null>(null);
   const [selectedWarning, setSelectedWarning] = useState<WarningDetails | null>(null);
@@ -126,6 +130,10 @@ export default function RadarScreen() {
       {/* Status text follows the basemap, not the app theme; only while this tab shows. */}
       {focused ? <StatusBar style={mapStyle === "light" ? "dark" : "light"} /> : null}
       <WeatherMap
+        onPress={(lat, lon) => {
+          setIsPlaying(false);
+          setPinned({ lat, lon });
+        }}
         onLongPress={(lat, lon) => {
           // Readings load only while paused, so pinning a point stops the loop.
           setIsPlaying(false);
@@ -153,10 +161,21 @@ export default function RadarScreen() {
         {/* Always mounted: each overlay renders an empty collection / hidden pin when
             it has nothing to show, so the map's native child count never churns. */}
         <OutlookOverlay />
-        <WarningsOverlay onSelect={setSelectedWarning} />
+        <SpcOverlay kind="watches" onSelect={setSelectedSpc} />
+        <SpcOverlay kind="discussions" onSelect={setSelectedSpc} />
+        <WarningsOverlay onSelect={(value, point) => {
+          setSelectedPoint(point);
+          setSelectedWarning(value);
+        }} />
         <AlertPolygon />
-        <TropicalOverlay onSelect={setSelectedTropical} />
-        <StormCellsOverlay onSelect={setSelectedCell} />
+        <TropicalOverlay onSelect={(value, point) => {
+          setSelectedPoint(point);
+          setSelectedTropical(value);
+        }} />
+        <StormCellsOverlay onSelect={(value, point) => {
+          setSelectedPoint(point);
+          setSelectedCell(value);
+        }} />
         <LightningOverlay />
         <LayerLocationMarker inspecting={pinned != null} />
         <EyedropperPin pinned={pinned} readout={inspect.readout} />
@@ -212,10 +231,12 @@ export default function RadarScreen() {
       <TimelineBar />
       <TropicalDetailSheet
         storm={selectedTropical}
+        point={selectedPoint}
         onClose={() => setSelectedTropical(null)}
       />
-      <StormCellSheet cell={selectedCell} onClose={() => setSelectedCell(null)} />
-      <WarningSheet warning={selectedWarning} onClose={() => setSelectedWarning(null)} />
+      <SpcSheet selection={selectedSpc} onClose={() => setSelectedSpc(null)} />
+      <StormCellSheet cell={selectedCell} point={selectedPoint} onClose={() => setSelectedCell(null)} />
+      <WarningSheet warning={selectedWarning} point={selectedPoint} onClose={() => setSelectedWarning(null)} />
     </View>
   );
 }

@@ -141,6 +141,8 @@ pub struct Inner {
     pub alerts_cache: AsyncCache<String, Bytes>,
     /// Encoded SPC outlook responses by day (1..=3).
     pub outlook_cache: Cache<i64, Bytes>,
+    /// Last-good SPC products; each lock coalesces refreshes for one product kind.
+    pub spc_products: [AsyncMutex<crate::spc::Snapshot>; 2],
     /// Geocoder search results by `query|limit`.
     pub geocode_cache: Cache<String, Bytes>,
     /// Reverse-geocode results by 3-dp point.
@@ -267,6 +269,7 @@ impl AppState {
                 .weigher(|k: &String, v: &Bytes| weight(k.len() + v.len()))
                 .time_to_live(ttl(config.alerts_ttl_s))
                 .build(),
+            spc_products: std::array::from_fn(|_| AsyncMutex::new(crate::spc::Snapshot::default())),
             outlook_cache: Cache::builder()
                 .max_capacity(3)
                 .time_to_live(ttl(crate::outlooks::OUTLOOK_TTL_S))

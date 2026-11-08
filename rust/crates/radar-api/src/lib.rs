@@ -30,6 +30,7 @@ mod prefetch;
 mod ratelimit;
 mod respond;
 mod satellite;
+mod spc;
 mod state;
 mod upstream;
 mod wind;

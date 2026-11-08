@@ -1,3 +1,4 @@
+import { pointOutlookHtml } from "./outlookReadout";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MLMap, StyleSpecification } from "maplibre-gl";
 // MapLibre picks its worker file by name at runtime, which a bundler can't
@@ -1219,20 +1220,31 @@ const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "260px" });
 let clickSeq = 0;
 map.on("click", async (e) => {
   const click = ++clickSeq;
+  const outlook = pointOutlookHtml(e.lngLat.lng, e.lngLat.lat);
   const layers = overlays.clickable();
   const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers })[0] : undefined;
   if (hit) {
     const html = describeFeature(hit, overlays.cells);
     if (html) {
       const alertId = hit.layer.id.startsWith("ov-warnings") && state.ai ? String(hit.properties?.id ?? "") : "";
-      popup.setLngLat(e.lngLat).setHTML(alertId ? `${html}<div class="explain muted">✦ Explaining…</div>` : html).addTo(map);
+      popup.setLngLat(e.lngLat).setHTML(`${html}${alertId ? '<div class="explain muted">✦ Explaining…</div>' : ""}<div class="outlook-slot">Loading SPC outlook…</div>`).addTo(map);
+      void outlook.then((result) => {
+        if (click !== clickSeq) return;
+        const slot = popup.getElement()?.querySelector(".outlook-slot");
+        if (slot) slot.innerHTML = result;
+      });
       track("overlay_inspected", { layer: hit.layer.id });
       if (alertId) void fillExplanation(alertId);
       return;
     }
   }
   const frame = currentFrame();
-  if (!frame) return;
+  if (!frame) {
+    popup.setLngLat(e.lngLat).setHTML('<div class="outlook-slot">Loading SPC outlook…</div>').addTo(map);
+    const html = await outlook;
+    if (click === clickSeq) popup.setHTML(html);
+    return;
+  }
   const { lat, lng } = e.lngLat;
   popup.setLngLat(e.lngLat).setHTML('<div class="readout"><small>Reading…</small></div>').addTo(map);
   const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng).catch(() => null);
@@ -1252,7 +1264,11 @@ map.on("click", async (e) => {
     else if (severeLayer(state.layer)) text = formatSevereReading(state.layer, value) ?? `${value.toFixed(1)}`;
     else text = `${value.toFixed(1)}`;
   }
-  popup.setHTML(`<div class="readout"><b>${title}</b><div class="v">${text}</div><small>${lat.toFixed(3)}, ${lng.toFixed(3)}</small></div>`);
+  popup.setHTML(`<div class="readout"><b>${title}</b><div class="v">${text}</div><small>${lat.toFixed(3)}, ${lng.toFixed(3)}</small></div><div class="outlook-slot">Loading SPC outlook…</div>`);
+  const outlookHtml = await outlook;
+  if (click !== clickSeq) return;
+  const slot = popup.getElement()?.querySelector(".outlook-slot");
+  if (slot) slot.innerHTML = outlookHtml;
 });
 
 /** Adds the LLM's plain-English take to an open warning popup, or quietly removes the placeholder. */
@@ -1265,7 +1281,7 @@ async function fillExplanation(alertId: string) {
   slot.innerHTML = `<b>✦ In plain English</b><p>${escapeHtml(x.what)}</p><p><strong>Do:</strong> ${escapeHtml(x.do)}</p>`;
 }
 
-for (const id of ["ov-storm-cells", "ov-warnings-fill", "ov-tropical-position", "ov-tropical-points"]) {
+for (const id of ["ov-storm-cells", "ov-warnings-fill", "ov-tropical-position", "ov-tropical-points", "ov-watches-hit", "ov-discussions-hit"]) {
   map.on("mouseenter", id, () => (map.getCanvas().style.cursor = "pointer"));
   map.on("mouseleave", id, () => (map.getCanvas().style.cursor = ""));
 }

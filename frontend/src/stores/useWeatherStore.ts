@@ -50,6 +50,8 @@ interface WeatherState {
   // Power-user overlays, off by default. Lightning + storm-cell dots
   // overwhelm the radar view for casual users; opt-in via this flag.
   extrasVisible: boolean;
+  spcWatchesVisible: boolean;
+  spcDiscussionsVisible: boolean;
   /** GOES satellite imagery under the radar (manifest `satellite` layer). */
   satelliteVisible: boolean;
   /** Optional local-LLM briefing card; the card hides itself whenever the model is unavailable. */
@@ -83,6 +85,7 @@ interface WeatherState {
   setMapStyle: (style: MapStyle) => void;
   setActivePalette: (palette: Palette) => void;
   toggleExtras: () => void;
+  setSpcVisible: (kind: "watches" | "discussions", on: boolean) => void;
   setSatelliteVisible: (on: boolean) => void;
   setAiNarration: (on: boolean) => void;
   setRainAlertsEnabled: (on: boolean) => void;
@@ -168,6 +171,8 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   activePalette: parsePalette(getString("activePalette", "classic")),
   // Default to "forecast" so the timeline shows past + nowcast + HRRR future
   // as one merged stream out of the box. Less UI to flip, less to explain.
+  spcWatchesVisible: getString("spcWatchesVisible", "0") === "1",
+  spcDiscussionsVisible: getString("spcDiscussionsVisible", "0") === "1",
   extrasVisible: getString("extrasVisible", "0") === "1",
   satelliteVisible: getString("satelliteVisible", "0") === "1",
   aiNarration: getString("aiNarration", "1") === "1",
@@ -299,6 +304,11 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     setString("extrasVisible", next ? "1" : "0");
     return { extrasVisible: next };
   }),
+  setSpcVisible: (kind, on) => {
+    const key = kind === "watches" ? "spcWatchesVisible" : "spcDiscussionsVisible";
+    setString(key, on ? "1" : "0");
+    set({ [key]: on });
+  },
   setSatelliteVisible: (on) => {
     setString("satelliteVisible", on ? "1" : "0");
     set({ satelliteVisible: on });

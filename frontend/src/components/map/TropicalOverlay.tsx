@@ -9,6 +9,7 @@ import { GeoJSONSource, Layer } from "@maplibre/maplibre-react-native";
 import { useTropical } from "../../hooks/useTropical";
 import { useBasemapStyle } from "../../hooks/useBasemapStyle";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import type { PinnedPoint } from "../inspector/Eyedropper";
 import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 export interface TropicalStormDetails {
@@ -28,7 +29,7 @@ const CATEGORY_COLOR = ["step", ["coalesce", ["get", "category"], 0], "#4aa3ff",
 export function TropicalOverlay({
   onSelect,
 }: {
-  onSelect?: (storm: TropicalStormDetails) => void;
+  onSelect?: (storm: TropicalStormDetails, point?: PinnedPoint) => void;
 }) {
   const { data } = useTropical();
   const serverUrl = useWeatherStore((s) => s.serverUrl);
@@ -46,12 +47,15 @@ export function TropicalOverlay({
       data={geojson}
       hitbox={{ top: 28, right: 28, bottom: 28, left: 28 }}
       onPress={(event) => {
-        event.stopPropagation();
         const position = event.nativeEvent.features.find(
           (feature) => feature.properties?.kind === "position",
         );
         const storm = position ? stormDetails(position.properties) : null;
-        if (storm) onSelect?.(storm);
+        if (!storm) return;
+        event.stopPropagation();
+        const coordinates = event.nativeEvent.lngLat;
+        if (coordinates) onSelect?.(storm, { lon: coordinates[0], lat: coordinates[1] });
+        else onSelect?.(storm);
       }}
     >
       {/* Cone (under everything else) */}
