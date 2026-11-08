@@ -12,16 +12,16 @@ import { useWeatherStore } from "../stores/useWeatherStore";
  */
 export function useRainAlerts(): void {
   const enabled = useWeatherStore((s) => s.rainAlertsEnabled);
-  const stormNotice = useWeatherStore((s) => s.stormNoticeEnabled);
   const leadMinutes = useWeatherStore((s) => s.rainAlertLeadMinutes);
   const { name } = useActiveLocation();
   // Only poll for the alert's sake when the feature is on; screens keep their own subscription.
   const { data: nowcast } = useRadarNowcast({ enabled });
 
   useEffect(() => {
-    // The same periodic wake also serves the storm notice.
-    void setRainAlertsBackgroundRefresh(enabled || stormNotice);
-  }, [enabled, stormNotice]);
+    // NWS warnings use the same wake by default; rain/storm opt-ins still gate their own fetches.
+    // Permission is checked without prompting before any background NWS request.
+    void setRainAlertsBackgroundRefresh(true);
+  }, []);
 
   useEffect(() => {
     if (!enabled) {

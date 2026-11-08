@@ -10,6 +10,7 @@ import * as BackgroundTask from "expo-background-task";
 import * as TaskManager from "expo-task-manager";
 import { installNotificationHandler, refreshRainAlertFromServer } from "../lib/rainAlertScheduler";
 import { refreshStormNoticeFromServer } from "../lib/stormNoticeScheduler";
+import { refreshAlertNotificationsFromServer } from "../lib/alertNotificationScheduler";
 
 export const RAIN_ALERTS_TASK = "radar-ng-rain-alerts";
 
@@ -18,9 +19,14 @@ installNotificationHandler();
 try {
   TaskManager.defineTask(RAIN_ALERTS_TASK, async () => {
     try {
-      await refreshRainAlertFromServer();
-      await refreshStormNoticeFromServer();
-      return BackgroundTask.BackgroundTaskResult.Success;
+      const results = await Promise.allSettled([
+        refreshAlertNotificationsFromServer(),
+        refreshRainAlertFromServer(),
+        refreshStormNoticeFromServer(),
+      ]);
+      return results.some(result => result.status === "rejected")
+        ? BackgroundTask.BackgroundTaskResult.Failed
+        : BackgroundTask.BackgroundTaskResult.Success;
     } catch {
       return BackgroundTask.BackgroundTaskResult.Failed;
     }

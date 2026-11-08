@@ -43,6 +43,8 @@ import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
 import { BrowserStormNotice } from "./stormNotice";
+import { BrowserAlertNotifications } from "./alertNotifications";
+import { ALERT_PREFERENCES, parseAlertPreference, parseAlertBounds, type AlertBounds } from "./shared/alertLevels";
 import { approachCopy } from "./shared/stormCone";
 import { startPeriodic } from "./refresh";
 import { observedFrameTime, radarNoticeCopy, radarStatus } from "./radarStatus";
@@ -50,6 +52,16 @@ import { bootLocationStep, cardAfterGeoError, LOCATION_CARD_COPY, locateClickSte
 
 const rainAlerts = new BrowserRainAlerts();
 const stormNotice = new BrowserStormNotice();
+const nwsNotifications = new BrowserAlertNotifications(rainAlerts, openNotificationRadar);
+
+function openNotificationRadar(bounds: AlertBounds | null): void {
+  toggleSheet(false);
+  if (bounds) map.fitBounds([[bounds[0], bounds[1]], [bounds[2], bounds[3]]], { padding: 60, maxZoom: 11 });
+}
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", (event) => {
+  if (event.data?.kind === "nws-alert") openNotificationRadar(parseAlertBounds(event.data.bounds));
+});
 /** iOS Safari exposes Notification only to pages installed on the Home Screen. */
 const IOS_BROWSER = /iPhone|iPad|iPod/.test(navigator.userAgent) && !matchMedia("(display-mode: standalone)").matches;
 
@@ -662,6 +674,11 @@ function renderSheet() {
     <div class="sheet-section"><div class="section-label">OVERLAYS</div>
       ${toggles.map((t) => `<label class="toggle"><span><b>${t.name}</b><small>${t.hint}</small></span><input type="checkbox" data-overlay="${t.id}" ${t.on ? "checked" : ""} /><i></i></label>`).join("")}
     </div>
+    <div class="sheet-section"><div class="section-label">NWS ALERTS</div>
+      <label class="range-row"><span>NWS alert interruptions</span><select id="nws-alert-level" aria-label="NWS alert interruptions">${ALERT_PREFERENCES.map(p => `<option value="${p.value}" ${p.value === nwsNotifications.preference ? "selected" : ""}>${p.label}</option>`).join("")}</select></label>
+      <button id="test-nws-alert" type="button">Send test alert</button>
+      <p class="hint">Chime: watches/advisories · Warning: warnings · Critical: tornadoes, emergencies, destructive thunderstorms. Browser/system sound settings apply. Keep this page open; this is not a replacement for official warnings.</p>
+    </div>
     <div class="sheet-section"><div class="section-label">RAIN ALERTS</div>
       <label class="toggle"><span><b>Rain starting soon</b><small>Local notifications from your radar forecast</small></span><input id="rain-alerts" type="checkbox" ${rainAlerts.enabled ? "checked" : ""} ${rainAlerts.supported ? "" : "disabled"} /><i></i></label>
       <label class="range-row"><span>Notify me before rain</span><select id="rain-alert-lead" aria-label="Rain alert lead time">${RAIN_ALERT_LEAD_OPTIONS.map((lead) => `<option value="${lead}" ${lead === rainAlerts.leadMinutes ? "selected" : ""}>${lead} min</option>`).join("")}</select></label>
@@ -786,10 +803,11 @@ async function renderForecast(refresh = false) {
 /** NWS alerts for the place, polled on their own cadence; a failed poll keeps the last result. */
 async function renderAlerts() {
   const el = document.getElementById("alerts");
-  if (!el) return;
   const { latitude, longitude } = state.place;
   const alerts = await fetchAlerts(latitude, longitude).catch(() => null);
-  if (!alerts || latitude !== state.place.latitude || longitude !== state.place.longitude || !document.body.contains(el)) return;
+  if (!alerts || latitude !== state.place.latitude || longitude !== state.place.longitude) return;
+  void nwsNotifications.check(alerts.flatMap(a => a.feature ? [a.feature] : []));
+  if (!el || !document.body.contains(el)) return;
   el.hidden = alerts.length === 0;
   el.innerHTML = alerts.slice(0, 3).map((a) => `<div class="alert"><strong>${escapeHtml(a.event)}</strong><span>${a.ends ? `Until ${new Date(a.ends).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : escapeHtml(a.severity)}</span></div>`).join("");
 }
@@ -1126,7 +1144,11 @@ function setOverlay(id: OverlayId | "wind" | "ai" | "satellite", on: boolean) {
 
 $("sheet-body").addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement;
-  if (el.id === "rain-alerts") {
+  if (el.id === "nws-alert-level") {
+    void nwsNotifications.setPreference(parseAlertPreference(el.value)).then(granted => {
+      if (!granted) toast("Notifications are blocked or unavailable. Check browser permissions.");
+    });
+  } else if (el.id === "rain-alerts") {
     el.disabled = true;
     if (el.checked) void enableRainAlerts();
     else void rainAlerts.setEnabled(false).then(() => {
@@ -1304,6 +1326,13 @@ async function boot() {
       showCurrentFrame();
     });
   await refreshManifest();
+  const alertBounds = new URL(location.href).searchParams.get("alertBounds");
+  if (alertBounds) {
+    try { openNotificationRadar(parseAlertBounds(JSON.parse(alertBounds))); } catch { /* invalid link */ }
+    const url = new URL(location.href);
+    url.searchParams.delete("alertBounds");
+    history.replaceState(null, "", url);
+  }
   overlays.start();
   if (rainAlerts.enabled) void rainAlerts.connect();
   if (state.wind) setOverlay("wind", true);
@@ -1319,6 +1348,11 @@ async function boot() {
   startPeriodic(() => void renderForecast(true), FORECAST_REFRESH_MS);
   startPeriodic(() => void renderAlerts(), ALERTS_REFRESH_MS);
 }
+
+document.addEventListener("click", (event) => {
+  if (!(event.target as HTMLElement).closest("#test-nws-alert")) return;
+  void nwsNotifications.test().then(ok => toast(ok ? "Test alert sent" : "Notifications are blocked or unavailable. Check browser permissions."));
+});
 
 $("boot-retry").addEventListener("click", () => void boot());
 $("radar-notice").addEventListener("click", (e) => {

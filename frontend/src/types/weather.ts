@@ -100,6 +100,11 @@ export interface NWSAlert {
     ends: string | null;
     areaDesc: string;
     senderName: string | null;
+    sent?: string;
+    status?: string;
+    messageType?: string;
+    parameters?: Record<string, string[]>;
+    references?: { identifier: string }[];
   };
 }
 

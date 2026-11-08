@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Keyboard,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ScreenBackground } from "../../components/ui/ScreenBackground";
@@ -37,6 +38,8 @@ import { PLAYBACK_FPS_RANGE } from "../../lib/persistedPrefs";
 import { RAIN_ALERT_LEAD_OPTIONS, parseRainAlertLead } from "../../lib/rainAlerts";
 import { useStormNoticeOptIn } from "../../hooks/useStormNoticeOptIn";
 import { useRainAlertOptIn } from "../../hooks/useRainAlertOptIn";
+import { ALERT_PREFERENCES, parseAlertPreference } from "../../lib/alertLevels";
+import { requestAlertNotificationPermission, sendTestAlert } from "../../lib/alertNotificationScheduler";
 import { isCleartextToPublicHost } from "../../lib/networkSafety";
 import { runOnlineRefresh } from "../../lib/queryLifecycle";
 import { conditionGradient } from "../../lib/cumulusTheme";
@@ -79,6 +82,9 @@ export default function SettingsScreen() {
   const setAiNarration = useWeatherStore((s) => s.setAiNarration);
   const { enabled: rainAlertsEnabled, blocked: rainAlertsBlocked, setRainAlerts } = useRainAlertOptIn();
   const { enabled: stormNoticeEnabled, blocked: stormNoticeBlocked, setStormNotice } = useStormNoticeOptIn();
+  const alertPreference = useWeatherStore((s) => s.alertPreference);
+  const setAlertPreference = useWeatherStore((s) => s.setAlertPreference);
+  const [testAlertBusy, setTestAlertBusy] = useState(false);
   const rainAlertLeadMinutes = useWeatherStore((s) => s.rainAlertLeadMinutes);
   const setRainAlertLeadMinutes = useWeatherStore((s) => s.setRainAlertLeadMinutes);
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
@@ -431,6 +437,36 @@ export default function SettingsScreen() {
                 </Row>
               </>
             ) : null}
+          </View>
+
+          <SectionHeader>NWS alerts</SectionHeader>
+          <View style={styles.card}>
+            <Row>
+              <RowLeft title="Interruptions" sub="Warnings by default. Chime for watches/advisories; warning for warnings; critical for tornadoes, emergencies and destructive thunderstorms. System sounds apply." />
+            </Row>
+            <Row>
+              <SegmentedControl
+                accessibilityLabel="NWS alert interruptions"
+                options={ALERT_PREFERENCES.map(p => ({ label: p.label, value: p.value }))}
+                value={alertPreference}
+                onChange={(value) => {
+                  setAlertPreference(parseAlertPreference(value));
+                  void requestAlertNotificationPermission().then(granted => {
+                    if (!granted) Alert.alert("Notifications are off", "Allow notifications for Radar NG in system settings.");
+                  });
+                }}
+              />
+            </Row>
+            <Sep />
+            <Pressable accessibilityRole="button" accessibilityLabel="Send test alert" disabled={testAlertBusy} onPress={async () => {
+              setTestAlertBusy(true);
+              const sent = await sendTestAlert();
+              setTestAlertBusy(false);
+              Alert.alert(sent ? "Test alert sent" : "Could not send test alert", sent ? "Check your notifications. This is only a test." : "Allow notifications for Radar NG in system settings, then try again.");
+            }}>
+              <Row><RowLeft title={testAlertBusy ? "Sending…" : "Send test alert"} sub="Uses the warning channel. Not a real weather alert." /></Row>
+            </Pressable>
+            <Row><RowLeft title="Local alerts, not an emergency service" sub="Background refresh timing is controlled by your phone and may be delayed. Follow official NWS warnings." /></Row>
           </View>
 
           <SectionHeader>Storm notice</SectionHeader>
