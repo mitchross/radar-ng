@@ -66,6 +66,8 @@ pub struct FrameOptions {
     /// Precipitation type per cell (continuous frames only). Colors each pixel with the rain, snow
     /// or mix ramp of its palette ([`crate::typed`]).
     pub types: Option<TypePlane>,
+    /// Render only these `(z, tx, ty)` tiles. `None` renders every tile the grid covers.
+    pub tile_allowlist: Option<Vec<(u32, u32, u32)>>,
 }
 
 impl Default for FrameOptions {
@@ -78,6 +80,7 @@ impl Default for FrameOptions {
             png_compress_level: crate::env::png_compress_level(),
             keep_empty: false,
             types: None,
+            tile_allowlist: None,
         }
     }
 }
@@ -204,6 +207,18 @@ fn validate_options(options: &FrameOptions, zooms: &[u32]) -> Result<()> {
             "zoom levels must be in 0..={MAX_ZOOM}"
         )));
     }
+    if let Some(tiles) = &options.tile_allowlist {
+        if tiles.iter().any(|&(z, _, _)| z > MAX_ZOOM) {
+            return Err(TilerError::Invalid(format!(
+                "allowlisted tile zoom levels must be in 0..={MAX_ZOOM}"
+            )));
+        }
+        if tiles.is_empty() {
+            return Err(TilerError::Invalid(
+                "tile_allowlist must not be empty; use None to render every tile".into(),
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -275,6 +290,7 @@ impl<'a> Sampler<'a> {
         overview: bool,
         tile: usize,
         zooms: &[u32],
+        allowlist: Option<&[(u32, u32, u32)]>,
     ) -> Result<Self> {
         let regular = match &grid.geo {
             GridGeo::Regular { lats, lons } => Some((lats, lons)),
@@ -320,6 +336,9 @@ impl<'a> Sampler<'a> {
             for (z, tx, ty) in src.tile_jobs(&[z]) {
                 tiles.push(TileJob { z, tx, ty, route });
             }
+        }
+        if let Some(allowed) = allowlist {
+            tiles.retain(|j| allowed.contains(&(j.z, j.tx, j.ty)));
         }
         let identity = Arc::new(src.identity().clone());
         Ok(Self {
@@ -578,6 +597,7 @@ impl<'a> FrameJob<'a> {
             options.overview.is_some(),
             options.tile_size,
             zooms,
+            options.tile_allowlist.as_deref(),
         )?;
         Ok(Self {
             sampler,
