@@ -1,78 +1,8 @@
 use radar_level2::{decode::Decoder, *};
-use std::io::Write;
 
-fn radial(number: u16, status: u8, elevation: u8, gates: u16, bits: u8) -> Vec<u8> {
-    let count = usize::from(gates) * usize::from(bits / 8);
-    let len = 40 + 32 + count;
-    let mut b = vec![0; 28 + len];
-    b[12..14].copy_from_slice(&(((16 + len) / 2) as u16).to_be_bytes());
-    b[14] = 8;
-    b[15] = 31;
-    b[24..26].copy_from_slice(&1u16.to_be_bytes());
-    b[26..28].copy_from_slice(&1u16.to_be_bytes());
-    let h = &mut b[28..];
-    h[..4].copy_from_slice(b"KGRR");
-    h[4..8].copy_from_slice(&(u32::from(number) * 10).to_be_bytes());
-    h[8..10].copy_from_slice(&20765u16.to_be_bytes());
-    h[10..12].copy_from_slice(&number.to_be_bytes());
-    h[12..16].copy_from_slice(&((number as f32 - 1.0) % 360.0).to_be_bytes());
-    h[18..20].copy_from_slice(&(len as u16).to_be_bytes());
-    h[20] = 2;
-    h[21] = status;
-    h[22] = elevation;
-    h[24..28].copy_from_slice(&0.5f32.to_be_bytes());
-    h[30..32].copy_from_slice(&1u16.to_be_bytes());
-    h[32..36].copy_from_slice(&40u32.to_be_bytes());
-    let m = &mut h[40..];
-    m[..4].copy_from_slice(b"DREF");
-    m[8..10].copy_from_slice(&gates.to_be_bytes());
-    m[10..12].copy_from_slice(&(-125i16).to_be_bytes());
-    m[12..14].copy_from_slice(&250u16.to_be_bytes());
-    m[19] = bits;
-    m[20..24].copy_from_slice(&2f32.to_be_bytes());
-    m[24..28].copy_from_slice(&66f32.to_be_bytes());
-    m[28..].fill(100);
-    b
-}
-fn header() -> Vec<u8> {
-    let mut h = b"AR2V0006.001".to_vec();
-    h.extend_from_slice(&20765u32.to_be_bytes());
-    h.extend_from_slice(&0u32.to_be_bytes());
-    h.extend_from_slice(b"KGRR");
-    h
-}
-fn record(bytes: &[u8]) -> Vec<u8> {
-    let mut encoder = bzip2::write::BzEncoder::new(Vec::new(), bzip2::Compression::fast());
-    encoder.write_all(bytes).unwrap();
-    let bz = encoder.finish().unwrap();
-    let mut out = (bz.len() as i32).to_be_bytes().to_vec();
-    out.extend(bz);
-    out
-}
-fn volume(radials: &[u8]) -> Vec<u8> {
-    let mut v = header();
-    v.extend(record(radials));
-    v
-}
-fn sweep(elevation: u8, gates: u16, bits: u8) -> Vec<u8> {
-    (1..=360)
-        .flat_map(|n| {
-            radial(
-                n,
-                if n == 1 {
-                    0
-                } else if n == 360 {
-                    2
-                } else {
-                    1
-                },
-                elevation,
-                gates,
-                bits,
-            )
-        })
-        .collect()
-}
+mod common;
+use common::*;
+
 #[test]
 fn real_decoder_enforces_radial_gate_sweep_and_continuity_limits() {
     for bits in [8, 16] {
@@ -189,4 +119,39 @@ fn higher_ref_cannot_replace_a_low_cut_without_ref() {
     }
     assert!(d.push(&record(&higher)).unwrap().is_empty());
     d.finish().unwrap();
+}
+
+#[test]
+fn azimuth_coverage_rejects_duplicates_reversal_and_mixed_spacing() {
+    let frame = radial(1, 0, 1, 2, 8).len();
+    for mode in 0..5 {
+        let mut data = sweep(1, 2, 8);
+        for (i, ray) in data.chunks_exact_mut(frame).enumerate() {
+            let az = match mode {
+                0 => 0.0,
+                1 if i == 100 => 99.0,
+                2 => (360.0 - i as f32) % 360.0,
+                3 => (i as f32 * 2.0) % 360.0,
+                _ => i as f32,
+            };
+            ray[40..44].copy_from_slice(&az.to_be_bytes());
+            if mode == 4 && i == 100 {
+                ray[48] = 1;
+            }
+        }
+        assert!(
+            Decoder::new("KGRR").push(&volume(&data)).is_err(),
+            "mode {mode}"
+        );
+    }
+    let mut data = sweep(1, 2, 8);
+    for (i, ray) in data.chunks_exact_mut(frame).enumerate() {
+        let az = i as f32 * 0.99 + if i % 2 == 0 { 0.08 } else { 0.0 };
+        ray[40..44].copy_from_slice(&az.to_be_bytes());
+    }
+    let mut decoder = Decoder::new("KGRR");
+    let decoded = decoder.push(&volume(&data)).unwrap();
+    decoder.finish().unwrap();
+    assert_eq!(decoded[0].missing_sectors_deg.len(), 1);
+    assert_eq!(decoded[0].missing_sectors_deg[0][1], 0.08);
 }

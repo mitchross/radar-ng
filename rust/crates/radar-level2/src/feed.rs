@@ -54,6 +54,8 @@ struct Page {
 #[derive(Clone)]
 pub struct Feed {
     pub http: reqwest::Client,
+    pub(crate) chunks_base: String,
+    pub(crate) archive_base: String,
 }
 
 impl Feed {
@@ -63,6 +65,8 @@ impl Feed {
                 .timeout(Duration::from_secs(10))
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
+            chunks_base: CHUNKS.into(),
+            archive_base: ARCHIVE.into(),
         })
     }
     pub async fn list(&self, base: &str, prefix: &str) -> Result<Vec<Object>> {
@@ -123,7 +127,7 @@ impl Feed {
         ] {
             let prefix = format!("{}/{station}/", day.format("%Y/%m/%d"));
             objects.extend(
-                self.list(ARCHIVE, &prefix)
+                self.list(&self.archive_base, &prefix)
                     .await?
                     .into_iter()
                     .filter(|o| o.key.ends_with("_V06") || o.key.ends_with("_V08")),
@@ -136,7 +140,7 @@ impl Feed {
     pub async fn archive_header(&self, object: &Object) -> Result<Vec<u8>> {
         let resp = self
             .http
-            .get(format!("{ARCHIVE}/{}", object.key))
+            .get(format!("{}/{}", self.archive_base, object.key))
             .header("Range", "bytes=0-23")
             .send()
             .await?;
@@ -159,7 +163,10 @@ impl Feed {
         let mut groups = std::collections::BTreeMap::<String, Vec<Object>>::new();
         for offset in 0..3 {
             let number = (volume - 1 + offset) % 999 + 1;
-            for o in self.list(CHUNKS, &format!("{station}/{number}/")).await? {
+            for o in self
+                .list(&self.chunks_base, &format!("{station}/{number}/"))
+                .await?
+            {
                 if let Some((stamp, _, _)) = chunk_identity(&o.key) {
                     groups.entry(stamp).or_default().push(o);
                 }
@@ -246,7 +253,7 @@ impl Feed {
             );
             total += object.size;
             ensure!(total <= COMPRESSED_LIMIT, "chunk volume byte limit");
-            let bytes = match self.get(CHUNKS, object).await {
+            let bytes = match self.get(&self.chunks_base, object).await {
                 Ok(bytes) => bytes,
                 Err(e) => {
                     health.access_failure = Some("chunk_get_failed".into());
@@ -292,7 +299,7 @@ impl Feed {
         object: &Object,
         health: &mut Health,
     ) -> Result<Acquisition> {
-        let bytes = match self.get(ARCHIVE, object).await {
+        let bytes = match self.get(&self.archive_base, object).await {
             Ok(bytes) => bytes,
             Err(error) => {
                 health.access_failure = Some("archive_get_failed".into());

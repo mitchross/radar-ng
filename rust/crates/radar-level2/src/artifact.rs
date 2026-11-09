@@ -141,10 +141,14 @@ impl Artifact {
             )?;
         }
         for (index, name) in ["REF", "RHO", "ZDR"].iter().enumerate() {
-            let mut values = vec![];
-            let mut qc = vec![];
-            let mut encoded = vec![];
-            let mut offsets = vec![0u64];
+            let moments = || sweep.rays.iter().filter_map(|r| r.moments[index].as_ref());
+            let gates: usize = moments().map(|m| m.values.len()).sum();
+            let encoded_bytes: usize = moments().map(|m| m.encoded.len()).sum();
+            let mut values = Vec::with_capacity(gates * 4);
+            let mut qc = Vec::with_capacity(gates);
+            let mut encoded = Vec::with_capacity(encoded_bytes);
+            let mut offsets = Vec::with_capacity(sweep.rays.len() + 1);
+            offsets.push(0u64);
             for ray in &sweep.rays {
                 if let Some(m) = &ray.moments[index] {
                     values.extend(m.values.iter().flat_map(|v| v.to_le_bytes()));
@@ -425,7 +429,7 @@ async fn read_bounded(store: &dyn ObjectStore, path: &Path, limit: usize) -> Res
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     #[tokio::test]
     async fn immutable_commit_and_readback_fail_closed() -> Result<()> {
@@ -468,7 +472,7 @@ mod tests {
         assert!(Artifact::build(&sweep, vec![], "level2/test").is_err());
         Ok(())
     }
-    fn test_sweep() -> Sweep {
+    pub(crate) fn test_sweep() -> Sweep {
         use crate::decode::{Moment, Ray};
         let now = chrono::Utc::now();
         let rays = (1..=360)
@@ -513,8 +517,8 @@ mod tests {
             elevation_number: 1,
             vcp: Some(35),
             site: Some(crate::decode::VolumeSite {
-                latitude_deg: 42.893889,
-                longitude_deg: -85.544889,
+                latitude_deg: 42.893_89,
+                longitude_deg: -85.544_89,
                 site_height_m_raw: 0,
                 tower_height_m_raw: 0,
             }),

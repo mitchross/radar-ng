@@ -314,12 +314,6 @@ impl Decoder {
         ];
         let [a, b, c] = moments;
         let s = self.current.as_mut().unwrap();
-        if let Some(prev) = s.rays.last() {
-            let gap = (az - prev.azimuth_deg).rem_euclid(360.0);
-            if gap > spacing * 1.8 {
-                s.missing_sectors_deg.push([prev.azimuth_deg, az]);
-            }
-        }
         s.rays.push(Ray {
             number: h.azimuth_number(),
             time,
@@ -332,11 +326,27 @@ impl Decoder {
         });
         s.scan_end = time;
         if [2, 4].contains(&status) {
-            let s = self.current.take().unwrap();
+            let mut s = self.current.take().unwrap();
             ensure!(
                 s.rays.len() == (360.0 / spacing) as usize,
                 "incomplete azimuth coverage"
             );
+            let mut rotation = 0.0;
+            for (ray, next) in s.rays.iter().zip(s.rays.iter().cycle().skip(1)) {
+                ensure!(ray.azimuth_spacing_deg == spacing, "mixed azimuth spacing");
+                let gap =
+                    (f64::from(next.azimuth_deg) - f64::from(ray.azimuth_deg)).rem_euclid(360.0);
+                ensure!(
+                    gap >= f64::from(spacing) * 0.25 && gap < 180.0,
+                    "duplicate or reversed azimuth"
+                );
+                rotation += gap;
+                if gap > f64::from(spacing) * 1.8 {
+                    s.missing_sectors_deg
+                        .push([ray.azimuth_deg, next.azimuth_deg]);
+                }
+            }
+            ensure!((rotation - 360.0).abs() < 0.001, "invalid azimuth rotation");
             let lowest = *self.lowest.get_or_insert(el);
             ensure!(el >= lowest - 0.15, "unexpected lower sweep");
             if s.rays.iter().any(|r| r.moments[0].is_some()) && (el - lowest).abs() <= 0.15 {

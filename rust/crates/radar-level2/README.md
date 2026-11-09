@@ -35,7 +35,8 @@ No gate arrays enter PostgreSQL or Temporal. API replicas never read producer fi
 
 Station admission serializes across connections and expires idle demand after 600 seconds.
 Busy jobs remain active past demand expiry. Two persistent decode reservations also reserve the
-pool's 1 GiB working budget. Caller timeouts never release a running job's reservation.
+pool's 1 GiB working budget. Caller timeouts report fallback, then drain the owning task before CLI shutdown.
+Reservations release only after its work ends.
 A process crash leaves reservations occupied rather than risk admitting duplicate blocking work.
 Automatic orphan recovery, worker dispatch and deployment belong to later slices.
 
@@ -56,6 +57,7 @@ It uses borrowed Message 31 blocks and its own capped bzip2 reader. It accepts m
 length-prefixed bzip2 records. Unsupported legacy formats fail closed.
 
 Require contiguous chunk/ray numbers, a real cut start and end, and the commanded full ray count.
+Check angular progression and a single full rotation, including the closing gap. Preserve missing sectors.
 Preserve split cuts and supplemental cuts by volume, ordinal and actual acquisition times.
 Subsequent demands discover cuts newer than the indexed end time. Stop fetching a selected cut
 when its end is decoded. Archive recovery cannot outrank an available live cut.
@@ -76,7 +78,9 @@ verify the complete inventory, then index it. A numeric artifact is never a publ
 Health separates latest chunk progress, completed low-sweep end time and access failures.
 Eligibility includes exactly 600 seconds and rejects future observations. Higher tilts cannot
 refresh the low-sweep clock. Feed progress warns after 120 seconds. Inactive sites are unknown.
-Cached artifacts require both fresh health and another verified object read.
+Cached artifacts require fresh health, another verified object read and their own end age within 600 seconds.
+Recheck age after publication and read-back. Reject future sweeps without replacing the last-good low-sweep clock.
+Reseed stalled circular-volume hints from a bounded archive header, then retry live chunks before archive recovery.
 
 ## Checks and reproduction
 

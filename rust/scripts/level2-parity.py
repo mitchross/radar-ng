@@ -2,6 +2,7 @@
 """Compare the bounded adapter with Py-ART on locally downloaded real Archive II volumes."""
 import argparse
 import bz2
+import hashlib
 import os
 import resource
 import sys
@@ -11,6 +12,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
@@ -26,7 +28,11 @@ def main():
     reference = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(reference)
     print(f"reference=arm_pyart-{package.version} numpy={np.__version__}", flush=True)
+    corpus = json.loads((Path(__file__).resolve().parents[1] / "crates/radar-level2/testdata/corpus.json").read_text())
     for path in args.volumes:
+        fixture = next(item for item in corpus if item["file"] == path.name)
+        assert path.stat().st_size == fixture["bytes"]
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == fixture["sha256"]
         station = path.name[:4]
         with tempfile.TemporaryFile() as output:
             subprocess.run([str(args.inspect.resolve()), station, str(path)], stdout=output, check=True)
@@ -54,6 +60,14 @@ def main():
         ref_max = float("-inf")
         for sweep, (ordinal, rays) in zip(actual, expected, strict=True):
             assert sweep["ordinal"] == ordinal
+            assert sweep["station"] == station
+            assert sweep["vcp"] == radar.vcp["msg5_header"]["pattern_number"]
+            assert sweep["elevation_number"] == rays[0]["msg_header"]["elevation_number"]
+            assert sweep["scan_start"] == sweep["rays"][0]["time"]
+            assert sweep["scan_end"] == sweep["rays"][-1]["time"]
+            archive = radar.volume_header
+            volume_time = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(days=archive["date"] - 1, milliseconds=archive["time"])
+            assert datetime.fromisoformat(sweep["volume_start"].replace("Z", "+00:00")) == volume_time
             assert len(sweep["rays"]) == len(rays)
             volume = rays[0]["VOL"]
             site = sweep["site"]
@@ -68,7 +82,7 @@ def main():
                 assert got["blanking"] == header["radial_blanking"]
                 assert np.float32(got["azimuth_deg"]) == np.float32(header["azimuth_angle"])
                 assert np.float32(got["elevation_deg"]) == np.float32(header["elevation_angle"])
-                from datetime import datetime, timedelta, timezone
+                assert got["azimuth_spacing_deg"] == {1: 0.5, 2: 1.0}[header["azimuth_resolution"]]
                 time = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(days=header["collect_date"] - 1, milliseconds=header["collect_ms"])
                 assert datetime.fromisoformat(got["time"].replace("Z", "+00:00")) == time
                 for field, moment in zip(("REF", "RHO", "ZDR"), got["moments"], strict=True):
@@ -82,6 +96,7 @@ def main():
                         assert moment[our] == data[theirs], (path, field, our)
                     widths.add(data["word_size"])
                     raw = np.asarray(data["data"])
+                    assert bytes(moment["encoded"]) == raw.astype("u1" if data["word_size"] == 8 else ">u2").tobytes()
                     expected_qc = np.where(raw == 0, 1, np.where(raw == 1, 2, 0)).astype(np.uint8)
                     if got["blanking"]:
                         expected_qc |= 4
