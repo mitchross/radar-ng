@@ -2,7 +2,7 @@
   "expo": {
     "name": "radar-ng",
     "slug": "radar-ng",
-    "version": "2.1.6",
+    "version": "2.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "radarng",
@@ -32,7 +32,7 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
       ],
-      "versionCode": 10
+      "versionCode": 11
     },
     "plugins": [
       "expo-router",
