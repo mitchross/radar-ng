@@ -26,6 +26,8 @@ struct Cli {
 enum Cmd {
     /// Run the HTTP server.
     Api,
+    /// Run the private, gated Level II numeric demand tracer.
+    Level2Numeric(radar_level2::tracer::TraceArgs),
     /// Run a Temporal worker for one role.
     Worker {
         /// Worker role; overrides WORKER_ROLE.
@@ -79,6 +81,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Worker { .. } | Cmd::Seed | Cmd::Watchdog => "radar-worker",
         Cmd::Debug(_) => "radar-debug",
         Cmd::RenderOnce { .. } => "radar-render-once",
+        Cmd::Level2Numeric(_) => "radar-level2",
         Cmd::Parity(_) => unreachable!("handled above"),
     };
     // The debug harness prints its own report; keep logs quiet there unless LOG_LEVEL says otherwise.
@@ -95,6 +98,7 @@ fn main() -> anyhow::Result<()> {
     rt.block_on(async move {
         match cli.cmd {
             Cmd::Api => radar_api::serve(radar_api::Config::from_env()?).await,
+            Cmd::Level2Numeric(args) => radar_level2::tracer::run(args).await,
             Cmd::Worker { .. } => {
                 radar_worker::run_worker(radar_worker::WorkerConfig::from_env()?).await
             }

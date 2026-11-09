@@ -35,6 +35,7 @@ Without `TEMPORAL_TEST_ADDRESS` those tests pass through a skip path.
 ```sh
 radar api                          # :8080 (LISTEN_ADDR). /tiles, /basemap, /api, /v1, /metrics
 radar worker --role legacy         # Temporal worker. Roles: legacy|all|mrms|nowcast|hrrr|aux|alerts|open-meteo
+radar level2-numeric               # private KGRR numeric tracer; disabled unless explicitly gated on
 radar seed                         # create or update every Temporal Schedule and exit
 radar watchdog                     # schedule stall watchdog
 radar debug doctor                 # live-stack diagnostics (docs/reference/debug-harness.md)
@@ -56,6 +57,7 @@ covers the ones operators usually set.
 | `radar-tiler` | tile renderer: palettes, indexed PNG, per-palette pyramids, atomic publish |
 | `radar-grib` | GRIB2 decoding (pure-Rust `grib` crate) and anonymous NOAA S3 / HTTP access for MRMS, HRRR and NAQFC |
 | `radar-storms` | storm-cell detection and tracking, storm prefetch plan, storm-watch change detection |
+| `radar-level2` | private, disabled-by-default Level II numeric tracer: catalogue, admission, bounded decode/QC and verified RustFS Zarr |
 | `radar-ingest` | MRMS and HRRR ingest activity bodies |
 | `radar-aux` | air quality (NAQFC), NHC tropical, tile cleanup, Open-Meteo sync |
 | `radar-alerts` | Blitzortung lightning, NWS alerts, storm-watch activities, APNs and FCM push |

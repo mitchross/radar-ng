@@ -1,0 +1,29 @@
+[package]
+name = "radar-level2"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+futures-util.workspace = true
+reqwest.workspace = true
+quick-xml.workspace = true
+sha2.workspace = true
+hex.workspace = true
+uuid.workspace = true
+clap.workspace = true
+radar-core.workspace = true
+nexrad-data = { version = "=1.0.0", default-features = false }
+nexrad-decode = { version = "=1.0.0", default-features = false }
+bzip2 = "0.6.1"
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
+object_store = { version = "0.12", features = ["aws"] }
+
+[dev-dependencies]
+axum.workspace = true
