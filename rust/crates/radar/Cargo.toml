@@ -16,6 +16,7 @@ radar-api.workspace = true
 radar-worker.workspace = true
 radar-ingest.workspace = true
 radar-replay.workspace = true
+radar-alerts.workspace = true
 radar-debug = { path = "../radar-debug" }
 anyhow.workspace = true
 clap.workspace = true

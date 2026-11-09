@@ -2414,6 +2414,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "radar-alerts",
  "radar-api",
  "radar-core",
  "radar-debug",
@@ -2431,6 +2432,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "chrono",
  "futures-util",
  "jsonwebtoken",
  "radar-core",
@@ -2439,6 +2441,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
  "tokio",
