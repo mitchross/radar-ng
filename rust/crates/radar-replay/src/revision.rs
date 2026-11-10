@@ -3,7 +3,6 @@
 use radar_core::fsutil::fsync_dir;
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
@@ -274,12 +273,13 @@ pub fn publish(
     let text = radar_core::manifest::render_manifest(&manifest)
         .map_err(|e| anyhow::anyhow!("render manifest: {e}"))?;
     let manifest_path = layout.staging.join(MANIFEST_FILE);
-    {
-        let mut file = fs::File::create(&manifest_path)?;
-        file.write_all(text.as_bytes())?;
-        file.write_all(b"\n")?;
-        file.sync_all()?;
-    }
+    // Replace the name atomically so a hardlinked destination cannot be truncated.
+    radar_core::fsutil::atomic_write(
+        &manifest_path,
+        format!("{text}\n").as_bytes(),
+        ".replay-",
+        ".tmp",
+    )?;
     fsync_dir(&layout.staging)?;
     fs::rename(&layout.staging, &layout.final_dir)?;
     fsync_dir(&layout.case_dir)?;
@@ -408,5 +408,29 @@ mod tests {
             "prior revision must stay readable"
         );
         assert!(second.final_dir.exists());
+    }
+
+    #[test]
+    fn publish_replaces_hardlinked_manifest_without_truncating_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let case = find("greenfield-2024").unwrap();
+        let l = layout(tmp.path(), case, "r1").unwrap();
+        fs::create_dir_all(l.staging.join("tiles")).unwrap();
+        let sentinel = tmp.path().join("live-sentinel");
+        fs::write(&sentinel, b"live manifest").unwrap();
+        fs::hard_link(&sentinel, l.staging.join(MANIFEST_FILE)).unwrap();
+        let progress = Progress {
+            revision: "r1".into(),
+            case: case.id.into(),
+            frames: BTreeMap::new(),
+        };
+        publish(&l, case, &progress).unwrap();
+        assert_eq!(
+            fs::read(&sentinel).unwrap(),
+            b"live manifest",
+            "hardlinked live file must not be truncated"
+        );
+        let published = fs::read(l.final_dir.join(MANIFEST_FILE)).unwrap();
+        assert_ne!(published, b"live manifest");
     }
 }

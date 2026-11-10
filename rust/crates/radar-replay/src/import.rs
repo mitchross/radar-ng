@@ -3,7 +3,9 @@
 use crate::{case, objects, plan, quota, revision};
 use chrono::{DateTime, Duration, Utc};
 use radar_core::fsutil::{FlockGuard, durable_mkdir, fsync_dir};
-use radar_geo::{Grid, GridGeo};
+#[cfg(test)]
+use radar_geo::Grid;
+use radar_geo::GridGeo;
 use radar_grib::{mrms as gmrms, s3::S3Client};
 use radar_tiler::render::SourceWindow;
 use radar_tiler::{FrameKind, FrameOptions, Overview, TypePlane};
@@ -160,10 +162,7 @@ async fn run_with_check(
         let id = format!("{}@{}", frame.layer, frame.timestamp);
         let output = frame_dir(&layout.staging, &frame.layer, &frame.timestamp);
         if let Some(done) = progress.frames.get(&id) {
-            anyhow::ensure!(
-                done.key == frame.key && done.flag_key == frame.flag_key,
-                "resume provenance differs from pinned plan"
-            );
+            bind_progress(done, frame)?;
             verify_frame(&output, done, &tiles)?;
             continue;
         }
@@ -203,10 +202,16 @@ async fn run_with_check(
         progress.frames.len() == frames.len(),
         "progress contains unexpected frames"
     );
-    for frame in progress.frames.values() {
+    for frame in &frames {
+        let id = format!("{}@{}", frame.layer, frame.timestamp);
+        let done = progress
+            .frames
+            .get(&id)
+            .ok_or_else(|| anyhow::anyhow!("missing progress for {id}"))?;
+        bind_progress(done, frame)?;
         verify_frame(
             &frame_dir(&layout.staging, &frame.layer, &frame.timestamp),
-            frame,
+            done,
             &tiles,
         )?;
     }
@@ -238,6 +243,26 @@ async fn run_with_check(
     Ok(
         json!({"report": report, "published": layout.final_dir, "usage": quota::dir_usage(&layout.final_dir)?}),
     )
+}
+
+fn bind_progress(done: &revision::FrameProgress, frame: &PlannedFrame) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        done.layer == frame.layer
+            && done.timestamp == frame.timestamp
+            && done.playhead == frame.timestamp
+            && done.key == frame.key
+            && done.flag_key == frame.flag_key,
+        "resume provenance differs from pinned plan"
+    );
+    let expected = format!(
+        "replay:{}:{}:{}",
+        frame.layer, frame.key, done.source_sha256
+    );
+    anyhow::ensure!(
+        done.source_id == expected,
+        "resume source identity differs from pinned plan"
+    );
+    Ok(())
 }
 
 fn frame_dir(root: &Path, layer: &str, timestamp: &str) -> PathBuf {
@@ -407,7 +432,7 @@ fn render(
 fn crop_types(
     types: &TypePlane,
     width: usize,
-    ((r0, r1), (c0, c1)): ((usize, usize), (usize, usize)),
+    ((r0, r1), (c0, c1)): plan::CropWindow,
 ) -> anyhow::Result<TypePlane> {
     let mut classes = Vec::with_capacity((r1 - r0 + 1) * (c1 - c0 + 1));
     for r in r0..=r1 {
@@ -632,6 +657,24 @@ mod resume_tests {
         fs::write(&tile_path, b"corrupt").unwrap();
         assert!(run_with_check(options(), |_, _| Ok(())).await.is_err());
         fs::write(&tile_path, tile_bytes).unwrap();
+        // A matching map key with a traversing layer must not reach the resume path.
+        let clean_progress = fs::read(stage.join("progress.json")).unwrap();
+        let mut malformed: Value = serde_json::from_slice(&clean_progress).unwrap();
+        let key = malformed["frames"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .next()
+            .unwrap()
+            .clone();
+        malformed["frames"][&key]["layer"] = json!("radar/../radar");
+        fs::write(
+            stage.join("progress.json"),
+            serde_json::to_vec(&malformed).unwrap(),
+        )
+        .unwrap();
+        assert!(run_with_check(options(), |_, _| Ok(())).await.is_err());
+        fs::write(stage.join("progress.json"), &clean_progress).unwrap();
         bucket.fail.store(false, Ordering::SeqCst);
         let report = run_with_check(options(), |_, _| Ok(())).await.unwrap();
         let published = PathBuf::from(report["published"].as_str().unwrap());

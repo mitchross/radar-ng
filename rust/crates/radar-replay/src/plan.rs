@@ -13,6 +13,9 @@ use crate::case::{FAST_STALENESS_S, LayerSpec};
 /// Source-cells of halo added around the tile footprint union before cropping.
 pub const CROP_HALO_CELLS: usize = 2;
 
+/// Inclusive row and column ranges of a cropped grid.
+pub type CropWindow = ((usize, usize), (usize, usize));
+
 /// Plan failure.
 #[derive(Debug, Error)]
 pub enum PlanError {
@@ -45,7 +48,7 @@ pub fn crop_window(
     grid: &Grid,
     tiles: &[(u32, u32, u32)],
     halo: usize,
-) -> Result<((usize, usize), (usize, usize)), PlanError> {
+) -> Result<CropWindow, PlanError> {
     let radar_geo::GridGeo::Regular { lats, lons } = &grid.geo else {
         return Err(PlanError::NotRegular);
     };
@@ -84,7 +87,7 @@ pub fn crop_window(
 }
 
 /// Copy `window` (inclusive row and column ranges) out of a regular grid.
-pub fn crop_grid(grid: &Grid, window: ((usize, usize), (usize, usize))) -> Result<Grid, PlanError> {
+pub fn crop_grid(grid: &Grid, window: CropWindow) -> Result<Grid, PlanError> {
     let ((r0, r1), (c0, c1)) = window;
     if r1 < r0 || c1 < c0 || r1 >= grid.height || c1 >= grid.width {
         return Err(PlanError::Empty);

@@ -67,7 +67,7 @@ fn render(grid: &Grid, root: &Path, zooms: &[u32], allow: Option<Vec<(u32, u32, 
 
 #[test]
 fn allowlist_emits_only_the_requested_tiles() {
-    let mut g = grid(30.0, -100.0, 120, 120, 0.03);
+    let mut g = grid(30.0, -100.0, 120, 120, 0.1);
     g.values.fill(35.0);
     let all = SourceGeometry::from_grid(&g).unwrap().tile_jobs(&[6]);
     assert!(all.len() > 2, "grid must cover several tiles");
