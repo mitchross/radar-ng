@@ -1,176 +1,94 @@
-//! Replay disk quota and live-data headroom (design §3).
-
-use std::path::{Path, PathBuf};
+//! Allocated replay bytes, staging included, with reserved space for live ingest.
 
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
+use std::os::unix::fs::MetadataExt;
+use std::path::{Path, PathBuf};
 
-/// Combined replay quota including staging (10 GiB).
 pub const REPLAY_QUOTA_BYTES: u64 = 10 * 1024 * 1024 * 1024;
-/// Free space that must remain for live data after an import (20 GiB).
 pub const LIVE_HEADROOM_BYTES: u64 = 20 * 1024 * 1024 * 1024;
-/// Directory under the tiles root that holds every replay revision.
 pub const REPLAYS_DIR: &str = "replays";
 
-/// Quota failure.
-#[derive(Debug, Error)]
-pub enum QuotaError {
-    /// The filesystem could not be measured.
-    #[error("cannot measure free space at {path}: {source}")]
-    Stat {
-        /// Path measured.
-        path: PathBuf,
-        /// Underlying error.
-        source: std::io::Error,
-    },
-    /// Used bytes were not measured.
-    #[error("cannot measure replay usage at {path}: {source}")]
-    Walk {
-        /// Path walked.
-        path: PathBuf,
-        /// Underlying error.
-        source: std::io::Error,
-    },
-    /// The import would exceed the replay quota.
-    #[error("replay would use {needed} bytes, over the {limit} byte replay quota")]
-    OverQuota {
-        /// Projected bytes.
-        needed: u64,
-        /// Quota.
-        limit: u64,
-    },
-    /// The import would leave too little free space.
-    #[error("import would leave {free_after} bytes free, under the {headroom} byte live headroom")]
-    OverHeadroom {
-        /// Free bytes after the import.
-        free_after: u64,
-        /// Required headroom.
-        headroom: u64,
-    },
-}
-
-/// Bytes and files under a directory.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Usage {
-    /// Sum of file sizes.
     pub bytes: u64,
-    /// Regular files counted.
+    pub allocated_bytes: u64,
     pub files: u64,
+    pub inodes: u64,
 }
 
-/// The replay root below the tiles root.
 pub fn replay_root(tile_root: &Path) -> PathBuf {
     tile_root.join(REPLAYS_DIR)
 }
 
-/// Every replay write goes through this root; nothing else may be touched.
-pub fn ensure_under_replay_root(path: &Path, tile_root: &Path) -> anyhow::Result<()> {
-    let root = replay_root(tile_root);
-    anyhow::ensure!(
-        path.starts_with(&root),
-        "refusing to write {} outside the replay root {}",
-        path.display(),
-        root.display()
-    );
-    Ok(())
-}
-
-/// Walk `dir` and sum file bytes. A missing directory is empty.
-pub fn dir_usage(dir: &Path) -> Result<Usage, QuotaError> {
+pub fn dir_usage(dir: &Path) -> anyhow::Result<Usage> {
     let mut usage = Usage::default();
-    if !dir.exists() {
+    if !dir.try_exists()? {
         return Ok(usage);
     }
     for entry in walkdir::WalkDir::new(dir).follow_links(false) {
-        let entry = entry.map_err(|e| QuotaError::Walk {
-            path: dir.to_path_buf(),
-            source: std::io::Error::other(e),
-        })?;
-        if entry.file_type().is_file() {
+        let entry = entry?;
+        anyhow::ensure!(
+            !entry.file_type().is_symlink(),
+            "replay tree contains symlink: {}",
+            entry.path().display()
+        );
+        let metadata = entry.metadata()?;
+        usage.inodes += 1;
+        usage.allocated_bytes += metadata.blocks() * 512;
+        if metadata.is_file() {
             usage.files += 1;
-            usage.bytes += entry
-                .metadata()
-                .map_err(|e| QuotaError::Walk {
-                    path: entry.path().to_path_buf(),
-                    source: std::io::Error::other(e),
-                })?
-                .len();
+            usage.bytes += metadata.len();
         }
     }
     Ok(usage)
 }
 
-/// Free bytes available to this user at `path`.
-pub fn free_bytes(path: &Path) -> Result<u64, QuotaError> {
-    let stat = rustix::fs::statvfs(path).map_err(|e| QuotaError::Stat {
-        path: path.to_path_buf(),
-        source: std::io::Error::from(e),
-    })?;
-    Ok(stat.f_bavail as u64 * stat.f_frsize as u64)
+pub fn free_bytes(path: &Path) -> anyhow::Result<u64> {
+    let stat = rustix::fs::statvfs(path)?;
+    Ok(stat.f_bavail * stat.f_frsize)
 }
 
-/// Check `needed` new bytes against the quota and the live headroom.
-pub fn check(tile_root: &Path, needed: u64) -> Result<(), QuotaError> {
-    let used = dir_usage(&replay_root(tile_root))?
-        .bytes
-        .saturating_add(needed);
-    if used > REPLAY_QUOTA_BYTES {
-        return Err(QuotaError::OverQuota {
-            needed: used,
-            limit: REPLAY_QUOTA_BYTES,
-        });
-    }
-    let free = free_bytes(tile_root)?;
-    let free_after = free.saturating_sub(needed);
-    if free_after < LIVE_HEADROOM_BYTES {
-        return Err(QuotaError::OverHeadroom {
-            free_after,
-            headroom: LIVE_HEADROOM_BYTES,
-        });
-    }
+pub fn check_limits(used: u64, free: u64, reserve: u64) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        used.saturating_add(reserve) <= REPLAY_QUOTA_BYTES,
+        "replay quota exceeded: {used} allocated + {reserve} reserved > {REPLAY_QUOTA_BYTES}"
+    );
+    anyhow::ensure!(
+        free.saturating_sub(reserve) >= LIVE_HEADROOM_BYTES,
+        "live headroom insufficient: {free} free - {reserve} reserved < {LIVE_HEADROOM_BYTES}"
+    );
     Ok(())
+}
+
+pub fn check(tile_root: &Path, reserve: u64) -> anyhow::Result<()> {
+    check_limits(
+        dir_usage(&replay_root(tile_root))?.allocated_bytes,
+        free_bytes(tile_root)?,
+        reserve,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn usage_walks_files_and_replay_root_is_a_sibling_of_layers() {
+    fn quota_counts_staging_directories_and_files() {
         let tmp = tempfile::tempdir().unwrap();
-        let tiles = tmp.path();
-        let root = replay_root(tiles);
-        assert_eq!(root, tiles.join("replays"));
-        std::fs::create_dir_all(root.join("rolling-fork-2023/rev1/tiles/radar")).unwrap();
-        std::fs::write(root.join("rolling-fork-2023/rev1/manifest.json"), b"{}").unwrap();
-        std::fs::write(
-            root.join("rolling-fork-2023/rev1/tiles/radar/0001.png"),
-            b"png",
-        )
-        .unwrap();
-        let usage = dir_usage(&root).unwrap();
-        assert_eq!(usage.files, 2);
-        assert_eq!(usage.bytes, 5);
+        let staging = replay_root(tmp.path()).join("case/.staging-r1");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("frame"), b"x").unwrap();
+        let usage = dir_usage(&replay_root(tmp.path())).unwrap();
+        assert_eq!(usage.files, 1);
+        assert!(usage.allocated_bytes >= 4096);
+        assert_eq!(usage.inodes, 4);
+        assert!(check_limits(REPLAY_QUOTA_BYTES - 1, LIVE_HEADROOM_BYTES + 2, 2).is_err());
+        assert!(check_limits(0, LIVE_HEADROOM_BYTES + 1, 2).is_err());
+        assert!(check_limits(REPLAY_QUOTA_BYTES - 2, LIVE_HEADROOM_BYTES + 2, 2).is_ok());
     }
-
     #[test]
-    fn writes_outside_the_replay_root_are_refused() {
+    fn reject_symlinks_in_replays() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = replay_root(tmp.path());
-        assert!(ensure_under_replay_root(&root.join("case/rev"), tmp.path()).is_ok());
-        assert!(ensure_under_replay_root(&tmp.path().join("radar/2026"), tmp.path()).is_err());
-    }
-
-    #[test]
-    fn headroom_rejects_an_import_larger_than_free_space() {
-        let tmp = tempfile::tempdir().unwrap();
-        let free = free_bytes(tmp.path()).unwrap();
-        assert!(free > 0);
-        let huge = free.saturating_add(LIVE_HEADROOM_BYTES);
-        assert!(matches!(
-            check(tmp.path(), huge),
-            Err(QuotaError::OverQuota { .. } | QuotaError::OverHeadroom { .. })
-        ));
-        assert!(check(tmp.path(), 1024).is_ok());
+        std::os::unix::fs::symlink(tmp.path(), tmp.path().join("loop")).unwrap();
+        assert!(dir_usage(tmp.path()).is_err());
     }
 }

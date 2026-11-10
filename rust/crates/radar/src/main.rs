@@ -26,6 +26,8 @@ struct Cli {
 enum Cmd {
     /// Run the HTTP server.
     Api,
+    /// Import isolated historical MRMS cases (operator only).
+    Replay(radar_replay::ReplayArgs),
     /// Run a Temporal worker for one role.
     Worker {
         /// Worker role; overrides WORKER_ROLE.
@@ -76,6 +78,7 @@ fn main() -> anyhow::Result<()> {
 
     let service = match &cli.cmd {
         Cmd::Api => "radar-api",
+        Cmd::Replay(_) => "radar-replay",
         Cmd::Worker { .. } | Cmd::Seed | Cmd::Watchdog => "radar-worker",
         Cmd::Debug(_) => "radar-debug",
         Cmd::RenderOnce { .. } => "radar-render-once",
@@ -94,6 +97,7 @@ fn main() -> anyhow::Result<()> {
 
     rt.block_on(async move {
         match cli.cmd {
+            Cmd::Replay(args) => radar_replay::run(args).await,
             Cmd::Api => radar_api::serve(radar_api::Config::from_env()?).await,
             Cmd::Worker { .. } => {
                 radar_worker::run_worker(radar_worker::WorkerConfig::from_env()?).await

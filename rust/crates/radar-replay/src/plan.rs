@@ -2,10 +2,13 @@
 
 use chrono::{DateTime, Duration, Utc};
 use radar_geo::{Grid, GridGeo};
+#[cfg(test)]
 use radar_tiler::geometry::{Sampling, SourceGeometry};
 use thiserror::Error;
 
-use crate::case::{CASE_TILE_SIZE, FAST_STALENESS_S, LayerSpec};
+#[cfg(test)]
+use crate::case::CASE_TILE_SIZE;
+use crate::case::{FAST_STALENESS_S, LayerSpec};
 
 /// Source-cells of halo added around the tile footprint union before cropping.
 pub const CROP_HALO_CELLS: usize = 2;
@@ -16,16 +19,6 @@ pub enum PlanError {
     /// The grid has no regular lat/lon axes, so it cannot be cropped safely.
     #[error("replay cropping needs a regular lat/lon grid")]
     NotRegular,
-    /// A tile does not overlap the source grid.
-    #[error("tile {z}/{x}/{y} does not overlap the source grid")]
-    NoCoverage {
-        /// Zoom.
-        z: u32,
-        /// Tile column.
-        x: u32,
-        /// Tile row.
-        y: u32,
-    },
     /// The grid or the crop window is empty.
     #[error("empty grid or crop window")]
     Empty,
@@ -47,41 +40,51 @@ pub fn case_tiles(bounds: &[f64; 4], zooms: &[u32]) -> Vec<(u32, u32, u32)> {
     tiles
 }
 
-/// Rows and columns required by `tiles`: the union of their bilinear footprints plus `halo` cells.
-///
-/// The union covers overview/max-pool footprints too, because a pooled tile spans every source
-/// cell inside its pixel axes. Cropping to this window cannot change a rendered tile.
+/// Cover complete tile edges plus bilinear and overview support cells.
 pub fn crop_window(
-    src: &SourceGeometry,
+    grid: &Grid,
     tiles: &[(u32, u32, u32)],
-    tile_size: usize,
     halo: usize,
 ) -> Result<((usize, usize), (usize, usize)), PlanError> {
+    let radar_geo::GridGeo::Regular { lats, lons } = &grid.geo else {
+        return Err(PlanError::NotRegular);
+    };
+    let rows = radar_tiler::geometry::AxisMap::new(lats).map_err(|_| PlanError::Empty)?;
+    let cols = radar_tiler::geometry::AxisMap::new(lons).map_err(|_| PlanError::Empty)?;
     let (mut r0, mut r1, mut c0, mut c1) = (usize::MAX, 0usize, usize::MAX, 0usize);
     for &(z, x, y) in tiles {
-        let geom = src
-            .tile_geometry(Sampling::Bilinear, tile_size, z, x, y)
-            .map_err(|_| PlanError::Empty)?
-            .ok_or(PlanError::NoCoverage { z, x, y })?;
-        r0 = r0.min(geom.row_bounds.0);
-        r1 = r1.max(geom.row_bounds.1);
-        c0 = c0.min(geom.col_bounds.0);
-        c1 = c1.max(geom.col_bounds.1);
+        let (west, south, east, north) = radar_tiler::geometry::tile_bounds(x, y, z);
+        let range = |axis: &radar_tiler::geometry::AxisMap, a, b| {
+            let (a, b) = (axis.map(a), axis.map(b));
+            (
+                a.min(b).floor().max(0.0) as usize,
+                a.max(b).ceil().max(0.0) as usize,
+            )
+        };
+        let (a, b) = range(&rows, south, north);
+        let (c, d) = range(&cols, west, east);
+        r0 = r0.min(a);
+        r1 = r1.max(b);
+        c0 = c0.min(c);
+        c1 = c1.max(d);
     }
-    if r0 == usize::MAX || src.height() == 0 || src.width() == 0 {
+    if r0 == usize::MAX || r0 >= grid.height || c0 >= grid.width {
         return Err(PlanError::Empty);
     }
     Ok((
-        (r0.saturating_sub(halo), (r1 + halo).min(src.height() - 1)),
-        (c0.saturating_sub(halo), (c1 + halo).min(src.width() - 1)),
+        (
+            r0.saturating_sub(halo),
+            r1.saturating_add(halo).min(grid.height - 1),
+        ),
+        (
+            c0.saturating_sub(halo),
+            c1.saturating_add(halo).min(grid.width - 1),
+        ),
     ))
 }
 
 /// Copy `window` (inclusive row and column ranges) out of a regular grid.
-pub fn crop_grid(
-    grid: &Grid,
-    window: ((usize, usize), (usize, usize)),
-) -> Result<Grid, PlanError> {
+pub fn crop_grid(grid: &Grid, window: ((usize, usize), (usize, usize))) -> Result<Grid, PlanError> {
     let ((r0, r1), (c0, c1)) = window;
     if r1 < r0 || c1 < c0 || r1 >= grid.height || c1 >= grid.width {
         return Err(PlanError::Empty);
@@ -196,14 +199,20 @@ mod tests {
         let src = SourceGeometry::from_grid(&grid).unwrap();
         let tiles = case_tiles(&[-97.0, 32.0, -94.0, 34.0], &[6, 7]);
         assert!(!tiles.is_empty());
-        let ((r0, r1), (c0, c1)) = crop_window(&src, &tiles, CASE_TILE_SIZE, CROP_HALO_CELLS).unwrap();
+        let ((r0, r1), (c0, c1)) = crop_window(&grid, &tiles, CROP_HALO_CELLS).unwrap();
         for &(z, x, y) in &tiles {
             let geom = src
                 .tile_geometry(Sampling::Bilinear, CASE_TILE_SIZE, z, x, y)
                 .unwrap()
                 .unwrap();
-            assert!(geom.row_bounds.0 >= r0 && geom.row_bounds.1 <= r1, "{z}/{x}/{y} rows");
-            assert!(geom.col_bounds.0 >= c0 && geom.col_bounds.1 <= c1, "{z}/{x}/{y} cols");
+            assert!(
+                geom.row_bounds.0 >= r0 && geom.row_bounds.1 <= r1,
+                "{z}/{x}/{y} rows"
+            );
+            assert!(
+                geom.col_bounds.0 >= c0 && geom.col_bounds.1 <= c1,
+                "{z}/{x}/{y} cols"
+            );
         }
         let cropped = crop_grid(&grid, ((r0, r1), (c0, c1))).unwrap();
         assert_eq!(cropped.height, r1 - r0 + 1);

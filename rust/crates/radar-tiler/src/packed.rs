@@ -197,6 +197,7 @@ impl<'a> ValueSampler<'a> {
             tile_size,
             zooms,
             None,
+            None,
         )?;
         Ok(Self { inner, types: None })
     }

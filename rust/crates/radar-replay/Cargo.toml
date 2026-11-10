@@ -14,9 +14,7 @@ radar-tiler.workspace = true
 radar-ingest.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
 tokio.workspace = true
-reqwest.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -26,3 +24,8 @@ clap.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+radar-aux.workspace = true
+axum.workspace = true
+
+[build-dependencies]
+sha2.workspace = true

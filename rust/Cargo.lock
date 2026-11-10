@@ -2418,6 +2418,7 @@ dependencies = [
  "radar-core",
  "radar-debug",
  "radar-ingest",
+ "radar-replay",
  "radar-worker",
  "tokio",
  "tracing",
@@ -2643,6 +2644,30 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "radar-replay"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "clap",
+ "radar-aux",
+ "radar-core",
+ "radar-geo",
+ "radar-grib",
+ "radar-ingest",
+ "radar-tiler",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "walkdir",
 ]
 
 [[package]]

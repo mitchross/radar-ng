@@ -116,6 +116,8 @@ pub fn render_lead(
         png_compress_level: cfg.png_compress_level,
         keep_empty: false,
         types: None,
+        tile_allowlist: None,
+        source_window: None,
     };
     let kind = FrameKind::Continuous {
         nodata_value: Some(f64::from(NODATA)),

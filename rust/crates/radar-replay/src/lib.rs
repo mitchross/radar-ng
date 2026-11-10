@@ -1,8 +1,6 @@
 //! Bounded famous-storm replay importer (design `docs/develop/design/famous-storm-replay.md`).
 //!
-//! An operator-started import renders one case into `replays/<case>/<revision>/` on the tiles
-//! volume, using the live tiler and MRMS decoder. It never touches the live manifest, nowcast or
-//! retention, and it publishes a revision only after every frame is complete.
+//! Operator-only tile groundwork; revisions remain private until warnings and API acceptance.
 
 pub mod case;
 pub mod import;
@@ -36,7 +34,11 @@ pub struct CheckArgs {
     #[arg(long)]
     pub case: String,
     /// Anonymous MRMS bucket base URL.
-    #[arg(long, env = "MRMS_BASE_URL", default_value = "https://noaa-mrms-pds.s3.amazonaws.com")]
+    #[arg(
+        long,
+        env = "MRMS_BASE_URL",
+        default_value = "https://noaa-mrms-pds.s3.amazonaws.com"
+    )]
     pub base_url: String,
 }
 
@@ -46,7 +48,7 @@ pub struct ImportArgs {
     /// Case id (`rolling-fork-2023` or `greenfield-2024`).
     #[arg(long)]
     pub case: String,
-    /// Revision name; defaults to the current UTC time (`YYYYMMDDTHHMMSSZ`).
+    /// Revision name; defaults to the current UTC time (`YYYYMMDDtHHMMSSz`).
     #[arg(long)]
     pub revision: Option<String>,
     /// Tiles root, normally `TILE_DIR`. The import writes only under `<root>/replays/`.
@@ -61,8 +63,15 @@ pub struct ImportArgs {
     /// Restrict to these layers (repeat the flag); default is every case layer.
     #[arg(long = "layer")]
     pub layers: Vec<String>,
+    /// Verify cropped boundary PNG bytes against an uncropped render.
+    #[arg(long)]
+    pub verify_crop: bool,
     /// Anonymous MRMS bucket base URL.
-    #[arg(long, env = "MRMS_BASE_URL", default_value = "https://noaa-mrms-pds.s3.amazonaws.com")]
+    #[arg(
+        long,
+        env = "MRMS_BASE_URL",
+        default_value = "https://noaa-mrms-pds.s3.amazonaws.com"
+    )]
     pub base_url: String,
 }
 
@@ -70,10 +79,8 @@ pub struct ImportArgs {
 pub async fn run(args: ReplayArgs) -> anyhow::Result<()> {
     match args.cmd {
         ReplayCmd::Check(args) => {
-            let s3 = radar_grib::s3::S3Client::new(
-                radar_grib::http::client()?,
-                args.base_url.clone(),
-            );
+            let s3 =
+                radar_grib::s3::S3Client::new(radar_grib::http::client()?, args.base_url.clone());
             let coverage = objects::check_case(&s3, &args.case).await?;
             println!("{}", serde_json::to_string_pretty(&coverage)?);
             Ok(())
@@ -87,6 +94,7 @@ pub async fn run(args: ReplayArgs) -> anyhow::Result<()> {
                 max_frames: args.max_frames,
                 layers: args.layers,
                 base_url: args.base_url,
+                verify_crop: args.verify_crop,
             })
             .await?;
             println!("{}", serde_json::to_string_pretty(&report)?);

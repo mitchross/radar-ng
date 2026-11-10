@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use thiserror::Error;
 
 /// Zooms rendered for a case, matching MRMS ingest.
-pub const CASE_ZOOMS: [u32; 4] = [4, 5, 6, 7];
+pub const CASE_ZOOMS: [u32; 4] = radar_ingest::mrms::MRMS_ZOOMS;
 /// Tile edge in pixels, matching live ingest.
 pub const CASE_TILE_SIZE: usize = 256;
 /// Only the classic PNG pyramid exists for a replay revision.
@@ -13,7 +13,7 @@ pub const CASE_PALETTE: &str = "classic";
 pub const FAST_STALENESS_S: i64 = 300;
 
 /// One MRMS product rendered as a replay layer.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub struct LayerSpec {
     /// Layer name used in the manifest and the tile path.
     pub layer: &'static str,
@@ -45,7 +45,7 @@ pub const ECHO_TOP_LAYER: &str = "echo-top";
 pub const QPE_LAYER: &str = "precip-24h";
 
 /// PrecipFlag colors reflectivity; it is checked, never rendered as a layer.
-pub const PRECIP_FLAG_PREFIX: &str = "CONUS/PrecipFlag_00.00";
+pub const PRECIP_FLAG_PREFIX: &str = radar_ingest::precip_type::PRECIP_FLAG_PREFIX;
 
 /// The six layers of a first-release case.
 pub const CASE_LAYERS: [LayerSpec; 6] = [
@@ -260,20 +260,38 @@ mod tests {
         assert_eq!(end.to_string(), "2023-03-25 03:00:00 UTC");
         assert_eq!(end - start, chrono::Duration::hours(4));
         let gf = find("greenfield-2024").unwrap();
-        assert_eq!((gf.bounds, gf.timezone), ([-97.0, 40.0, -92.0, 44.0], "America/Chicago"));
+        assert_eq!(
+            (gf.bounds, gf.timezone),
+            ([-97.0, 40.0, -92.0, 44.0], "America/Chicago")
+        );
     }
 
     #[test]
     fn invalid_definitions_are_rejected() {
         let mut case = CASES[0];
         case.bounds = [-88.0, 31.0, -92.0, 35.0];
-        assert!(matches!(case.validate(), Err(CaseError::Field { field: "bounds", .. })));
+        assert!(matches!(
+            case.validate(),
+            Err(CaseError::Field {
+                field: "bounds",
+                ..
+            })
+        ));
         let mut case = CASES[0];
         case.end = "2023-03-24T23:00:00Z";
-        assert!(matches!(case.validate(), Err(CaseError::Field { field: "window", .. })));
+        assert!(matches!(
+            case.validate(),
+            Err(CaseError::Field {
+                field: "window",
+                ..
+            })
+        ));
         let mut case = CASES[0];
         case.id = "Rolling Fork";
-        assert!(matches!(case.validate(), Err(CaseError::Field { field: "id", .. })));
+        assert!(matches!(
+            case.validate(),
+            Err(CaseError::Field { field: "id", .. })
+        ));
         assert!(matches!(find("joplin-2011"), Err(CaseError::Unknown(_))));
     }
 
@@ -285,7 +303,7 @@ mod tests {
         let hail = layer(HAIL_LAYER).unwrap();
         assert!(((hail.convert)(25.4) - 1.0).abs() < 1e-6);
         let top = layer(ECHO_TOP_LAYER).unwrap();
-        assert!((top.convert)(10.0) - 32.8084).abs() < 1e-3);
+        assert!(((top.convert)(10.0) - 32.8084).abs() < 1e-3);
         let radar = layer(RADAR_LAYER).unwrap();
         assert_eq!((radar.convert)(35.0), 35.0);
         assert_eq!(CASE_LAYERS.len(), 6);

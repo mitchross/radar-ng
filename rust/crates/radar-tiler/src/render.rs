@@ -17,7 +17,7 @@ use rayon::prelude::*;
 use crate::cache::{GeometryKey, global_cache};
 use crate::classify::{ClassModel, PaletteLut};
 use crate::error::{Result, TilerError};
-use crate::geometry::{AxisMap, MAX_ZOOM, Sampling, SourceGeometry, TileGeometry};
+use crate::geometry::{AxisMap, GeometryBody, MAX_ZOOM, Sampling, SourceGeometry, TileGeometry};
 use crate::identity::{
     FrameKind, GridIdentity, array_digest_f32, array_digest_u8, frame_contract, frame_identities,
     frame_model, grid_spec_digest, sha256_hex,
@@ -48,6 +48,15 @@ impl Overview {
     }
 }
 
+/// Original regular axes and the origin of a cropped input grid.
+#[derive(Debug, Clone)]
+pub struct SourceWindow {
+    pub lats: Vec<f64>,
+    pub lons: Vec<f64>,
+    pub row: usize,
+    pub col: usize,
+}
+
 /// Options for [`render_frame_palettes`].
 #[derive(Debug, Clone)]
 pub struct FrameOptions {
@@ -66,8 +75,10 @@ pub struct FrameOptions {
     /// Precipitation type per cell (continuous frames only). Colors each pixel with the rain, snow
     /// or mix ramp of its palette ([`crate::typed`]).
     pub types: Option<TypePlane>,
-    /// Render only these `(z, tx, ty)` tiles. `None` renders every tile the grid covers.
+    /// Select output XYZs, including transparent tiles; `None` keeps normal sparse output.
     pub tile_allowlist: Option<Vec<(u32, u32, u32)>>,
+    /// Preserve uncropped sampling arithmetic and overview routing for a cropped grid.
+    pub source_window: Option<SourceWindow>,
 }
 
 impl Default for FrameOptions {
@@ -81,6 +92,7 @@ impl Default for FrameOptions {
             keep_empty: false,
             types: None,
             tile_allowlist: None,
+            source_window: None,
         }
     }
 }
@@ -169,7 +181,7 @@ pub fn render_frame_palettes(
         source_digest = sha256_hex(format!("{source_digest}:{types_digest}").as_bytes());
     }
     let grid_digest = grid_spec_digest(src.identity());
-    let identities = frame_identities(
+    let mut identities = frame_identities(
         &options.source_id,
         &source_digest,
         &grid_digest,
@@ -178,6 +190,32 @@ pub fn render_frame_palettes(
         &contract,
         &tables,
     )?;
+    if options.tile_allowlist.is_some() || options.source_window.is_some() {
+        let mut allowed = options.tile_allowlist.clone();
+        if let Some(tiles) = &mut allowed {
+            tiles.sort_unstable();
+            tiles.dedup();
+        }
+        let window = options
+            .source_window
+            .as_ref()
+            .map(|w| {
+                let geo = GridGeo::Regular {
+                    lats: w.lats.clone(),
+                    lons: w.lons.clone(),
+                };
+                SourceGeometry::new(w.lats.len(), w.lons.len(), &geo)
+                    .map(|src| (grid_spec_digest(src.identity()), w.row, w.col))
+            })
+            .transpose()?;
+        for (_, identity) in &mut identities {
+            identity.policy_digest = sha256_hex(
+                serde_json::to_vec(&(identity.policy_digest.clone(), &allowed, &window))
+                    .map_err(|e| TilerError::Invalid(e.to_string()))?
+                    .as_slice(),
+            );
+        }
+    }
     let job = FrameJob::new(grid, src, kind, &model, options, zoom_levels)?;
     publish_palette_set_with(
         output_dirs,
@@ -208,9 +246,12 @@ fn validate_options(options: &FrameOptions, zooms: &[u32]) -> Result<()> {
         )));
     }
     if let Some(tiles) = &options.tile_allowlist {
-        if tiles.iter().any(|&(z, _, _)| z > MAX_ZOOM) {
+        if tiles
+            .iter()
+            .any(|&(z, x, y)| z > MAX_ZOOM || !zooms.contains(&z) || x >= (1 << z) || y >= (1 << z))
+        {
             return Err(TilerError::Invalid(format!(
-                "allowlisted tile zoom levels must be in 0..={MAX_ZOOM}"
+                "allowlisted XYZs must be valid and use requested zooms in 0..={MAX_ZOOM}"
             )));
         }
         if tiles.is_empty() {
@@ -275,6 +316,7 @@ pub(crate) struct Sampler<'a> {
     min_valid_weight: f64,
     pool: Option<PoolCtx>,
     tiles: Vec<TileJob>,
+    window: Option<(usize, usize)>,
 }
 
 impl<'a> Sampler<'a> {
@@ -283,7 +325,7 @@ impl<'a> Sampler<'a> {
     #[allow(clippy::too_many_arguments)] // internal constructor shared by two callers
     pub(crate) fn new(
         grid: &'a Grid,
-        src: SourceGeometry,
+        mut src: SourceGeometry,
         nodata: Option<f64>,
         min_valid_weight: f64,
         categorical: bool,
@@ -291,10 +333,40 @@ impl<'a> Sampler<'a> {
         tile: usize,
         zooms: &[u32],
         allowlist: Option<&[(u32, u32, u32)]>,
+        source_window: Option<&SourceWindow>,
     ) -> Result<Self> {
-        let regular = match &grid.geo {
-            GridGeo::Regular { lats, lons } => Some((lats, lons)),
-            GridGeo::Projected { .. } => None,
+        let regular = match (source_window, &grid.geo) {
+            (Some(window), GridGeo::Regular { lats, lons }) => {
+                if window
+                    .lats
+                    .get(window.row..window.row.saturating_add(grid.height))
+                    != Some(lats.as_slice())
+                    || window
+                        .lons
+                        .get(window.col..window.col.saturating_add(grid.width))
+                        != Some(lons.as_slice())
+                {
+                    return Err(TilerError::Invalid(
+                        "source window does not match cropped axes".into(),
+                    ));
+                }
+                src = SourceGeometry::new(
+                    window.lats.len(),
+                    window.lons.len(),
+                    &GridGeo::Regular {
+                        lats: window.lats.clone(),
+                        lons: window.lons.clone(),
+                    },
+                )?;
+                Some((&window.lats, &window.lons))
+            }
+            (None, GridGeo::Regular { lats, lons }) => Some((lats, lons)),
+            (Some(_), _) => {
+                return Err(TilerError::Invalid(
+                    "source window needs regular axes".into(),
+                ));
+            }
+            _ => None,
         };
         let mut pool = None;
         if overview {
@@ -350,6 +422,7 @@ impl<'a> Sampler<'a> {
             min_valid_weight,
             pool,
             tiles,
+            window: source_window.map(|w| (w.row, w.col)),
         })
     }
 
@@ -369,6 +442,65 @@ impl<'a> Sampler<'a> {
     }
 
     fn geometry(&self, sampling: Sampling, job: TileJob) -> Result<Option<Arc<TileGeometry>>> {
+        if let Some((row, col)) = self.window {
+            let Some(mut geom) = self
+                .src
+                .tile_geometry(sampling, self.tile, job.z, job.tx, job.ty)?
+            else {
+                return Ok(None);
+            };
+            match &mut geom.body {
+                GeometryBody::RegularBilinear { rows, cols } => {
+                    // Round in the original grid before subtracting the crop origin.
+                    for r in rows {
+                        *r -= row as f32;
+                    }
+                    for c in cols {
+                        *c -= col as f32;
+                    }
+                }
+                GeometryBody::RegularNearest { rows, cols } => {
+                    for r in rows {
+                        if *r >= 0 {
+                            *r -= row as i32;
+                            if *r >= self.grid.height as i32 {
+                                *r = -1;
+                            }
+                        }
+                    }
+                    for c in cols {
+                        if *c >= 0 {
+                            *c -= col as i32;
+                            if *c >= self.grid.width as i32 {
+                                *c = -1;
+                            }
+                        }
+                    }
+                }
+                _ => unreachable!("source windows require regular axes"),
+            }
+            geom.row_bounds = (
+                geom.row_bounds
+                    .0
+                    .saturating_sub(row)
+                    .min(self.grid.height - 1),
+                geom.row_bounds
+                    .1
+                    .saturating_sub(row)
+                    .min(self.grid.height - 1),
+            );
+            geom.col_bounds = (
+                geom.col_bounds
+                    .0
+                    .saturating_sub(col)
+                    .min(self.grid.width - 1),
+                geom.col_bounds
+                    .1
+                    .saturating_sub(col)
+                    .min(self.grid.width - 1),
+            );
+            return Ok(Some(Arc::new(geom)));
+        }
         let key = GeometryKey {
             grid: Arc::clone(&self.identity),
             sampling,
@@ -482,8 +614,18 @@ impl<'a> Sampler<'a> {
                 (PI * y).sinh().atan() * (180.0 / PI)
             })
             .collect();
-        let row_ranges = footprint_edges(&lat_edges, &pool.lat_axis);
-        let col_ranges = footprint_edges(&col_edges, &pool.lon_axis);
+        let mut row_ranges = footprint_edges(&lat_edges, &pool.lat_axis);
+        let mut col_ranges = footprint_edges(&col_edges, &pool.lon_axis);
+        if let Some((row, col)) = self.window {
+            for (a, b) in &mut row_ranges {
+                *a = a.saturating_sub(row).min(self.grid.height);
+                *b = b.saturating_sub(row).min(self.grid.height);
+            }
+            for (a, b) in &mut col_ranges {
+                *a = a.saturating_sub(col).min(self.grid.width);
+                *b = b.saturating_sub(col).min(self.grid.width);
+            }
+        }
         let (mut rmin, mut rmax) = (usize::MAX, 0usize);
         for &(a, b) in &row_ranges {
             if b > a {
@@ -538,6 +680,7 @@ struct FrameJob<'a> {
     /// Whole-grid class index for categorical frames; empty otherwise.
     class_index: Vec<u8>,
     types: Option<TypePlane>,
+    keep_transparent: bool,
 }
 
 /// Per-worker buffers, reused across tiles.
@@ -598,6 +741,7 @@ impl<'a> FrameJob<'a> {
             options.tile_size,
             zooms,
             options.tile_allowlist.as_deref(),
+            options.source_window.as_ref(),
         )?;
         Ok(Self {
             sampler,
@@ -606,6 +750,7 @@ impl<'a> FrameJob<'a> {
             depth: bit_depth_for_entries(model.n_classes()),
             class_index,
             types: options.types.clone(),
+            keep_transparent: options.tile_allowlist.is_some(),
         })
     }
 
@@ -662,7 +807,7 @@ impl<'a> FrameJob<'a> {
                 self.model.classify_f32_into(&s.values, &mut s.classes)?;
             }
         }
-        if !s.classes.iter().any(|&c| c != 0) {
+        if !self.keep_transparent && !s.classes.iter().any(|&c| c != 0) {
             return Ok(0);
         }
         self.write_tile(s, job, roots, palettes)?;

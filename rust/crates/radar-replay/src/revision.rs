@@ -1,12 +1,15 @@
 //! Revision layout, resumable progress and atomic publication (design §3, §4).
 
+use radar_core::fsutil::fsync_dir;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
-use radar_core::manifest::{Frame, Frame as ManifestFrame, Layer, MANIFEST_SCHEMA_VERSION, Manifest};
+use radar_core::manifest::{
+    Frame, Frame as ManifestFrame, Layer, MANIFEST_SCHEMA_VERSION, Manifest,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use thiserror::Error;
@@ -43,15 +46,17 @@ pub struct Layout {
     pub staging: PathBuf,
     /// `<case_dir>/<revision>`.
     pub final_dir: PathBuf,
-    /// `<case_dir>/.locks`, kept out of published revisions.
-    pub locks: PathBuf,
     /// Revision name.
     pub revision: String,
 }
 
 /// Resolve and validate the layout for a case revision.
-pub fn layout(tile_root: &Path, case: &CaseDefinition, revision: &str) -> Result<Layout, RevisionError> {
-    let safe = !revision.is_empty()
+pub fn layout(
+    tile_root: &Path,
+    case: &CaseDefinition,
+    revision: &str,
+) -> Result<Layout, RevisionError> {
+    let safe = revision.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
         && revision.len() <= 64
         && revision
             .chars()
@@ -63,7 +68,6 @@ pub fn layout(tile_root: &Path, case: &CaseDefinition, revision: &str) -> Result
     Ok(Layout {
         staging: case_dir.join(format!(".staging-{revision}")),
         final_dir: case_dir.join(revision),
-        locks: case_dir.join(".locks"),
         case_dir,
         revision: revision.to_string(),
     })
@@ -82,6 +86,9 @@ pub struct FrameProgress {
     pub key: String,
     /// Stable tiler source identity.
     pub source_id: String,
+    pub source_sha256: String,
+    pub flag_key: Option<String>,
+    pub flag_sha256: Option<String>,
     /// Tiles written for this frame.
     pub tiles: u64,
     /// PNG bytes written for this frame.
@@ -113,7 +120,7 @@ impl Progress {
     pub fn load(path: &Path, case: &str, revision: &str) -> anyhow::Result<Self> {
         match fs::read(path) {
             Ok(bytes) => {
-                let mut progress: Progress = serde_json::from_slice(&bytes)?;
+                let progress: Progress = serde_json::from_slice(&bytes)?;
                 anyhow::ensure!(
                     progress.case == case && progress.revision == revision,
                     "progress file belongs to {}/{}",
@@ -131,7 +138,7 @@ impl Progress {
         }
     }
 
-    /// True when this frame is recorded and its pyramid is complete.
+    /// True when a progress entry exists; the importer verifies its marker before reuse.
     pub fn is_done(&self, id: &str) -> bool {
         self.frames.contains_key(id)
     }
@@ -144,37 +151,15 @@ impl Progress {
 
     /// Frames of one layer, ordered by playhead.
     pub fn layer_frames(&self, layer: &str) -> Vec<&FrameProgress> {
-        self.frames
-            .values()
-            .filter(|f| f.layer == layer)
-            .collect()
+        self.frames.values().filter(|f| f.layer == layer).collect()
     }
 }
 
 /// Write JSON through a sibling temp file and a rename, fsyncing both.
 pub fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> anyhow::Result<()> {
-    let dir = path.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(dir)?;
-    let tmp = path.with_extension("json.tmp");
-    {
-        let mut file = fs::File::create(&tmp)?;
-        serde_json::to_writer_pretty(&mut file, value)?;
-        file.write_all(b"\n")?;
-        file.sync_all()?;
-    }
-    fs::rename(&tmp, path)?;
-    fsync_dir(dir)?;
+    let bytes = serde_json::to_vec_pretty(value)?;
+    radar_core::fsutil::atomic_write(path, &bytes, ".replay-", ".tmp")?;
     Ok(())
-}
-
-fn fsync_dir(dir: &Path) -> anyhow::Result<()> {
-    match fs::File::open(dir) {
-        Ok(handle) => {
-            handle.sync_all()?;
-            Ok(())
-        }
-        Err(_) => Ok(()),
-    }
 }
 
 /// Build the revision manifest (manifest v2 shape, case-only frames).
@@ -211,7 +196,7 @@ pub fn build_manifest(
             .collect();
         frames.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
         frames.dedup_by(|a, b| a.timestamp == b.timestamp);
-        let timestamps = frames.iter().map(|f| f.timestamp.clone()).collect();
+        let timestamps: Vec<String> = frames.iter().map(|f| f.timestamp.clone()).collect();
         let latest = timestamps.last().cloned();
         let mut extra: Map<String, Value> = json!({
             "title": spec.title(),
@@ -223,7 +208,10 @@ pub fn build_manifest(
         .as_object()
         .cloned()
         .unwrap_or_default();
-        extra.insert("complete".into(), json!(true));
+        extra.insert("coverage_report".into(), json!("coverage.json"));
+        if spec.layer == crate::case::QPE_LAYER {
+            extra.insert("retrospective".into(), json!(true));
+        }
         layers.insert(
             spec.layer.to_string(),
             Layer {
@@ -246,6 +234,9 @@ pub fn build_manifest(
             "bounds": case.bounds,
         },
         "revision": revision,
+        "replay_schema_version": 1,
+        "public_ready": false,
+        "warnings": { "status": "missing", "issue": 282 },
     })
     .as_object()
     .cloned()
@@ -263,10 +254,7 @@ pub fn build_manifest(
     })
 }
 
-/// Publish a finished staging revision: write the manifest, fsync, then rename it into place.
-///
-/// The prior revision is untouched and stays readable. An interrupted import only leaves a
-/// `.staging-*` directory behind.
+/// Write the private tile manifest and rename staging; prior revisions remain untouched.
 pub fn publish(
     layout: &Layout,
     case: &CaseDefinition,
@@ -328,6 +316,9 @@ mod tests {
             timestamp: ts.into(),
             key: format!("k/{ts}"),
             source_id: format!("replay:{layer}:{ts}"),
+            source_sha256: "test".into(),
+            flag_key: None,
+            flag_sha256: None,
             tiles: 3,
             bytes: 900,
             render_ms: 12,
@@ -339,12 +330,21 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let case = find("rolling-fork-2023").unwrap();
         let l = layout(tmp.path(), case, "rev1").unwrap();
-        assert_eq!(l.final_dir, tmp.path().join("replays/rolling-fork-2023/rev1"));
-        assert_eq!(l.staging, tmp.path().join("replays/rolling-fork-2023/.staging-rev1"));
+        assert_eq!(
+            l.final_dir,
+            tmp.path().join("replays/rolling-fork-2023/rev1")
+        );
+        assert_eq!(
+            l.staging,
+            tmp.path().join("replays/rolling-fork-2023/.staging-rev1")
+        );
         assert!(matches!(
             layout(tmp.path(), case, "../escape"),
             Err(RevisionError::InvalidRevision(_))
         ));
+        assert!(layout(tmp.path(), case, ".").is_err());
+        assert!(layout(tmp.path(), case, "..").is_err());
+        assert!(layout(tmp.path(), case, ".locks").is_err());
         assert!(matches!(
             layout(tmp.path(), case, "UPPER"),
             Err(RevisionError::InvalidRevision(_))
@@ -359,9 +359,14 @@ mod tests {
             case: case.id.into(),
             frames: BTreeMap::new(),
         };
-        progress
-            .frames
-            .insert("a".into(), frame(crate::case::RADAR_LAYER, "2024-05-21T19:00:10+00:00", "2024-05-21T19:00:10+00:00"));
+        progress.frames.insert(
+            "a".into(),
+            frame(
+                crate::case::RADAR_LAYER,
+                "2024-05-21T19:00:10+00:00",
+                "2024-05-21T19:00:10+00:00",
+            ),
+        );
         let manifest = build_manifest(case, "r1", &progress).unwrap();
         assert_eq!(manifest.schema_version, 2);
         assert!(
@@ -398,7 +403,10 @@ mod tests {
             frames: BTreeMap::new(),
         };
         publish(&second, case, &progress2).unwrap();
-        assert!(final_dir.join(MANIFEST_FILE).exists(), "prior revision must stay readable");
+        assert!(
+            final_dir.join(MANIFEST_FILE).exists(),
+            "prior revision must stay readable"
+        );
         assert!(second.final_dir.exists());
     }
 }
