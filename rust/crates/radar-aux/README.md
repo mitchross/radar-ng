@@ -25,7 +25,7 @@ Config structs read from the environment, with `new(..)` / struct literals for t
   run's bucket part `k` (`aqm/packed.rs`), and `aqm_publish_run` lists the run's buckets with the frames.
 - `tropical::TropicalConfig` (`feed_url`, `gis_url`, timeouts 20/15/15 s, `gis_concurrency` 8).
 - `tile_cleanup::TileCleanupConfig` (`TILE_DIR`, `STATE_DIR`, `GridConfig`).
-- `open_meteo::OpenMeteoConfig` (`OPENMETEO_BIN`, `OPENMETEO_DATA_DIR`, heartbeat 30 s).
+- `open_meteo::OpenMeteoConfig` (`OPENMETEO_BIN`, `OPENMETEO_DATA_DIR`, `OPENMETEO_PRUNE_DAYS`, heartbeat 30 s).
 
 Activities (all `async` unless noted):
 
@@ -76,6 +76,13 @@ Grid retention runs last, through radar-core `cleanup_old_grids`.
 last 50 lines. A `[ CRITICAL ]` or `[ ERROR ]` line in the kept lines fails the sync even if the exit code is 0.
 A non-zero exit fails with the last 500 characters of stderr. The child has `kill_on_drop`, so cancelling the
 future kills it.
+
+**Open-Meteo prune.** After a successful sync, `chunk_*.om` files directly under `<OPENMETEO_DATA_DIR>/<model>/<variable>/`
+whose mtime is older than `OPENMETEO_PRUNE_DAYS` days (default 7, `0` disables) are deleted. Only the model that
+just synced is touched; `static/` and non-chunk files are kept. If `OPENMETEO_PRUNE_DAYS` is not above the
+activity's `past_days`, the prune is skipped with a warning. A prune error logs a warning and never fails the sync.
+It logs one `open-meteo prune` line with the model, files deleted and bytes freed. (Open-Meteo's own `--execute`
+cleanup flag is not read by the binary, so it is not used.)
 
 ## Behavior notes
 

@@ -127,6 +127,7 @@ COPY --from=busybox /out/busybox /usr/local/bin/busybox
 COPY --from=radar /out/radar /usr/local/bin/radar
 ENV OPENMETEO_BIN=/app/openmeteo-api \
     OPENMETEO_DATA_DIR=/app/data \
+    OPENMETEO_PRUNE_DAYS=7 \
     LOG_LEVEL=info
 USER 999:999
 ENTRYPOINT ["/usr/local/bin/radar"]

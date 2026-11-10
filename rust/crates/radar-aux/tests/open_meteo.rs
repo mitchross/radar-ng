@@ -33,6 +33,7 @@ fn fake(body: &str) -> Fake {
         bin: bin.clone(),
         data_dir: app.join("data"),
         heartbeat_every: Duration::from_secs(30),
+        prune_days: 0,
     };
     Fake { dir, bin, cfg }
 }
