@@ -26,6 +26,8 @@ struct Cli {
 enum Cmd {
     /// Run the HTTP server.
     Api,
+    /// Run the private, gated Level II numeric demand tracer.
+    Level2Numeric(radar_level2::tracer::TraceArgs),
     /// Import isolated historical MRMS cases (operator only).
     Replay(radar_replay::ReplayArgs),
     /// Run a Temporal worker for one role.
@@ -84,6 +86,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Worker { .. } | Cmd::Seed | Cmd::Watchdog => "radar-worker",
         Cmd::Debug(_) => "radar-debug",
         Cmd::RenderOnce { .. } => "radar-render-once",
+        Cmd::Level2Numeric(_) => "radar-level2",
         Cmd::ImportReplayWarnings { .. } => "radar-replay-warnings",
         Cmd::Parity(_) => unreachable!("handled above"),
     };
@@ -102,6 +105,7 @@ fn main() -> anyhow::Result<()> {
         match cli.cmd {
             Cmd::Replay(args) => radar_replay::run(args).await,
             Cmd::Api => radar_api::serve(radar_api::Config::from_env()?).await,
+            Cmd::Level2Numeric(args) => radar_level2::tracer::run(args).await,
             Cmd::Worker { .. } => {
                 radar_worker::run_worker(radar_worker::WorkerConfig::from_env()?).await
             }

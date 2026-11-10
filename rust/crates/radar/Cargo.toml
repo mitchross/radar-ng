@@ -22,3 +22,4 @@ anyhow.workspace = true
 clap.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+radar-level2 = { path = "../radar-level2" }

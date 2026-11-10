@@ -1,0 +1,26 @@
+[
+  {
+    "file": "KGRR20261107_000118_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2026/11/07/KGRR/KGRR20261107_000118_V06",
+    "bytes": 9438864,
+    "sha256": "672a54df400265b9bf5dce87b6db2aec22fa72e53c508374f215c2b759af17d6"
+  },
+  {
+    "file": "KCRP20170826_044114_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2017/08/26/KCRP/KCRP20170826_044114_V06",
+    "bytes": 13721671,
+    "sha256": "321308b5afc699a7fb7681aa7be8006a4dd27c6d00bd9149b936c39c4ff8339a"
+  },
+  {
+    "file": "KDMX20220305_232324_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2022/03/05/KDMX/KDMX20220305_232324_V06",
+    "bytes": 12695534,
+    "sha256": "bb50463c7443555541ca712f8f9d466b7a5cd00d5812767c6d655e2b78bf9675"
+  },
+  {
+    "file": "KDMX20250314_175512_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2025/03/14/KDMX/KDMX20250314_175512_V06",
+    "bytes": 5002623,
+    "sha256": "b2f718646aed5dc399aa2a80ee761014312017dd41fb94b32213b2a568af6a5a"
+  }
+]
