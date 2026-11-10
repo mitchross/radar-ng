@@ -196,6 +196,8 @@ impl<'a> ValueSampler<'a> {
             overview.is_some(),
             tile_size,
             zooms,
+            None,
+            None,
         )?;
         Ok(Self { inner, types: None })
     }

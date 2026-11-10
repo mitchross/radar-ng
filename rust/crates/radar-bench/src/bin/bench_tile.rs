@@ -83,6 +83,8 @@ fn main() -> Result<()> {
             png_compress_level: 6,
             keep_empty: false,
             types: None,
+            tile_allowlist: None,
+            source_window: None,
         };
         let res = render_frame_palettes(&grid, &kind, &palettes, &outdirs, &ZOOMS, &opts)?;
         let (tiles, bytes) = count_pngs(&iter_root)?;

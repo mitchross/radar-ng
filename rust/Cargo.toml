@@ -18,6 +18,7 @@ radar-core = { path = "crates/radar-core" }
 radar-tiler = { path = "crates/radar-tiler" }
 radar-grib = { path = "crates/radar-grib" }
 radar-nowcast = { path = "crates/radar-nowcast" }
+radar-replay = { path = "crates/radar-replay" }
 radar-ingest = { path = "crates/radar-ingest" }
 radar-aux = { path = "crates/radar-aux" }
 radar-worker = { path = "crates/radar-worker" }
