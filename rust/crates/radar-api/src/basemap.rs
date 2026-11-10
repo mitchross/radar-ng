@@ -149,6 +149,9 @@ pub fn static_router(tile_dir: PathBuf, basemap_root: PathBuf) -> Router<AppStat
         let root = Arc::clone(&tile_root);
         async move {
             let rel = req.uri().path().to_owned();
+            if crate::replays::is_private_tile_path(&rel) {
+                return Ok(StatusCode::NOT_FOUND.into_response());
+            }
             let resp = serve.oneshot(req).await?.into_response();
             if resp.status() == StatusCode::NOT_FOUND && in_complete_pyramid(&root, &rel).await {
                 return Ok::<_, Infallible>(empty_tile());
@@ -171,6 +174,10 @@ pub fn static_router(tile_dir: PathBuf, basemap_root: PathBuf) -> Router<AppStat
             get(crate::satellite::get_tile),
         )
         .route("/basemap/imagery/{z}/{x}/{yjpg}", get(get_imagery))
+        .route(
+            "/replays/{id}/{revision}/tiles/{layer}/{palette}/{path}/{z}/{x}/{ypng}",
+            get(crate::replays::get_tile),
+        )
         .route("/basemap/tiles/{z}/{x}/{ymvt}", get(get_vector_tile))
 }
 

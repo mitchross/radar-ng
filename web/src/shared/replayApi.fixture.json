@@ -1,0 +1,311 @@
+{
+  "catalogue": {
+    "schema_version": 1,
+    "cases": [
+      {
+        "id": "rolling-fork-2023",
+        "title": "Rolling Fork, Mississippi - March 24, 2023",
+        "summary": "EF4 tornado near Rolling Fork, Mississippi, overnight into March 25, 2023.",
+        "start": "2023-03-24T23:00:00Z",
+        "end": "2023-03-25T03:00:00Z",
+        "timezone": "America/Chicago",
+        "bounds": [
+          -92.0,
+          31.0,
+          -88.0,
+          35.0
+        ],
+        "revision": "contract-1",
+        "layers": [
+          "echo-top",
+          "hail-size",
+          "precip-24h",
+          "radar",
+          "radar-composite",
+          "rotation-track"
+        ],
+        "manifest_url": "/api/replays/rolling-fork-2023/contract-1/manifest.json",
+        "warnings_url": "/api/replays/rolling-fork-2023/contract-1/warnings.geojson",
+        "sources": [
+          {
+            "name": "NOAA MRMS",
+            "base_url": "https://noaa-mrms-pds.s3.amazonaws.com"
+          },
+          {
+            "name": "IEM warnings",
+            "base_url": "https://mesonet.agron.iastate.edu"
+          }
+        ]
+      }
+    ]
+  },
+  "revision": {
+    "schema_version": 1,
+    "case": "rolling-fork-2023",
+    "revision": "contract-1",
+    "status": "tiles_complete",
+    "public_ready": true,
+    "scope": "case",
+    "coverage_reviewed": true,
+    "start": "2023-03-24T23:00:00Z",
+    "end": "2023-03-25T03:00:00Z",
+    "bounds": [
+      -92.0,
+      31.0,
+      -88.0,
+      35.0
+    ],
+    "timezone": "America/Chicago",
+    "renderer": "synthetic-contract-fixture",
+    "renderer_source_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sources": [
+      {
+        "name": "NOAA MRMS",
+        "base_url": "https://noaa-mrms-pds.s3.amazonaws.com"
+      },
+      {
+        "name": "IEM warnings",
+        "base_url": "https://mesonet.agron.iastate.edu"
+      }
+    ],
+    "manifest": "manifest.json",
+    "warnings": {
+      "status": "complete",
+      "file": "warnings.geojson"
+    }
+  },
+  "manifest": {
+    "schema_version": 2,
+    "layers": {
+      "radar": {
+        "frames": [
+          {
+            "timestamp": "2023-03-24T23:00:00Z",
+            "path": "2023-03-24T23:00:00Z",
+            "palettes": [
+              "classic"
+            ],
+            "source": "mrms",
+            "kind": "observation",
+            "product": "MergedBaseReflectivityQC_00.50",
+            "unit": "dBZ",
+            "issued_at": "2023-03-24T23:00:00Z",
+            "lead_minutes": 0,
+            "spatial_resolution_km": 1.0,
+            "max_zoom": 7,
+            "playhead": "2023-03-24T23:00:00Z",
+            "revision": "contract-1"
+          }
+        ],
+        "timestamps": [
+          "2023-03-24T23:00:00Z"
+        ],
+        "latest": "2023-03-24T23:00:00Z",
+        "palettes": [
+          "classic"
+        ],
+        "title": "MRMS observed reflectivity",
+        "kind": "observation",
+        "unit": "dBZ",
+        "palette_key": "reflectivity",
+        "product": "MergedBaseReflectivityQC_00.50",
+        "coverage_report": "coverage.json"
+      },
+      "radar-composite": {
+        "frames": [
+          {
+            "timestamp": "2023-03-24T23:00:00Z",
+            "path": "2023-03-24T23:00:00Z",
+            "palettes": [
+              "classic"
+            ],
+            "source": "mrms",
+            "kind": "observation",
+            "product": "MergedReflectivityComposite_00.50",
+            "unit": "dBZ",
+            "issued_at": "2023-03-24T23:00:00Z",
+            "lead_minutes": 0,
+            "spatial_resolution_km": 1.0,
+            "max_zoom": 7,
+            "playhead": "2023-03-24T23:00:00Z",
+            "revision": "contract-1"
+          }
+        ],
+        "timestamps": [
+          "2023-03-24T23:00:00Z"
+        ],
+        "latest": "2023-03-24T23:00:00Z",
+        "palettes": [
+          "classic"
+        ],
+        "title": "MRMS composite reflectivity",
+        "kind": "observation",
+        "unit": "dBZ",
+        "palette_key": "reflectivity",
+        "product": "MergedReflectivityComposite_00.50",
+        "coverage_report": "coverage.json"
+      },
+      "hail-size": {
+        "frames": [
+          {
+            "timestamp": "2023-03-24T23:00:00Z",
+            "path": "2023-03-24T23:00:00Z",
+            "palettes": [
+              "classic"
+            ],
+            "source": "mrms",
+            "kind": "observation",
+            "product": "MESH_Max_60min_00.50",
+            "unit": "in",
+            "issued_at": "2023-03-24T23:00:00Z",
+            "lead_minutes": 0,
+            "spatial_resolution_km": 1.0,
+            "max_zoom": 7,
+            "playhead": "2023-03-24T23:00:00Z",
+            "revision": "contract-1"
+          }
+        ],
+        "timestamps": [
+          "2023-03-24T23:00:00Z"
+        ],
+        "latest": "2023-03-24T23:00:00Z",
+        "palettes": [
+          "classic"
+        ],
+        "title": "MRMS estimated hail size, past hour",
+        "kind": "observation",
+        "unit": "in",
+        "palette_key": "hail_size",
+        "product": "MESH_Max_60min_00.50",
+        "coverage_report": "coverage.json"
+      },
+      "rotation-track": {
+        "frames": [
+          {
+            "timestamp": "2023-03-24T23:00:00Z",
+            "path": "2023-03-24T23:00:00Z",
+            "palettes": [
+              "classic"
+            ],
+            "source": "mrms",
+            "kind": "observation",
+            "product": "RotationTrack60min_00.50",
+            "unit": "1/s",
+            "issued_at": "2023-03-24T23:00:00Z",
+            "lead_minutes": 0,
+            "spatial_resolution_km": 1.0,
+            "max_zoom": 7,
+            "playhead": "2023-03-24T23:00:00Z",
+            "revision": "contract-1"
+          }
+        ],
+        "timestamps": [
+          "2023-03-24T23:00:00Z"
+        ],
+        "latest": "2023-03-24T23:00:00Z",
+        "palettes": [
+          "classic"
+        ],
+        "title": "MRMS low-level rotation tracks, past hour",
+        "kind": "observation",
+        "unit": "1/s",
+        "palette_key": "rotation_track",
+        "product": "RotationTrack60min_00.50",
+        "coverage_report": "coverage.json"
+      },
+      "echo-top": {
+        "frames": [
+          {
+            "timestamp": "2023-03-24T23:00:00Z",
+            "path": "2023-03-24T23:00:00Z",
+            "palettes": [
+              "classic"
+            ],
+            "source": "mrms",
+            "kind": "observation",
+            "product": "EchoTop_18_00.50",
+            "unit": "kft",
+            "issued_at": "2023-03-24T23:00:00Z",
+            "lead_minutes": 0,
+            "spatial_resolution_km": 1.0,
+            "max_zoom": 7,
+            "playhead": "2023-03-24T23:00:00Z",
+            "revision": "contract-1"
+          }
+        ],
+        "timestamps": [
+          "2023-03-24T23:00:00Z"
+        ],
+        "latest": "2023-03-24T23:00:00Z",
+        "palettes": [
+          "classic"
+        ],
+        "title": "MRMS storm top height (18 dBZ)",
+        "kind": "observation",
+        "unit": "kft",
+        "palette_key": "echo_top",
+        "product": "EchoTop_18_00.50",
+        "coverage_report": "coverage.json"
+      },
+      "precip-24h": {
+        "frames": [
+          {
+            "timestamp": "2023-03-24T23:00:00Z",
+            "path": "2023-03-24T23:00:00Z",
+            "palettes": [
+              "classic"
+            ],
+            "source": "mrms",
+            "kind": "observation",
+            "product": "MultiSensor_QPE_24H_Pass1_00.00",
+            "unit": "in",
+            "issued_at": "2023-03-24T23:00:00Z",
+            "lead_minutes": 0,
+            "spatial_resolution_km": 1.0,
+            "max_zoom": 7,
+            "playhead": "2023-03-24T23:00:00Z",
+            "revision": "contract-1"
+          }
+        ],
+        "timestamps": [
+          "2023-03-24T23:00:00Z"
+        ],
+        "latest": "2023-03-24T23:00:00Z",
+        "palettes": [
+          "classic"
+        ],
+        "title": "MRMS observed precipitation, past 24 hours",
+        "kind": "observation",
+        "unit": "in",
+        "palette_key": "precip_accum",
+        "product": "MultiSensor_QPE_24H_Pass1_00.00",
+        "coverage_report": "coverage.json",
+        "retrospective": true
+      }
+    },
+    "tile_url_template": "/replays/rolling-fork-2023/contract-1/tiles/{layer}/{palette}/{path}/{z}/{x}/{y}.png",
+    "updated_at": "2023-03-24T23:00:00Z",
+    "generated_at": "2023-03-24T23:00:00Z",
+    "case": {
+      "id": "rolling-fork-2023",
+      "title": "Rolling Fork, Mississippi - March 24, 2023",
+      "summary": "EF4 tornado near Rolling Fork, Mississippi, overnight into March 25, 2023.",
+      "start": "2023-03-24T23:00:00Z",
+      "end": "2023-03-25T03:00:00Z",
+      "timezone": "America/Chicago",
+      "bounds": [
+        -92.0,
+        31.0,
+        -88.0,
+        35.0
+      ]
+    },
+    "revision": "contract-1",
+    "replay_schema_version": 1,
+    "public_ready": true,
+    "warnings": {
+      "status": "complete",
+      "file": "warnings.geojson"
+    }
+  }
+}
