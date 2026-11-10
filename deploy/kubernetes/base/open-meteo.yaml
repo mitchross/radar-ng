@@ -98,6 +98,8 @@ spec:
               value: /app/openmeteo-api
             - name: OPENMETEO_DATA_DIR
               value: /app/data
+            - name: OPENMETEO_PRUNE_DAYS
+              value: "7"
           # The image carries a static busybox for this probe (deploy/Dockerfile).
           livenessProbe:
             exec:

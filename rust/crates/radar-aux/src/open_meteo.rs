@@ -12,9 +12,9 @@
 
 use std::collections::VecDeque;
 use std::os::unix::process::ExitStatusExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use radar_core::time::round_digits;
 use radar_types::payloads::open_meteo::{OpenMeteoSyncArgs, OpenMeteoSyncResult};
@@ -22,7 +22,7 @@ use serde_json::json;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::time::{MissedTickBehavior, interval_at};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::beat::Beat;
 
@@ -40,7 +40,12 @@ pub struct OpenMeteoConfig {
     pub data_dir: PathBuf,
     /// Heartbeat period (30 s).
     pub heartbeat_every: Duration,
+    /// `OPENMETEO_PRUNE_DAYS` (default 7, 0 disables): chunk files older than this are deleted after a sync.
+    pub prune_days: i64,
 }
+
+/// Default for `OPENMETEO_PRUNE_DAYS`.
+pub const DEFAULT_PRUNE_DAYS: i64 = 7;
 
 impl OpenMeteoConfig {
     /// Reads `OPENMETEO_BIN` and `OPENMETEO_DATA_DIR` with the code defaults.
@@ -49,6 +54,13 @@ impl OpenMeteoConfig {
             bin: radar_core::env::path_var("OPENMETEO_BIN", "/app/openmeteo-api"),
             data_dir: radar_core::env::path_var("OPENMETEO_DATA_DIR", "/app/data"),
             heartbeat_every: Duration::from_secs(30),
+            prune_days: radar_core::env::int_var_clamped(
+                "OPENMETEO_PRUNE_DAYS",
+                DEFAULT_PRUNE_DAYS,
+                0,
+                3650,
+            )
+            .unwrap_or(DEFAULT_PRUNE_DAYS),
         }
     }
 
@@ -193,6 +205,7 @@ pub async fn open_meteo_sync(
         });
     }
     info!(model = %args.model, duration_s, "open-meteo sync ok");
+    prune_after_sync(cfg, args).await;
     Ok(OpenMeteoSyncResult {
         model: args.model.clone(),
         succeeded: true,
@@ -200,6 +213,64 @@ pub async fn open_meteo_sync(
         return_code: rc as i64,
         stderr_tail: String::new(),
     })
+}
+
+/// Prunes old chunks for the model that just synced; never fails the sync.
+async fn prune_after_sync(cfg: &OpenMeteoConfig, args: &OpenMeteoSyncArgs) {
+    if cfg.prune_days == 0 {
+        return;
+    }
+    if cfg.prune_days <= args.past_days {
+        warn!(model = %args.model, prune_days = cfg.prune_days, past_days = args.past_days, "OPENMETEO_PRUNE_DAYS <= past_days, skipping open-meteo prune");
+        return;
+    }
+    let dir = cfg.data_dir.join(&args.model);
+    let max_age = Duration::from_secs(cfg.prune_days as u64 * 86_400);
+    let result =
+        tokio::task::spawn_blocking(move || prune_model_dir(&dir, max_age, SystemTime::now()))
+            .await;
+    match result {
+        Ok(Ok((files, bytes))) => {
+            info!(model = %args.model, files_deleted = files, bytes_freed = bytes, "open-meteo prune");
+        }
+        Ok(Err(e)) => warn!(model = %args.model, error = %e, "open-meteo prune failed"),
+        Err(e) => warn!(model = %args.model, error = %e, "open-meteo prune task failed"),
+    }
+}
+
+/// Deletes `chunk_*.om` files older than `max_age` directly under `<model_dir>/<variable>/`, skipping `static`.
+/// Returns (files deleted, bytes freed).
+pub fn prune_model_dir(
+    model_dir: &Path,
+    max_age: Duration,
+    now: SystemTime,
+) -> std::io::Result<(u64, u64)> {
+    let (mut files, mut bytes) = (0u64, 0u64);
+    for var in std::fs::read_dir(model_dir)? {
+        let var = var?;
+        if var.file_name() == "static" || !var.file_type()?.is_dir() {
+            continue;
+        }
+        for entry in std::fs::read_dir(var.path())? {
+            let entry = entry?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if !(name.starts_with("chunk_") && name.ends_with(".om")) {
+                continue;
+            }
+            let meta = entry.metadata()?;
+            if !meta.is_file() {
+                continue;
+            }
+            let age = now.duration_since(meta.modified()?).unwrap_or_default();
+            if age > max_age {
+                std::fs::remove_file(entry.path())?;
+                files += 1;
+                bytes += meta.len();
+            }
+        }
+    }
+    Ok((files, bytes))
 }
 
 /// The exit code, or 0 when absent, with a signal reported as the negative signal number.
@@ -267,6 +338,7 @@ mod tests {
             bin: "/app/openmeteo-api".into(),
             data_dir: "/app/data".into(),
             heartbeat_every: Duration::from_secs(30),
+            prune_days: 7,
         };
         let args = OpenMeteoSyncArgs {
             model: "ncep_gfs013".into(),
@@ -285,5 +357,88 @@ mod tests {
             ]
         );
         assert_eq!(cfg.working_dir(), PathBuf::from("/app"));
+    }
+
+    const DAY: u64 = 86_400;
+
+    /// Writes a file of 10 bytes whose mtime is `age_days` old.
+    fn put(path: &Path, age_days: u64) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let f = std::fs::File::create(path).unwrap();
+        std::io::Write::write_all(&mut &f, b"0123456789").unwrap();
+        f.set_modified(SystemTime::now() - Duration::from_secs(age_days * DAY))
+            .unwrap();
+    }
+
+    fn prune_cfg(root: &Path, prune_days: i64) -> OpenMeteoConfig {
+        OpenMeteoConfig {
+            bin: "/nonexistent".into(),
+            data_dir: root.to_path_buf(),
+            heartbeat_every: Duration::from_secs(30),
+            prune_days,
+        }
+    }
+
+    fn sync_args(past_days: i64) -> OpenMeteoSyncArgs {
+        OpenMeteoSyncArgs {
+            model: "m".into(),
+            variables: "v".into(),
+            past_days,
+        }
+    }
+
+    fn layout(root: &Path) {
+        put(&root.join("m/temp/chunk_1.om"), 30);
+        put(&root.join("m/temp/chunk_2.om"), 1);
+        put(&root.join("m/static/HSURF.om"), 30);
+        put(&root.join("m/temp/notes.txt"), 30);
+        put(&root.join("other/temp/chunk_1.om"), 30);
+    }
+
+    #[tokio::test]
+    async fn prune_deletes_only_old_chunks_of_the_synced_model() {
+        let t = tempfile::tempdir().unwrap();
+        layout(t.path());
+        prune_after_sync(&prune_cfg(t.path(), 7), &sync_args(1)).await;
+        assert!(!t.path().join("m/temp/chunk_1.om").exists());
+        assert!(t.path().join("m/temp/chunk_2.om").exists());
+        assert!(t.path().join("m/static/HSURF.om").exists());
+        assert!(t.path().join("m/temp/notes.txt").exists());
+        assert!(t.path().join("other/temp/chunk_1.om").exists());
+    }
+
+    #[test]
+    fn prune_model_dir_reports_files_and_bytes() {
+        let t = tempfile::tempdir().unwrap();
+        layout(t.path());
+        let got = prune_model_dir(
+            &t.path().join("m"),
+            Duration::from_secs(7 * DAY),
+            SystemTime::now(),
+        )
+        .unwrap();
+        assert_eq!(got, (1, 10));
+    }
+
+    #[tokio::test]
+    async fn prune_is_disabled_at_zero() {
+        let t = tempfile::tempdir().unwrap();
+        layout(t.path());
+        prune_after_sync(&prune_cfg(t.path(), 0), &sync_args(1)).await;
+        assert!(t.path().join("m/temp/chunk_1.om").exists());
+    }
+
+    #[tokio::test]
+    async fn prune_is_skipped_when_not_above_past_days() {
+        let t = tempfile::tempdir().unwrap();
+        layout(t.path());
+        prune_after_sync(&prune_cfg(t.path(), 2), &sync_args(2)).await;
+        assert!(t.path().join("m/temp/chunk_1.om").exists());
+    }
+
+    #[tokio::test]
+    async fn prune_error_is_swallowed() {
+        let t = tempfile::tempdir().unwrap();
+        prune_after_sync(&prune_cfg(&t.path().join("missing"), 7), &sync_args(1)).await;
     }
 }
