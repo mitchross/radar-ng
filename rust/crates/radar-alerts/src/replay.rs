@@ -261,6 +261,40 @@ fn intersects(geometry: &Value, bounds: [f64; 4]) -> Result<bool> {
         .any(|&(x, y)| crate::alerts::point_in_geojson(x, y, map)))
 }
 
+fn resolve_bulletin(id: &str, response: &str) -> Result<String> {
+    let fields: Vec<_> = id.split('-').collect();
+    ensure!(
+        (4..=5).contains(&fields.len()) && fields[0].len() == 12,
+        "invalid bulletin identity {id}"
+    );
+    let mut matches = BTreeSet::new();
+    for product in response.split('\u{3}') {
+        let lines: Vec<_> = product.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            let header: Vec<_> = line.split_whitespace().collect();
+            if (3..=4).contains(&header.len())
+                && header[0] == fields[2]
+                && header[1] == fields[1]
+                && header[2] == &fields[0][6..]
+                && header.get(3).copied().unwrap_or("") == fields.get(4).copied().unwrap_or("")
+                && lines
+                    .get(i + 1)
+                    .is_some_and(|line| line.trim() == fields[3])
+            {
+                let canonical = lines[i..].join("\n").trim().to_owned();
+                matches.insert(canonical);
+                break;
+            }
+        }
+    }
+    ensure!(
+        matches.len() == 1,
+        "bulletin {id} has {} exact WMO/AWIPS matches",
+        matches.len()
+    );
+    Ok(matches.into_iter().next().expect("one matching bulletin"))
+}
+
 fn bulletin_labels(p: &RawProperties, bulletin: &Bulletin) -> Result<(bool, bool)> {
     let marker = format!(
         "/O.{}.K{}.{}.{}.{:04}.",
@@ -333,6 +367,7 @@ pub fn normalize(
         rows.push(f);
     }
     let mut resolved = BTreeMap::<(String, String), Feature>::new();
+    let mut seen = BTreeMap::<String, Feature>::new();
     for f in rows
         .into_iter()
         .filter(|f| selected.contains(&f.properties.key()))
@@ -342,6 +377,11 @@ pub fn normalize(
         let issued = NaiveDateTime::parse_from_str(&p.product_id[..12], "%Y%m%d%H%M")
             .context("invalid bulletin issuance time")?
             .and_utc();
+        ensure!(
+            p.status != "NEW" || issued <= source_begin,
+            "incomplete corrected NEW history for {}: original polygon is unavailable",
+            p.key()
+        );
         let begin = source_begin.max(issued);
         let mut finish = timestamp(&p.utc_polygon_end)?;
         if let Some(expire) = &p.utc_expire {
@@ -392,6 +432,13 @@ pub fn normalize(
                 is_pds,
             },
         };
+        if let Some(previous) = seen.insert(feature.id.clone(), feature.clone()) {
+            ensure!(
+                previous == feature,
+                "conflicting copies of warning version {}",
+                feature.id
+            );
+        }
         let key = (p.key(), utc_polygon_begin);
         if let Some(previous) = resolved.get(&key) {
             // IEM product IDs append the WMO correction sequence, such as CCA or CCB.
@@ -513,7 +560,10 @@ impl Fetcher {
             response.status()
         );
         ensure!(
-            !response.headers().contains_key("X-IEM-Notice"),
+            !response.headers().contains_key("X-IEM-Notice")
+                || url
+                    .query_pairs()
+                    .any(|(key, value)| key == "nolimit" && value == "true"),
             "ambiguous IEM bulletin {url}"
         );
         ensure!(
@@ -647,12 +697,9 @@ async fn import_from(case_id: &str, output: &Path, base: &str) -> Result<History
         .collect::<Result<_>>()?;
     let mut bulletins = BTreeMap::new();
     for id in products {
-        let url = format!("{base}/api/1/nwstext/{id}");
+        let url = format!("{base}/api/1/nwstext/{id}?nolimit=true");
         let text = String::from_utf8(fetcher.get(reqwest::Url::parse(&url)?).await?)?;
-        ensure!(
-            !text.contains('\u{3}'),
-            "multiple bulletin matches for {id}"
-        );
+        let text = resolve_bulletin(&id, &text)?;
         bulletins.insert(id, Bulletin::new(url, text));
     }
     let history = normalize(&case, &seed, &versions, bulletins, fetcher.sources)?;
@@ -708,7 +755,7 @@ mod tests {
         Query(query): Query<BTreeMap<String, String>>,
     ) -> Json<Value> {
         mock.queries.lock().unwrap().push(query.clone());
-        let features = if query.get("wfo").is_some() {
+        let features = if query.contains_key("wfo") {
             vec![feature()]
         } else {
             vec![]
@@ -723,8 +770,23 @@ mod tests {
         }
         (
             StatusCode::OK,
-            "/O.NEW.KJAN.TO.W.0001.230324T2250Z-230325T0030Z/\nordinary\n$$",
+            "WFUS54 KJAN 242250\nTORJAN\n/O.NEW.KJAN.TO.W.0001.230324T2250Z-230325T0030Z/\nordinary\n$$",
         )
+    }
+
+    #[test]
+    fn bulletin_bundles_match_exact_original_repeat_and_correction_headers() {
+        let original = "WWUS53 KOAX 211853\nSVSOAX\noriginal";
+        let repeat = "WWUS53 KOAX 211853 RRA\nSVSOAX\nrepeat";
+        let correction = "WWUS53 KOAX 211853 CCA\nSVSOAX\ncorrection";
+        let response = format!("935\n{repeat}\u{3}322\n{original}\u{3}{correction}\u{3}{original}");
+        for (suffix, expected) in [("", original), ("-RRA", repeat), ("-CCA", correction)] {
+            let id = format!("202405211853-KOAX-WWUS53-SVSOAX{suffix}");
+            assert_eq!(resolve_bulletin(&id, &response).unwrap(), expected);
+        }
+        let conflict = format!("{original}\u{3}{original} changed");
+        assert!(resolve_bulletin("202405211853-KOAX-WWUS53-SVSOAX", &conflict).is_err());
+        assert!(resolve_bulletin("202405211853-KOAX-WWUS53-SVSOAX-CCB", &response).is_err());
     }
 
     #[tokio::test]

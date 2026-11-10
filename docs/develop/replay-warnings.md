@@ -31,7 +31,10 @@ The cache includes those full histories, even outside the replay window, and reg
 
 Requests run sequentially. Each has a 45-second timeout and a 15-second connection timeout.
 Limits are 32 seed events, 512 requests, 4,096 input versions, 16 MiB per response, and 64 MiB total downloads.
-The output also has a 64 MiB cap. Redirects, ambiguous bulletin responses, and missing bulletin segments fail the import.
+The output also has a 64 MiB cap. Redirects and missing bulletin segments fail the import.
+Bulletin requests use `nolimit=true`, then select the exact WMO/AWIPS header and correction or repeat suffix.
+Identical matches collapse. Conflicting exact matches fail the import.
+Bulletin hashes cover the selected text. Request hashes cover the complete upstream response, including bundled products.
 There is no public import endpoint or client request to IEM.
 
 ## Schema for the read-only API
@@ -65,6 +68,8 @@ EXP renders until actual expiry. Every interval uses `begin <= playhead < end`, 
 Emergency and PDS flags come only from the contemporaneous bulletin segment matching that VTEC event and action.
 Lifetime maximum flags and snapshot labels never supply them. Missing or ambiguous segments fail validation.
 A later correction cannot apply its wording before its bulletin issue minute.
+If a NEW bulletin was issued after its polygon began, the import fails closed: IEM may have replaced the original polygon with a correction.
+Recovering that missing original geometry is outside this importer; never publish an invented pre-correction gap.
 
 The pure selector lives in [web/src/shared/replayWarnings.ts](../../web/src/shared/replayWarnings.ts).
 The [app re-export](../../frontend/src/lib/replayWarnings.ts) uses the same implementation.

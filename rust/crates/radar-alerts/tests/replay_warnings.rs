@@ -143,6 +143,52 @@ fn later_correction_does_not_apply_emergency_wording_retroactively() {
 }
 
 #[test]
+fn conflicting_inferior_versions_fail_in_both_orders() {
+    let (seed, mut versions, bulletins) = input();
+    let mut conflicting = versions[6].clone();
+    conflicting["geometry"]["coordinates"][0][1][0] = json!(-89.5);
+    versions.push(conflicting);
+    for _ in 0..2 {
+        let error = normalize(
+            &Case::named("rolling-fork-2023").unwrap(),
+            &seed,
+            &versions,
+            bulletins.clone(),
+            vec![],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("conflicting copies"));
+        versions.reverse();
+    }
+}
+
+#[test]
+fn corrected_new_without_original_history_fails_closed() {
+    let (seed, mut versions, mut bulletins) = input();
+    let original = versions[4]["properties"]["product_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let corrected = "202303242347-KJAN-WUUS54-SVRJAN-CCA";
+    versions[4]["properties"]["product_id"] = json!(corrected);
+    let bulletin = bulletins.remove(&original).unwrap();
+    bulletins.insert(corrected.into(), bulletin);
+    let error = normalize(
+        &Case::named("rolling-fork-2023").unwrap(),
+        &seed,
+        &versions,
+        bulletins,
+        vec![],
+    )
+    .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("incomplete corrected NEW history")
+    );
+}
+
+#[test]
 fn zero_duration_cancellation_still_ends_the_previous_version() {
     let (seed, mut versions, bulletins) = input();
     versions[5]["properties"]["utc_polygon_end"] =
