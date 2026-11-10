@@ -88,3 +88,5 @@ palette. It needs cargo, jq and network access to `noaa-mrms-pds` and `noaa-hrrr
 non-zero on any failure. Run it locally from the repository root the same way.
 
 The k6 load test against the cluster is in [`load/`](../load/README.md).
+
+Historical MRMS groundwork uses the operator-only [replay importer](../docs/develop/replay-importer.md).

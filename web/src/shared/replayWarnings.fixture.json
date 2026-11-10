@@ -1,0 +1,447 @@
+{
+  "history": {
+    "type": "FeatureCollection",
+    "schema_version": 1,
+    "case_id": "rolling-fork-2023",
+    "start": "2023-03-24T23:00:00Z",
+    "end": "2023-03-25T03:00:00Z",
+    "bounds": [
+      -92,
+      31,
+      -88,
+      35
+    ],
+    "seed": [
+      {
+        "type": "Feature",
+        "id": "2023.JAN.TO.W.1/202303242250-KJAN-WFUS54-TORJAN/2023-03-24T22:50:00Z",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -91,
+                32
+              ],
+              [
+                -90,
+                32
+              ],
+              [
+                -90,
+                33
+              ],
+              [
+                -91,
+                33
+              ],
+              [
+                -91,
+                32
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "year": 2023,
+          "wfo": "JAN",
+          "phenomena": "TO",
+          "significance": "W",
+          "eventid": 1,
+          "event": "Tornado Warning",
+          "status": "NEW",
+          "product_id": "202303242250-KJAN-WFUS54-TORJAN",
+          "utc_polygon_begin": "2023-03-24T22:50:00Z",
+          "utc_polygon_end": "2023-03-24T23:30:00Z",
+          "is_emergency": false,
+          "is_pds": false
+        }
+      }
+    ],
+    "features": [
+      {
+        "type": "Feature",
+        "id": "2023.JAN.TO.W.1/202303242250-KJAN-WFUS54-TORJAN/2023-03-24T22:50:00Z",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -91,
+                32
+              ],
+              [
+                -90,
+                32
+              ],
+              [
+                -90,
+                33
+              ],
+              [
+                -91,
+                33
+              ],
+              [
+                -91,
+                32
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "year": 2023,
+          "wfo": "JAN",
+          "phenomena": "TO",
+          "significance": "W",
+          "eventid": 1,
+          "event": "Tornado Warning",
+          "status": "NEW",
+          "product_id": "202303242250-KJAN-WFUS54-TORJAN",
+          "utc_polygon_begin": "2023-03-24T22:50:00Z",
+          "utc_polygon_end": "2023-03-24T23:30:00Z",
+          "is_emergency": false,
+          "is_pds": false
+        }
+      },
+      {
+        "type": "Feature",
+        "id": "2023.JAN.TO.W.1/202303242330-KJAN-WWUS54-SVSJAN/2023-03-24T23:30:00Z",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -91,
+                32
+              ],
+              [
+                -90,
+                32
+              ],
+              [
+                -90,
+                33
+              ],
+              [
+                -91,
+                33
+              ],
+              [
+                -91,
+                32
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "year": 2023,
+          "wfo": "JAN",
+          "phenomena": "TO",
+          "significance": "W",
+          "eventid": 1,
+          "event": "Tornado Warning",
+          "status": "CON",
+          "product_id": "202303242330-KJAN-WWUS54-SVSJAN",
+          "utc_polygon_begin": "2023-03-24T23:30:00Z",
+          "utc_polygon_end": "2023-03-25T00:00:00Z",
+          "is_emergency": false,
+          "is_pds": false
+        }
+      },
+      {
+        "type": "Feature",
+        "id": "2023.JAN.TO.W.1/202303250000-KJAN-WWUS54-SVSJAN-CCA/2023-03-25T00:00:00Z",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -91,
+                32
+              ],
+              [
+                -90,
+                32
+              ],
+              [
+                -90,
+                33
+              ],
+              [
+                -91,
+                33
+              ],
+              [
+                -91,
+                32
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "year": 2023,
+          "wfo": "JAN",
+          "phenomena": "TO",
+          "significance": "W",
+          "eventid": 1,
+          "event": "Tornado Warning",
+          "status": "CON",
+          "product_id": "202303250000-KJAN-WWUS54-SVSJAN-CCA",
+          "utc_polygon_begin": "2023-03-25T00:00:00Z",
+          "utc_polygon_end": "2023-03-25T00:20:00Z",
+          "is_emergency": true,
+          "is_pds": true
+        }
+      },
+      {
+        "type": "Feature",
+        "id": "2023.JAN.TO.W.1/202303250020-KJAN-WWUS54-SVSJAN/2023-03-25T00:20:00Z",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -91,
+                32
+              ],
+              [
+                -90,
+                32
+              ],
+              [
+                -90,
+                33
+              ],
+              [
+                -91,
+                33
+              ],
+              [
+                -91,
+                32
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "year": 2023,
+          "wfo": "JAN",
+          "phenomena": "TO",
+          "significance": "W",
+          "eventid": 1,
+          "event": "Tornado Warning",
+          "status": "EXP",
+          "product_id": "202303250020-KJAN-WWUS54-SVSJAN",
+          "utc_polygon_begin": "2023-03-25T00:20:00Z",
+          "utc_polygon_end": "2023-03-25T00:30:00Z",
+          "is_emergency": false,
+          "is_pds": false
+        }
+      },
+      {
+        "type": "Feature",
+        "id": "2023.JAN.SV.W.2/202303242345-KJAN-WUUS54-SVRJAN/2023-03-24T23:45:00Z",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -91,
+                32
+              ],
+              [
+                -90,
+                32
+              ],
+              [
+                -90,
+                33
+              ],
+              [
+                -91,
+                33
+              ],
+              [
+                -91,
+                32
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "year": 2023,
+          "wfo": "JAN",
+          "phenomena": "SV",
+          "significance": "W",
+          "eventid": 2,
+          "event": "Severe Thunderstorm Warning",
+          "status": "NEW",
+          "product_id": "202303242345-KJAN-WUUS54-SVRJAN",
+          "utc_polygon_begin": "2023-03-24T23:45:00Z",
+          "utc_polygon_end": "2023-03-25T00:05:00Z",
+          "is_emergency": false,
+          "is_pds": false
+        }
+      },
+      {
+        "type": "Feature",
+        "id": "2023.JAN.SV.W.2/202303250005-KJAN-WWUS54-SVSJAN/2023-03-25T00:05:00Z",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -91,
+                32
+              ],
+              [
+                -90,
+                32
+              ],
+              [
+                -90,
+                33
+              ],
+              [
+                -91,
+                33
+              ],
+              [
+                -91,
+                32
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "year": 2023,
+          "wfo": "JAN",
+          "phenomena": "SV",
+          "significance": "W",
+          "eventid": 2,
+          "event": "Severe Thunderstorm Warning",
+          "status": "CAN",
+          "product_id": "202303250005-KJAN-WWUS54-SVSJAN",
+          "utc_polygon_begin": "2023-03-25T00:05:00Z",
+          "utc_polygon_end": "2023-03-25T00:30:00Z",
+          "is_emergency": false,
+          "is_pds": false
+        }
+      },
+      {
+        "type": "Feature",
+        "id": "2023.JAN.FF.W.3/202303250000-KJAN-WGUS54-FFWJAN/2023-03-25T00:00:00Z",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [
+                -91,
+                32
+              ],
+              [
+                -90,
+                32
+              ],
+              [
+                -90,
+                33
+              ],
+              [
+                -91,
+                33
+              ],
+              [
+                -91,
+                32
+              ]
+            ]
+          ]
+        },
+        "properties": {
+          "year": 2023,
+          "wfo": "JAN",
+          "phenomena": "FF",
+          "significance": "W",
+          "eventid": 3,
+          "event": "Flash Flood Warning",
+          "status": "NEW",
+          "product_id": "202303250000-KJAN-WGUS54-FFWJAN",
+          "utc_polygon_begin": "2023-03-25T00:00:00Z",
+          "utc_polygon_end": "2023-03-25T00:15:00Z",
+          "is_emergency": false,
+          "is_pds": false
+        }
+      }
+    ],
+    "bulletins": {},
+    "sources": []
+  },
+  "cases": [
+    {
+      "time": "2023-03-24T22:59:59Z",
+      "expected": []
+    },
+    {
+      "time": "2023-03-24T23:00:00Z",
+      "expected": [
+        "1/NEW/false/false"
+      ]
+    },
+    {
+      "time": "2023-03-24T23:29:59Z",
+      "expected": [
+        "1/NEW/false/false"
+      ]
+    },
+    {
+      "time": "2023-03-24T23:30:00Z",
+      "expected": [
+        "1/CON/false/false"
+      ]
+    },
+    {
+      "time": "2023-03-24T23:59:59Z",
+      "expected": [
+        "1/CON/false/false",
+        "2/NEW/false/false"
+      ]
+    },
+    {
+      "time": "2023-03-25T00:00:00Z",
+      "expected": [
+        "1/CON/true/true",
+        "2/NEW/false/false",
+        "3/NEW/false/false"
+      ]
+    },
+    {
+      "time": "2023-03-25T00:05:00Z",
+      "expected": [
+        "1/CON/true/true",
+        "3/NEW/false/false"
+      ]
+    },
+    {
+      "time": "2023-03-25T00:15:00Z",
+      "expected": [
+        "1/CON/true/true"
+      ]
+    },
+    {
+      "time": "2023-03-25T00:20:00Z",
+      "expected": [
+        "1/EXP/false/false"
+      ]
+    },
+    {
+      "time": "2023-03-25T00:30:00Z",
+      "expected": []
+    },
+    {
+      "time": "2023-03-25T03:00:00Z",
+      "expected": []
+    }
+  ]
+}

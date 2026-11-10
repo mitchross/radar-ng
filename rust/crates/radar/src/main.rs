@@ -28,6 +28,8 @@ enum Cmd {
     Api,
     /// Run the private, gated Level II numeric demand tracer.
     Level2Numeric(radar_level2::tracer::TraceArgs),
+    /// Import isolated historical MRMS cases (operator only).
+    Replay(radar_replay::ReplayArgs),
     /// Run a Temporal worker for one role.
     Worker {
         /// Worker role; overrides WORKER_ROLE.
@@ -40,6 +42,8 @@ enum Cmd {
     Watchdog,
     /// Operator diagnostics.
     Debug(radar_debug::DebugArgs),
+    /// Cache bounded IEM warning histories for an allowlisted replay case.
+    ImportReplayWarnings { case: String, output: PathBuf },
     /// Decode, render and detect storms for one MRMS GRIB2 file; print timings.
     RenderOnce {
         grib: PathBuf,
@@ -78,10 +82,12 @@ fn main() -> anyhow::Result<()> {
 
     let service = match &cli.cmd {
         Cmd::Api => "radar-api",
+        Cmd::Replay(_) => "radar-replay",
         Cmd::Worker { .. } | Cmd::Seed | Cmd::Watchdog => "radar-worker",
         Cmd::Debug(_) => "radar-debug",
         Cmd::RenderOnce { .. } => "radar-render-once",
         Cmd::Level2Numeric(_) => "radar-level2",
+        Cmd::ImportReplayWarnings { .. } => "radar-replay-warnings",
         Cmd::Parity(_) => unreachable!("handled above"),
     };
     // The debug harness prints its own report; keep logs quiet there unless LOG_LEVEL says otherwise.
@@ -97,6 +103,7 @@ fn main() -> anyhow::Result<()> {
 
     rt.block_on(async move {
         match cli.cmd {
+            Cmd::Replay(args) => radar_replay::run(args).await,
             Cmd::Api => radar_api::serve(radar_api::Config::from_env()?).await,
             Cmd::Level2Numeric(args) => radar_level2::tracer::run(args).await,
             Cmd::Worker { .. } => {
@@ -118,6 +125,19 @@ fn main() -> anyhow::Result<()> {
                 std::process::exit(code);
             }
             Cmd::Parity(_) => unreachable!("handled above"),
+            Cmd::ImportReplayWarnings { case, output } => {
+                let history = radar_alerts::replay::import(&case, &output).await?;
+                println!(
+                    "{}: {} seed polygons, {} versions, {} bulletins, {} requests -> {}",
+                    history.case_id,
+                    history.seed.len(),
+                    history.features.len(),
+                    history.bulletins.len(),
+                    history.sources.len(),
+                    output.display()
+                );
+                Ok(())
+            }
             Cmd::RenderOnce {
                 grib,
                 out_dir,

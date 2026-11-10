@@ -302,3 +302,16 @@ fn reports_all_eighteen_layers_swept() {
     assert_eq!(res.tile_dirs_removed, 0);
     assert_eq!(res.grid_files_removed, 0);
 }
+
+#[test]
+fn replay_root_is_never_swept() {
+    let e = env();
+    let revision = e.tile.join("replays/greenfield-2024/r1");
+    mkdir(&revision.join("tiles/radar/classic"));
+    fs::write(revision.join("manifest.json"), b"{}\n").unwrap();
+    set_mtime_hours_ago(&revision, 100.0);
+
+    let res = tile_cleanup_sweep_at(&e.cfg, SystemTime::now()).unwrap();
+    assert!(revision.join("manifest.json").exists(), "replay root kept");
+    assert_eq!(res.tile_dirs_removed, 0);
+}

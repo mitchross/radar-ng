@@ -2667,11 +2667,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "radar-alerts",
  "radar-api",
  "radar-core",
  "radar-debug",
  "radar-ingest",
  "radar-level2",
+ "radar-replay",
  "radar-worker",
  "tokio",
  "tracing",
@@ -2684,6 +2686,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "chrono",
  "futures-util",
  "jsonwebtoken",
  "radar-core",
@@ -2692,6 +2695,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror",
  "tokio",
@@ -2922,6 +2926,30 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "radar-replay"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "clap",
+ "radar-aux",
+ "radar-core",
+ "radar-geo",
+ "radar-grib",
+ "radar-ingest",
+ "radar-tiler",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "walkdir",
 ]
 
 [[package]]

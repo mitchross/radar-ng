@@ -18,6 +18,7 @@
 pub mod alerts;
 pub mod lightning;
 pub mod push;
+pub mod replay;
 pub mod storm_watch;
 
 pub use alerts::{WatchCenter, WatchSignaler};

@@ -1,0 +1,31 @@
+[package]
+name = "radar-replay"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "radar-ng famous-storm replay: bounded case importer (design famous-storm-replay)"
+
+[dependencies]
+radar-core.workspace = true
+radar-geo.workspace = true
+radar-grib.workspace = true
+radar-tiler.workspace = true
+radar-ingest.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rustix.workspace = true
+walkdir.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+radar-aux.workspace = true
+axum.workspace = true
+
+[build-dependencies]
+sha2.workspace = true
