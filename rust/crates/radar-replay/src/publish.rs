@@ -768,7 +768,8 @@ mod tests {
     fn refuses_bad_warnings() {
         let env = env("greenfield-2024");
         let good: Value = serde_json::from_slice(&fs::read(&env.warnings).unwrap()).unwrap();
-        let cases: Vec<(&str, Box<dyn Fn(&mut Value)>)> = vec![
+        type Change = Box<dyn Fn(&mut Value)>;
+        let cases: Vec<(&str, Change)> = vec![
             (
                 "different case",
                 Box::new(|v| v["case_id"] = json!("rolling-fork-2023")),
