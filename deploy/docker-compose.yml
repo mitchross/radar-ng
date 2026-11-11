@@ -189,6 +189,7 @@ services:
       TEMPORAL_GRACEFUL_SHUTDOWN_S: "25"
       OPENMETEO_BIN: /app/openmeteo-api
       OPENMETEO_DATA_DIR: /app/data
+      OPENMETEO_PRUNE_DAYS: "7"
     depends_on:
       temporal:
         condition: service_healthy

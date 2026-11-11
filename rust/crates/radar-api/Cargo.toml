@@ -11,6 +11,7 @@ radar-types.workspace = true
 radar-core.workspace = true
 radar-storms.workspace = true
 radar-alerts.workspace = true
+radar-replay.workspace = true
 
 anyhow.workspace = true
 tracing.workspace = true
