@@ -1,6 +1,13 @@
-use crate::{JOB_RESERVATION, OBJECT_LIMIT};
+use crate::{HOT_LIMIT, JOB_RESERVATION, OBJECT_LIMIT, RENDER_JOBS};
 use anyhow::{Result, ensure};
 use tokio_postgres::{Client, NoTls};
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Reservation {
+    Granted,
+    Full,
+    Duplicate,
+}
 
 pub struct Pool {
     pub client: Client,
@@ -37,6 +44,10 @@ impl Pool {
             INSERT INTO {s}.decodes(slot) VALUES(1),(2) ON CONFLICT DO NOTHING;
             CREATE TABLE IF NOT EXISTS {s}.objects(id text PRIMARY KEY,bytes bigint NOT NULL CHECK(bytes>0));
             CREATE TABLE IF NOT EXISTS {s}.sweeps(station text NOT NULL,scan_end timestamptz NOT NULL,identity text NOT NULL,commit_key text NOT NULL,indexed boolean NOT NULL DEFAULT true,PRIMARY KEY(station,scan_end));
+            CREATE TABLE IF NOT EXISTS {s}.reservations(id text PRIMARY KEY,kind text NOT NULL CHECK(kind IN('sweep','render')),bytes bigint NOT NULL CHECK(bytes>0));
+            CREATE TABLE IF NOT EXISTS {s}.renders(slot integer PRIMARY KEY CHECK(slot BETWEEN 1 AND 2),owner text);
+            INSERT INTO {s}.renders(slot) VALUES(1),(2) ON CONFLICT DO NOTHING;
+            CREATE TABLE IF NOT EXISTS {s}.tiles(key text PRIMARY KEY,sha256 text NOT NULL,bytes bigint NOT NULL,transparent boolean NOT NULL);
             CREATE TABLE IF NOT EXISTS {s}.health(station text PRIMARY KEY,document text NOT NULL);
             CREATE TABLE IF NOT EXISTS {s}.catalogue(id boolean PRIMARY KEY DEFAULT true CHECK(id),document text NOT NULL);
         ")).await?;
@@ -79,9 +90,19 @@ impl Pool {
             .await?;
         Ok(())
     }
-    pub async fn decode(&self) -> Result<Option<String>> {
+    /// Claims one of two decode slots if the shared 1 GiB sweep budget has room.
+    pub async fn decode(&mut self) -> Result<Option<String>> {
         let owner = uuid::Uuid::new_v4().to_string();
-        let row=self.client.query_opt(&format!("UPDATE {}.decodes SET owner=$1,bytes=$2 WHERE slot=(SELECT slot FROM {}.decodes WHERE owner IS NULL ORDER BY slot FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING slot",self.schema,self.schema),&[&owner,&(JOB_RESERVATION as i64)]).await?;
+        let s = &self.schema;
+        let tx = self.client.transaction().await?;
+        tx.query_one("SELECT pg_advisory_xact_lock(288,4)", &[])
+            .await?;
+        let used = hot_used(&tx, s).await?;
+        if used + JOB_RESERVATION as i64 > HOT_LIMIT as i64 {
+            return Ok(None);
+        }
+        let row=tx.query_opt(&format!("UPDATE {s}.decodes SET owner=$1,bytes=$2 WHERE slot=(SELECT slot FROM {s}.decodes WHERE owner IS NULL ORDER BY slot FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING slot"),&[&owner,&(JOB_RESERVATION as i64)]).await?;
+        tx.commit().await?;
         Ok(row.map(|_| owner))
     }
     pub async fn release_decode(&self, owner: &str) -> Result<()> {
@@ -95,6 +116,111 @@ impl Pool {
             )
             .await?;
         Ok(())
+    }
+    /// Reserves `bytes` of the pool-wide sweep (1 GiB, shared with decodes) or render (512 MiB) budget.
+    pub async fn reserve(
+        &mut self,
+        kind: &str,
+        id: &str,
+        bytes: i64,
+        cap: i64,
+    ) -> Result<Reservation> {
+        ensure!(
+            bytes > 0 && matches!(kind, "sweep" | "render"),
+            "invalid reservation"
+        );
+        let s = &self.schema;
+        let tx = self.client.transaction().await?;
+        tx.query_one("SELECT pg_advisory_xact_lock(288,4)", &[])
+            .await?;
+        let used = if kind == "sweep" {
+            hot_used(&tx, s).await?
+        } else {
+            tx.query_one(&format!("SELECT COALESCE(sum(bytes),0)::bigint FROM {s}.reservations WHERE kind='render'"), &[]).await?.get(0)
+        };
+        if used.checked_add(bytes).is_none_or(|n| n > cap) {
+            return Ok(Reservation::Full);
+        }
+        let inserted = tx.execute(&format!("INSERT INTO {s}.reservations(id,kind,bytes) VALUES($1,$2,$3) ON CONFLICT DO NOTHING"), &[&id, &kind, &bytes]).await?;
+        tx.commit().await?;
+        Ok(if inserted == 1 {
+            Reservation::Granted
+        } else {
+            Reservation::Duplicate
+        })
+    }
+    /// Shrinks a reservation; growth must go through a new `reserve`.
+    pub async fn shrink(&self, id: &str, bytes: i64) -> Result<()> {
+        let n = self
+            .client
+            .execute(
+                &format!(
+                    "UPDATE {}.reservations SET bytes=$2 WHERE id=$1 AND bytes>=$2 AND $2>0",
+                    self.schema
+                ),
+                &[&id, &bytes],
+            )
+            .await?;
+        ensure!(n == 1, "reservation shrink");
+        Ok(())
+    }
+    pub async fn release(&self, id: &str) -> Result<()> {
+        self.client
+            .execute(
+                &format!("DELETE FROM {}.reservations WHERE id=$1", self.schema),
+                &[&id],
+            )
+            .await?;
+        Ok(())
+    }
+    pub async fn render_permit(&self) -> Result<Option<String>> {
+        let owner = uuid::Uuid::new_v4().to_string();
+        let s = &self.schema;
+        let row=self.client.query_opt(&format!("UPDATE {s}.renders SET owner=$1 WHERE slot=(SELECT slot FROM {s}.renders WHERE owner IS NULL AND slot<=$2 ORDER BY slot FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING slot"),&[&owner,&(RENDER_JOBS as i32)]).await?;
+        Ok(row.map(|_| owner))
+    }
+    pub async fn release_render(&self, owner: &str) -> Result<()> {
+        self.client
+            .execute(
+                &format!(
+                    "UPDATE {}.renders SET owner=NULL WHERE owner=$1",
+                    self.schema
+                ),
+                &[&owner],
+            )
+            .await?;
+        Ok(())
+    }
+    pub async fn put_tile(
+        &self,
+        key: &str,
+        sha256: &str,
+        bytes: i64,
+        transparent: bool,
+    ) -> Result<()> {
+        self.client
+            .execute(
+                &format!(
+                    "INSERT INTO {}.tiles VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",
+                    self.schema
+                ),
+                &[&key, &sha256, &bytes, &transparent],
+            )
+            .await?;
+        Ok(())
+    }
+    pub async fn tile(&self, key: &str) -> Result<Option<(String, i64, bool)>> {
+        Ok(self
+            .client
+            .query_opt(
+                &format!(
+                    "SELECT sha256,bytes,transparent FROM {}.tiles WHERE key=$1",
+                    self.schema
+                ),
+                &[&key],
+            )
+            .await?
+            .map(|r| (r.get(0), r.get(1), r.get(2))))
     }
     pub async fn reserve_objects(&mut self, id: &str, bytes: i64) -> Result<()> {
         ensure!(bytes > 0 && bytes <= OBJECT_LIMIT, "object quota");
@@ -117,7 +243,7 @@ impl Pool {
         );
         tx.execute(
             &format!(
-                "INSERT INTO {}.objects(id,bytes) VALUES($1,$2)",
+                "INSERT INTO {}.objects(id,bytes) VALUES($1,$2) ON CONFLICT(id) DO NOTHING",
                 self.schema
             ),
             &[&id, &bytes],
@@ -203,6 +329,10 @@ impl Pool {
         self.client.execute(&format!("INSERT INTO {}.catalogue(document) VALUES($1) ON CONFLICT(id) DO UPDATE SET document=excluded.document",self.schema),&[&serde_json::to_string(c)?]).await?;
         Ok(())
     }
+}
+
+async fn hot_used(tx: &tokio_postgres::Transaction<'_>, s: &str) -> Result<i64> {
+    Ok(tx.query_one(&format!("SELECT ((SELECT COALESCE(sum(bytes),0) FROM {s}.decodes)+(SELECT COALESCE(sum(bytes),0) FROM {s}.reservations WHERE kind='sweep'))::bigint"), &[]).await?.get(0))
 }
 
 #[cfg(test)]

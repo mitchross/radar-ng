@@ -247,7 +247,7 @@ fn array(
     }
     Ok(())
 }
-async fn write_verified(store: &dyn ObjectStore, key: &str, bytes: &[u8]) -> Result<()> {
+pub(crate) async fn write_verified(store: &dyn ObjectStore, key: &str, bytes: &[u8]) -> Result<()> {
     let path = Path::from(key);
     store
         .put_opts(&path, bytes.to_vec().into(), PutMode::Create.into())
@@ -260,8 +260,113 @@ async fn write_verified(store: &dyn ObjectStore, key: &str, bytes: &[u8]) -> Res
     Ok(())
 }
 pub async fn verify(store: &dyn ObjectStore, key: &str) -> Result<Commit> {
-    let commit: Commit =
-        serde_json::from_slice(&read_bounded(store, &Path::from(key), 2 * 1024 * 1024).await?)?;
+    Ok(verify_collect(store, key, |_| false).await?.0)
+}
+
+/// Bytes the tile sampler retains from an artifact: REF, REF QC, offsets, ray angles, metadata.
+fn wanted(relative: &str) -> bool {
+    relative == ".zattrs"
+        || [
+            "azimuth_deg/",
+            "elevation_deg/",
+            "REF/",
+            "REF_qc/",
+            "REF_offsets/",
+        ]
+        .iter()
+        .any(|p| relative.starts_with(p))
+}
+
+pub async fn read_commit(store: &dyn ObjectStore, key: &str) -> Result<Commit> {
+    Ok(serde_json::from_slice(
+        &read_bounded(store, &Path::from(key), 2 * 1024 * 1024).await?,
+    )?)
+}
+
+/// Raw bytes `load` will hold at once for this commit.
+pub fn wanted_bytes(commit: &Commit) -> usize {
+    commit
+        .entries
+        .iter()
+        .filter(|e| {
+            e.key
+                .rsplit_once("/sweeps/")
+                .is_some_and(|(_, r)| r.splitn(4, '/').nth(3).is_some_and(wanted))
+        })
+        .map(|e| e.bytes)
+        .sum()
+}
+
+/// Verifies every object, then rebuilds the REF polar sweep the tile sampler needs.
+pub async fn load(
+    store: &dyn ObjectStore,
+    key: &str,
+) -> Result<(Commit, crate::polar::PolarSweep)> {
+    let (commit, kept) = verify_collect(store, key, wanted).await?;
+    let get = |name: &str| kept.get(name).with_context(|| format!("missing {name}"));
+    let attributes: serde_json::Value = serde_json::from_slice(get(".zattrs")?)?;
+    let site = &attributes["site"];
+    let site = (
+        site["latitude_deg"]
+            .as_f64()
+            .context("missing site latitude")?,
+        site["longitude_deg"]
+            .as_f64()
+            .context("missing site longitude")?,
+    );
+    let rays = attributes["rays"].as_array().context("missing rays")?;
+    let join = |name: &str, shape: usize, width: usize| -> Result<Vec<u8>> {
+        let mut bytes = Vec::with_capacity(shape * width);
+        let mut index = 0;
+        while bytes.len() < shape * width {
+            bytes.extend_from_slice(get(&format!("{name}/{index}"))?);
+            index += 1;
+        }
+        bytes.truncate(shape * width);
+        Ok(bytes)
+    };
+    let f32s = |b: Vec<u8>| -> Vec<f32> {
+        b.chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect()
+    };
+    let azimuth = f32s(join("azimuth_deg", rays.len(), 4)?);
+    let elevation = f32s(join("elevation_deg", rays.len(), 4)?);
+    let offsets: Vec<u64> = join("REF_offsets", rays.len() + 1, 8)?
+        .chunks_exact(8)
+        .map(|c| u64::from_le_bytes(c.try_into().expect("8 bytes")))
+        .collect();
+    let gates = *offsets.last().context("missing offsets")? as usize;
+    let values = f32s(join("REF", gates, 4)?);
+    let qc = join("REF_qc", gates, 1)?;
+    let mut inputs = Vec::with_capacity(rays.len());
+    for (i, ray) in rays.iter().enumerate() {
+        let m = &ray["moments"][0];
+        let count = (offsets[i + 1].checked_sub(offsets[i])).context("offset order")? as usize;
+        let field = |name: &str| m[name].as_i64().map(|v| v as i16);
+        ensure!(m.is_null() == (count == 0), "ray gate count mismatch");
+        inputs.push(crate::polar::RayInput {
+            azimuth_deg: azimuth[i],
+            elevation_deg: elevation[i],
+            spacing_deg: ray["azimuth_spacing_deg"]
+                .as_f64()
+                .context("missing spacing")? as f32,
+            first_gate_m: field("first_gate_m").unwrap_or(0),
+            gate_m: field("spacing_m").unwrap_or(0),
+            gates: count,
+        });
+    }
+    let sweep = crate::polar::PolarSweep::new(commit.identity.clone(), site, &inputs, values, qc)?;
+    Ok((commit, sweep))
+}
+
+async fn verify_collect(
+    store: &dyn ObjectStore,
+    key: &str,
+    keep: impl Fn(&str) -> bool,
+) -> Result<(Commit, std::collections::BTreeMap<String, Vec<u8>>)> {
+    let mut kept = std::collections::BTreeMap::new();
+    let commit: Commit = read_commit(store, key).await?;
     ensure!(
         commit.schema_version == 1 && !commit.entries.is_empty() && commit.entries.len() <= 4096,
         "invalid numeric commit"
@@ -309,6 +414,7 @@ pub async fn verify(store: &dyn ObjectStore, key: &str) -> Result<Commit> {
             bytes.len() == entry.bytes && crate::checksum(&bytes) == entry.sha256,
             "artifact checksum/length mismatch"
         );
+        let keep_it = keep(relative);
         if let Some(array) = relative.strip_suffix("/.zarray") {
             let metadata: serde_json::Value = serde_json::from_slice(&bytes)?;
             let shape = metadata["shape"][0]
@@ -365,6 +471,9 @@ pub async fn verify(store: &dyn ObjectStore, key: &str) -> Result<Commit> {
             );
             attributes = Some(metadata);
         }
+        if keep_it {
+            kept.insert((*relative).to_owned(), bytes);
+        }
     }
     let attributes = attributes.context("missing artifact attributes")?;
     let rays = attributes["rays"].as_array().context("missing rays")?;
@@ -405,10 +514,14 @@ pub async fn verify(store: &dyn ObjectStore, key: &str) -> Result<Commit> {
             }
         }
     }
-    Ok(commit)
+    Ok((commit, kept))
 }
 
-async fn read_bounded(store: &dyn ObjectStore, path: &Path, limit: usize) -> Result<Vec<u8>> {
+pub(crate) async fn read_bounded(
+    store: &dyn ObjectStore,
+    path: &Path,
+    limit: usize,
+) -> Result<Vec<u8>> {
     let result = store.get(path).await?;
     ensure!(result.meta.size <= limit as u64, "artifact read size limit");
     let mut stream = result.into_stream();
