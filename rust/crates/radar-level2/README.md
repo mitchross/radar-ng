@@ -1,4 +1,4 @@
-# Level II numeric tracer
+# Level II numeric and tile tracer
 
 Slice A of [issue #288](https://github.com/mitchross/radar-ng/issues/288) implements the
 [approved design](../../../docs/develop/design/level2-close-up.md)'s private numeric path.
@@ -15,6 +15,53 @@ The request supplies a centre and one valid z8–13 XYZ. Only KGRR is enabled fo
 Catalogue selection bounds candidates to three within 150 km and breaks distance ties by station ID.
 The feed-capable allowlist includes KGRR, KDTX, KLOT and KAPX, verified with anonymous chunk listings.
 Adding a catalogue station does not enable it. Both clients continue using MRMS.
+
+## Tile tracer (slice B)
+
+[Issue #289](https://github.com/mitchross/radar-ng/issues/289) adds one requested z8–13 tile from a verified artifact.
+`LEVEL2_TILE_ENABLED` (default false) gates it, on top of the numeric gate. No route, schedule, worker role or client uses it.
+
+```text
+verified commit -> artifact::load (checksums, REF + QC + geometry) -> hot sweep (PostgreSQL-reserved)
+  -> blocking render (2 permits) -> class model shared with MRMS -> palette PNG
+  -> immutable RustFS create + read-back -> PostgreSQL tile index -> hot tile cache
+```
+
+[polar.rs](src/polar.rs) maps each output pixel to a gate. Pixel centres come from global XYZ pixels, so tiles share seams.
+Vincenty gives WGS84 ground distance and azimuth from the site. The 4/3-Earth formula in the design gives slant range per ray tilt.
+The nearest ray owns the pixel and the nearest gate owns the range. A gap wider than 1.5 ray spacings is never bridged.
+Missing support is outside the gates, a gap, beyond 150 km ground range or a folded, blanked or unobserved gate.
+Below-threshold gates are observed clear air.
+
+Zooms 8 and 9 (pixels over 125 m) average four sub-pixel samples as linear Z over supported samples only.
+Missing never counts as clear. A weak feature under a quarter pixel can fall between the four samples.
+Zooms 10–13 take one nearest-gate sample. There is no pyramid, no smoothing and no dBZ or colour averaging.
+`radar_tiler`'s reflectivity table, class model and PNG encoder produce classic, muted and vivid exactly as MRMS does.
+
+Admission uses these PostgreSQL tables beside the slice A ones:
+
+| Table | Rule |
+|---|---|
+| `reservations` kind `sweep` | Resident sweeps plus the two decode slots stay within 1 GiB pool-wide |
+| `reservations` kind `render` | In-flight scratch plus cached PNGs stay within 512 MiB pool-wide |
+| `renders` | Two render permits, separate from decode permits |
+| `tiles` | Key, SHA-256, bytes and transparency of each written tile |
+
+A sweep load reserves three times its needed object bytes plus 1 MiB, then shrinks to its real retained size.
+A render reserves 1 MiB of scratch, then shrinks to its PNG size when the PNG joins the hot cache.
+A full budget evicts this process's idle entries, then returns MRMS. Nothing queues.
+A resident sweep blocks the second concurrent decode until it is evicted, because both draw on the same 1 GiB.
+The request task owns its permits. A timeout or dropped caller sets a cancel flag that the blocking loop checks per row.
+The permits and reservations release only after the blocking job ends. Concurrent identical requests share one render.
+A crash leaves reservations occupied, as in slice A. Tile objects are never overwritten; a differing write fails.
+
+```sh
+LEVEL2_NUMERIC_ENABLED=true LEVEL2_TILE_ENABLED=true radar level2-numeric --zoom 9 --x 134 --y 188 --palette classic
+LEVEL2_NUMERIC_ENABLED=true LEVEL2_TILE_ENABLED=true radar level2-numeric --tile-only --zoom 13 --x 2152 --y 3010
+```
+
+`--tile-only` renders from the latest indexed artifact without network acquisition.
+Measurements and acceptance mapping: [level2-tile-evidence.md](../../../docs/develop/level2-tile-evidence.md).
 
 ## Storage and admission
 
@@ -112,4 +159,4 @@ The corruption/bomb checks reject both readers. Py-ART accepts the truncated inp
 the bounded adapter rejects it. A historical KCRP volume header follows its first radial by 2.132 seconds; retain both source clocks.
 Do not infer an observation time from the volume filename or header.
 
-No pilot, deployment-hardware capacity, tile geometry, rendering, client behavior or public enablement is claimed.
+No pilot, deployment-hardware capacity, client behavior or public enablement is claimed.
