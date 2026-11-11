@@ -32,6 +32,8 @@ export interface Frame {
   /** The tile subtree the frame lives in. */
   source: FrameSource;
   maxZoom: number;
+  /** Replay only: no layer frame within the staleness cap, so draw nothing. */
+  gap?: boolean;
 }
 
 const DEFAULT_MAX_ZOOM: Record<string, number> = { radar: 7, "radar-composite": 7, nowcast: 6, "radar-hrrr": 6, "radar-gfs": 6 };

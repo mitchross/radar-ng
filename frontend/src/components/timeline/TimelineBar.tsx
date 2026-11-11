@@ -13,6 +13,8 @@ import { cumulus } from "../../lib/cumulusTheme";
 import { findClosestIdx } from "../../lib/frameIndex";
 import { longZoomLabel, offsetLabel, playbackSequence, positionOf, type TimelineZoom } from "../../lib/playbackSequence";
 import { createThrottle } from "../../lib/throttle";
+import { fullCaseSequence, isReplaySource } from "../../lib/replaySource";
+import { replayAxisLabels, replayTimelineHeader } from "../../lib/replayTimeline";
 import { selectionHaptic, tapHaptic } from "../../lib/haptics";
 import { useAppActive } from "../../hooks/useAppActive";
 import { useNow } from "../../hooks/useNow";
@@ -71,6 +73,9 @@ export function TimelineBar() {
   const setIsPlaying = useWeatherStore((s) => s.setIsPlaying);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const setPlaybackWindow = useWeatherStore((s) => s.setPlaybackWindow);
+  const replayCase = useWeatherStore((s) => s.replayCase);
+  const replaying = useWeatherStore((s) => isReplaySource(s.source));
+  const timeZone = replayCase?.timezone ?? "UTC";
 
   const [zoom, setZoom] = useState<Zoom>("1h");
   const [scrub] = useState(() => createThrottle(setCurrentFrameIndex, SCRUB_COMMIT_MS));
@@ -84,7 +89,11 @@ export function TimelineBar() {
   // The frames playback visits, in order. 1h is every frame within an hour of
   // now; 48h thins the dense past so the loop is mostly forecast. The slider
   // and the track both run over positions in this sequence, not frame indices.
-  const sequence = useMemo(() => playbackSequence(frames, zoom, nowSec), [frames, zoom, nowSec]);
+  // Replay loops every base frame, with no zoom window or thinning.
+  const sequence = useMemo(
+    () => (replaying ? fullCaseSequence(frames.length) : playbackSequence(frames, zoom, nowSec)),
+    [replaying, frames, zoom, nowSec],
+  );
   const lastPos = Math.max(0, sequence.length - 1);
   const position = positionOf(sequence, frames, currentFrameIndex);
   const posRef = useRef(position);
@@ -101,7 +110,7 @@ export function TimelineBar() {
 
   // Snap the current frame onto the sequence when switching zoom.
   useEffect(() => {
-    if (sequence.length === 0 || inSequence) return;
+    if (replaying || sequence.length === 0 || inSequence) return;
     const nowPos = positionOf(sequence, frames, findClosestIdx(frames, nowSec));
     setCurrentFrameIndex(sequence[nowPos]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -129,6 +138,10 @@ export function TimelineBar() {
   // Memoize them so the playback tick doesn't rescan frames. This hook must
   // stay above the early return below (rules-of-hooks).
   const { nowPct, nowcastPct, longPct, longLabel, axisLabels } = useMemo(() => {
+    if (replaying) {
+      // One solid past-style track; no NOW marker, nowcast or forecast segments.
+      return { nowPct: 100, nowcastPct: 100, longPct: 100, longLabel: "", axisLabels: replayAxisLabels(frames, sequence, timeZone) };
+    }
     const toPct = (p: number) => (lastPos === 0 ? 0 : (p / lastPos) * 100);
     // Last position at or before a time; -1 when the sequence starts after it.
     const lastPosAtOrBefore = (sec: number) => {
@@ -151,7 +164,7 @@ export function TimelineBar() {
       longLabel: longZoomLabel(frames, nowSec),
       axisLabels: labels,
     };
-  }, [frames, sequence, lastPos, nowSec]);
+  }, [replaying, timeZone, frames, sequence, lastPos, nowSec]);
 
   if (frames.length === 0) return null;
 
@@ -159,10 +172,12 @@ export function TimelineBar() {
   const offsetMin = currentFrame ? Math.round((currentFrame.time - nowSec) / 60) : 0;
   const layerTitle = LAYER_TITLE[activeLayer] ?? "Radar";
   const frameDate = new Date((currentFrame?.time ?? nowSec) * 1000);
-  const dateLabel = FRAME_DATE_FORMAT.format(frameDate);
+  const replayHeader = replaying ? replayTimelineHeader(currentFrame, layerTitle, timeZone) : null;
+  const dateLabel = replayHeader ? replayHeader.dateLabel : FRAME_DATE_FORMAT.format(frameDate);
 
   // MRMS lands a few minutes late; the latest scan within 5 min reads as "Now".
   const mode = Math.abs(offsetMin) <= 5 ? "Now" : `${offsetMin > 0 ? "Forecast" : "Past"} ${offsetLabel(currentFrame?.time ?? nowSec, nowSec)}`;
+  const headerTitle = replayHeader ? replayHeader.title : `${layerTitle} · ${mode}`;
 
   return (
     <View style={[styles.container, {
@@ -188,12 +203,15 @@ export function TimelineBar() {
 
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.layerTitle} numberOfLines={1}>
-              {layerTitle} · {mode}
+              {headerTitle}
             </Text>
             <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.dateLabel} numberOfLines={1}>{dateLabel}</Text>
+            {replayHeader?.note ? (
+              <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.noteLabel} numberOfLines={1}>{replayHeader.note}</Text>
+            ) : null}
           </View>
 
-          <View style={styles.segmented}>
+          {replaying ? null : <View style={styles.segmented}>
             {(["1h", "48h"] as const).map((z) => (
               <Pressable
                 key={z}
@@ -210,7 +228,7 @@ export function TimelineBar() {
                 <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.segText, zoom === z ? styles.segTextActive : null]}>{z === "48h" ? longLabel : z}</Text>
               </Pressable>
             ))}
-          </View>
+          </View>}
         </View>
 
         <View style={styles.trackContainer}>
@@ -333,6 +351,7 @@ const styles = StyleSheet.create({
 
   layerTitle: { color: "#0b1220", fontSize: 14, fontWeight: "700", letterSpacing: -0.2 },
   dateLabel: { color: "rgba(11,18,32,0.58)", fontSize: 12, marginTop: 1 },
+  noteLabel: { color: "#9a5b00", fontSize: 11, fontWeight: "600", marginTop: 1 },
 
   segmented: {
     flexDirection: "row",

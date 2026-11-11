@@ -63,3 +63,17 @@ export const SATELLITE_OVERLAY = {
 export function layerOption(id: LayerType) {
   return LAYER_OPTIONS.find((o) => o.id === id) ?? SEVERE_OPTIONS.find((o) => o.id === id) ?? LAYER_OPTIONS[0];
 }
+
+const REPLAY_LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] = [
+  { id: "radar", name: "Radar", icon: "rain" },
+  { id: "radar-composite", name: "Composite", icon: "rain" },
+  { id: "hail-size", name: "Hail Size", icon: "hail" },
+  { id: "rotation-track", name: "Rotation Tracks", icon: "rotation" },
+  { id: "echo-top", name: "Echo Tops", icon: "tower" },
+  { id: "precip-24h", name: "Past 24 Hr Precip", icon: "drop" },
+];
+
+/** The layers a replay case offers, in picker order; nothing the live manifest alone has. */
+export function replayLayerOptions(caseLayers: readonly string[]) {
+  return REPLAY_LAYER_OPTIONS.filter((o) => caseLayers.includes(o.id));
+}

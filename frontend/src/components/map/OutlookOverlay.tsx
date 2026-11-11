@@ -11,7 +11,8 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 export function OutlookOverlay() {
-  const extrasVisible = useWeatherStore((s) => s.extrasVisible);
+  // Replay hides live storm overlays.
+  const extrasVisible = useWeatherStore((s) => s.extrasVisible && s.source.kind === "live");
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const focused = useIsFocused();
   const { data } = useQuery({

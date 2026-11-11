@@ -12,6 +12,8 @@ export type { PackedFrameLocation, PackedFrames } from "../lib/packed";
  */
 export function usePackedFrames(): PackedFrames | null {
   const enabled = useWeatherStore((s) => s.fastRadar);
+  // Replay draws PNG rasters only.
+  const replaying = useWeatherStore((s) => s.source.kind === "replay");
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const activePalette = useWeatherStore((s) => s.activePalette);
   const frames = useWeatherStore((s) => s.frames);
@@ -19,8 +21,8 @@ export function usePackedFrames(): PackedFrames | null {
   const palettes = useServerPalettes().data;
 
   return useMemo(() => {
-    if (!enabled || !manifest || !palettes || frames.length === 0) return null;
+    if (replaying || !enabled || !manifest || !palettes || frames.length === 0) return null;
     const tables = palettes[activePalette] ?? palettes.classic;
     return buildPackedFrames(frames, manifest.layers, tables, activeLayer);
-  }, [enabled, manifest, palettes, frames, activeLayer, activePalette]);
+  }, [replaying, enabled, manifest, palettes, frames, activeLayer, activePalette]);
 }

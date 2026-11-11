@@ -41,7 +41,7 @@ export const OVERLAYS: { id: OverlayId; name: string; hint: string; refreshMs: n
   { id: "tropical", name: "Hurricanes", hint: "NHC cones, tracks and forecast points", refreshMs: 10 * 60_000 },
 ];
 
-const WARNING_COLORS: [string, string][] = [
+export const WARNING_COLORS: [string, string][] = [
   ["Tornado Warning", "#ff1f3d"],
   ["Severe Thunderstorm Warning", "#ffa500"],
   ["Flash Flood Warning", "#00c853"],
@@ -156,6 +156,8 @@ export class Overlays {
   trackSec: number | null = null;
   private frameSec: number | null = null;
   onStorms: () => void = () => {};
+  /** Replay shows only its own warnings; every live feed stops. */
+  private replay = false;
 
   constructor(private map: MLMap, public enabled: Set<OverlayId>) {}
 
@@ -163,7 +165,7 @@ export class Overlays {
   install() {
     for (const ids of Object.values(SOURCES)) for (const id of ids) this.map.addSource(id, { type: "geojson", data: this.data[id] ?? EMPTY });
     const m = this.map;
-    const vis = (id: OverlayId) => (this.enabled.has(id) ? "visible" : "none") as "visible" | "none";
+    const vis = (id: OverlayId) => ((this.replay ? id === "warnings" : this.enabled.has(id)) ? "visible" : "none") as "visible" | "none";
 
     // SPC ships its own category colors; under the warnings, which are more urgent.
     m.addLayer({ id: "ov-outlook-fill", type: "fill", source: "ov-outlook", layout: { visibility: vis("outlook") }, paint: { "fill-color": ["coalesce", ["get", "fill"], "#c1e9c1"] as never, "fill-opacity": 0.28 } });
@@ -208,6 +210,7 @@ export class Overlays {
   /** Layer ids a click should hit, most specific first. */
   clickable(): string[] {
     const ids: string[] = [];
+    if (this.replay) return this.map.getLayer("ov-warnings-fill") ? ["ov-warnings-fill"] : [];
     if (this.enabled.has("tropical")) ids.push("ov-tropical-position", "ov-tropical-points");
     if (this.enabled.has("storms")) ids.push("ov-storm-cells");
     if (this.enabled.has("warnings")) ids.push("ov-warnings-fill");
@@ -215,21 +218,46 @@ export class Overlays {
     return ids.filter((id) => this.map.getLayer(id));
   }
 
+  /** Enter or leave replay: hide live overlays, drop their data, restart live feeds on leaving. */
+  setReplay(on: boolean) {
+    this.replay = on;
+    for (const t of this.timers.values()) window.clearInterval(t);
+    this.timers.clear();
+    for (const ids of Object.values(SOURCES)) for (const id of ids) this.set(id, EMPTY);
+    this.cells = [];
+    this.trackSec = null;
+    for (const o of OVERLAYS) this.applyVisibility(o.id);
+    this.onStorms();
+    if (!on) this.start(false);
+  }
+
+  /** Replay warnings in force at the playhead, in the live warning shape. */
+  setReplayWarnings(fc: FC) {
+    this.set("ov-warnings", fc);
+  }
+
+  private applyVisibility(id: OverlayId) {
+    const show = this.replay ? id === "warnings" : this.enabled.has(id);
+    for (const layer of this.map.getStyle().layers ?? []) {
+      if (layer.id.startsWith(`ov-${id === "storms" ? "storm" : id}`)) this.map.setLayoutProperty(layer.id, "visibility", show ? "visible" : "none");
+    }
+  }
+
   setEnabled(id: OverlayId, on: boolean) {
     on ? this.enabled.add(id) : this.enabled.delete(id);
-    for (const layer of this.map.getStyle().layers ?? []) {
-      if (layer.id.startsWith(`ov-${id === "storms" ? "storm" : id}`)) this.map.setLayoutProperty(layer.id, "visibility", on ? "visible" : "none");
-    }
+    this.applyVisibility(id);
     this.schedule(id);
   }
 
-  start() {
+  start(first = true) {
     for (const o of OVERLAYS) this.schedule(o.id);
+    if (!first) return;
     this.animatePulse();
     window.setInterval(() => this.expireSpc(), 15_000);
   }
 
   private schedule(id: OverlayId) {
+    if (this.replay) return;
     window.clearInterval(this.timers.get(id));
     this.timers.delete(id);
     // Storms also feed the "incoming storm" card, so they refresh even when hidden.
@@ -266,11 +294,13 @@ export class Overlays {
   }
 
   async refresh(id: OverlayId) {
+    if (this.replay) return;
     this.expireSpc();
     const url = { watches: "/api/spc/watches", discussions: "/api/spc/discussions", outlook: "/api/outlooks?day=1", warnings: "/api/alerts/map", storms: "/api/storms", lightning: "/api/lightning", tropical: "/api/tropical" }[id];
     let fc: FC;
     try {
       const res = await fetch(url);
+      if (this.replay) return;
       if (!res.ok) return;
       fc = (await res.json()) as FC;
       if (!Array.isArray(fc.features)) return;

@@ -11,7 +11,7 @@ import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 export interface SpcSelection { product: SpcProduct; lat: number; lon: number }
 
 export function SpcOverlay({ kind, onSelect }: { kind: SpcKind; onSelect: (selection: SpcSelection) => void }) {
-  const enabled = useWeatherStore((s) => kind === "watches" ? s.spcWatchesVisible : s.spcDiscussionsVisible);
+  const enabled = useWeatherStore((s) => s.source.kind === "live" && (kind === "watches" ? s.spcWatchesVisible : s.spcDiscussionsVisible));
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const { labelFont } = useBasemapStyle(serverUrl, mapStyle);

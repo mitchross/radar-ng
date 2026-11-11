@@ -28,6 +28,7 @@ export function LayerLocationMarker({ inspecting = false }: { inspecting?: boole
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const isPlaying = useWeatherStore((s) => s.isPlaying);
+  const replaying = useWeatherStore((s) => s.source.kind === "replay");
   const { label } = useActiveLocation();
   const { data: forecast } = useForecast();
 
@@ -57,12 +58,12 @@ export function LayerLocationMarker({ inspecting = false }: { inspecting?: boole
         lat: latitude as number,
         lon: longitude as number,
       }),
-    enabled: isAqLayer && !isPlaying && frameTimestamp != null && latitude != null && longitude != null,
+    enabled: !replaying && isAqLayer && !isPlaying && frameTimestamp != null && latitude != null && longitude != null,
     staleTime: 60_000,
   });
 
   // Always mounted (hidden until a location exists) so the map's native child count never churns.
-  const hidden = latitude == null || longitude == null;
+  const hidden = latitude == null || longitude == null || replaying;
   const body = renderBody(activeLayer, forecast, temperatureUnit, aqReading);
 
   return (

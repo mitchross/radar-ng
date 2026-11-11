@@ -9,7 +9,18 @@ export interface RadarFrame {
    * overlay knows which subtree to pull from (past=radar, nowcast=nowcast,
    * future=radar-hrrr, then radar-gfs to 72 h). Omitted on single-source timelines.
    */
-  source?: "radar" | "nowcast" | "radar-hrrr" | "radar-gfs";
+  source?:
+    | "radar"
+    | "nowcast"
+    | "radar-hrrr"
+    | "radar-gfs"
+    | "radar-composite"
+    | "hail-size"
+    | "rotation-track"
+    | "echo-top"
+    | "precip-24h";
+  /** Replay only: no layer frame within the staleness cap, so draw nothing. */
+  gap?: boolean;
   kind?: "observation" | "nowcast" | "model_guidance";
   issuedAt?: string;
   leadMinutes?: number;

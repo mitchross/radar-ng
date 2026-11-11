@@ -19,7 +19,8 @@ import { parseStormCells, stormTrackGeoJSON, type StormCellInfo } from "../../li
 import { stormLayerOpacity, stormTrackTimeSec } from "../../../../web/src/shared/stormCone";
 
 export function StormCellsOverlay({ onSelect }: { onSelect?: (cell: StormCellInfo, point?: PinnedPoint) => void }) {
-  const extrasVisible = useWeatherStore((s) => s.extrasVisible);
+  // Replay hides live storm overlays.
+  const extrasVisible = useWeatherStore((s) => s.extrasVisible && s.source.kind === "live");
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const { labelFont } = useBasemapStyle(serverUrl, mapStyle);
