@@ -12,6 +12,7 @@ radar-geo.workspace = true
 radar-grib.workspace = true
 radar-tiler.workspace = true
 radar-ingest.workspace = true
+radar-alerts.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -21,6 +22,10 @@ serde_json.workspace = true
 rustix.workspace = true
 walkdir.workspace = true
 clap.workspace = true
+
+[features]
+# Synthetic revisions for tests in other crates.
+testkit = []
 
 [dev-dependencies]
 tempfile.workspace = true

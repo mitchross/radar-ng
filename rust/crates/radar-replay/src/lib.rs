@@ -6,8 +6,11 @@ pub mod case;
 pub mod import;
 pub mod objects;
 pub mod plan;
+pub mod publish;
 pub mod quota;
 pub mod revision;
+#[cfg(any(test, feature = "testkit"))]
+pub mod testkit;
 
 use clap::{Parser, Subcommand};
 
@@ -25,6 +28,28 @@ pub enum ReplayCmd {
     Check(CheckArgs),
     /// Import one case into an isolated, revisioned tile root.
     Import(ImportArgs),
+    /// Publish a finished whole-case revision as a new public revision with its warnings.
+    Publish(PublishArgs),
+}
+
+/// `radar replay publish` arguments.
+#[derive(Debug, Parser)]
+pub struct PublishArgs {
+    /// Case id (`rolling-fork-2023` or `greenfield-2024`).
+    #[arg(long)]
+    pub case: String,
+    /// The finished private revision to publish (its tiles are copied, never edited).
+    #[arg(long)]
+    pub revision: String,
+    /// Warnings file written by `radar import-replay-warnings` for this case.
+    #[arg(long)]
+    pub warnings: std::path::PathBuf,
+    /// Tiles root, normally `TILE_DIR`.
+    #[arg(long, env = "TILE_DIR", default_value = "/data/tiles")]
+    pub tile_root: std::path::PathBuf,
+    /// Name of the public revision; defaults to `<revision>-public`.
+    #[arg(long)]
+    pub published_revision: Option<String>,
 }
 
 /// `radar replay check` arguments.
@@ -83,6 +108,20 @@ pub async fn run(args: ReplayArgs) -> anyhow::Result<()> {
                 radar_grib::s3::S3Client::new(radar_grib::http::client()?, args.base_url.clone());
             let coverage = objects::check_case(&s3, &args.case).await?;
             println!("{}", serde_json::to_string_pretty(&coverage)?);
+            Ok(())
+        }
+        ReplayCmd::Publish(args) => {
+            let report = tokio::task::spawn_blocking(move || {
+                publish::run(publish::Options {
+                    case_id: args.case,
+                    revision: args.revision,
+                    warnings: args.warnings,
+                    tile_root: args.tile_root,
+                    published_revision: args.published_revision,
+                })
+            })
+            .await??;
+            println!("{}", serde_json::to_string_pretty(&report)?);
             Ok(())
         }
         ReplayCmd::Import(args) => {

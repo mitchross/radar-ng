@@ -709,6 +709,154 @@ async fn import_from(case_id: &str, output: &Path, base: &str) -> Result<History
     Ok(history)
 }
 
+/// Largest warnings file the read-only API serves; a bigger file would silently never list.
+pub const MAX_PUBLIC_BYTES: usize = 16 * 1024 * 1024;
+
+/// Check a cached warnings file for `case_id` before it is published. Fails closed.
+pub fn validate_file(case_id: &str, bytes: &[u8]) -> Result<History> {
+    ensure!(
+        bytes.len() <= MAX_PUBLIC_BYTES,
+        "warnings file is {} bytes; the API serves at most {MAX_PUBLIC_BYTES}",
+        bytes.len()
+    );
+    let case = Case::named(case_id)?;
+    let history: History =
+        serde_json::from_slice(bytes).context("warnings file is not a replay history")?;
+    ensure!(
+        history.r#type == "FeatureCollection" && history.schema_version == 1,
+        "warnings file is not a schema 1 FeatureCollection"
+    );
+    ensure!(
+        history.case_id == case.id
+            && history.start == case.start
+            && history.end == case.end
+            && history.bounds == case.bounds,
+        "warnings file is for a different case or window than {case_id}"
+    );
+    ensure!(!history.sources.is_empty(), "warnings file has no sources");
+    for source in &history.sources {
+        ensure!(
+            source.url.starts_with("https://mesonet.agron.iastate.edu/")
+                && source.sha256.len() == 64
+                && source.sha256.bytes().all(|b| b.is_ascii_hexdigit()),
+            "invalid warnings source {}",
+            source.url
+        );
+    }
+    ensure!(
+        !history.features.is_empty(),
+        "warnings file has no warning versions"
+    );
+    for (id, bulletin) in &history.bulletins {
+        ensure!(
+            bulletin.sha256 == checksum(bulletin.text.as_bytes()),
+            "bulletin {id} hash does not match its text"
+        );
+    }
+    let start = timestamp(&case.start)?;
+    let end = timestamp(&case.end)?;
+    let mut ids = BTreeSet::new();
+    let mut overlaps = false;
+    for feature in &history.features {
+        let p = &feature.properties;
+        ensure!(
+            feature.r#type == "Feature",
+            "{} is not a Feature",
+            feature.id
+        );
+        ensure!(
+            ids.insert(feature.id.as_str()),
+            "duplicate feature {}",
+            feature.id
+        );
+        ensure!(
+            p.significance == "W" && matches!(p.phenomena.as_str(), "TO" | "SV" | "FF"),
+            "unsupported warning type in {}",
+            feature.id
+        );
+        ensure!(
+            p.wfo.len() == 3 && p.wfo.bytes().all(|b| b.is_ascii_uppercase()) && p.eventid <= 9999,
+            "invalid warning identity in {}",
+            feature.id
+        );
+        ensure!(
+            matches!(
+                p.status.as_str(),
+                "NEW" | "CON" | "CAN" | "EXP" | "EXT" | "EXA" | "EXB" | "COR"
+            ),
+            "unsupported VTEC status {} in {}",
+            p.status,
+            feature.id
+        );
+        let event = match p.phenomena.as_str() {
+            "TO" => "Tornado Warning",
+            "SV" => "Severe Thunderstorm Warning",
+            _ => "Flash Flood Warning",
+        };
+        ensure!(p.event == event, "wrong event name in {}", feature.id);
+        let begin = timestamp(&p.utc_polygon_begin)?;
+        let finish = timestamp(&p.utc_polygon_end)?;
+        ensure!(
+            begin < finish || (p.status == "CAN" && begin == finish),
+            "empty or negative validity in {}",
+            feature.id
+        );
+        let key = format!(
+            "{}.{}.{}.{}.{}",
+            p.year, p.wfo, p.phenomena, p.significance, p.eventid
+        );
+        ensure!(
+            feature.id.starts_with(&format!("{key}/{}/", p.product_id)),
+            "feature id does not match its identity: {}",
+            feature.id
+        );
+        intersects(&feature.geometry, [-180., -90., 180., 90.])
+            .with_context(|| format!("bad geometry in {}", feature.id))?;
+        let bulletin = history
+            .bulletins
+            .get(&p.product_id)
+            .with_context(|| format!("missing bulletin {}", p.product_id))?;
+        let raw = RawProperties {
+            year: p.year,
+            wfo: p.wfo.clone(),
+            phenomena: p.phenomena.clone(),
+            significance: p.significance.clone(),
+            eventid: p.eventid,
+            status: p.status.clone(),
+            product_id: p.product_id.clone(),
+            utc_polygon_begin: p.utc_polygon_begin.clone(),
+            utc_polygon_end: p.utc_polygon_end.clone(),
+            utc_issue: None,
+            utc_expire: None,
+        };
+        ensure!(
+            bulletin_labels(&raw, bulletin)? == (p.is_emergency, p.is_pds),
+            "emergency/PDS flags in {} disagree with its bulletin",
+            feature.id
+        );
+        if p.status != "CAN"
+            && begin < end
+            && finish > start
+            && intersects(&feature.geometry, case.bounds)?
+        {
+            overlaps = true;
+        }
+    }
+    ensure!(overlaps, "no warning overlaps the case window and bounds");
+    for seed in &history.seed {
+        let p = &seed.properties;
+        ensure!(
+            history.features.contains(seed)
+                && p.status != "CAN"
+                && timestamp(&p.utc_polygon_begin)? <= start
+                && start < timestamp(&p.utc_polygon_end)?,
+            "seed {} is not an active-at-start version",
+            seed.id
+        );
+    }
+    Ok(history)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

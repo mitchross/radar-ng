@@ -2938,6 +2938,7 @@ dependencies = [
  "axum",
  "chrono",
  "clap",
+ "radar-alerts",
  "radar-aux",
  "radar-core",
  "radar-geo",

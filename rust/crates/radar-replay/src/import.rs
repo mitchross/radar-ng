@@ -28,18 +28,18 @@ pub struct Options {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct PlannedFrame {
-    layer: String,
-    timestamp: String,
-    key: String,
-    flag_key: Option<String>,
+pub(crate) struct PlannedFrame {
+    pub(crate) layer: String,
+    pub(crate) timestamp: String,
+    pub(crate) key: String,
+    pub(crate) flag_key: Option<String>,
 }
 
 pub async fn run(options: Options) -> anyhow::Result<Value> {
     run_with_check(options, quota::check).await
 }
 
-async fn run_with_check(
+pub(crate) async fn run_with_check(
     options: Options,
     check: fn(&Path, u64) -> anyhow::Result<()>,
 ) -> anyhow::Result<Value> {
@@ -245,7 +245,10 @@ async fn run_with_check(
     )
 }
 
-fn bind_progress(done: &revision::FrameProgress, frame: &PlannedFrame) -> anyhow::Result<()> {
+pub(crate) fn bind_progress(
+    done: &revision::FrameProgress,
+    frame: &PlannedFrame,
+) -> anyhow::Result<()> {
     anyhow::ensure!(
         done.layer == frame.layer
             && done.timestamp == frame.timestamp
@@ -265,14 +268,14 @@ fn bind_progress(done: &revision::FrameProgress, frame: &PlannedFrame) -> anyhow
     Ok(())
 }
 
-fn frame_dir(root: &Path, layer: &str, timestamp: &str) -> PathBuf {
+pub(crate) fn frame_dir(root: &Path, layer: &str, timestamp: &str) -> PathBuf {
     root.join("tiles")
         .join(layer)
         .join(case::CASE_PALETTE)
         .join(timestamp)
 }
 
-fn verify_frame(
+pub(crate) fn verify_frame(
     path: &Path,
     frame: &revision::FrameProgress,
     tiles: &[(u32, u32, u32)],
