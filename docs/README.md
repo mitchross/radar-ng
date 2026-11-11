@@ -25,6 +25,7 @@ links to the guide for it.
 | Import a bounded historical MRMS pilot | [develop/replay-importer.md](develop/replay-importer.md) |
 | Review the famous-storm replay design before build | [develop/design/famous-storm-replay.md](develop/design/famous-storm-replay.md) |
 | Import historical warning caches | [develop/replay-warnings.md](develop/replay-warnings.md) |
+| Serve finished replay cases (read-only API) | [develop/replay-api.md](develop/replay-api.md) |
 | Review the Level II close-up design before build | [develop/design/level2-close-up.md](develop/design/level2-close-up.md) |
 | Cut a release | [develop/releasing.md](develop/releasing.md) · [develop/temporal-safe-deployments.md](develop/temporal-safe-deployments.md) |
 | Upgrade Expo / React Native | [develop/expo-rn-upgrade-playbook.md](develop/expo-rn-upgrade-playbook.md) |

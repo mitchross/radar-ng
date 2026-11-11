@@ -2726,6 +2726,7 @@ dependencies = [
  "png",
  "radar-alerts",
  "radar-core",
+ "radar-replay",
  "radar-storms",
  "radar-types",
  "reqwest",

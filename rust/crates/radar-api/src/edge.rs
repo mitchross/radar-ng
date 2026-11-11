@@ -37,6 +37,7 @@ use crate::outlooks;
 use crate::palettes;
 use crate::places;
 use crate::prefetch;
+use crate::replays;
 use crate::respond;
 use crate::state::AppState;
 use crate::wind;
@@ -44,6 +45,9 @@ use crate::wind;
 /// Route templates, used for the redirect check and to recognize API paths.
 pub const ROUTE_TEMPLATES: &[&str] = &[
     "/api/manifest.json",
+    "/api/replays",
+    "/api/replays/{id}/{revision}/manifest.json",
+    "/api/replays/{id}/{revision}/warnings.geojson",
     "/api/palettes",
     "/api/forecast/{lat}/{lon}",
     "/api/inspect/{layer}/{timestamp}/{lat}/{lon}",
@@ -77,6 +81,15 @@ pub const ROUTE_TEMPLATES: &[&str] = &[
 pub fn api_router() -> Router<AppState> {
     Router::new()
         .route("/api/manifest.json", get(manifest::get_manifest))
+        .route("/api/replays", get(replays::get_catalogue))
+        .route(
+            "/api/replays/{id}/{revision}/manifest.json",
+            get(replays::get_manifest),
+        )
+        .route(
+            "/api/replays/{id}/{revision}/warnings.geojson",
+            get(replays::get_warnings),
+        )
         .route("/api/palettes", get(palettes::get_palettes))
         .route("/api/forecast/{lat}/{lon}", get(forecast::get_forecast))
         .route(

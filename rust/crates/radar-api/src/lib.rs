@@ -28,6 +28,7 @@ mod params;
 mod places;
 mod prefetch;
 mod ratelimit;
+mod replays;
 mod respond;
 mod satellite;
 mod spc;

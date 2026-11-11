@@ -123,6 +123,8 @@ pub struct Inner {
     pub manifest: AsyncCache<(), Arc<ManifestSnapshot>>,
     /// Last successfully read manifest, served when a read fails.
     pub manifest_last_good: Mutex<Option<Arc<Value>>>,
+    /// Whether a replay revision is publicly ready, checked at most every 10 s per revision.
+    pub replay_ready: Cache<(String, String), bool>,
     /// Single-entry skill summary, re-read only when the skill log changes.
     pub skill: Mutex<Option<crate::nowcast::SkillCache>>,
     /// Open-Meteo bodies by rounded cell.
@@ -234,6 +236,10 @@ impl AppState {
                 .time_to_live(crate::manifest::MANIFEST_TTL)
                 .build(),
             manifest_last_good: Mutex::new(None),
+            replay_ready: Cache::builder()
+                .max_capacity(256)
+                .time_to_live(Duration::from_secs(10))
+                .build(),
             skill: Mutex::new(None),
             forecast_cache: AsyncCache::builder()
                 .max_capacity(config.forecast_cache_max_bytes)
