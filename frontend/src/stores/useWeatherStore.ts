@@ -20,10 +20,20 @@ import { DEFAULT_RAIN_ALERT_LEAD, parseRainAlertLead, type RainAlertLeadMinutes 
 import { parseDeviceFix, statusForFix, type LocationStatus } from "../lib/locationStatus";
 
 import { parseAlertPreference, type AlertPreference } from "../lib/alertLevels";
+import { LIVE_SOURCE, isReplaySource, sourceKey, type SourceContext } from "../lib/replaySource";
+import type { ReplayCase } from "../lib/replayApi";
+import { replayGuard } from "../lib/replayClient";
+import { layerForCase } from "../lib/replayState";
 
 interface WeatherState {
   alertPreference: AlertPreference;
   setAlertPreference: (value: AlertPreference) => void;
+  /** Where frames, tiles and warnings come from; replay never mixes with live. */
+  source: SourceContext;
+  /** The catalogue case behind a replay source (title, zone, bounds, layers); null when live. */
+  replayCase: ReplayCase | null;
+  /** Epoch ms of the last return to live; live frames wait for a manifest fetched after it. */
+  liveReturnedAt: number | null;
   frames: RadarFrame[];
   currentFrameIndex: number;
   isPlaying: boolean;
@@ -69,7 +79,10 @@ interface WeatherState {
   viewMode: ViewMode;
   appearanceMode: AppearanceMode;
 
-  setFrameTimeline: (frames: RadarFrame[], fallbackIndex: number) => void;
+  /** `forSource` drops a late publish from a source that is no longer active. */
+  setFrameTimeline: (frames: RadarFrame[], fallbackIndex: number, forSource?: SourceContext) => void;
+  enterReplay: (replayCase: ReplayCase) => void;
+  returnToLive: () => void;
   setCurrentFrameIndex: (index: number) => void;
   setIsPlaying: (playing: boolean) => void;
   togglePlaying: () => void;
@@ -156,6 +169,9 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     setString("alertPreference", value);
     set({ alertPreference: value });
   },
+  source: LIVE_SOURCE,
+  replayCase: null,
+  liveReturnedAt: null,
   frames: [],
   currentFrameIndex: -1,
   isPlaying: false,
@@ -192,11 +208,18 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   viewMode: parseViewMode(getString("viewMode", "simple")),
   appearanceMode: parseAppearanceMode(getString("appearanceMode", "system")),
 
-  setFrameTimeline: (frames, fallbackIndex) =>
+  setFrameTimeline: (frames, fallbackIndex, forSource) =>
     set((state) => {
+      if (forSource && sourceKey(forSource) !== sourceKey(state.source)) return state;
       // An unchanged poll keeps the same array so subscribers see no new timeline.
       if (sameFrames(state.frames, frames)) return state;
       if (frames.length === 0) return { frames, currentFrameIndex: -1 };
+      if (isReplaySource(state.source)) {
+        // Replay keeps the UTC playhead across layers; base times are shared, so it resnaps exactly.
+        const at = state.frames[state.currentFrameIndex]?.time ?? null;
+        const idx = at === null ? -1 : resnapFrameIndex(frames, state.currentFrameIndex, at);
+        return { frames, currentFrameIndex: idx === -1 ? 0 : idx };
+      }
 
       const previousTime = refreshKeepTime(
         state.frames,
@@ -213,6 +236,33 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
         currentFrameIndex: preservedIndex === -1 ? safeFallback : preservedIndex,
       };
     }),
+  enterReplay: (replayCase) => {
+    replayGuard.cancel();
+    set((s) => ({
+      source: { kind: "replay", caseId: replayCase.id, revision: replayCase.revision },
+      replayCase,
+      liveReturnedAt: null,
+      frames: [],
+      currentFrameIndex: -1,
+      isPlaying: false,
+      playbackWindow: null,
+      activeLayer: layerForCase(s.activeLayer, replayCase.layers),
+      focusBounds: replayCase.bounds,
+    }));
+  },
+  returnToLive: () => {
+    replayGuard.cancel();
+    set((s) => ({
+      source: LIVE_SOURCE,
+      replayCase: null,
+      liveReturnedAt: Date.now(),
+      frames: [],
+      currentFrameIndex: -1,
+      isPlaying: false,
+      playbackWindow: null,
+      activeLayer: s.activeLayer === "radar-composite" ? "radar" : s.activeLayer,
+    }));
+  },
   setCurrentFrameIndex: (index) => set({ currentFrameIndex: index }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   togglePlaying: () => set((s) => ({ isPlaying: !s.isPlaying })),
@@ -338,7 +388,8 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
     setString("rainAlertLeadMinutes", String(minutes));
     set({ rainAlertLeadMinutes: minutes });
   },
-  setActiveLayer: (layer) => set({ activeLayer: layer }),
+  setActiveLayer: (layer) =>
+    set((s) => (isReplaySource(s.source) && !s.replayCase?.layers.includes(layer) ? s : { activeLayer: layer })),
   setServerUrl: (url) => {
     const next = parseServerUrl(url, get().serverUrl);
     setString("serverUrl", next);

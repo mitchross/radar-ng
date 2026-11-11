@@ -1,5 +1,7 @@
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
+import { buildReplayTileUrl, buildSelfHostedTileUrl } from "../../lib/tileUrl";
+import { sourceKey } from "../../lib/replaySource";
+import { useReplayTileTemplate } from "../../hooks/useReplay";
 import type { LayerType, RadarFrame } from "../../types/weather";
 import { LAYERS } from "../../lib/constants";
 import type { CarouselFrameSpec } from "./RasterFrameCarousel";
@@ -15,16 +17,25 @@ interface Props {
 export function WeatherLayerOverlay({ layerId, opacity = 0.7, isPacked }: Props) {
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const activePalette = useWeatherStore((s) => s.activePalette);
+  const source = useWeatherStore((s) => s.source);
+  const replayTemplate = useReplayTileTemplate();
 
   const layerConfig = LAYERS.find((l) => l.id === layerId);
   if (!layerConfig) return null;
 
-  const specFor = (frame: RadarFrame): CarouselFrameSpec => ({
-    tileUrl: buildSelfHostedTileUrl(serverUrl, layerId, frame.path, activePalette),
-    // Model pyramids stop at the frame's max_zoom (z6 for HRRR/AQM); deeper requests are 404s.
-    maxZoom: frame.maxZoom ?? layerConfig.maxZoom,
-    variant: `${layerId}-${activePalette}`,
-  });
+  const specFor = (frame: RadarFrame): CarouselFrameSpec =>
+    source.kind === "replay" && replayTemplate
+      ? {
+          tileUrl: buildReplayTileUrl(serverUrl, replayTemplate, layerId, frame.path),
+          maxZoom: frame.maxZoom ?? layerConfig.maxZoom,
+          variant: `${sourceKey(source).replace(/\W/g, "_")}-${layerId}`,
+        }
+      : {
+          tileUrl: buildSelfHostedTileUrl(serverUrl, layerId, frame.path, activePalette),
+          // Model pyramids stop at the frame's max_zoom (z6 for HRRR/AQM); deeper requests are 404s.
+          maxZoom: frame.maxZoom ?? layerConfig.maxZoom,
+          variant: `${layerId}-${activePalette}`,
+        };
 
   return (
     <RasterOverlay

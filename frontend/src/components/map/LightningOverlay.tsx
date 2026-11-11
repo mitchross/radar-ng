@@ -13,7 +13,8 @@ import { useIsFocused } from "expo-router";
 import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
 
 export function LightningOverlay() {
-  const extrasVisible = useWeatherStore((s) => s.extrasVisible);
+  // Replay hides live storm overlays.
+  const extrasVisible = useWeatherStore((s) => s.extrasVisible && s.source.kind === "live");
   // The Radar tab stays mounted behind other tabs; only poll while it's on screen.
   const focused = useIsFocused();
   const { data } = useLightning(extrasVisible && focused);

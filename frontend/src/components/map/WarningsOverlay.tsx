@@ -11,11 +11,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useIsFocused } from "expo-router";
 import { fetchMapAlerts } from "../../lib/api";
 import { useAlerts } from "../../hooks/useAlerts";
+import { useReplayWarningsQuery } from "../../hooks/useReplay";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { useBasemapStyle } from "../../hooks/useBasemapStyle";
 import { warningTagExpression } from "../../lib/warningTags";
 import type { PinnedPoint } from "../inspector/Eyedropper";
 import { EMPTY_FEATURE_COLLECTION } from "../../lib/emptyGeoJSON";
+import { replayWarningCollection, replayWarningCopy, replayWarningKey, type ReplayWarningCopy, type ReplayWarningProps } from "../../lib/replaySource";
 
 export const WARNING_COLORS: [string, string][] = [
   ["Tornado Warning", "#ff1f3d"],
@@ -38,10 +40,16 @@ export interface WarningDetails {
   areaDesc?: string;
   ends?: string;
   severity?: string;
+  /** Set for a replayed warning: popup text in the case's zone; no live explanation or outlook. */
+  historical?: ReplayWarningCopy;
 }
 
 export function WarningsOverlay({ onSelect }: { onSelect?: (w: WarningDetails, point?: PinnedPoint) => void }) {
-  const extrasVisible = useWeatherStore((s) => s.extrasVisible);
+  const replaying = useWeatherStore((s) => s.source.kind === "replay");
+  const timeZone = useWeatherStore((s) => s.replayCase?.timezone ?? "UTC");
+  // Playhead in ms; null outside replay so live ticks don't re-render this overlay.
+  const playheadMs = useWeatherStore((s) => (s.source.kind === "replay" ? (s.frames[s.currentFrameIndex]?.time ?? 0) * 1000 : null));
+  const extrasVisible = useWeatherStore((s) => s.extrasVisible && s.source.kind === "live");
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const { labelFont } = useBasemapStyle(serverUrl, mapStyle);
@@ -54,12 +62,20 @@ export function WarningsOverlay({ onSelect }: { onSelect?: (w: WarningDetails, p
     refetchInterval: 60_000,
     staleTime: 60_000,
   });
+  const { data: history } = useReplayWarningsQuery();
 
-  const geojson = useMemo<GeoJSON.FeatureCollection>(() => {
+  // Versions in force at the playhead; the same key reuses the object so the source redraws only on change.
+  const replayFc = replaying ? replayWarningCollection(history ?? null, playheadMs ?? NaN) : null;
+  const replayKey = replayFc ? replayWarningKey(replayFc) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const replayGeo = useMemo(() => replayFc as unknown as GeoJSON.FeatureCollection | null, [replayKey, history]);
+
+  const liveGeo = useMemo<GeoJSON.FeatureCollection>(() => {
     if (!extrasVisible || !data?.features?.length) return EMPTY_FEATURE_COLLECTION;
     const drawn = new Set((local?.features ?? []).map((f) => f.properties.id));
     return { type: "FeatureCollection", features: data.features.filter((f) => !drawn.has(String(f.properties?.id))) };
   }, [data, local, extrasVisible]);
+  const geojson = replaying ? (replayGeo?.features.length ? replayGeo : EMPTY_FEATURE_COLLECTION) : liveGeo;
 
   return (
     <GeoJSONSource
@@ -69,7 +85,8 @@ export function WarningsOverlay({ onSelect }: { onSelect?: (w: WarningDetails, p
         const p = event.nativeEvent.features[0]?.properties;
         if (!p?.id || !p.event) return;
         event.stopPropagation();
-        const warning = { id: String(p.id), event: String(p.event), areaDesc: p.areaDesc ?? undefined, ends: p.ends ?? p.expires ?? undefined, severity: p.severity ?? undefined };
+        const warning: WarningDetails = { id: String(p.id), event: String(p.event), areaDesc: p.areaDesc ?? undefined, ends: p.ends ?? p.expires ?? undefined, severity: p.severity ?? undefined };
+        if (replaying) warning.historical = replayWarningCopy(p as Partial<ReplayWarningProps>, timeZone);
         const coordinates = event.nativeEvent.lngLat;
         if (coordinates) onSelect?.(warning, { lon: coordinates[0], lat: coordinates[1] });
         else onSelect?.(warning);

@@ -1,5 +1,7 @@
 import { useWeatherStore } from "../../stores/useWeatherStore";
-import { buildSelfHostedTileUrl } from "../../lib/tileUrl";
+import { buildReplayTileUrl, buildSelfHostedTileUrl } from "../../lib/tileUrl";
+import { sourceKey } from "../../lib/replaySource";
+import { useReplayTileTemplate } from "../../hooks/useReplay";
 import type { CarouselFrameSpec } from "./RasterFrameCarousel";
 import { RasterOverlay } from "./RasterOverlay";
 import type { RadarFrame } from "../../types/weather";
@@ -22,11 +24,20 @@ export function RadarOverlay({ isPacked }: { isPacked?: readonly boolean[] }) {
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const activePalette = useWeatherStore((s) => s.activePalette);
+  const source = useWeatherStore((s) => s.source);
+  const replayTemplate = useReplayTileTemplate();
 
   const specFor = (frame: RadarFrame): CarouselFrameSpec => {
     // In forecast mode the frame list is a merged radar + nowcast + HRRR stream,
     // per-frame `source` tells us which tile subtree to hit.
     const layerForUrl = frame.source ?? activeLayer;
+    if (source.kind === "replay" && replayTemplate) {
+      return {
+        tileUrl: buildReplayTileUrl(serverUrl, replayTemplate, layerForUrl, frame.path),
+        maxZoom: frame.maxZoom ?? 7,
+        variant: `${sourceKey(source).replace(/\W/g, "_")}-${layerForUrl}`,
+      };
+    }
     return {
       tileUrl: buildSelfHostedTileUrl(serverUrl, layerForUrl, frame.path, activePalette),
       maxZoom: frame.maxZoom ?? SOURCE_MAX_ZOOM[layerForUrl] ?? 7,

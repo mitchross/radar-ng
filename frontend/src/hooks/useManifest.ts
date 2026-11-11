@@ -5,6 +5,9 @@ import { useWeatherStore } from "../stores/useWeatherStore";
 import { DEFAULTS } from "../lib/constants";
 import { cacheManifestIfChanged, readCachedManifest } from "../lib/manifestCache";
 import { longRangeFrames } from "../lib/playbackSequence";
+import { isReplaySource } from "../lib/replaySource";
+import { liveFramesReady, replayRadarFrames } from "../lib/replayState";
+import { useReplayManifestQuery } from "./useReplay";
 import type { RadarFrame, SelfHostedManifest } from "../types/weather";
 
 /**
@@ -115,19 +118,26 @@ export function useManifest() {
   const setFrameTimeline = useWeatherStore((s) => s.setFrameTimeline);
   const setCurrentFrameIndex = useWeatherStore((s) => s.setCurrentFrameIndex);
   const activeLayer = useWeatherStore((s) => s.activeLayer);
+  const source = useWeatherStore((s) => s.source);
+  const liveReturnedAt = useWeatherStore((s) => s.liveReturnedAt);
+  const replaying = isReplaySource(source);
 
   const query = useManifestQuery();
+  const replayManifest = useReplayManifestQuery().data;
 
-  const frames = useMemo(
-    () => (query.data ? buildSelfHostedFrames(query.data, activeLayer) : []),
-    [query.data, activeLayer],
-  );
+  // Replay frames come only from the case manifest; the live manifest never fills in.
+  const frames = useMemo(() => {
+    if (replaying) return replayManifest ? replayRadarFrames(replayManifest, activeLayer) : [];
+    // After Return to live, wait for a manifest fetched since, not the cached one.
+    if (!query.data || !liveFramesReady(query.dataUpdatedAt, liveReturnedAt)) return [];
+    return buildSelfHostedFrames(query.data, activeLayer);
+  }, [replaying, replayManifest, query.data, query.dataUpdatedAt, liveReturnedAt, activeLayer]);
 
   useEffect(() => {
     // One Zustand transaction keeps consumers from observing new frames with
     // an index that still belongs to the previous manifest.
-    setFrameTimeline(frames, pickNowFrameIndex(frames));
-  }, [frames, setFrameTimeline]);
+    setFrameTimeline(frames, replaying ? 0 : pickNowFrameIndex(frames), source);
+  }, [frames, replaying, source, setFrameTimeline]);
 
   // Some navigation actions intentionally publish -1 as a request to snap to
   // now. Read the latest store value so a manifest update handled by the
@@ -138,12 +148,12 @@ export function useManifest() {
     const snapToNow = () => {
       const index = useWeatherStore.getState().currentFrameIndex;
       if (index < 0 || index >= frames.length) {
-        setCurrentFrameIndex(pickNowFrameIndex(frames));
+        setCurrentFrameIndex(replaying ? 0 : pickNowFrameIndex(frames));
       }
     };
     snapToNow();
     return useWeatherStore.subscribe(snapToNow);
-  }, [frames, setCurrentFrameIndex]);
+  }, [frames, replaying, setCurrentFrameIndex]);
 
   return query;
 }

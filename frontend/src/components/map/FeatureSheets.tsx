@@ -33,8 +33,26 @@ export function StormCellSheet({ cell, point, onClose }: { cell: StormCellInfo |
 }
 
 export function WarningSheet({ warning, point, onClose }: { warning: WarningDetails | null; point?: PinnedPoint; onClose: () => void }) {
-  const { explanation, loading } = useAlertExplanation(warning?.id);
+  const historical = warning?.historical;
+  // A replayed warning has no live explanation or point outlook.
+  const { explanation, loading } = useAlertExplanation(historical ? null : warning?.id);
   if (!warning) return null;
+  if (historical) {
+    return (
+      <MapInfoSheet
+        visible
+        eyebrow="HISTORICAL WARNING"
+        title={historical.title}
+        subtitle={historical.badge || undefined}
+        accent={warningColor(warning.event)}
+        onClose={onClose}
+      >
+        {historical.lines.map((line) => (
+          <Text key={line} style={{ marginTop: 8, color: cumulus.inkDim, fontSize: 13 }}>{line}</Text>
+        ))}
+      </MapInfoSheet>
+    );
+  }
   const until = warning.ends ? new Date(warning.ends).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : null;
   return (
     <MapInfoSheet

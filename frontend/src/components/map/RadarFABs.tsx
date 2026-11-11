@@ -13,7 +13,7 @@ import { LAYER_SYMBOLS, layerOption } from "./radarLayers";
 
 const ICON_COLOR = "#1a2030";
 
-export function RadarFABs({ onOpenMapOptions }: { onOpenMapOptions: () => void }) {
+export function RadarFABs({ onOpenMapOptions, onOpenStorms }: { onOpenMapOptions: () => void; onOpenStorms?: () => void }) {
   const chrome = useMapChromeInsets();
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const requestRecenter = useWeatherStore((s) => s.requestRecenter);
@@ -33,6 +33,17 @@ export function RadarFABs({ onOpenMapOptions }: { onOpenMapOptions: () => void }
         accessibilityHint={`${layer.name} is showing. Opens layers, map style and storm overlays.`}
       />
       <View style={styles.divider} />
+      {onOpenStorms ? (
+        <>
+          <CapsuleButton
+            symbol={{ ios: "tornado", android: "tornado" }}
+            onPress={onOpenStorms}
+            accessibilityLabel="Famous storms"
+            accessibilityHint="Replay a historical storm"
+          />
+          <View style={styles.divider} />
+        </>
+      ) : null}
       <CapsuleButton
         symbol={{ ios: "location.fill", android: "near_me" }}
         onPress={() => {

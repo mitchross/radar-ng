@@ -42,7 +42,9 @@ function classifyEvent(event: string): "warning" | "watch" | "advisory" | "state
 
 // Always mounted (empty collection when there are no alerts). See lib/emptyGeoJSON.
 export function AlertPolygon() {
-  const { data: alertData } = useAlerts();
+  const { data: liveAlertData } = useAlerts();
+  // Replay hides the live alerts for your point.
+  const alertData = useWeatherStore((s) => s.source.kind === "live") ? liveAlertData : undefined;
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   const { labelFont } = useBasemapStyle(serverUrl, mapStyle);

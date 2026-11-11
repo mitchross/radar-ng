@@ -9,7 +9,14 @@ import "./style.css";
 import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabled, track } from "./analytics";
 import { buildFrames, isForecastSource, longZoomLabel, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
 import { escapeHtml } from "./html";
-import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, type OverlayId } from "./overlays";
+import { bannerHtml, fetchReplayCatalogue, fetchReplayManifest, fetchReplayWarnings, pickerHtml } from "./replay";
+import type { ReplayCase } from "./shared/replayApi";
+import type { ReplayWarningHistory } from "./shared/replayWarnings";
+import {
+  fullCaseSequence, isReplaySource, lookaheadPositions, LIVE_SOURCE, REPLAY_LAYERS, REPLAY_PALETTE, replayFrameNote, replayClockLabel, replayFrames,
+  replayTileUrl, replayTimeLabel, replayWarningCollection, replayWarningCopy, replayWarningKey, sourceKey, SourceGuard, type ReplayManifest, type SourceContext,
+} from "./shared/replaySource";
+import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, WARNING_COLORS, type OverlayId } from "./overlays";
 import { css, LEGEND_TICKS, PALETTES, typeRamps, type PaletteId } from "./palettes";
 import { fetchServerPalettes, layerLegend, uvCategory } from "./layerLegends";
 import type { ServerPalettes } from "./shared/serverPalettes";
@@ -155,6 +162,9 @@ const state = {
   ai: stored<boolean>("rng.ai", true),
   zoom: "1h" as Zoom,
   manifest: null as Manifest | null,
+  /** Explicit data source: the live feeds, or one pinned replay case revision. */
+  source: LIVE_SOURCE as SourceContext,
+  replay: null as { case: ReplayCase; manifest: ReplayManifest | null; warnings: ReplayWarningHistory | null; error: string | null } | null,
   /** True until the first manifest poll settles. */
   manifestLoading: true,
   manifestFailed: false,
@@ -168,6 +178,10 @@ const state = {
 if (!PALETTES[state.palette]) state.palette = "classic";
 
 const nowSec = () => Math.floor(Date.now() / 1000);
+/** Switching source aborts every in-flight request of the old source. */
+const sourceGuard = new SourceGuard();
+const replaying = () => isReplaySource(state.source);
+const activeManifest = (): Manifest | null => (replaying() ? ((state.replay?.manifest as Manifest | null) ?? null) : state.manifest);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 // ---------- map ----------
@@ -216,7 +230,7 @@ const cached = new Map<string, string>();
 let shownKey: string | null = null;
 
 function frameKey(f: Frame) {
-  return `${f.source}|${state.palette}|${f.path}`;
+  return `${sourceKey(state.source)}|${f.source}|${replaying() ? REPLAY_PALETTE : state.palette}|${f.path}`;
 }
 
 /** Radar sits under the basemap labels and every vector overlay. */
@@ -226,7 +240,7 @@ function radarBeforeId(): string | undefined {
 
 /** The packed slot reference for a frame, or null when the frame uses raster tiles. */
 function packedRef(f: Frame): PackedFrameRef | null {
-  return packed?.covers(f.source, f.timestamp) ? { layer: f.source, timestamp: f.timestamp } : null;
+  return !replaying() && packed?.covers(f.source, f.timestamp) ? { layer: f.source, timestamp: f.timestamp } : null;
 }
 
 function ensurePackedLayer() {
@@ -236,7 +250,7 @@ function ensurePackedLayer() {
 /** Hands the manifest and the playback order to the packed layer. */
 function syncPacked() {
   if (!packed) return;
-  packed.setManifest(state.manifest);
+  packed.setManifest(replaying() ? null : state.manifest);
   packed.setSequence(state.seq.flatMap((i) => packedRef(state.frames[i]) ?? []));
 }
 
@@ -250,9 +264,11 @@ function ensureFrame(f: Frame): string {
   }
   const id = `wx-${Math.random().toString(36).slice(2, 10)}`;
   const path = f.path.split("/").map(encodeURIComponent).join("/");
+  const template = state.replay?.manifest?.tile_url_template;
+  const tiles = replaying() && template ? replayTileUrl(`${location.origin}${template}`, f.source, REPLAY_PALETTE, f.path) : `${location.origin}/tiles/${f.source}/${state.palette}/${path}/{z}/{x}/{y}.png`;
   map.addSource(id, {
     type: "raster",
-    tiles: [`${location.origin}/tiles/${f.source}/${state.palette}/${path}/{z}/{x}/{y}.png`],
+    tiles: [tiles],
     tileSize: 256,
     minzoom: 4,
     maxzoom: f.maxZoom,
@@ -301,22 +317,23 @@ function currentFrame(): Frame | undefined {
 
 function showCurrentFrame() {
   renderTimeline();
+  syncReplayWarnings();
   if (!styleReady || state.seq.length === 0) return;
   const frame = currentFrame();
   if (!frame) return;
   overlays.setFrameTime(frame.time);
   ensurePackedLayer();
   const keep = new Set<string>();
-  for (let k = 0; k <= PREFETCH_AHEAD; k++) {
-    const f = state.frames[state.seq[(state.pos + k) % state.seq.length]];
-    if (f && !packedRef(f)) {
+  for (const at of lookaheadPositions(state.pos, state.seq.length, PREFETCH_AHEAD)) {
+    const f = state.frames[state.seq[at]];
+    if (f && !f.gap && !packedRef(f)) {
       ensureFrame(f);
       keep.add(frameKey(f));
     }
   }
   const ref = packedRef(frame);
   packed?.setFrame(ref);
-  const key = ref ? null : frameKey(frame);
+  const key = ref || frame.gap ? null : frameKey(frame);
   if (key) map.setPaintProperty(cached.get(key)!, "raster-opacity", state.opacity);
   if (shownKey && shownKey !== key) {
     const prev = cached.get(shownKey);
@@ -325,20 +342,21 @@ function showCurrentFrame() {
   shownKey = key;
   evict(keep);
   syncSatellite();
-  if (wind.enabled) void syncWind();
+  if (wind.enabled && !replaying()) void syncWind();
 }
 
 /** The satellite frame for the playhead, with the next PREFETCH_AHEAD timeline frames preloading. */
 function syncSatellite() {
   const frame = currentFrame();
-  if (!styleReady || !frame || !satellite.enabled) return;
+  if (!styleReady || !frame || !satellite.enabled || replaying()) return;
   const ahead = Array.from({ length: PREFETCH_AHEAD }, (_, k) => state.frames[state.seq[(state.pos + k + 1) % state.seq.length]]?.time ?? frame.time);
   satellite.show(frame.time, ahead);
 }
 
 function nextFrameReady(): boolean {
   const f = state.frames[state.seq[(state.pos + 1) % state.seq.length]];
-  if (f && !satellite.isReady(f.time)) return false;
+  if (f?.gap) return true;
+  if (f && !replaying() && !satellite.isReady(f.time)) return false;
   const ref = f && packedRef(f);
   if (ref) return packed!.isFrameReady(ref);
   const id = f && cached.get(frameKey(f));
@@ -375,12 +393,21 @@ function addPlaceMarker() {
 
 // ---------- frames & playback ----------
 
+/** The case layer on screen: composite is the radar layer's second product. */
+const replayLayer = () => (state.layer === "radar" && state.product === "radar-composite" ? "radar-composite" : state.layer);
+
 function rebuildFrames(keepTime?: number) {
-  if (!state.manifest) return;
+  const inReplay = replaying();
+  if (inReplay ? !state.replay?.manifest : !state.manifest) return;
   const now = nowSec();
-  state.frames = buildFrames(state.manifest, state.layer, now, state.product);
-  state.seq = playbackSequence(state.frames, state.zoom, now);
-  const target = keepTime ?? state.frames[nowIndex(state.frames, now)]?.time;
+  if (inReplay) {
+    state.frames = replayFrames(state.replay!.manifest!, replayLayer());
+    state.seq = fullCaseSequence(state.frames.length);
+  } else {
+    state.frames = buildFrames(state.manifest!, state.layer, now, state.product);
+    state.seq = playbackSequence(state.frames, state.zoom, now);
+  }
+  const target = keepTime ?? (inReplay ? state.frames[0]?.time : state.frames[nowIndex(state.frames, now)]?.time);
   let best = 0;
   state.seq.forEach((idx, p) => {
     if (Math.abs(state.frames[idx].time - (target ?? now)) < Math.abs(state.frames[state.seq[best]].time - (target ?? now))) best = p;
@@ -418,11 +445,15 @@ function setPlaying(on: boolean) {
 }
 
 async function refreshManifest() {
+  if (replaying()) return;
+  const ticket = sourceGuard.ticket();
   try {
     const keepTime = refreshKeepTime(currentFrame(), latestObserved(), state.playing);
     const hadManifest = state.manifest !== null;
     const chipsBefore = availabilityKey();
-    state.manifest = await fetchManifest();
+    const fresh = await fetchManifest(ticket.signal);
+    if (!ticket.current()) return;
+    state.manifest = fresh;
     state.manifestFailed = false;
     satellite.setFrames(satelliteFrames(state.manifest));
     // renderChips also rebuilds the open settings sheet, so skip it unless availability changed.
@@ -438,6 +469,7 @@ async function refreshManifest() {
       renderAxis();
     } else rebuildFrames(keepTime);
   } catch (err) {
+    if (!ticket.current()) return;
     state.manifestFailed = true;
     console.error(err);
   } finally {
@@ -450,6 +482,11 @@ let noticeKey = "";
 
 /** The freshness chip and, when the chip alone can't explain it, the notice with Retry. */
 function renderRadarStatus() {
+  if (replaying()) {
+    $("live").hidden = true;
+    $("radar-notice").hidden = true;
+    return;
+  }
   const status = radarStatus({
     frameTimeSeconds: observedFrameTime(state.manifest, nowSec()),
     refreshFailed: state.manifestFailed,
@@ -480,7 +517,8 @@ function availabilityKey(): string {
 }
 
 function layerAvailable(key: string) {
-  const layer = state.manifest?.layers[key];
+  if (replaying() && !(REPLAY_LAYERS as readonly string[]).includes(key)) return false;
+  const layer = activeManifest()?.layers[key];
   return Boolean(layer && ((layer.frames?.length ?? 0) > 0 || (layer.timestamps?.length ?? 0) > 0));
 }
 
@@ -537,6 +575,7 @@ function renderTimeline() {
   const frame = currentFrame();
   const slider = $<HTMLInputElement>("slider");
   slider.value = String(state.pos);
+  if (replaying()) return renderReplayTimeline(frame, slider);
   if (!frame) {
     $("frame-title").textContent = "No frames yet";
     return;
@@ -551,6 +590,7 @@ function renderTimeline() {
 }
 
 function renderAxis() {
+  if (replaying()) return renderReplayAxis();
   const n = state.seq.length;
   const now = nowSec();
   const last = Math.max(1, n - 1);
@@ -592,7 +632,7 @@ function severeNote(layer: string): string {
 function renderLegend() {
   const el = $("legend");
   if (state.layer === "radar") {
-    const bands = PALETTES[state.palette].bands;
+    const bands = PALETTES[replaying() ? REPLAY_PALETTE : state.palette].bands;
     const lo = bands[0].min;
     const hi = 75;
     const pos = (dbz: number) => `${((dbz - lo) / (hi - lo)) * 100}%`;
@@ -602,7 +642,7 @@ function renderLegend() {
       `<div class="legend-bar" style="background:linear-gradient(90deg,${bands.map((b, i) => `${css(b.rgba)} ${pos(b.min)} ${pos(bands[i + 1]?.min ?? hi)}`).join(",")})"></div>` +
       `<div class="legend-ticks">${LEGEND_TICKS.map(([dbz, name]) => `<span style="left:${pos(dbz)}">${name}</span>`).join("")}</div>`;
     // Observed radar is colored by precipitation type when the server says so.
-    if (state.manifest?.layers.radar?.precip_type === true) {
+    if (!replaying() && state.manifest?.layers.radar?.precip_type === true) {
       el.innerHTML +=
         `<div class="legend-types">` +
         typeRamps(state.palette)
@@ -612,7 +652,7 @@ function renderLegend() {
     }
     return;
   }
-  const table = layerLegend(serverPalettes, state.palette, state.layer, state.manifest?.layers[state.layer]?.palette_key);
+  const table = layerLegend(serverPalettes, replaying() ? REPLAY_PALETTE : state.palette, state.layer, activeManifest()?.layers[state.layer]?.palette_key);
   if (table) {
     el.hidden = false;
     el.innerHTML =
@@ -647,6 +687,7 @@ function renderChips() {
 }
 
 function renderSheet() {
+  if (replaying()) return renderReplaySheet();
   const seg = (group: string, items: [string, string, string?][], current: string) =>
     `<div class="segmented wide" role="radiogroup" data-group="${group}">${items
       .map(([id, name, hint]) => `<button role="radio" data-value="${id}" aria-checked="${id === current}"${hint ? ` title="${hint}"` : ""}>${name}</button>`)
@@ -1031,7 +1072,7 @@ $("layers").addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-layer]");
   if (!b || b.dataset.layer === state.layer) return;
   state.layer = b.dataset.layer!;
-  store("rng.layer", state.layer);
+  if (!replaying()) store("rng.layer", state.layer);
   track("layer_changed", { layer: state.layer });
   clearFrames();
   renderChips();
@@ -1078,6 +1119,7 @@ function toggleSheet(open?: boolean) {
   const show = open ?? sheet.hidden;
   sheet.hidden = !show;
   $("sheet-toggle").setAttribute("aria-expanded", String(show));
+  if (show) $("replay-sheet").hidden = true;
 }
 $("sheet-toggle").addEventListener("click", () => toggleSheet());
 $("sheet-close").addEventListener("click", () => toggleSheet(false));
@@ -1089,12 +1131,12 @@ $("sheet-body").addEventListener("click", (e) => {
   const value = b.dataset.value!;
   if (group === "product" && value !== state.product) {
     state.product = value as ProductId;
-    store("rng.product", value);
+    if (!replaying()) store("rng.product", value);
     track("radar_product_changed", { product: value });
     rebuildFrames(currentFrame()?.time);
   } else if (group === "severe" && value !== state.layer) {
     state.layer = value;
-    store("rng.layer", state.layer);
+    if (!replaying()) store("rng.layer", state.layer);
     track("layer_changed", { layer: state.layer });
     clearFrames();
     renderChips();
@@ -1230,7 +1272,7 @@ document.addEventListener("keydown", (e) => {
   } else if (e.key === "Escape") {
     toggleSheet(false);
     popup.remove();
-  } else if (OVERLAY_KEYS[e.key.toLowerCase()]) {
+  } else if (OVERLAY_KEYS[e.key.toLowerCase()] && !replaying()) {
     const id = OVERLAY_KEYS[e.key.toLowerCase()];
     setOverlay(id, !state.overlays.has(id));
     toast(`${OVERLAYS.find((o) => o.id === id)!.name} ${state.overlays.has(id) ? "on" : "off"}`);
@@ -1242,6 +1284,7 @@ const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "260px" });
 let clickSeq = 0;
 map.on("click", async (e) => {
   const click = ++clickSeq;
+  if (replaying()) return showReplayWarningPopup(e);
   const outlook = pointOutlookHtml(e.lngLat.lng, e.lngLat.lat);
   const layers = overlays.clickable();
   const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers })[0] : undefined;
@@ -1308,6 +1351,218 @@ for (const id of ["ov-storm-cells", "ov-warnings-fill", "ov-tropical-position", 
   map.on("mouseleave", id, () => (map.getCanvas().style.cursor = ""));
 }
 
+// ---------- replay ----------
+
+const EMPTY_FC = { type: "FeatureCollection" as const, features: [] };
+let liveLayer = state.layer;
+let replayWarnKey = "";
+let replayCases: ReplayCase[] = [];
+
+const replayZone = () => state.replay?.case.timezone ?? "UTC";
+
+/** Absolute historical date, time and zone; never "Now". */
+function renderReplayTimeline(frame: Frame | undefined, slider: HTMLInputElement) {
+  const layerName = LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? "Radar";
+  if (!frame) {
+    $("frame-title").textContent = state.replay?.error ? "Replay unavailable" : "Loading replay…";
+    $("frame-time").innerHTML = "&nbsp;";
+    return;
+  }
+  const label = replayTimeLabel(frame.time, replayZone());
+  const note = replayFrameNote(frame, replayZone());
+  const product = state.layer === "radar" && state.product === "radar-composite" ? " · composite" : "";
+  $("frame-title").textContent = `${layerName}${product} · Historical replay`;
+  $("frame-time").textContent = note ? `${label} · ${note}` : label;
+  slider.setAttribute("aria-valuetext", `Historical replay, ${label}`);
+}
+
+function renderReplayAxis() {
+  const n = state.seq.length;
+  $("track-segments").innerHTML = n ? `<span class="past" style="left:0;right:0"></span>` : "";
+  $("axis").innerHTML = n
+    ? [0, 0.25, 0.5, 0.75, 1].map((f) => `<span>${escapeHtml(replayClockLabel(state.frames[state.seq[Math.round(f * (n - 1))]].time, replayZone()))}</span>`).join("")
+    : "";
+}
+
+function renderReplaySheet() {
+  const seg = (group: string, items: [string, string, string?][], current: string) =>
+    `<div class="segmented wide" role="radiogroup" data-group="${group}">${items
+      .map(([id, name, hint]) => `<button role="radio" data-value="${id}" aria-checked="${id === current}"${hint ? ` title="${hint}"` : ""}>${name}</button>`)
+      .join("")}</div>`;
+  const severe = SEVERE_LAYERS.filter((l) => layerAvailable(l.id));
+  $("sheet-body").innerHTML = `
+    <div class="sheet-section"><div class="section-label">RADAR</div>
+      ${layerAvailable("radar-composite") ? seg("product", (Object.keys(PRODUCTS) as ProductId[]).map((id) => [id, PRODUCTS[id].name, PRODUCTS[id].hint]), state.product) : ""}
+      <p class="hint">${PRODUCTS[state.product].hint}</p>
+      <label class="range-row"><span>Opacity</span><input id="opacity" type="range" min="0.3" max="1" step="0.05" value="${state.opacity}" aria-label="Radar opacity" /></label>
+    </div>
+    ${severe.length ? `<div class="sheet-section"><div class="section-label">SEVERE</div>
+      ${seg("severe", severe.map((l) => [l.id, l.name, l.hint]), state.layer)}
+      <p class="hint">${escapeHtml(severeLayer(state.layer)?.hint ?? "Hail, storm rotation and storm height")} · ${SEVERE_CREDIT}</p>
+    </div>` : ""}
+    <div class="sheet-section"><p class="hint">Replay shows archived radar and the warnings in force at each moment, in the classic palette. Live overlays, forecasts and point readings are off until you return to live.</p></div>`;
+}
+
+function renderReplayBanner() {
+  const el = $("replay-banner");
+  el.hidden = !state.replay;
+  if (state.replay) el.innerHTML = bannerHtml(state.replay.case, state.replay.error);
+}
+
+/** Draw the warning versions in force at the playhead; only a changed set redraws. */
+function syncReplayWarnings() {
+  const r = state.replay;
+  const frame = currentFrame();
+  if (!replaying() || !r || !frame) return;
+  const fc = replayWarningCollection(r.warnings, frame.time * 1000);
+  const key = replayWarningKey(fc);
+  if (key === replayWarnKey) return;
+  replayWarnKey = key;
+  overlays.setReplayWarnings(fc as never);
+}
+
+function showReplayWarningPopup(e: maplibregl.MapMouseEvent) {
+  const layers = overlays.clickable();
+  const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers })[0] : undefined;
+  if (!hit) return popup.remove();
+  const p = hit.properties as Record<string, unknown>;
+  const copy = replayWarningCopy(p, replayZone());
+  const color = WARNING_COLORS.find(([ev]) => ev === p.event)?.[1] ?? "#9aa4be";
+  popup
+    .setLngLat(e.lngLat)
+    .setHTML(
+      `<div class="readout"><b style="color:${color}">${escapeHtml(copy.title).toUpperCase()}</b>${copy.badge ? `<div class="pill danger">${escapeHtml(copy.badge)}</div>` : ""}` +
+        `<div class="v">${escapeHtml(copy.lines[0] ?? "")}</div><small>${escapeHtml(copy.lines.slice(1).join(" · "))}</small></div>`,
+    )
+    .addTo(map);
+}
+
+const paddedBounds = (b: [number, number, number, number]): [[number, number], [number, number]] => {
+  const dx = (b[2] - b[0]) / 2;
+  const dy = (b[3] - b[1]) / 2;
+  return [[b[0] - dx, b[1] - dy], [b[2] + dx, b[3] + dy]];
+};
+
+async function enterReplay(c: ReplayCase) {
+  sourceGuard.cancel();
+  const ticket = sourceGuard.ticket();
+  if (!replaying()) liveLayer = state.layer;
+  setPlaying(false);
+  popup.remove();
+  toggleReplaySheet(false);
+  toggleSheet(false);
+  state.source = { kind: "replay", caseId: c.id, revision: c.revision };
+  state.replay = { case: c, manifest: null, warnings: null, error: null };
+  state.frames = [];
+  state.seq = [];
+  state.pos = 0;
+  replayWarnKey = "";
+  if (!(REPLAY_LAYERS as readonly string[]).includes(state.layer)) state.layer = "radar";
+  clearFrames();
+  syncPacked();
+  satellite.setEnabled(false);
+  wind.setEnabled(false);
+  overlays.setReplay(true);
+  overlays.setReplayWarnings(EMPTY_FC);
+  document.body.classList.add("replay");
+  map.setMaxBounds(null);
+  map.fitBounds([[c.bounds[0], c.bounds[1]], [c.bounds[2], c.bounds[3]]], { padding: 40, duration: 0 });
+  map.setMaxBounds(paddedBounds(c.bounds));
+  renderReplayBanner();
+  renderRadarStatus();
+  renderChips();
+  renderLegend();
+  renderTimeline();
+  renderAxis();
+  try {
+    const [manifest, warnings] = await Promise.all([fetchReplayManifest(c, ticket.signal), fetchReplayWarnings(c, ticket.signal)]);
+    if (!ticket.current()) return;
+    state.replay.manifest = manifest;
+    state.replay.warnings = warnings;
+    renderChips();
+    rebuildFrames();
+  } catch (err) {
+    if (!ticket.current()) return;
+    console.error(err);
+    state.replay.error = "Couldn't load this replay. The live radar is not shown in its place.";
+    renderReplayBanner();
+    renderTimeline();
+  }
+}
+
+/** Leave replay: drop every case frame, then show live only after a fresh manifest arrives. */
+async function returnToLive() {
+  sourceGuard.cancel();
+  setPlaying(false);
+  popup.remove();
+  state.source = LIVE_SOURCE;
+  state.replay = null;
+  state.frames = [];
+  state.seq = [];
+  state.pos = 0;
+  state.manifest = null;
+  state.manifestLoading = true;
+  state.layer = liveLayer;
+  replayWarnKey = "";
+  clearFrames();
+  document.body.classList.remove("replay");
+  map.setMaxBounds(null);
+  overlays.setReplay(false);
+  satellite.setEnabled(state.satellite);
+  wind.setEnabled(state.wind);
+  syncPacked();
+  renderReplayBanner();
+  renderChips();
+  renderLegend();
+  renderTimeline();
+  renderAxis();
+  renderRadarStatus();
+  await refreshManifest();
+  if (!replaying()) showCurrentFrame();
+}
+
+function toggleReplaySheet(open?: boolean) {
+  const sheet = $("replay-sheet");
+  const show = open ?? sheet.hidden;
+  sheet.hidden = !show;
+  $("storms").setAttribute("aria-expanded", String(show));
+  if (!show) return;
+  toggleSheet(false);
+  void loadCatalogue();
+}
+
+let catalogueTicket = 0;
+async function loadCatalogue() {
+  const mine = ++catalogueTicket;
+  const body = $("replay-body");
+  body.innerHTML = `<p class="hint">Loading famous storms…</p>`;
+  try {
+    const { cases } = await fetchReplayCatalogue();
+    if (mine !== catalogueTicket) return;
+    replayCases = cases;
+    body.innerHTML = pickerHtml(cases);
+  } catch (err) {
+    if (mine !== catalogueTicket) return;
+    console.error(err);
+    body.innerHTML = `<p class="hint" role="alert">Couldn't load the replay list.</p><button id="replay-list-retry" class="retry" type="button">Retry</button>`;
+  }
+}
+
+$("storms").addEventListener("click", () => toggleReplaySheet());
+$("replay-close").addEventListener("click", () => toggleReplaySheet(false));
+$("replay-body").addEventListener("click", (e) => {
+  const t = e.target as HTMLElement;
+  if (t.closest("#replay-list-retry")) return void loadCatalogue();
+  const b = t.closest<HTMLButtonElement>("button[data-case]");
+  const c = b && replayCases.find((x) => x.id === b.dataset.case && x.revision === b.dataset.revision);
+  if (c) void enterReplay(c);
+});
+$("replay-banner").addEventListener("click", (e) => {
+  const t = e.target as HTMLElement;
+  if (t.closest("#return-live")) void returnToLive();
+  else if (t.closest("#replay-retry") && state.replay) void enterReplay(state.replay.case);
+});
+
 // ---------- boot ----------
 
 // Every style (first load and each switch) needs the overlays put back.
@@ -1356,6 +1611,7 @@ async function boot() {
   startPeriodic(() => void refreshManifest(), MANIFEST_POLL_MS);
   // Keep "Now" and the radar age honest between manifest polls.
   startPeriodic(() => {
+    if (replaying()) return;
     renderTimeline();
     renderRadarStatus();
   }, 30_000);

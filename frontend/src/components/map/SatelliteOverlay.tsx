@@ -25,7 +25,7 @@ export const SATELLITE_ANCHOR_ID = "satellite-anchor";
  * Mount as the first map child.
  */
 export function SatelliteOverlay() {
-  const visible = useWeatherStore((s) => s.satelliteVisible);
+  const visible = useWeatherStore((s) => s.satelliteVisible && s.source.kind === "live");
   const frames = useWeatherStore((s) => s.frames);
   const currentFrameIndex = useWeatherStore((s) => s.currentFrameIndex);
   const playbackWindow = useWeatherStore((s) => s.playbackWindow);

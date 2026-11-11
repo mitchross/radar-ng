@@ -13,7 +13,7 @@ import { selectionHaptic } from "../../lib/haptics";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { MapStyle } from "../../types/weather";
-import { LAYER_OPTIONS, LAYER_SYMBOLS, SATELLITE_OVERLAY, SEVERE_OPTIONS } from "./radarLayers";
+import { LAYER_OPTIONS, LAYER_SYMBOLS, SATELLITE_OVERLAY, SEVERE_OPTIONS, replayLayerOptions } from "./radarLayers";
 import { useManifestQuery } from "../../hooks/useManifest";
 import { SEVERE_CREDIT } from "../../../../web/src/shared/severe";
 
@@ -38,9 +38,15 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
   const toggleExtras = useWeatherStore((s) => s.toggleExtras);
   const satelliteVisible = useWeatherStore((s) => s.satelliteVisible);
   const setSatelliteVisible = useWeatherStore((s) => s.setSatelliteVisible);
+  const replayCase = useWeatherStore((s) => s.replayCase);
+  // Replay offers only the case's layers; live overlays have no historical data.
+  const replaying = useWeatherStore((s) => s.source.kind === "replay");
+  const layerOptions = replaying ? replayLayerOptions(replayCase?.layers ?? []) : LAYER_OPTIONS;
   // The Severe group lists only layers the server has frames for.
   const manifestLayers = useManifestQuery().data?.layers;
-  const severeOptions = SEVERE_OPTIONS.filter((o) => (manifestLayers?.[o.id]?.frames?.length ?? manifestLayers?.[o.id]?.timestamps?.length ?? 0) > 0);
+  const severeOptions = replaying
+    ? []
+    : SEVERE_OPTIONS.filter((o) => (manifestLayers?.[o.id]?.frames?.length ?? manifestLayers?.[o.id]?.timestamps?.length ?? 0) > 0);
   const severeHint = severeOptions.find((o) => o.id === activeLayer)?.hint ?? "Hail, storm rotation and storm height";
   // Match phone sheet insets and keep the iPad form sheet compact.
   const contentWidth = Math.min(500, width - 32);
@@ -59,7 +65,7 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
 
           <Text style={styles.section}>WEATHER LAYER</Text>
           <View style={styles.grid}>
-            {LAYER_OPTIONS.map((opt) => {
+            {layerOptions.map((opt) => {
               const active = activeLayer === opt.id;
               return (
                 <Pressable
@@ -126,7 +132,7 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
             </>
           )}
 
-          <View style={styles.switchRow}>
+          {replaying ? null : <View style={styles.switchRow}>
             <SymbolView name={SATELLITE_OVERLAY.symbol} size={22} tintColor={theme.colors.text} type="hierarchical" />
             <View style={{ flex: 1 }}>
               <Text style={styles.switchTitle}>{SATELLITE_OVERLAY.name}</Text>
@@ -139,7 +145,7 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
               style={styles.switch}
               accessibilityLabel="Toggle satellite clouds"
             />
-          </View>
+          </View>}
 
           <Text style={styles.section}>MAP STYLE</Text>
           <View style={styles.grid}>
@@ -161,7 +167,7 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
             })}
           </View>
 
-          <View style={styles.switchRow}>
+          {replaying ? null : <View style={styles.switchRow}>
             <SymbolView name={{ ios: "cloud.bolt.fill", android: "thunderstorm" }} size={22} tintColor={theme.colors.text} type="hierarchical" />
             <View style={{ flex: 1 }}>
               <Text style={styles.switchTitle}>Storms & lightning</Text>
@@ -174,9 +180,9 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
               style={styles.switch}
               accessibilityLabel="Toggle storm and lightning overlays"
             />
-          </View>
+          </View>}
 
-          {SPC_OVERLAYS.map((overlay) => (
+          {replaying ? null : SPC_OVERLAYS.map((overlay) => (
             <View key={overlay.id} style={styles.switchRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.switchTitle}>{overlay.name}</Text>
@@ -188,7 +194,7 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
             </View>
           ))}
 
-          <Text style={styles.tip}>Tip: tap the map to read its value and Day 1-3 outlook.</Text>
+          {replaying ? null : <Text style={styles.tip}>Tip: tap the map to read its value and Day 1-3 outlook.</Text>}
         </ScrollView>
       </RNHostView>
     </BottomSheet>

@@ -26,6 +26,8 @@ export function RasterOverlay({ idPrefix, opacity, minZoom, specFor, isPacked }:
     ? rasterCarouselView(isPacked, currentFrameIndex, playbackWindow)
     : undefined;
   if (view === null) return null;
+  // Replay gap: the layer has no frame near this time, so the visible slot draws nothing.
+  const gap = frames[currentFrameIndex]?.gap === true;
 
   return (
     <RasterFrameCarousel
@@ -33,7 +35,7 @@ export function RasterOverlay({ idPrefix, opacity, minZoom, specFor, isPacked }:
       frames={frames}
       currentFrameIndex={view?.currentIndex ?? currentFrameIndex}
       playbackWindow={view?.window ?? playbackWindow}
-      opacity={view && !view.visible ? 0 : opacity}
+      opacity={gap || (view && !view.visible) ? 0 : opacity}
       minZoom={minZoom}
       specFor={specFor}
       beforeId={WEATHER_ANCHOR_ID}

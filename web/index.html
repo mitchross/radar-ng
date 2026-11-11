@@ -51,6 +51,17 @@
       <div id="sheet-body" class="sheet-body"></div>
     </aside>
 
+    <div id="replay-banner" class="replay-banner glass" role="status" hidden></div>
+    <aside id="replay-sheet" class="sheet glass" aria-label="Famous storms" hidden>
+      <div class="sheet-head">
+        <b>Famous storms</b>
+        <button id="replay-close" class="icon-btn" aria-label="Close famous storms">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div id="replay-body" class="sheet-body"></div>
+    </aside>
+
     <div id="legend" class="legend glass" aria-label="Legend" hidden></div>
 
     <section class="timeline glass" aria-label="Radar timeline">
@@ -63,6 +74,7 @@
           <div class="frame-title-row"><span id="frame-title" class="frame-title">Radar</span><span id="live" class="live" role="img" hidden></span></div>
           <div id="frame-time" class="frame-time">&nbsp;</div>
         </div>
+        <button id="storms" class="storms" type="button" aria-expanded="false" aria-controls="replay-sheet">Famous storms</button>
         <button id="speed" class="speed" aria-label="Playback speed">1×</button>
         <div id="zoom" class="segmented" role="radiogroup" aria-label="Timeline range">
           <button data-zoom="1h" role="radio" aria-checked="true">1h</button>

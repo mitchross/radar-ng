@@ -31,7 +31,9 @@ export function TropicalOverlay({
 }: {
   onSelect?: (storm: TropicalStormDetails, point?: PinnedPoint) => void;
 }) {
-  const { data } = useTropical();
+  const { data: liveData } = useTropical();
+  // Replay hides live tropical systems.
+  const data = useWeatherStore((s) => s.source.kind === "live") ? liveData : undefined;
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const mapStyle = useWeatherStore((s) => s.mapStyle);
   // Label glyphs must come from the active basemap's own glyph server.

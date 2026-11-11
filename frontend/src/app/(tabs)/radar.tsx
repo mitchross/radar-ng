@@ -47,6 +47,8 @@ import { RadarFABs } from "../../components/map/RadarFABs";
 import { RadarStatusChip } from "../../components/map/RadarStatusChip";
 import { RadarStatusNotice } from "../../components/map/RadarStatusNotice";
 import { MapOptionsSheet } from "../../components/map/MapOptionsSheet";
+import { ReplayBanner } from "../../components/map/ReplayBanner";
+import { FamousStormsSheet } from "../../components/map/FamousStormsSheet";
 import { EyedropperPin, InspectorPanel, useInspectReading, type PinnedPoint } from "../../components/inspector/Eyedropper";
 import { useManifest } from "../../hooks/useManifest";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
@@ -54,6 +56,8 @@ import { useAlerts } from "../../hooks/useAlerts";
 import { useRadarStatus } from "../../hooks/useRadarStatus";
 import { usePackedFrames } from "../../hooks/usePackedFrames";
 import { useWeatherStore } from "../../stores/useWeatherStore";
+import { useIsReplay } from "../../hooks/useReplay";
+import { sourceKey } from "../../lib/replaySource";
 import type { LayerType } from "../../types/weather";
 
 /** Model layers drawn by WeatherLayerOverlay (rasters) or InMapPackedRadar (packed frames). */
@@ -90,6 +94,9 @@ export default function RadarScreen() {
   const radar = useRadarStatus();
   const hasFrames = useWeatherStore((s) => s.frames.length > 0);
   const router = useRouter();
+  // Replay swaps the data source; live-only overlays and readouts stay mounted but empty.
+  const replaying = useIsReplay();
+  const currentSource = useWeatherStore((s) => sourceKey(s.source));
 
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const radarOpacity = useWeatherStore((s) => s.radarOpacity);
@@ -106,6 +113,19 @@ export default function RadarScreen() {
   const [selectedCell, setSelectedCell] = useState<StormCellInfo | null>(null);
   const [selectedWarning, setSelectedWarning] = useState<WarningDetails | null>(null);
   const [mapOptionsOpen, setMapOptionsOpen] = useState(false);
+  const [stormsOpen, setStormsOpen] = useState(false);
+
+  // A new source drops pins and open sheets that belong to the old one.
+  const [seenSource, setSeenSource] = useState(currentSource);
+  if (seenSource !== currentSource) {
+    setSeenSource(currentSource);
+    setPinned(null);
+    setSelectedPoint(undefined);
+    setSelectedSpc(null);
+    setSelectedTropical(null);
+    setSelectedCell(null);
+    setSelectedWarning(null);
+  }
 
   // Same start as WeatherMap's initial view, so overlays line up before the first region event.
   const camera = useSharedCamera(
@@ -123,7 +143,7 @@ export default function RadarScreen() {
   // Particles also run over the air-quality heatmap (the IQAir Earth look):
   // the wind field is what carries the smoke plume, so seeing it flow over
   // the PM2.5 wash explains where the plume is headed.
-  const windParticlesOn = activeLayer === "wind" || activeLayer === "air-quality";
+  const windParticlesOn = !replaying && (activeLayer === "wind" || activeLayer === "air-quality");
 
   return (
     <View style={styles.container}>
@@ -131,10 +151,12 @@ export default function RadarScreen() {
       {focused ? <StatusBar style={mapStyle === "light" ? "dark" : "light"} /> : null}
       <WeatherMap
         onPress={(lat, lon) => {
+          if (replaying) return;
           setIsPlaying(false);
           setPinned({ lat, lon });
         }}
         onLongPress={(lat, lon) => {
+          if (replaying) return;
           // Readings load only while paused, so pinning a point stops the loop.
           setIsPlaying(false);
           setPinned({ lat, lon });
@@ -150,7 +172,9 @@ export default function RadarScreen() {
       >
         {/* First child: its anchor layer must sit below every weather layer. */}
         <SatelliteOverlay />
-        {(activeLayer === "radar" || activeLayer === "radar-hrrr") && <RadarOverlay isPacked={inMapPacked} />}
+        {(activeLayer === "radar" || activeLayer === "radar-hrrr" || (replaying && activeLayer === "radar-composite")) && (
+          <RadarOverlay isPacked={inMapPacked} />
+        )}
         {WEATHER_LAYERS.includes(activeLayer) && (
           <WeatherLayerOverlay key={activeLayer} layerId={activeLayer} opacity={layerOpacity} isPacked={inMapPacked} />
         )}
@@ -198,11 +222,17 @@ export default function RadarScreen() {
         </Pressable>
       </MapChromeSurface>
 
-      <RadarStatusChip status={radar.status} style={[styles.statusChip, { top: chrome.top + 14, left: chrome.left + 58 }]} />
-      <RadarStatusNotice status={radar.status} hasFrames={hasFrames} onRetry={radar.refetch} top={chrome.belowClose} />
+      {replaying ? (
+        <ReplayBanner />
+      ) : (
+        <>
+          <RadarStatusChip status={radar.status} style={[styles.statusChip, { top: chrome.top + 14, left: chrome.left + 58 }]} />
+          <RadarStatusNotice status={radar.status} hasFrames={hasFrames} onRetry={radar.refetch} top={chrome.belowClose} />
+        </>
+      )}
 
       {/* Only when alerts are stale or failing; left of the map controls. */}
-      {alertStatus.kind !== "current" ? (
+      {!replaying && alertStatus.kind !== "current" ? (
         <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE}
           accessibilityRole="alert"
           accessibilityLabel={alertStatus.accessibilityLabel}
@@ -220,12 +250,13 @@ export default function RadarScreen() {
       <LayerLegendCard activeLayer={activeLayer} />
 
       {/* Readout for a long-pressed point: above the map chrome, clear of legend and buttons. */}
-      <InspectorPanel pinned={pinned} inspect={inspect} onClear={() => setPinned(null)} />
+      {replaying ? null : <InspectorPanel pinned={pinned} inspect={inspect} onClear={() => setPinned(null)} />}
 
       {/* Map options + locate. The inspector panel's own button clears a pin. */}
-      <RadarFABs onOpenMapOptions={() => setMapOptionsOpen(true)} />
+      <RadarFABs onOpenMapOptions={() => setMapOptionsOpen(true)} onOpenStorms={() => setStormsOpen(true)} />
 
       <MapOptionsSheet visible={mapOptionsOpen} onClose={() => setMapOptionsOpen(false)} />
+      <FamousStormsSheet visible={stormsOpen} onClose={() => setStormsOpen(false)} />
 
       {/* Timeline: past observed + nowcast + HRRR forecast in one stream */}
       <TimelineBar />

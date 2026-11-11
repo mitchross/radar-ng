@@ -12,6 +12,7 @@ import { MapChromeSurface } from "../ui/MapChromeSurface";
 import { useServerPalettes } from "../../hooks/useServerPalettes";
 import { precipTypeRamps, serverLegend } from "../../lib/serverPalettes";
 import { useManifestQuery } from "../../hooks/useManifest";
+import { useReplayManifestQuery } from "../../hooks/useReplay";
 import { SEVERE_CREDIT, isSevereLayer } from "../../../../web/src/shared/severe";
 
 // Plain-English tag at the top of the legend telling the user whether
@@ -231,9 +232,13 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
 };
 
 export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
-  const palette = useWeatherStore((s) => s.activePalette);
+  const replaying = useWeatherStore((s) => s.source.kind === "replay");
+  // Replay tiles exist only in the classic palette.
+  const palette = useWeatherStore((s) => (s.source.kind === "replay" ? "classic" : s.activePalette));
   const { data: palettes } = useServerPalettes();
-  const manifestLayer = useManifestQuery().data?.layers[activeLayer];
+  const liveLayer = useManifestQuery().data?.layers[activeLayer];
+  const replayManifest = useReplayManifestQuery().data;
+  const manifestLayer = replaying ? (replayManifest?.layers[activeLayer] as typeof liveLayer) : liveLayer;
   const legend =
     serverLegend(palettes, palette, activeLayer, 7, manifestLayer?.palette_key) ?? LEGENDS[activeLayer] ?? LEGENDS.radar;
   // The server colors observed radar by precipitation type when the layer says so.
@@ -269,7 +274,7 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
             {legend.title}
           </Text>
           <View style={[styles.tag, { backgroundColor: SOURCE_COLOR[source] + "33", borderColor: SOURCE_COLOR[source] }]}>
-            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.tagText, { color: SOURCE_COLOR[source] }]}>{source}</Text>
+            <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={[styles.tagText, { color: SOURCE_COLOR[source] }]}>{replaying ? "Past" : source}</Text>
           </View>
         </View>
         <View style={styles.scaleRow}>
