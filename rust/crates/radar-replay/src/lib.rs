@@ -65,6 +65,9 @@ pub struct CheckArgs {
         default_value = "https://noaa-mrms-pds.s3.amazonaws.com"
     )]
     pub base_url: String,
+    /// Also download and decode every listed object; reports the ones that cannot be decoded.
+    #[arg(long)]
+    pub decode: bool,
 }
 
 /// `radar replay import` arguments.
@@ -91,6 +94,10 @@ pub struct ImportArgs {
     /// Verify cropped boundary PNG bytes against an uncropped render.
     #[arg(long)]
     pub verify_crop: bool,
+    /// Leave out this archive key (repeat the flag). It must download and fail to decode;
+    /// find such keys with `radar replay check --decode`.
+    #[arg(long = "exclude-object")]
+    pub exclude_objects: Vec<String>,
     /// Anonymous MRMS bucket base URL.
     #[arg(
         long,
@@ -107,7 +114,13 @@ pub async fn run(args: ReplayArgs) -> anyhow::Result<()> {
             let s3 =
                 radar_grib::s3::S3Client::new(radar_grib::http::client()?, args.base_url.clone());
             let coverage = objects::check_case(&s3, &args.case).await?;
-            println!("{}", serde_json::to_string_pretty(&coverage)?);
+            if args.decode {
+                let unusable = objects::scan_unusable(&s3, &coverage).await?;
+                let report = serde_json::json!({"coverage": coverage, "unusable": unusable});
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!("{}", serde_json::to_string_pretty(&coverage)?);
+            }
             Ok(())
         }
         ReplayCmd::Publish(args) => {
@@ -134,6 +147,7 @@ pub async fn run(args: ReplayArgs) -> anyhow::Result<()> {
                 layers: args.layers,
                 base_url: args.base_url,
                 verify_crop: args.verify_crop,
+                exclude_objects: args.exclude_objects,
             })
             .await?;
             println!("{}", serde_json::to_string_pretty(&report)?);

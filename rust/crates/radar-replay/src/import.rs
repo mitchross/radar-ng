@@ -25,6 +25,8 @@ pub struct Options {
     pub layers: Vec<String>,
     pub base_url: String,
     pub verify_crop: bool,
+    /// Archive keys to leave out; each must download and fail to decode.
+    pub exclude_objects: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -57,15 +59,25 @@ pub(crate) async fn run_with_check(
         .unwrap_or_else(|| Utc::now().format("%Y%m%dt%H%M%Sz").to_string());
     revision::layout(&options.tile_root, &case, &revision_name)?;
     let s3 = S3Client::new(radar_grib::http::client()?, options.base_url.clone());
-    let coverage = objects::check_case(&s3, case.id).await?;
+    let mut coverage = objects::check_case(&s3, case.id).await?;
     let (start, end) = case.window()?;
-    let flags = objects::list_objects(
+    let mut flags = objects::list_objects(
         &s3,
         case::PRECIP_FLAG_PREFIX,
         start - Duration::minutes(5),
         end,
     )
     .await?;
+    let mut excluded = Vec::new();
+    for key in &options.exclude_objects {
+        let object = objects::inspect_object(&s3, key).await?.ok_or_else(|| {
+            anyhow::anyhow!("{key} decodes fine; only undecodable objects can be excluded")
+        })?;
+        excluded.push(object);
+    }
+    excluded.sort_by(|a, b| a.key.cmp(&b.key));
+    excluded.dedup_by(|a, b| a.key == b.key);
+    objects::apply_exclusions(&mut coverage, &case, excluded.clone(), &mut flags)?;
     let mut frames = Vec::new();
     let mut selection_gaps = BTreeMap::new();
     let base_times: Vec<DateTime<Utc>> = coverage.layers[0]
@@ -110,7 +122,7 @@ pub(crate) async fn run_with_check(
         "no archive objects available for selected layers"
     );
     let tiles = plan::case_tiles(&case.bounds, &case::CASE_ZOOMS);
-    let pinned_plan = json!({
+    let mut pinned_plan = json!({
         "schema_version": 1, "case": case.id, "revision": revision_name,
         "base_url": options.base_url, "max_frames": options.max_frames,
         "layers": options.layers, "frames": frames, "tiles": tiles,
@@ -119,6 +131,9 @@ pub(crate) async fn run_with_check(
         "verify_crop": options.verify_crop,
         "png_compress_level": radar_tiler::env::DEFAULT_PNG_COMPRESS_LEVEL,
     });
+    if !excluded.is_empty() {
+        pinned_plan["excluded"] = serde_json::to_value(&excluded)?;
+    }
     if options.dry_run {
         return Ok(
             json!({"plan": pinned_plan, "coverage": coverage, "selection_gaps": selection_gaps}),
@@ -626,6 +641,7 @@ mod resume_tests {
             layers: vec!["radar".into()],
             base_url: base.clone(),
             verify_crop: false,
+            exclude_objects: Vec::new(),
         };
         let replay_before = quota::dir_usage(&root.join("replays")).unwrap();
         assert!(
@@ -749,5 +765,107 @@ mod pilot_probe {
             "pilot cleanup: {} files unchanged; zero tile or grid deletions",
             before.len()
         );
+    }
+}
+
+#[cfg(test)]
+mod exclude_tests {
+    use super::*;
+    use axum::{
+        Router,
+        extract::{Path as UrlPath, Query, State},
+        response::IntoResponse,
+        routing::get,
+    };
+
+    #[derive(Clone)]
+    struct Bucket {
+        keys: Vec<String>,
+    }
+
+    async fn listing(
+        State(bucket): State<Bucket>,
+        Query(query): Query<BTreeMap<String, String>>,
+    ) -> String {
+        let prefix = query.get("prefix").unwrap();
+        let keys: String = bucket
+            .keys
+            .iter()
+            .filter(|k| k.starts_with(prefix))
+            .map(|k| format!("<Contents><Key>{k}</Key></Contents>"))
+            .collect();
+        format!("<ListBucketResult><IsTruncated>false</IsTruncated>{keys}</ListBucketResult>")
+    }
+
+    async fn object(UrlPath(key): UrlPath<String>) -> impl IntoResponse {
+        if key.contains("190217") {
+            return b"not a gzip file".to_vec();
+        }
+        include_bytes!("../../radar-grib/testdata/mrms_regular_ll_png.grib2.gz").to_vec()
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_undecodable_object_is_excluded_only_when_named_and_recorded() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let bad = "CONUS/MergedBaseReflectivityQC_00.50/20240521/MRMS_MergedBaseReflectivityQC_00.50_20240521-190217.grib2.gz";
+        let good = "CONUS/MergedBaseReflectivityQC_00.50/20240521/MRMS_MergedBaseReflectivityQC_00.50_20240521-190017.grib2.gz";
+        let bucket = Bucket {
+            keys: ["190017", "190217", "190417"].iter().map(|time| format!("CONUS/MergedBaseReflectivityQC_00.50/20240521/MRMS_MergedBaseReflectivityQC_00.50_20240521-{time}.grib2.gz")).collect(),
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let router = Router::new()
+            .route("/", get(listing))
+            .route("/{*key}", get(object))
+            .with_state(bucket);
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let options = |revision: &str, exclude: Vec<String>| Options {
+            case_id: "greenfield-2024".into(),
+            revision: Some(revision.into()),
+            tile_root: root.into(),
+            dry_run: false,
+            max_frames: Some(3),
+            layers: vec!["radar".into()],
+            base_url: base.clone(),
+            verify_crop: false,
+            exclude_objects: exclude,
+        };
+        // Without an exclusion the bad object stops the import.
+        assert!(
+            run_with_check(options("plain", vec![]), |_, _| Ok(()))
+                .await
+                .is_err()
+        );
+        // A good object can never be dropped this way.
+        let err = run_with_check(options("good", vec![good.into()]), |_, _| Ok(()))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("decodes fine"), "{err}");
+        assert!(!root.join("replays/greenfield-2024/.staging-good").exists());
+        // Naming the undecodable object leaves it out and records why.
+        let report = run_with_check(options("skip", vec![bad.into()]), |_, _| Ok(()))
+            .await
+            .unwrap();
+        let published = PathBuf::from(report["published"].as_str().unwrap());
+        let progress: revision::Progress =
+            serde_json::from_slice(&fs::read(published.join("progress.json")).unwrap()).unwrap();
+        assert_eq!(progress.frames.len(), 2);
+        assert!(progress.frames.values().all(|f| f.key != bad));
+        let coverage: objects::Coverage =
+            serde_json::from_slice(&fs::read(published.join("coverage.json")).unwrap()).unwrap();
+        assert_eq!(coverage.excluded.len(), 1);
+        assert_eq!(coverage.excluded[0].key, bad);
+        assert_eq!(coverage.layers[0].keys.len(), 2);
+        assert_eq!(
+            coverage.layers[0].gaps.len(),
+            2,
+            "the hole is an honest gap"
+        );
+        let plan: Value =
+            serde_json::from_slice(&fs::read(published.join("plan.json")).unwrap()).unwrap();
+        assert_eq!(plan["excluded"][0]["key"], bad);
+        server.abort();
     }
 }

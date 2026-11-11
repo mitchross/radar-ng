@@ -184,6 +184,14 @@ fn review(
     let coverage: objects::Coverage =
         serde_json::from_value(read_json(&dir.join(revision::COVERAGE_FILE))?)?;
     let (from, to) = case.window()?;
+    let plan_excluded = plan_doc
+        .get("excluded")
+        .cloned()
+        .unwrap_or_else(|| json!([]));
+    anyhow::ensure!(
+        plan_excluded == serde_json::to_value(&coverage.excluded)?,
+        "plan.json and coverage.json disagree on excluded archive objects"
+    );
     anyhow::ensure!(
         coverage.case == case.id && coverage.start == case.start && coverage.end == case.end,
         "coverage.json is for a different case or window"
@@ -303,6 +311,7 @@ fn review(
     let summary = json!({
         "frames": frames.len(), "tile_files": tile_files,
         "frames_without_precip_flag": without_flag, "layers": per_layer,
+        "excluded_objects": coverage.excluded,
     });
     Ok(Reviewed {
         metadata,
@@ -741,6 +750,12 @@ mod tests {
             v["layers"][0]["missing_expected"] = json!(0);
         });
         env_e.refused("coverage.json gaps");
+        // An exclusion recorded in only one of the two files.
+        let env_g = env("greenfield-2024");
+        env_g.edit("plan.json", |v| {
+            v["excluded"] = json!([{"key": "k", "reason": "r", "bytes": 1, "sha256": "s"}]);
+        });
+        env_g.refused("disagree on excluded");
         // A manifest that advertises a frame that was not verified.
         let env_f = env("greenfield-2024");
         env_f.edit("manifest.json", |v| {

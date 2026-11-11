@@ -153,6 +153,7 @@ pub fn synthetic_revision(
             to,
             &[],
         ),
+        excluded: Vec::new(),
     };
     revision::write_json_atomic(&layout.staging.join(revision::COVERAGE_FILE), &coverage)?;
     revision::write_json_atomic(&layout.staging.join("selection-gaps.json"), &selection_gaps)?;
