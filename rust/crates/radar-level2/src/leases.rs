@@ -35,6 +35,9 @@ impl Pool {
             schema: schema.into(),
         })
     }
+    pub fn schema(&self) -> &str {
+        &self.schema
+    }
     pub async fn initialize(&self) -> Result<()> {
         let s = &self.schema;
         self.client.batch_execute(&format!("

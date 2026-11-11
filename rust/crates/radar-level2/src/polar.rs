@@ -114,6 +114,12 @@ pub struct Hit {
 }
 
 impl PolarSweep {
+    /// Mean antenna tilt over all rays.
+    pub fn mean_elevation_deg(&self) -> Option<f64> {
+        let n = self.elevation.len();
+        (n > 0).then(|| self.elevation.iter().map(|e| f64::from(*e)).sum::<f64>() / n as f64)
+    }
+
     pub fn new(
         identity: String,
         site: (f64, f64),

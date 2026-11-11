@@ -174,6 +174,10 @@ pub struct Inner {
     pub pmtiles_missing: Mutex<Option<Instant>>,
     /// SQLite push-token store under `STATE_DIR`.
     pub push_tokens: PushTokenStore,
+    /// The Level II viewport service. Unset (all its routes 404) unless the gate is on.
+    pub level2: std::sync::OnceLock<Arc<radar_level2::service::Level2Service>>,
+    /// Per-client bucket for `POST /api/level2/views` on top of the global limiter.
+    pub level2_limiter: Mutex<RateLimiter>,
 }
 
 /// A moka weight in bytes, saturating at `u32::MAX`.
@@ -307,9 +311,16 @@ impl AppState {
             pmtiles: AsyncMutex::new(None),
             pmtiles_missing: Mutex::new(None),
             push_tokens: PushTokenStore::new(config.state_dir.clone()),
+            level2: std::sync::OnceLock::new(),
+            level2_limiter: Mutex::new(RateLimiter::new(0.5, 10.0)),
             config,
         };
         Ok(Self(Arc::new(inner)))
+    }
+
+    /// Attaches the Level II viewport service once; a second call is ignored.
+    pub fn set_level2(&self, service: radar_level2::service::Level2Service) {
+        let _ = self.level2.set(Arc::new(service));
     }
 
     /// Path of the nowcast status file (`STATE_DIR/nowcast-status.json`).
