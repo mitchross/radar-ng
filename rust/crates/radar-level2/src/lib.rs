@@ -5,6 +5,8 @@ pub mod decode;
 pub mod feed;
 pub mod health;
 pub mod leases;
+pub mod polar;
+pub mod tile;
 pub mod tracer;
 
 pub const MIB: usize = 1024 * 1024;
@@ -18,6 +20,8 @@ pub const HOT_LIMIT: usize = 1024 * MIB;
 pub const JOB_RESERVATION: usize = HOT_LIMIT / 2;
 pub const ARRAY_LIMIT: usize =
     (JOB_RESERVATION - COMPRESSED_LIMIT - 2 * RECORD_LIMIT - 16 * MIB) / 3;
+pub const RENDER_LIMIT: usize = 512 * MIB;
+pub const RENDER_JOBS: usize = 2;
 pub const OBJECT_LIMIT: i64 = 10 * 1024 * 1024 * 1024;
 
 pub fn checksum(bytes: &[u8]) -> String {

@@ -19,6 +19,7 @@ hex.workspace = true
 uuid.workspace = true
 clap.workspace = true
 radar-core.workspace = true
+radar-tiler.workspace = true
 nexrad-data = { version = "=1.0.0", default-features = false }
 nexrad-decode = { version = "=1.0.0", default-features = false }
 bzip2 = "0.6.1"

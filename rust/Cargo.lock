@@ -2899,6 +2899,7 @@ dependencies = [
  "object_store",
  "quick-xml 0.37.5",
  "radar-core",
+ "radar-tiler",
  "reqwest",
  "serde",
  "serde_json",
