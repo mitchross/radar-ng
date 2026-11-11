@@ -265,7 +265,10 @@ async fn pool_wide_caps_hold_across_services_and_decodes() {
 async fn rendered_cache_evicts_its_own_entries_under_the_pool_cap() {
     let Some(h) = harness(Limits { render: TILE_SCRATCH_BYTES + 12_000, ..Limits::default() }).await else { return };
     for i in 0..6 {
-        let r = ready(h.svc.render(h.req(i % 3, i / 3), Duration::from_secs(30)).await);
+        let t = std::time::Instant::now();
+        let o = h.svc.render(h.req(i % 3, i / 3), Duration::from_secs(30)).await;
+        println!("tile {i} {:?} {}", t.elapsed(), why(&o));
+        let r = ready(o);
         assert!(!r.png.is_empty());
         assert!(h.reserved("render").await <= (TILE_SCRATCH_BYTES + 12_000) as i64);
     }

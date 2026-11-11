@@ -142,6 +142,10 @@ impl TileService {
         self.jobs.load(Ordering::Relaxed)
     }
 
+    pub fn hot_sweep_bytes(&self) -> usize {
+        self.state.lock().expect("state lock").sweeps.values().map(|c| c.value.bytes()).sum()
+    }
+
     pub fn peak_scratch_bytes(&self) -> usize {
         self.peak_scratch.load(Ordering::Relaxed)
     }
@@ -227,7 +231,8 @@ impl TileService {
     }
 
     async fn run(&self, req: &TileRequest, key: &str, cancel: &Arc<AtomicBool>, held: &mut Held) -> Result<Ready, &'static str> {
-        if let Some((sha, bytes, transparent)) = db(self.pool.lock().await.tile(key).await)? {
+        let indexed = db(self.pool.lock().await.tile(key).await)?;
+        if let Some((sha, bytes, transparent)) = indexed {
             let png = artifact::read_bounded(self.store.as_ref(), &Path::from(key), bytes as usize)
                 .await
                 .map_err(|_| "tile_unavailable")?;
@@ -291,7 +296,8 @@ impl TileService {
     /// Reserves pool budget, evicting this process's own idle entries before giving up.
     async fn reserve(&self, kind: &str, id: &str, bytes: usize, cap: usize, evict: impl Fn(&Self) -> Option<String>) -> Result<(), &'static str> {
         loop {
-            match db(self.pool.lock().await.reserve(kind, id, bytes as i64, cap as i64).await)? {
+            let outcome = db(self.pool.lock().await.reserve(kind, id, bytes as i64, cap as i64).await)?;
+            match outcome {
                 Reservation::Granted => return Ok(()),
                 Reservation::Duplicate => return Err("reservation_conflict"),
                 Reservation::Full => {

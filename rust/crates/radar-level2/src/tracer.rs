@@ -1,10 +1,20 @@
-use crate::{artifact::Artifact, catalogue::Catalogue, feed::Feed, health::Health, leases::Pool};
+use crate::{
+    artifact::Artifact,
+    catalogue::Catalogue,
+    feed::Feed,
+    health::Health,
+    leases::Pool,
+    tile::{Limits, Outcome, TileRequest, TileService},
+};
 use anyhow::{Context, Result, ensure};
 use chrono::Utc;
 use clap::Args;
 use object_store::aws::AmazonS3Builder;
 use serde_json::json;
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 #[derive(Args)]
 pub struct TraceArgs {
@@ -18,6 +28,12 @@ pub struct TraceArgs {
     pub x: u32,
     #[arg(long, default_value_t = 188)]
     pub y: u32,
+    /// Palette for the requested tile (classic, muted or vivid).
+    #[arg(long, default_value = "classic")]
+    pub palette: String,
+    /// Render the requested tile from the latest indexed artifact; skip numeric acquisition.
+    #[arg(long)]
+    pub tile_only: bool,
 }
 
 fn required(name: &str) -> Result<String> {
@@ -90,10 +106,54 @@ async fn demand(args: TraceArgs) -> Result<serde_json::Value> {
         .build()?;
     let namespace = required("LEVEL2_OBJECT_PREFIX")?;
     let stations: Vec<_> = candidates.iter().map(|s| s.id.clone()).collect();
-    let outcome = trace_candidates(&mut pool, &feed, &store, &stations, &namespace).await?;
+    let tiles = radar_core::env::bool_var("LEVEL2_TILE_ENABLED", false)?;
+    ensure!(tiles || !args.tile_only, "Level II tile gate disabled");
+    let store: Arc<dyn object_store::ObjectStore> = Arc::new(store);
+    let (numeric, key) = if args.tile_only {
+        let station = stations.first().context("no station")?;
+        let (_, _, key) = pool.latest(station).await?.context("no indexed artifact")?;
+        (json!(null), Some(key))
+    } else {
+        let outcome = trace_candidates(&mut pool, &feed, &store, &stations, &namespace).await?;
+        let key = (outcome["status"] == "numeric_ready")
+            .then(|| outcome["commit"].as_str().map(str::to_owned))
+            .flatten();
+        (outcome, key)
+    };
+    let tile = match (tiles, key) {
+        (true, Some(key)) => render_requested(&url, &schema, store, &key, &args).await?,
+        (true, None) => json!({"status":"fallback","reason":"no_artifact"}),
+        _ => json!("disabled"),
+    };
     Ok(
-        json!({"numeric":outcome,"runtime_ms":start.elapsed().as_millis(),"peak_rss_kib":peak_rss_kib()}),
+        json!({"numeric":numeric,"tile":tile,"runtime_ms":start.elapsed().as_millis(),"peak_rss_kib":peak_rss_kib()}),
     )
+}
+
+async fn render_requested(
+    url: &str,
+    schema: &str,
+    store: Arc<dyn object_store::ObjectStore>,
+    commit_key: &str,
+    args: &TraceArgs,
+) -> Result<serde_json::Value> {
+    let service = TileService::new(Pool::connect(url, schema).await?, store.clone(), Limits::default())?;
+    let (cpu, start) = (cpu_ms(), Instant::now());
+    let request = TileRequest {
+        commit_key: commit_key.into(),
+        palette: args.palette.clone(),
+        z: u32::from(args.zoom),
+        x: args.x,
+        y: args.y,
+    };
+    Ok(match service.render(request, Duration::from_secs(60)).await {
+        Outcome::Ready(tile) => {
+            let stored = crate::artifact::read_bounded(store.as_ref(), &object_store::path::Path::from(tile.key.as_str()), tile.png.len()).await?;
+            ensure!(stored.len() == tile.png.len() && crate::checksum(&stored) == tile.sha256, "tile read-back mismatch");
+            json!({"status":"tile_ready","key":tile.key,"source":tile.source,"sha256":tile.sha256,"png_bytes":tile.png.len(),"transparent":tile.transparent,"readback_verified":true,"render_ms":start.elapsed().as_millis(),"cpu_ms":cpu_ms().zip(cpu).map(|(a,b)|a-b),"peak_scratch_bytes":service.peak_scratch_bytes(),"hot_sweep_bytes":service.hot_sweep_bytes(),"peak_rss_kib":peak_rss_kib()})
+        }
+        Outcome::Fallback(reason) => json!({"status":"fallback","reason":reason}),
+    })
 }
 
 async fn trace_candidates(
@@ -344,6 +404,14 @@ async fn archive_seed(feed: &Feed, station: &str) -> Result<(Vec<crate::feed::Ob
         .parse::<u16>()?;
     ensure!((1..=999).contains(&volume), "invalid circular volume");
     Ok((candidates, volume))
+}
+
+/// Process user plus system CPU time from /proc (100 ticks per second on Linux).
+fn cpu_ms() -> Option<u64> {
+    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let mut fields = stat.rsplit_once(')')?.1.split_whitespace().skip(11);
+    let (user, system): (u64, u64) = (fields.next()?.parse().ok()?, fields.next()?.parse().ok()?);
+    Some((user + system) * 10)
 }
 
 fn peak_rss_kib() -> Option<u64> {
