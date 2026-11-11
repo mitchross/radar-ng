@@ -95,7 +95,8 @@ impl Pool {
         let owner = uuid::Uuid::new_v4().to_string();
         let s = &self.schema;
         let tx = self.client.transaction().await?;
-        tx.query_one("SELECT pg_advisory_xact_lock(288,4)", &[]).await?;
+        tx.query_one("SELECT pg_advisory_xact_lock(288,4)", &[])
+            .await?;
         let used = hot_used(&tx, s).await?;
         if used + JOB_RESERVATION as i64 > HOT_LIMIT as i64 {
             return Ok(None);
@@ -117,11 +118,21 @@ impl Pool {
         Ok(())
     }
     /// Reserves `bytes` of the pool-wide sweep (1 GiB, shared with decodes) or render (512 MiB) budget.
-    pub async fn reserve(&mut self, kind: &str, id: &str, bytes: i64, cap: i64) -> Result<Reservation> {
-        ensure!(bytes > 0 && matches!(kind, "sweep" | "render"), "invalid reservation");
+    pub async fn reserve(
+        &mut self,
+        kind: &str,
+        id: &str,
+        bytes: i64,
+        cap: i64,
+    ) -> Result<Reservation> {
+        ensure!(
+            bytes > 0 && matches!(kind, "sweep" | "render"),
+            "invalid reservation"
+        );
         let s = &self.schema;
         let tx = self.client.transaction().await?;
-        tx.query_one("SELECT pg_advisory_xact_lock(288,4)", &[]).await?;
+        tx.query_one("SELECT pg_advisory_xact_lock(288,4)", &[])
+            .await?;
         let used = if kind == "sweep" {
             hot_used(&tx, s).await?
         } else {
@@ -132,16 +143,34 @@ impl Pool {
         }
         let inserted = tx.execute(&format!("INSERT INTO {s}.reservations(id,kind,bytes) VALUES($1,$2,$3) ON CONFLICT DO NOTHING"), &[&id, &kind, &bytes]).await?;
         tx.commit().await?;
-        Ok(if inserted == 1 { Reservation::Granted } else { Reservation::Duplicate })
+        Ok(if inserted == 1 {
+            Reservation::Granted
+        } else {
+            Reservation::Duplicate
+        })
     }
     /// Shrinks a reservation; growth must go through a new `reserve`.
     pub async fn shrink(&self, id: &str, bytes: i64) -> Result<()> {
-        let n = self.client.execute(&format!("UPDATE {}.reservations SET bytes=$2 WHERE id=$1 AND bytes>=$2 AND $2>0", self.schema), &[&id, &bytes]).await?;
+        let n = self
+            .client
+            .execute(
+                &format!(
+                    "UPDATE {}.reservations SET bytes=$2 WHERE id=$1 AND bytes>=$2 AND $2>0",
+                    self.schema
+                ),
+                &[&id, &bytes],
+            )
+            .await?;
         ensure!(n == 1, "reservation shrink");
         Ok(())
     }
     pub async fn release(&self, id: &str) -> Result<()> {
-        self.client.execute(&format!("DELETE FROM {}.reservations WHERE id=$1", self.schema), &[&id]).await?;
+        self.client
+            .execute(
+                &format!("DELETE FROM {}.reservations WHERE id=$1", self.schema),
+                &[&id],
+            )
+            .await?;
         Ok(())
     }
     pub async fn render_permit(&self) -> Result<Option<String>> {
@@ -151,15 +180,47 @@ impl Pool {
         Ok(row.map(|_| owner))
     }
     pub async fn release_render(&self, owner: &str) -> Result<()> {
-        self.client.execute(&format!("UPDATE {}.renders SET owner=NULL WHERE owner=$1", self.schema), &[&owner]).await?;
+        self.client
+            .execute(
+                &format!(
+                    "UPDATE {}.renders SET owner=NULL WHERE owner=$1",
+                    self.schema
+                ),
+                &[&owner],
+            )
+            .await?;
         Ok(())
     }
-    pub async fn put_tile(&self, key: &str, sha256: &str, bytes: i64, transparent: bool) -> Result<()> {
-        self.client.execute(&format!("INSERT INTO {}.tiles VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", self.schema), &[&key, &sha256, &bytes, &transparent]).await?;
+    pub async fn put_tile(
+        &self,
+        key: &str,
+        sha256: &str,
+        bytes: i64,
+        transparent: bool,
+    ) -> Result<()> {
+        self.client
+            .execute(
+                &format!(
+                    "INSERT INTO {}.tiles VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",
+                    self.schema
+                ),
+                &[&key, &sha256, &bytes, &transparent],
+            )
+            .await?;
         Ok(())
     }
     pub async fn tile(&self, key: &str) -> Result<Option<(String, i64, bool)>> {
-        Ok(self.client.query_opt(&format!("SELECT sha256,bytes,transparent FROM {}.tiles WHERE key=$1", self.schema), &[&key]).await?.map(|r| (r.get(0), r.get(1), r.get(2))))
+        Ok(self
+            .client
+            .query_opt(
+                &format!(
+                    "SELECT sha256,bytes,transparent FROM {}.tiles WHERE key=$1",
+                    self.schema
+                ),
+                &[&key],
+            )
+            .await?
+            .map(|r| (r.get(0), r.get(1), r.get(2))))
     }
     pub async fn reserve_objects(&mut self, id: &str, bytes: i64) -> Result<()> {
         ensure!(bytes > 0 && bytes <= OBJECT_LIMIT, "object quota");

@@ -1,7 +1,10 @@
 use crate::{
     HOT_LIMIT, MIB, RENDER_LIMIT, artifact,
     leases::{Pool, Reservation},
-    polar::{PolarSweep, SAMPLER_VERSION, Scratch, TILE_SCRATCH_BYTES, palette_version, reflectivity_model},
+    polar::{
+        PolarSweep, SAMPLER_VERSION, Scratch, TILE_SCRATCH_BYTES, palette_version,
+        reflectivity_model,
+    },
 };
 use anyhow::Result;
 use futures_util::future::{BoxFuture, FutureExt, Shared};
@@ -59,7 +62,14 @@ pub enum Outcome {
     Fallback(&'static str),
 }
 
-type Flight = (Shared<BoxFuture<'static, Outcome>>, Arc<AtomicUsize>, Arc<AtomicBool>);
+type TileEntry = (Arc<Vec<u8>>, String, bool);
+#[cfg(test)]
+type Latch = Arc<(Mutex<bool>, std::sync::Condvar)>;
+type Flight = (
+    Shared<BoxFuture<'static, Outcome>>,
+    Arc<AtomicUsize>,
+    Arc<AtomicBool>,
+);
 
 struct Cached<T> {
     value: T,
@@ -71,7 +81,7 @@ struct Cached<T> {
 struct State {
     clock: u64,
     sweeps: HashMap<String, Cached<Arc<PolarSweep>>>,
-    tiles: HashMap<String, Cached<(Arc<Vec<u8>>, String, bool)>>,
+    tiles: HashMap<String, Cached<TileEntry>>,
     flights: HashMap<String, Flight>,
 }
 
@@ -87,7 +97,7 @@ pub struct TileService {
     peak_scratch: AtomicUsize,
     jobs: Arc<AtomicUsize>,
     #[cfg(test)]
-    latch: Mutex<Option<Arc<(Mutex<bool>, std::sync::Condvar)>>>,
+    latch: Mutex<Option<Latch>>,
 }
 
 struct Waiter(Arc<AtomicUsize>, Arc<AtomicBool>);
@@ -103,12 +113,15 @@ impl Drop for Waiter {
 fn parse_commit_key(key: &str) -> Option<(&str, &str, &str)> {
     let (ns, rest) = key.split_once("/sweeps/")?;
     let mut parts = rest.split('/');
-    let (station, identity, revision, name) = (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
+    let (station, identity, revision, name) =
+        (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
     (parts.next().is_none()
         && name == "commit.json"
         && !revision.is_empty()
         && station.len() == 4
-        && station.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+        && station
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
         && identity.len() == 64
         && identity.bytes().all(|b| b.is_ascii_hexdigit()))
     .then_some((ns, station, identity))
@@ -143,7 +156,13 @@ impl TileService {
     }
 
     pub fn hot_sweep_bytes(&self) -> usize {
-        self.state.lock().expect("state lock").sweeps.values().map(|c| c.value.bytes()).sum()
+        self.state
+            .lock()
+            .expect("state lock")
+            .sweeps
+            .values()
+            .map(|c| c.value.bytes())
+            .sum()
     }
 
     pub fn peak_scratch_bytes(&self) -> usize {
@@ -175,15 +194,27 @@ impl TileService {
                 .flights
                 .entry(key.clone())
                 .or_insert_with(|| {
-                    let (waiters, cancel) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicBool::new(false)));
+                    let (waiters, cancel) = (
+                        Arc::new(AtomicUsize::new(0)),
+                        Arc::new(AtomicBool::new(false)),
+                    );
                     let (service, flight_key, flag) = (self.clone(), key.clone(), cancel.clone());
                     let handle = tokio::spawn(async move {
                         let outcome = service.produce(&req, &flight_key, flag).await;
-                        service.state.lock().expect("state lock").flights.remove(&flight_key);
+                        service
+                            .state
+                            .lock()
+                            .expect("state lock")
+                            .flights
+                            .remove(&flight_key);
                         outcome
                     });
-                    let future: BoxFuture<'static, Outcome> =
-                        async move { handle.await.unwrap_or(Outcome::Fallback("render_task_failed")) }.boxed();
+                    let future: BoxFuture<'static, Outcome> = async move {
+                        handle
+                            .await
+                            .unwrap_or(Outcome::Fallback("render_task_failed"))
+                    }
+                    .boxed();
                     (future.shared(), waiters, cancel)
                 })
                 .clone();
@@ -230,7 +261,13 @@ impl TileService {
         })
     }
 
-    async fn run(&self, req: &TileRequest, key: &str, cancel: &Arc<AtomicBool>, held: &mut Held) -> Result<Ready, &'static str> {
+    async fn run(
+        &self,
+        req: &TileRequest,
+        key: &str,
+        cancel: &Arc<AtomicBool>,
+        held: &mut Held,
+    ) -> Result<Ready, &'static str> {
         let indexed = db(self.pool.lock().await.tile(key).await)?;
         if let Some((sha, bytes, transparent)) = indexed {
             let png = artifact::read_bounded(self.store.as_ref(), &Path::from(key), bytes as usize)
@@ -239,12 +276,25 @@ impl TileService {
             if crate::checksum(&png) != sha || png.len() as i64 != bytes {
                 return Err("tile_corrupt");
             }
-            return Ok(Ready { key: key.into(), sha256: sha, transparent, source: "rustfs", png: Arc::new(png) });
+            return Ok(Ready {
+                key: key.into(),
+                sha256: sha,
+                transparent,
+                source: "rustfs",
+                png: Arc::new(png),
+            });
         }
         let permit = db(self.pool.lock().await.render_permit().await)?.ok_or("render_saturated")?;
         held.permit = Some(permit);
         let id = format!("tile:{}:{key}", self.instance);
-        self.reserve("render", &id, self.limits.scratch, self.limits.render, |s| s.evict_tile()).await?;
+        self.reserve(
+            "render",
+            &id,
+            self.limits.scratch,
+            self.limits.render,
+            |s| s.evict_tile(),
+        )
+        .await?;
         held.scratch = Some(id.clone());
         let sweep = self.sweep(&req.commit_key).await?;
         let blocking_sweep = sweep.clone();
@@ -264,7 +314,8 @@ impl TileService {
                 }
             }
             let mut scratch = Scratch::default();
-            let rendered = blocking_sweep.render_tile(z, x, y, &model_ref, &palette, &flag, &mut scratch);
+            let rendered =
+                blocking_sweep.render_tile(z, x, y, &model_ref, &palette, &flag, &mut scratch);
             rendered.map(|r| (r, scratch.bytes()))
         });
         let (rendered, scratch_bytes) = match job.await {
@@ -272,36 +323,75 @@ impl TileService {
             Ok(Err(_)) if cancel.load(Ordering::SeqCst) => return Err("render_cancelled"),
             _ => return Err("render_failed"),
         };
-        self.peak_scratch.fetch_max(scratch_bytes, Ordering::Relaxed);
+        self.peak_scratch
+            .fetch_max(scratch_bytes, Ordering::Relaxed);
         if scratch_bytes + rendered.png.len() > self.limits.scratch {
             return Err("render_oversized");
         }
         let png = Arc::new(rendered.png);
         let sha = crate::checksum(&png);
-        db(self.pool.lock().await.reserve_objects(key, png.len() as i64).await)?;
-        write_immutable(self.store.as_ref(), key, &png).await.map_err(|_| "store_write_failed")?;
+        db(self
+            .pool
+            .lock()
+            .await
+            .reserve_objects(key, png.len() as i64)
+            .await)?;
+        write_immutable(self.store.as_ref(), key, &png)
+            .await
+            .map_err(|_| "store_write_failed")?;
         {
             let pool = self.pool.lock().await;
-            db(pool.put_tile(key, &sha, png.len() as i64, rendered.transparent).await)?;
+            db(pool
+                .put_tile(key, &sha, png.len() as i64, rendered.transparent)
+                .await)?;
             db(pool.shrink(&id, png.len() as i64).await)?;
         }
         held.scratch = None;
         let mut state = self.state.lock().expect("state lock");
         state.clock += 1;
         let used = state.clock;
-        state.tiles.insert(key.into(), Cached { value: (png.clone(), sha.clone(), rendered.transparent), id, used });
-        Ok(Ready { key: key.into(), sha256: sha, transparent: rendered.transparent, source: "rendered", png })
+        state.tiles.insert(
+            key.into(),
+            Cached {
+                value: (png.clone(), sha.clone(), rendered.transparent),
+                id,
+                used,
+            },
+        );
+        Ok(Ready {
+            key: key.into(),
+            sha256: sha,
+            transparent: rendered.transparent,
+            source: "rendered",
+            png,
+        })
     }
 
     /// Reserves pool budget, evicting this process's own idle entries before giving up.
-    async fn reserve(&self, kind: &str, id: &str, bytes: usize, cap: usize, evict: impl Fn(&Self) -> Option<String>) -> Result<(), &'static str> {
+    async fn reserve(
+        &self,
+        kind: &str,
+        id: &str,
+        bytes: usize,
+        cap: usize,
+        evict: impl Fn(&Self) -> Option<String>,
+    ) -> Result<(), &'static str> {
         loop {
-            let outcome = db(self.pool.lock().await.reserve(kind, id, bytes as i64, cap as i64).await)?;
+            let outcome = db(self
+                .pool
+                .lock()
+                .await
+                .reserve(kind, id, bytes as i64, cap as i64)
+                .await)?;
             match outcome {
                 Reservation::Granted => return Ok(()),
                 Reservation::Duplicate => return Err("reservation_conflict"),
                 Reservation::Full => {
-                    let victim = evict(self).ok_or(if kind == "sweep" { "sweep_cache_full" } else { "render_cache_full" })?;
+                    let victim = evict(self).ok_or(if kind == "sweep" {
+                        "sweep_cache_full"
+                    } else {
+                        "render_cache_full"
+                    })?;
                     db(self.pool.lock().await.release(&victim).await)?;
                 }
             }
@@ -310,7 +400,11 @@ impl TileService {
 
     fn evict_tile(&self) -> Option<String> {
         let mut state = self.state.lock().expect("state lock");
-        let key = state.tiles.iter().min_by_key(|(_, c)| c.used).map(|(k, _)| k.clone())?;
+        let key = state
+            .tiles
+            .iter()
+            .min_by_key(|(_, c)| c.used)
+            .map(|(k, _)| k.clone())?;
         state.tiles.remove(&key).map(|c| c.id)
     }
 
@@ -342,14 +436,17 @@ impl TileService {
         if let Some(sweep) = touch(self) {
             return Ok(sweep);
         }
-        let commit = artifact::read_commit(self.store.as_ref(), commit_key).await.map_err(|_| "artifact_unavailable")?;
+        let commit = artifact::read_commit(self.store.as_ref(), commit_key)
+            .await
+            .map_err(|_| "artifact_unavailable")?;
         let (_, station, identity) = parse_commit_key(commit_key).ok_or("artifact_mismatch")?;
         if commit.station != station || commit.identity != identity {
             return Err("artifact_mismatch");
         }
         let peak = 3 * artifact::wanted_bytes(&commit) + MIB;
         let id = format!("sweep:{}:{commit_key}", self.instance);
-        self.reserve("sweep", &id, peak, self.limits.sweep, |s| s.evict_sweep()).await?;
+        self.reserve("sweep", &id, peak, self.limits.sweep, |s| s.evict_sweep())
+            .await?;
         let loaded = artifact::load(self.store.as_ref(), commit_key).await;
         let Ok((_, sweep)) = loaded else {
             let _ = self.pool.lock().await.release(&id).await;
@@ -364,7 +461,14 @@ impl TileService {
         let mut state = self.state.lock().expect("state lock");
         state.clock += 1;
         let used = state.clock;
-        state.sweeps.insert(commit_key.into(), Cached { value: sweep.clone(), id, used });
+        state.sweeps.insert(
+            commit_key.into(),
+            Cached {
+                value: sweep.clone(),
+                id,
+                used,
+            },
+        );
         Ok(sweep)
     }
 }

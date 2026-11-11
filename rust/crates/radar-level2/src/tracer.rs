@@ -137,7 +137,11 @@ async fn render_requested(
     commit_key: &str,
     args: &TraceArgs,
 ) -> Result<serde_json::Value> {
-    let service = TileService::new(Pool::connect(url, schema).await?, store.clone(), Limits::default())?;
+    let service = TileService::new(
+        Pool::connect(url, schema).await?,
+        store.clone(),
+        Limits::default(),
+    )?;
     let (cpu, start) = (cpu_ms(), Instant::now());
     let request = TileRequest {
         commit_key: commit_key.into(),
@@ -146,14 +150,24 @@ async fn render_requested(
         x: args.x,
         y: args.y,
     };
-    Ok(match service.render(request, Duration::from_secs(60)).await {
-        Outcome::Ready(tile) => {
-            let stored = crate::artifact::read_bounded(store.as_ref(), &object_store::path::Path::from(tile.key.as_str()), tile.png.len()).await?;
-            ensure!(stored.len() == tile.png.len() && crate::checksum(&stored) == tile.sha256, "tile read-back mismatch");
-            json!({"status":"tile_ready","key":tile.key,"source":tile.source,"sha256":tile.sha256,"png_bytes":tile.png.len(),"transparent":tile.transparent,"readback_verified":true,"render_ms":start.elapsed().as_millis(),"cpu_ms":cpu_ms().zip(cpu).map(|(a,b)|a-b),"peak_scratch_bytes":service.peak_scratch_bytes(),"hot_sweep_bytes":service.hot_sweep_bytes(),"peak_rss_kib":peak_rss_kib()})
-        }
-        Outcome::Fallback(reason) => json!({"status":"fallback","reason":reason}),
-    })
+    Ok(
+        match service.render(request, Duration::from_secs(60)).await {
+            Outcome::Ready(tile) => {
+                let stored = crate::artifact::read_bounded(
+                    store.as_ref(),
+                    &object_store::path::Path::from(tile.key.as_str()),
+                    tile.png.len(),
+                )
+                .await?;
+                ensure!(
+                    stored.len() == tile.png.len() && crate::checksum(&stored) == tile.sha256,
+                    "tile read-back mismatch"
+                );
+                json!({"status":"tile_ready","key":tile.key,"source":tile.source,"sha256":tile.sha256,"png_bytes":tile.png.len(),"transparent":tile.transparent,"readback_verified":true,"render_ms":start.elapsed().as_millis(),"cpu_ms":cpu_ms().zip(cpu).map(|(a,b)|a-b),"peak_scratch_bytes":service.peak_scratch_bytes(),"hot_sweep_bytes":service.hot_sweep_bytes(),"peak_rss_kib":peak_rss_kib()})
+            }
+            Outcome::Fallback(reason) => json!({"status":"fallback","reason":reason}),
+        },
+    )
 }
 
 async fn trace_candidates(

@@ -55,7 +55,8 @@ pub fn inverse_wgs84(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> Result<(f64,
                 * (sigma + c * ss * (c2sm + c * cs * (-1.0 + 2.0 * c2sm * c2sm)));
         if (next - lambda).abs() < 1e-12 {
             let u_sq = c2a * (WGS_A * WGS_A - b * b) / (b * b);
-            let a = 1.0 + u_sq / 16384.0 * (4096.0 + u_sq * (-768.0 + u_sq * (320.0 - 175.0 * u_sq)));
+            let a =
+                1.0 + u_sq / 16384.0 * (4096.0 + u_sq * (-768.0 + u_sq * (320.0 - 175.0 * u_sq)));
             let bb = u_sq / 1024.0 * (256.0 + u_sq * (-128.0 + u_sq * (74.0 - 47.0 * u_sq)));
             let ds = bb
                 * ss
@@ -136,7 +137,10 @@ impl PolarSweep {
             );
             offsets.push(offsets[offsets.len() - 1] + r.gates as u32);
         }
-        ensure!(offsets[rays.len()] as usize == values.len(), "polar gate count");
+        ensure!(
+            offsets[rays.len()] as usize == values.len(),
+            "polar gate count"
+        );
         let mut order: Vec<u16> = (0..rays.len() as u16).collect();
         order.sort_by(|a, b| {
             rays[*a as usize]
@@ -147,7 +151,10 @@ impl PolarSweep {
         Ok(Self {
             identity,
             site,
-            azimuth: rays.iter().map(|r| r.azimuth_deg.rem_euclid(360.0)).collect(),
+            azimuth: rays
+                .iter()
+                .map(|r| r.azimuth_deg.rem_euclid(360.0))
+                .collect(),
             elevation: rays.iter().map(|r| r.elevation_deg).collect(),
             spacing: rays.iter().map(|r| r.spacing_deg).collect(),
             first_gate: rays.iter().map(|r| r.first_gate_m).collect(),
@@ -209,7 +216,10 @@ impl PolarSweep {
     fn owner(&self, az: f64) -> Option<usize> {
         let n = self.order.len();
         let at = |i: usize| f64::from(self.azimuth[self.order[i] as usize]);
-        let next = self.order.partition_point(|r| f64::from(self.azimuth[*r as usize]) <= az) % n;
+        let next = self
+            .order
+            .partition_point(|r| f64::from(self.azimuth[*r as usize]) <= az)
+            % n;
         let prev = (next + n - 1) % n;
         let (p, q) = (self.order[prev] as usize, self.order[next] as usize);
         let back = Self::angle(at(prev), az);
@@ -242,7 +252,14 @@ impl PolarSweep {
         } else {
             Gate::Missing
         };
-        Some((state, Hit { ray, gate, slant_m: slant }))
+        Some((
+            state,
+            Hit {
+                ray,
+                gate,
+                slant_m: slant,
+            },
+        ))
     }
 
     /// The gate under a geographic point, or `None` outside the 150 km mask, a gap or the gates.
@@ -273,12 +290,16 @@ impl PolarSweep {
 /// Global Web Mercator pixel to longitude/latitude.
 fn pixel_lon_lat(px: f64, py: f64, world: f64) -> (f64, f64) {
     let lon = px / world * 360.0 - 180.0;
-    let lat = (std::f64::consts::PI * (1.0 - 2.0 * py / world)).sinh().atan().to_degrees();
+    let lat = (std::f64::consts::PI * (1.0 - 2.0 * py / world))
+        .sinh()
+        .atan()
+        .to_degrees();
     (lat, lon)
 }
 
 pub fn pixel_metres(z: u32, lat: f64) -> f64 {
-    2.0 * std::f64::consts::PI * WGS_A * lat.to_radians().cos() / (TILE as f64 * f64::from(1u32 << z))
+    2.0 * std::f64::consts::PI * WGS_A * lat.to_radians().cos()
+        / (TILE as f64 * f64::from(1u32 << z))
 }
 
 /// Reusable per-render buffers; [`Scratch::bytes`] reports their real capacity.
@@ -302,7 +323,10 @@ impl Default for Scratch {
 
 impl Scratch {
     pub fn bytes(&self) -> usize {
-        self.dbz.capacity() * 4 + self.classes.capacity() + self.tail.capacity() + 4 * TILE * (TILE + 1)
+        self.dbz.capacity() * 4
+            + self.classes.capacity()
+            + self.tail.capacity()
+            + 4 * TILE * (TILE + 1)
     }
 }
 
@@ -313,9 +337,13 @@ pub struct Rendered {
 
 /// Mean linear Z over supported samples as dBZ; `None` when nothing but missing or clear air.
 fn combine(samples: &[Gate]) -> Option<f32> {
-    let mut values = samples.iter().filter_map(|s| if let Gate::Dbz(v) = s { Some(*v) } else { None });
+    let mut values = samples
+        .iter()
+        .filter_map(|s| if let Gate::Dbz(v) = s { Some(*v) } else { None });
     if let Some(first) = values.next()
-        && samples.iter().all(|s| matches!(s, Gate::Missing) || *s == Gate::Dbz(first))
+        && samples
+            .iter()
+            .all(|s| matches!(s, Gate::Missing) || *s == Gate::Dbz(first))
     {
         return Some(first);
     }
@@ -335,7 +363,14 @@ fn combine(samples: &[Gate]) -> Option<f32> {
 
 impl PolarSweep {
     /// Fill `out` (256x256 dBZ, NaN where transparent) for tile `z/x/y`; `false` if cancelled.
-    pub fn sample_tile(&self, z: u32, x: u32, y: u32, cancel: &AtomicBool, out: &mut Vec<f32>) -> bool {
+    pub fn sample_tile(
+        &self,
+        z: u32,
+        x: u32,
+        y: u32,
+        cancel: &AtomicBool,
+        out: &mut Vec<f32>,
+    ) -> bool {
         out.clear();
         out.resize(TILE * TILE, f32::NAN);
         let world = (TILE as f64) * f64::from(1u32 << z);
@@ -345,11 +380,18 @@ impl PolarSweep {
         } else {
             &[0.5]
         };
-        let near = |lat: f64, lon: f64| self.coarse_km(lat, lon) <= MAX_GROUND_RANGE_M / 1000.0 + 5.0;
+        let near =
+            |lat: f64, lon: f64| self.coarse_km(lat, lon) <= MAX_GROUND_RANGE_M / 1000.0 + 5.0;
         let n_lat = pixel_lon_lat(0.0, f64::from(y) * TILE as f64, world).0;
         let s_lat = pixel_lon_lat(0.0, (f64::from(y) + 1.0) * TILE as f64, world).0;
-        let (w_lon, e_lon) = (pixel_lon_lat(f64::from(x) * TILE as f64, 0.0, world).1, pixel_lon_lat((f64::from(x) + 1.0) * TILE as f64, 0.0, world).1);
-        let (clat, clon) = (self.site.0.clamp(s_lat, n_lat), self.site.1.clamp(w_lon, e_lon));
+        let (w_lon, e_lon) = (
+            pixel_lon_lat(f64::from(x) * TILE as f64, 0.0, world).1,
+            pixel_lon_lat((f64::from(x) + 1.0) * TILE as f64, 0.0, world).1,
+        );
+        let (clat, clon) = (
+            self.site.0.clamp(s_lat, n_lat),
+            self.site.1.clamp(w_lon, e_lon),
+        );
         if !near(clat, clon) {
             return true;
         }
@@ -365,7 +407,11 @@ impl PolarSweep {
                         let px = f64::from(x) * TILE as f64 + col as f64 + dx;
                         let py = f64::from(y) * TILE as f64 + row as f64 + dy;
                         let (lat, lon) = pixel_lon_lat(px, py, world);
-                        samples[n] = if near(lat, lon) { self.sample(lat, lon) } else { Gate::Missing };
+                        samples[n] = if near(lat, lon) {
+                            self.sample(lat, lon)
+                        } else {
+                            Gate::Missing
+                        };
                         n += 1;
                     }
                 }
@@ -377,6 +423,8 @@ impl PolarSweep {
         true
     }
 
+    // Tile coordinates, model, palette, cancel and scratch are all required inputs.
+    #[allow(clippy::too_many_arguments)]
     pub fn render_tile(
         &self,
         z: u32,
@@ -387,7 +435,10 @@ impl PolarSweep {
         cancel: &AtomicBool,
         scratch: &mut Scratch,
     ) -> Result<Rendered> {
-        ensure!((8..=13).contains(&z) && x < 1 << z && y < 1 << z, "invalid tile");
+        ensure!(
+            (8..=13).contains(&z) && x < 1 << z && y < 1 << z,
+            "invalid tile"
+        );
         ensure!(
             self.sample_tile(z, x, y, cancel, &mut scratch.dbz),
             "render cancelled"
@@ -409,8 +460,13 @@ pub fn encode_tile(model: &ClassModel, palette: &str, scratch: &mut Scratch) -> 
     scratch
         .encoder
         .encode_tail(&scratch.classes, TILE, TILE, depth, &mut scratch.tail)?;
-    let mut png = Vec::with_capacity(scratch.tail.len() + lut.plte().len() + lut.trns().len() + 128);
-    png.extend_from_slice(&radar_tiler::png::header_bytes(TILE as u32, TILE as u32, depth));
+    let mut png =
+        Vec::with_capacity(scratch.tail.len() + lut.plte().len() + lut.trns().len() + 128);
+    png.extend_from_slice(&radar_tiler::png::header_bytes(
+        TILE as u32,
+        TILE as u32,
+        depth,
+    ));
     radar_tiler::png::append_palette_chunks(&mut png, lut.plte(), lut.trns());
     png.extend_from_slice(&scratch.tail);
     Ok(Rendered { png, transparent })
@@ -420,7 +476,10 @@ pub fn encode_tile(model: &ClassModel, palette: &str, scratch: &mut Scratch) -> 
 pub fn reflectivity_model() -> Result<ClassModel> {
     let mut tables = vec![];
     for name in ["classic", "muted", "vivid"] {
-        tables.push((name.to_owned(), radar_tiler::load_palette(name)?.color_table("reflectivity")?));
+        tables.push((
+            name.to_owned(),
+            radar_tiler::load_palette(name)?.color_table("reflectivity")?,
+        ));
     }
     Ok(radar_tiler::build_class_model(&tables)?)
 }
@@ -443,10 +502,24 @@ mod tests {
     fn linear_z_keeps_cores_and_never_counts_missing_as_clear() {
         let core = combine(&[Gate::Dbz(60.0), Gate::Clear, Gate::Clear, Gate::Clear]).unwrap();
         assert!((core - 53.98).abs() < 0.01, "{core}");
-        assert_eq!(combine(&[Gate::Dbz(40.0), Gate::Missing, Gate::Missing, Gate::Missing]), Some(40.0));
-        assert_eq!(combine(&[Gate::Dbz(-5.0), Gate::Dbz(-5.0), Gate::Missing, Gate::Dbz(-5.0)]), Some(-5.0));
+        assert_eq!(
+            combine(&[Gate::Dbz(40.0), Gate::Missing, Gate::Missing, Gate::Missing]),
+            Some(40.0)
+        );
+        assert_eq!(
+            combine(&[
+                Gate::Dbz(-5.0),
+                Gate::Dbz(-5.0),
+                Gate::Missing,
+                Gate::Dbz(-5.0)
+            ]),
+            Some(-5.0)
+        );
         assert_eq!(combine(&[Gate::Missing; 4]), None);
-        assert_eq!(combine(&[Gate::Clear, Gate::Missing, Gate::Clear, Gate::Missing]), None);
+        assert_eq!(
+            combine(&[Gate::Clear, Gate::Missing, Gate::Clear, Gate::Missing]),
+            None
+        );
         let mixed = combine(&[Gate::Dbz(-10.0), Gate::Dbz(20.0)]).unwrap();
         assert!((mixed - 16.99).abs() < 0.01, "{mixed}");
     }

@@ -266,9 +266,15 @@ pub async fn verify(store: &dyn ObjectStore, key: &str) -> Result<Commit> {
 /// Bytes the tile sampler retains from an artifact: REF, REF QC, offsets, ray angles, metadata.
 fn wanted(relative: &str) -> bool {
     relative == ".zattrs"
-        || ["azimuth_deg/", "elevation_deg/", "REF/", "REF_qc/", "REF_offsets/"]
-            .iter()
-            .any(|p| relative.starts_with(p))
+        || [
+            "azimuth_deg/",
+            "elevation_deg/",
+            "REF/",
+            "REF_qc/",
+            "REF_offsets/",
+        ]
+        .iter()
+        .any(|p| relative.starts_with(p))
 }
 
 pub async fn read_commit(store: &dyn ObjectStore, key: &str) -> Result<Commit> {
@@ -282,20 +288,31 @@ pub fn wanted_bytes(commit: &Commit) -> usize {
     commit
         .entries
         .iter()
-        .filter(|e| e.key.rsplit_once("/sweeps/").is_some_and(|(_, r)| r.splitn(4, '/').nth(3).is_some_and(wanted)))
+        .filter(|e| {
+            e.key
+                .rsplit_once("/sweeps/")
+                .is_some_and(|(_, r)| r.splitn(4, '/').nth(3).is_some_and(wanted))
+        })
         .map(|e| e.bytes)
         .sum()
 }
 
 /// Verifies every object, then rebuilds the REF polar sweep the tile sampler needs.
-pub async fn load(store: &dyn ObjectStore, key: &str) -> Result<(Commit, crate::polar::PolarSweep)> {
+pub async fn load(
+    store: &dyn ObjectStore,
+    key: &str,
+) -> Result<(Commit, crate::polar::PolarSweep)> {
     let (commit, kept) = verify_collect(store, key, wanted).await?;
     let get = |name: &str| kept.get(name).with_context(|| format!("missing {name}"));
     let attributes: serde_json::Value = serde_json::from_slice(get(".zattrs")?)?;
     let site = &attributes["site"];
     let site = (
-        site["latitude_deg"].as_f64().context("missing site latitude")?,
-        site["longitude_deg"].as_f64().context("missing site longitude")?,
+        site["latitude_deg"]
+            .as_f64()
+            .context("missing site latitude")?,
+        site["longitude_deg"]
+            .as_f64()
+            .context("missing site longitude")?,
     );
     let rays = attributes["rays"].as_array().context("missing rays")?;
     let join = |name: &str, shape: usize, width: usize| -> Result<Vec<u8>> {
@@ -308,7 +325,11 @@ pub async fn load(store: &dyn ObjectStore, key: &str) -> Result<(Commit, crate::
         bytes.truncate(shape * width);
         Ok(bytes)
     };
-    let f32s = |b: Vec<u8>| -> Vec<f32> { b.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect() };
+    let f32s = |b: Vec<u8>| -> Vec<f32> {
+        b.chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect()
+    };
     let azimuth = f32s(join("azimuth_deg", rays.len(), 4)?);
     let elevation = f32s(join("elevation_deg", rays.len(), 4)?);
     let offsets: Vec<u64> = join("REF_offsets", rays.len() + 1, 8)?
@@ -327,7 +348,9 @@ pub async fn load(store: &dyn ObjectStore, key: &str) -> Result<(Commit, crate::
         inputs.push(crate::polar::RayInput {
             azimuth_deg: azimuth[i],
             elevation_deg: elevation[i],
-            spacing_deg: ray["azimuth_spacing_deg"].as_f64().context("missing spacing")? as f32,
+            spacing_deg: ray["azimuth_spacing_deg"]
+                .as_f64()
+                .context("missing spacing")? as f32,
             first_gate_m: field("first_gate_m").unwrap_or(0),
             gate_m: field("spacing_m").unwrap_or(0),
             gates: count,
@@ -494,7 +517,11 @@ async fn verify_collect(
     Ok((commit, kept))
 }
 
-pub(crate) async fn read_bounded(store: &dyn ObjectStore, path: &Path, limit: usize) -> Result<Vec<u8>> {
+pub(crate) async fn read_bounded(
+    store: &dyn ObjectStore,
+    path: &Path,
+    limit: usize,
+) -> Result<Vec<u8>> {
     let result = store.get(path).await?;
     ensure!(result.meta.size <= limit as u64, "artifact read size limit");
     let mut stream = result.into_stream();
