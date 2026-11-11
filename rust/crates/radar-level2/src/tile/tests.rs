@@ -267,7 +267,12 @@ async fn burst_of_distinct_tiles_overflows_to_mrms_instead_of_queueing() {
             tokio::spawn(async move { s.render(r, Duration::from_secs(30)).await })
         })
         .collect();
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    for _ in 0..400 {
+        if h.permits().await == 2 && calls.iter().filter(|c| c.is_finished()).count() == 4 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
     assert_eq!(h.permits().await, 2);
     assert_eq!(h.svc.jobs_started(), 2);
     let finished: Vec<_> = calls
@@ -303,7 +308,7 @@ async fn timed_out_jobs_keep_their_permits_until_blocking_work_ends() {
     let latch = close(&h.svc);
     for i in 0..2 {
         assert_eq!(
-            why(&h.svc.render(h.req(i, 0), Duration::from_millis(300)).await),
+            why(&h.svc.render(h.req(i, 0), Duration::from_secs(3)).await),
             "render_timeout"
         );
     }
