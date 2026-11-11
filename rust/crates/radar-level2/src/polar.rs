@@ -283,7 +283,7 @@ pub fn pixel_metres(z: u32, lat: f64) -> f64 {
 
 /// Reusable per-render buffers; [`Scratch::bytes`] reports their real capacity.
 pub struct Scratch {
-    dbz: Vec<f32>,
+    pub dbz: Vec<f32>,
     classes: Vec<u8>,
     encoder: IndexedTileEncoder,
     tail: Vec<u8>,
@@ -313,6 +313,12 @@ pub struct Rendered {
 
 /// Mean linear Z over supported samples as dBZ; `None` when nothing but missing or clear air.
 fn combine(samples: &[Gate]) -> Option<f32> {
+    let mut values = samples.iter().filter_map(|s| if let Gate::Dbz(v) = s { Some(*v) } else { None });
+    if let Some(first) = values.next()
+        && samples.iter().all(|s| matches!(s, Gate::Missing) || *s == Gate::Dbz(first))
+    {
+        return Some(first);
+    }
     let (mut sum, mut n) = (0.0f64, 0u32);
     for s in samples {
         match s {
@@ -340,8 +346,8 @@ impl PolarSweep {
             &[0.5]
         };
         let near = |lat: f64, lon: f64| self.coarse_km(lat, lon) <= MAX_GROUND_RANGE_M / 1000.0 + 5.0;
-        let (_, n_lat) = pixel_lon_lat(0.0, f64::from(y) * TILE as f64, world);
-        let (_, s_lat) = pixel_lon_lat(0.0, (f64::from(y) + 1.0) * TILE as f64, world);
+        let n_lat = pixel_lon_lat(0.0, f64::from(y) * TILE as f64, world).0;
+        let s_lat = pixel_lon_lat(0.0, (f64::from(y) + 1.0) * TILE as f64, world).0;
         let (w_lon, e_lon) = (pixel_lon_lat(f64::from(x) * TILE as f64, 0.0, world).1, pixel_lon_lat((f64::from(x) + 1.0) * TILE as f64, 0.0, world).1);
         let (clat, clon) = (self.site.0.clamp(s_lat, n_lat), self.site.1.clamp(w_lon, e_lon));
         if !near(clat, clon) {
@@ -382,27 +388,32 @@ impl PolarSweep {
         scratch: &mut Scratch,
     ) -> Result<Rendered> {
         ensure!((8..=13).contains(&z) && x < 1 << z && y < 1 << z, "invalid tile");
-        let lut = model
-            .lut(palette)
-            .ok_or_else(|| anyhow::anyhow!("unknown palette"))?;
         ensure!(
             self.sample_tile(z, x, y, cancel, &mut scratch.dbz),
             "render cancelled"
         );
-        scratch.classes.clear();
-        scratch.classes.resize(TILE * TILE, 0);
-        model.classify_f32_into(&scratch.dbz, &mut scratch.classes)?;
-        let transparent = scratch.classes.iter().all(|c| *c == 0);
-        let depth = radar_tiler::png::bit_depth_for_entries(lut.rgba().len());
-        scratch
-            .encoder
-            .encode_tail(&scratch.classes, TILE, TILE, depth, &mut scratch.tail)?;
-        let mut png = Vec::with_capacity(scratch.tail.len() + lut.plte().len() + lut.trns().len() + 128);
-        png.extend_from_slice(&radar_tiler::png::header_bytes(TILE as u32, TILE as u32, depth));
-        radar_tiler::png::append_palette_chunks(&mut png, lut.plte(), lut.trns());
-        png.extend_from_slice(&scratch.tail);
-        Ok(Rendered { png, transparent })
+        encode_tile(model, palette, scratch)
     }
+}
+
+/// Classify the sampled dBZ in `scratch` with the shared MRMS reflectivity model and encode the palette PNG.
+pub fn encode_tile(model: &ClassModel, palette: &str, scratch: &mut Scratch) -> Result<Rendered> {
+    let lut = model
+        .lut(palette)
+        .ok_or_else(|| anyhow::anyhow!("unknown palette"))?;
+    scratch.classes.clear();
+    scratch.classes.resize(TILE * TILE, 0);
+    model.classify_f32_into(&scratch.dbz, &mut scratch.classes)?;
+    let transparent = scratch.classes.iter().all(|c| *c == 0);
+    let depth = radar_tiler::png::bit_depth_for_entries(lut.rgba().len());
+    scratch
+        .encoder
+        .encode_tail(&scratch.classes, TILE, TILE, depth, &mut scratch.tail)?;
+    let mut png = Vec::with_capacity(scratch.tail.len() + lut.plte().len() + lut.trns().len() + 128);
+    png.extend_from_slice(&radar_tiler::png::header_bytes(TILE as u32, TILE as u32, depth));
+    radar_tiler::png::append_palette_chunks(&mut png, lut.plte(), lut.trns());
+    png.extend_from_slice(&scratch.tail);
+    Ok(Rendered { png, transparent })
 }
 
 /// One shared class model over every shipped palette, exactly as MRMS builds reflectivity.
@@ -422,4 +433,21 @@ pub fn palette_version(model: &ClassModel) -> String {
         }
     }
     crate::checksum(text.as_bytes())[..16].to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linear_z_keeps_cores_and_never_counts_missing_as_clear() {
+        let core = combine(&[Gate::Dbz(60.0), Gate::Clear, Gate::Clear, Gate::Clear]).unwrap();
+        assert!((core - 53.98).abs() < 0.01, "{core}");
+        assert_eq!(combine(&[Gate::Dbz(40.0), Gate::Missing, Gate::Missing, Gate::Missing]), Some(40.0));
+        assert_eq!(combine(&[Gate::Dbz(-5.0), Gate::Dbz(-5.0), Gate::Missing, Gate::Dbz(-5.0)]), Some(-5.0));
+        assert_eq!(combine(&[Gate::Missing; 4]), None);
+        assert_eq!(combine(&[Gate::Clear, Gate::Missing, Gate::Clear, Gate::Missing]), None);
+        let mixed = combine(&[Gate::Dbz(-10.0), Gate::Dbz(20.0)]).unwrap();
+        assert!((mixed - 16.99).abs() < 0.01, "{mixed}");
+    }
 }

@@ -464,7 +464,7 @@ mod tests {
             return Ok(());
         };
         let schema = format!("level2_test_{}", uuid::Uuid::new_v4().simple());
-        let observer = Pool::connect(&url, &schema).await?;
+        let mut observer = Pool::connect(&url, &schema).await?;
         observer.initialize().await?;
         let mut owner = Pool::connect(&url, &schema).await?;
         assert!(owner.station("KGRR").await?);

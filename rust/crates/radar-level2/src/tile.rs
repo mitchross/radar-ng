@@ -85,6 +85,7 @@ pub struct TileService {
     state: Mutex<State>,
     loading: tokio::sync::Mutex<()>,
     peak_scratch: AtomicUsize,
+    jobs: Arc<AtomicUsize>,
     #[cfg(test)]
     latch: Mutex<Option<Arc<(Mutex<bool>, std::sync::Condvar)>>>,
 }
@@ -130,9 +131,15 @@ impl TileService {
             state: Mutex::new(State::default()),
             loading: tokio::sync::Mutex::new(()),
             peak_scratch: AtomicUsize::new(0),
+            jobs: Arc::new(AtomicUsize::new(0)),
             #[cfg(test)]
             latch: Mutex::new(None),
         }))
+    }
+
+    /// Blocking render jobs started by this process.
+    pub fn jobs_started(&self) -> usize {
+        self.jobs.load(Ordering::Relaxed)
     }
 
     pub fn peak_scratch_bytes(&self) -> usize {
@@ -240,7 +247,9 @@ impl TileService {
         let (z, x, y, palette) = (req.z, req.x, req.y, req.palette.clone());
         #[cfg(test)]
         let latch = self.latch.lock().expect("latch").clone();
+        let jobs = self.jobs.clone();
         let job = tokio::task::spawn_blocking(move || {
+            jobs.fetch_add(1, Ordering::Relaxed);
             #[cfg(test)]
             if let Some(latch) = latch {
                 let (lock, cv) = &*latch;
