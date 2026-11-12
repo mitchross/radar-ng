@@ -7,7 +7,7 @@ Read this whole file before changing anything under `rust/`, `deploy/Dockerfile`
 
 ## 1. Toolchain
 
-- Rust **1.97.0**, pinned in `rust/rust-toolchain.toml` (with clippy and rustfmt). rustup installs it
+- Rust **1.100.0**, pinned in `rust/rust-toolchain.toml` (with clippy and rustfmt). rustup installs it
   automatically. **Never bump it in passing**: CI, the Docker builder and local builds share it so
   clippy sees the same lints everywhere. A bump is its own PR.
 - The Temporal SDK build needs **`protoc` plus the well-known types**: `protobuf-compiler` and

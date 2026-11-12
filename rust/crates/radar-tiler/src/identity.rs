@@ -273,7 +273,7 @@ pub fn array_digest_f32(values: &[f32], shape: &[usize]) -> String {
     let mut buf = [0u8; 4 * 4096];
     for chunk in values.chunks(4096) {
         let n = chunk.len() * 4;
-        for (dst, v) in buf[..n].chunks_exact_mut(4).zip(chunk) {
+        for (dst, v) in buf[..n].as_chunks_mut::<4>().0.iter_mut().zip(chunk) {
             dst.copy_from_slice(&v.to_le_bytes());
         }
         h.update(&buf[..n]);
@@ -288,7 +288,7 @@ pub fn array_digest_f64(values: &[f64], shape: &[usize]) -> String {
     let mut buf = [0u8; 8 * 4096];
     for chunk in values.chunks(4096) {
         let n = chunk.len() * 8;
-        for (dst, v) in buf[..n].chunks_exact_mut(8).zip(chunk) {
+        for (dst, v) in buf[..n].as_chunks_mut::<8>().0.iter_mut().zip(chunk) {
             dst.copy_from_slice(&v.to_le_bytes());
         }
         h.update(&buf[..n]);
@@ -323,7 +323,7 @@ pub fn fingerprint_f64(values: &[f64]) -> Fingerprint {
     let mut buf = [0u8; 8 * 4096];
     for chunk in values.chunks(4096) {
         let n = chunk.len() * 8;
-        for (dst, v) in buf[..n].chunks_exact_mut(8).zip(chunk) {
+        for (dst, v) in buf[..n].as_chunks_mut::<8>().0.iter_mut().zip(chunk) {
             dst.copy_from_slice(&v.to_le_bytes());
         }
         h.update(&buf[..n]);

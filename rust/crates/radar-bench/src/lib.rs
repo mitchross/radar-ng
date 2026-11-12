@@ -193,7 +193,7 @@ pub fn read_f32_le(path: &Path, expect_len: usize) -> Result<Vec<f32>> {
         }
         carry.extend_from_slice(&buf[..n]);
         let whole = carry.len() / 4 * 4;
-        for c in carry[..whole].chunks_exact(4) {
+        for c in carry[..whole].as_chunks::<4>().0.iter() {
             out[filled] = f32::from_le_bytes([c[0], c[1], c[2], c[3]]);
             filled += 1;
         }
@@ -207,7 +207,9 @@ pub fn read_f32_le(path: &Path, expect_len: usize) -> Result<Vec<f32>> {
 pub fn read_f64_le(path: &Path) -> Result<Vec<f64>> {
     let bytes = fs::read(path).with_context(|| format!("read {}", path.display()))?;
     Ok(bytes
-        .chunks_exact(8)
+        .as_chunks::<8>()
+        .0
+        .iter()
         .map(|c| f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
         .collect())
 }
