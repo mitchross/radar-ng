@@ -134,7 +134,13 @@ fn packed_slots_hold_typed_codes() {
             continue;
         };
         let (_, _, rgb) = decode_rgb8(&bytes).unwrap();
-        codes.extend(rgb.chunks_exact(3).map(|p| p[0]).filter(|&c| c != 0));
+        codes.extend(
+            rgb.as_chunks::<3>()
+                .0
+                .iter()
+                .map(|p| p[0])
+                .filter(|&c| c != 0),
+        );
     }
     // 32.5 dBZ is q = 13 (12 where bilinear rounding lands just below): rain q, snow 32 + q, mix 64 + q.
     let classes: BTreeSet<u8> = codes.iter().map(|c| c / 32).collect();

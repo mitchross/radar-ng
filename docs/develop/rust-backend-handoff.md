@@ -79,7 +79,7 @@ Read this first if you're an engineer or an LLM picking up radar-ng after the Py
   `http://basemap:8081`). That fallback is how production works today.
 - **protoc.** The Temporal SDK build needs `protoc` and the well-known types: `protobuf-compiler` plus
   `libprotobuf-dev` on Debian/Ubuntu.
-- **Toolchain.** `rust/rust-toolchain.toml` pins Rust 1.97.0. CI, the Docker builder and local builds all
+- **Toolchain.** `rust/rust-toolchain.toml` pins Rust 1.100.0. CI, the Docker builder and local builds all
   use it, so clippy sees the same lints everywhere.
 - **Fixture generators.** The golden-fixture generator scripts (`rust/crates/*/testdata/gen_*.py`) ran the
   Python code. To regenerate a fixture, check out `5b3cb39`.

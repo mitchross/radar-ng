@@ -466,7 +466,7 @@ impl PixelStats {
 pub fn compare_rgba(a: &[u8], b: &[u8]) -> PixelStats {
     debug_assert_eq!(a.len(), b.len());
     let mut s = PixelStats::default();
-    for (pa, pb) in a.chunks_exact(4).zip(b.chunks_exact(4)) {
+    for (pa, pb) in a.as_chunks::<4>().0.iter().zip(b.as_chunks::<4>().0.iter()) {
         s.pixels += 1;
         if pa == pb {
             s.identical += 1;

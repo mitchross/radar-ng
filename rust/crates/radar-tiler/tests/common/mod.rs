@@ -18,7 +18,9 @@ pub fn testdata(rel: &str) -> PathBuf {
 pub fn read_f32(path: &Path) -> Vec<f32> {
     fs::read(path)
         .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
         .collect()
 }
@@ -27,7 +29,9 @@ pub fn read_f32(path: &Path) -> Vec<f32> {
 pub fn read_f64(path: &Path) -> Vec<f64> {
     fs::read(path)
         .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
-        .chunks_exact(8)
+        .as_chunks::<8>()
+        .0
+        .iter()
         .map(|b| f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))
         .collect()
 }
@@ -36,7 +40,9 @@ pub fn read_f64(path: &Path) -> Vec<f64> {
 pub fn read_i16(path: &Path) -> Vec<i16> {
     fs::read(path)
         .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|b| i16::from_le_bytes([b[0], b[1]]))
         .collect()
 }

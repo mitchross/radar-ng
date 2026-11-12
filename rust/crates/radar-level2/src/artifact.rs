@@ -326,15 +326,19 @@ pub async fn load(
         Ok(bytes)
     };
     let f32s = |b: Vec<u8>| -> Vec<f32> {
-        b.chunks_exact(4)
+        b.as_chunks::<4>()
+            .0
+            .iter()
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
             .collect()
     };
     let azimuth = f32s(join("azimuth_deg", rays.len(), 4)?);
     let elevation = f32s(join("elevation_deg", rays.len(), 4)?);
     let offsets: Vec<u64> = join("REF_offsets", rays.len() + 1, 8)?
-        .chunks_exact(8)
-        .map(|c| u64::from_le_bytes(c.try_into().expect("8 bytes")))
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|c| u64::from_le_bytes(*c))
         .collect();
     let gates = *offsets.last().context("missing offsets")? as usize;
     let values = f32s(join("REF", gates, 4)?);

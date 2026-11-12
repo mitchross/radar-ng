@@ -47,6 +47,10 @@ fn read_json_file(path: &std::path::Path) -> Option<Value> {
 ///
 /// # Errors
 /// Returns a response for an unusable manifest (500) or an out-of-range request (422).
+#[allow(
+    clippy::result_large_err,
+    reason = "the Err is the ready-made HTTP response; boxing it would add a deref at about 50 call sites for no gain on this cold path"
+)]
 pub async fn plan_for(
     state: &AppState,
     lat: f64,
