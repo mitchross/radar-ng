@@ -2,7 +2,7 @@
 
 > Your own weather radar app, running on your own hardware, using only free public weather data.
 
-[![expo](https://img.shields.io/badge/expo-SDK%2058-000)](https://expo.dev) [![rust](https://img.shields.io/badge/rust-1.97-000)](https://www.rust-lang.org/) [![temporal](https://img.shields.io/badge/orchestration-temporal-7c53ff)](https://temporal.io) [![k8s](https://img.shields.io/badge/deploy-talos%20%2B%20argocd-326CE5)](https://talos.dev)
+[![expo](https://img.shields.io/badge/expo-SDK%2058-000)](https://expo.dev) [![rust](https://img.shields.io/badge/rust-1.100-000)](https://www.rust-lang.org/) [![temporal](https://img.shields.io/badge/orchestration-temporal-7c53ff)](https://temporal.io) [![k8s](https://img.shields.io/badge/deploy-talos%20%2B%20argocd-326CE5)](https://talos.dev)
 
 <p align="center">
   <img src="docs/screenshots/home.png" width="19%" alt="Home" />

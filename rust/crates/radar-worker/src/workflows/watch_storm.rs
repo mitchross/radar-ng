@@ -215,12 +215,10 @@ impl WatchStormWorkflow {
                     let mut options = ContinueAsNewOptions::default();
                     options.initial_versioning_behavior =
                         Some(ContinueAsNewVersioningBehavior::AutoUpgrade);
-                    let never = ctx.continue_as_new(next, options)?;
-                    match never {}
+                    ctx.continue_as_new(next, options)?;
                 }
                 // Legacy path (no handoff marker): restarts from the original input and loses state.
-                let never = ctx.continue_as_new(input.clone(), ContinueAsNewOptions::default())?;
-                match never {}
+                ctx.continue_as_new(input.clone(), ContinueAsNewOptions::default())?;
             }
 
             if let Some(alert_id) = ctx.state_mut(|s| {

@@ -50,6 +50,10 @@ pub fn if_none_match_matches(header_value: Option<&str>, etag: &str) -> bool {
 ///
 /// # Errors
 /// Returns the 503 response when the read fails and no last-good copy exists.
+#[allow(
+    clippy::result_large_err,
+    reason = "the Err is the ready-made HTTP response; boxing it would add a deref at about 50 call sites for no gain on this cold path"
+)]
 pub async fn build_manifest(state: &AppState) -> Result<Arc<Value>, Response> {
     let dir = state.config.state_dir.clone();
     let read = tokio::task::spawn_blocking(move || {
@@ -88,6 +92,10 @@ fn fallback_or_503(state: &AppState, reason: &str) -> Result<Arc<Value>, Respons
 ///
 /// # Errors
 /// Returns the 503 response when no manifest can be read.
+#[allow(
+    clippy::result_large_err,
+    reason = "the Err is the ready-made HTTP response; boxing it would add a deref at about 50 call sites for no gain on this cold path"
+)]
 pub async fn cached_manifest(state: &AppState) -> Result<Arc<ManifestSnapshot>, Response> {
     // `try_get_with` makes concurrent misses share one read; a failed read is not cached.
     state

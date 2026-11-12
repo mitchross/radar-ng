@@ -274,6 +274,10 @@ pub async fn get_catalogue(State(state): State<AppState>, headers: HeaderMap) ->
     }
 }
 
+#[allow(
+    clippy::result_large_err,
+    reason = "the Err is the ready-made HTTP response; boxing it would add a deref at about 50 call sites for no gain on this cold path"
+)]
 async fn ready(state: &AppState, id: String, revision: String) -> Result<Option<Ready>, Response> {
     let root = state.config.tile_dir.clone();
     tokio::task::spawn_blocking(move || load(&root, &id, &revision))
