@@ -1,4 +1,5 @@
 # One WorkerDeployment per role; each polls only its own queue (radar-ng-<role>).
+# The level2 pool mounts no volumes and has no tile-server affinity.
 # Exactly one pool seeds Schedules: aux has SEED_SCHEDULES=1, every other pool SKIP_SCHEDULE_SEED=1.
 # All pools share the RWO tiles/grids/state volumes with the tile-server, so they must land on
 # its node (podAffinity). Drop the affinity if your storage is ReadWriteMany.
@@ -479,3 +480,96 @@ spec:
           persistentVolumeClaim: { claimName: state }
         - name: grids
           persistentVolumeClaim: { claimName: grids }
+---
+# Level II pool: no RWO volumes and no tile-server affinity, so it can sit on any node.
+# Gate stays off (LEVEL2_NUMERIC_ENABLED=false) until the separate deployment PR supplies secrets.
+apiVersion: temporal.io/v1alpha1
+kind: WorkerDeployment
+metadata:
+  name: radar-ng-worker-level2
+  namespace: radar-ng
+  labels:
+    app: radar-ng-worker-level2
+    radar-ng/worker: "true"
+spec:
+  minReadySeconds: 0
+  progressDeadlineSeconds: 600
+  replicas: 1
+  workerOptions:
+    connectionRef:
+      name: radar-ng-temporal
+    temporalNamespace: default   # <<< must match TEMPORAL_NAMESPACE in base/settings.env
+  rollout:
+    strategy: AllAtOnce
+    gate:
+      workflowType: RadarDeploymentSmokeWorkflow
+  sunset:
+    scaledownDelay: 10m
+    deleteDelay: 1h
+  template:
+    metadata:
+      labels:
+        app: radar-ng-worker-level2
+        radar-ng/worker: "true"
+    spec:
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      # Lets an in-flight poll finish on rollout; TEMPORAL_GRACEFUL_SHUTDOWN_S stays 5 s under it.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: worker
+          image: ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.9@sha256:1432031a17e5126eb591a4e0cb3e72f632283a45c3c190fe8cd7865dc51b64a9
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          ports:
+            - { containerPort: 9464, name: metrics, protocol: TCP }
+            - { containerPort: 9466, name: level2, protocol: TCP }
+          envFrom:
+            - configMapRef:
+                name: radar-ng-worker-config
+          env:
+            - { name: WORKER_ROLE, value: level2 }
+            - { name: USE_ISOLATED_TASK_QUEUES, value: "1" }
+            - name: NWS_USER_AGENT
+              valueFrom:
+                configMapKeyRef: { name: radar-ng-settings, key: NWS_USER_AGENT }
+            - { name: TEMPORAL_GRACEFUL_SHUTDOWN_S, value: "55" }
+            - { name: SKIP_SCHEDULE_SEED, value: "1" }
+            # One tick plus up to eight polls; the pool allows two decodes at once.
+            - { name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES, value: "9" }
+            - { name: LEVEL2_NUMERIC_ENABLED, value: "false" }
+            - { name: LEVEL2_OBJECT_PREFIX, value: level2/pool }
+            - { name: TMPDIR, value: /scratch }
+          livenessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/worker-alive -mmin -3)"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: [sh, -c, "test $(find /tmp/temporal-healthy -mmin -3)"]
+            periodSeconds: 30
+            failureThreshold: 2
+          volumeMounts:
+            - { name: scratch, mountPath: /scratch }
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 500m, memory: 3Gi, ephemeral-storage: 1Gi }
+            limits: { cpu: "6", memory: 6Gi, ephemeral-storage: 4Gi }
+      volumes:
+        # Bounded scratch for decode work; evicted if it passes the limit.
+        - name: scratch
+          emptyDir: { sizeLimit: 4Gi }
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }

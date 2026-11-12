@@ -149,6 +149,59 @@ spec:
               MRMS every minute, nowcast every 2-3 minutes, alerts every 5, HRRR and
               lightning hourly, air quality hourly: one of them has produced no
               completed run inside its window. Check the Schedules in the Temporal UI.
+    - name: radar-ng.level2
+      rules:
+        - alert: RadarNgLevel2FeedStale
+          expr: max(radar_level2_feed_age_seconds) > 600
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: NOAA Level II feed is more than 10 minutes behind for a demanded station
+            description: The newest chunk of a demanded station is over 10 minutes old; clients fall back to MRMS.
+        - alert: RadarNgLevel2SweepStale
+          expr: max(radar_level2_sweep_age_seconds) > 900
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Level II low sweep is more than 15 minutes old
+            description: Chunks arrive but no new complete low sweep is published; check radar_level2_fallback_total by reason.
+        - alert: RadarNgLevel2FallbackRateHigh
+          expr: |
+            sum(rate(radar_level2_poll_total{status="fallback"}[15m]))
+              / clamp_min(sum(rate(radar_level2_poll_total[15m])), 0.001) > 0.5
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Over half of Level II polls fall back
+            description: Compare radar_level2_fallback_total by reason, then NOAA and RustFS health.
+        - alert: RadarNgLevel2PoolBacklog
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(radar_level2_permit_wait_seconds_bucket[10m]))) > 30
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Level II decode permits are queueing for over 30 seconds
+            description: Two decode permits are the pool limit; check radar_level2_decodes_running and decode timings.
+        - alert: RadarNgLevel2CacheNearCap
+          expr: radar_level2_object_bytes > 0.9 * 10737418240
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Level II object quota is above 90 percent
+            description: Eviction is not keeping up; check radar_level2_evict_total{result="failed"} and RustFS.
+        - alert: RadarNgLevel2PoolWorkflowMissing
+          expr: (sum(increase(temporal_workflow_completed{workflow_type="Level2PoolWorkflow"}[3h])) or vector(0)) == 0 and on() (max(radar_level2_active_stations) > 0)
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: Level II pool workflow has not rolled over
+            description: Demand exists but the pool workflow has not continued as new in 3 hours; check the level2 worker and its queue.
     - name: radar-ng.capacity
       rules:
         - alert: RadarNgVolumeAlmostFull

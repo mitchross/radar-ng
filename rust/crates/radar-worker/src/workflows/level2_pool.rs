@@ -40,7 +40,7 @@ pub fn due(failures: &BTreeMap<String, u32>, stations: &[String], pass: u32) -> 
         .filter(|s| {
             let n = failures.get(*s).copied().unwrap_or(0);
             let every = (backoff_s(n) / POLL_INTERVAL_S).max(1) as u32;
-            pass % every == 0
+            pass.is_multiple_of(every)
         })
         .cloned()
         .collect()

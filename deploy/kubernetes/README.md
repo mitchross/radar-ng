@@ -240,7 +240,7 @@ adds:
 
 | Component | What it does | Needs |
 |---|---|---|
-| `worker-controller` | Replaces the single `legacy` worker with five role pools (`mrms`, `nowcast`, `hrrr`, `aux`, `alerts`) on their own task queues. Each release is smoke-tested (`RadarDeploymentSmokeWorkflow`) before it takes work. The `aux` pool seeds the Schedules. | [Temporal Worker Controller](https://github.com/temporalio/temporal-worker-controller) and its CRDs; a Temporal server with Worker Deployment (versioning) support. Set the address in `connection.yaml` and `TEMPORAL_ADDRESS`. |
+| `worker-controller` | Replaces the single `legacy` worker with five role pools (`mrms`, `nowcast`, `hrrr`, `aux`, `alerts`) on their own task queues. Each release is smoke-tested (`RadarDeploymentSmokeWorkflow`) before it takes work. The `aux` pool seeds the Schedules. A sixth, `level2`, is the gated Level II pool: no volumes, 500m/3Gi request, 6 CPU/6Gi limit, off until `LEVEL2_NUMERIC_ENABLED=true` ([runbook](../../docs/develop/level2-pool.md)). | [Temporal Worker Controller](https://github.com/temporalio/temporal-worker-controller) and its CRDs; a Temporal server with Worker Deployment (versioning) support. Set the address in `connection.yaml` and `TEMPORAL_ADDRESS`. |
 | `gateway-api` / `ingress` | Publishes the api | see above |
 | `monitoring` | Scrapes the api (`/api/metrics`) and every worker (`:9464/metrics`), plus alert rules for stale radar, failed syncs, missing pollers, full volumes | Prometheus Operator CRDs (kube-prometheus-stack). If your Prometheus selects by label, add it in your overlay. |
 | `autoscaling` | Memory-only VPAs (no HPA or PDB: the tile-server stays at one replica, see [Storage](#storage)) | VPA CRDs and controller for `vpa.yaml` |

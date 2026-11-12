@@ -62,6 +62,7 @@ pub struct Poller {
     namespace: String,
     feed: Feed,
     instance: String,
+    ready: tokio::sync::OnceCell<()>,
 }
 
 fn required(name: &str) -> Result<String> {
@@ -82,7 +83,14 @@ impl Poller {
             namespace,
             feed: Feed::new()?,
             instance: uuid::Uuid::new_v4().simple().to_string(),
+            ready: tokio::sync::OnceCell::new(),
         })
+    }
+
+    /// Swaps the NOAA client, for failure fixtures.
+    pub fn with_feed(mut self, feed: Feed) -> Self {
+        self.feed = feed;
+        self
     }
 
     /// Builds the poller from the Level II environment. Fails when the numeric gate is off.
@@ -109,7 +117,8 @@ impl Poller {
 
     async fn pool(&self) -> Result<Pool> {
         let pool = Pool::connect(&self.url, &self.schema).await?;
-        pool.initialize().await?;
+        // Schema DDL runs once per process; concurrent polls would deadlock on it.
+        self.ready.get_or_try_init(|| pool.initialize()).await?;
         Ok(pool)
     }
 

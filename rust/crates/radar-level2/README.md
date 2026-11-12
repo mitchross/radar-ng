@@ -129,6 +129,12 @@ Cached artifacts require fresh health, another verified object read and their ow
 Recheck age after publication and read-back. Reject future sweeps without replacing the last-good low-sweep clock.
 Reseed stalled circular-volume hints from a bounded archive header, then retry live chunks before archive recovery.
 
+## Pool
+
+`WORKER_ROLE=level2` runs the poller (`poller.rs`) and `Level2PoolWorkflow` on queue `radar-ng-level2`.
+Operations, metrics and the harness are in [level2-pool.md](../../../docs/develop/level2-pool.md).
+`LEVEL2_HARNESS_REQUIRE_PG=1` makes `tests/pool_harness.rs` fail instead of skip without Postgres.
+
 ## Checks and reproduction
 
 Run the [workspace gates](../../README.md#build-and-test) after sourcing `/opt/data/tools/radar-env.sh`.
