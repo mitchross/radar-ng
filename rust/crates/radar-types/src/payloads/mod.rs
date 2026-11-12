@@ -19,6 +19,7 @@ pub mod alerts;
 pub mod cleanup;
 pub mod global_model;
 pub mod hrrr;
+pub mod level2;
 pub mod lightning;
 pub mod mrms;
 pub mod nowcast;

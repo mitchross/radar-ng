@@ -204,7 +204,7 @@ async fn trace_candidates(
     Ok(outcome)
 }
 
-async fn trace(
+pub(crate) async fn trace(
     feed: &Feed,
     pool: &mut Pool,
     store: &dyn object_store::ObjectStore,

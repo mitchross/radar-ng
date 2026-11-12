@@ -146,6 +146,17 @@ impl Publisher {
     pub async fn process(&self, view: ViewRecord) -> Done {
         let owner = format!("build:{}:{}", self.instance, view.id);
         let outcome = self.build(&view, &owner).await;
+        match &outcome {
+            Ok(Done::Published(_)) => {
+                let cold = (self.now() - view.created_at).to_std().unwrap_or_default();
+                crate::metrics::observe("radar_level2_cold_ready_seconds", cold);
+            }
+            Err(reason) => crate::metrics::incr(
+                "radar_level2_fallback_total",
+                &[("reason", reason.as_str()), ("stage", "publish")],
+            ),
+            _ => {}
+        }
         match outcome {
             Ok(Done::Published(r)) => Done::Published(r),
             Ok(Done::Waiting(reason)) => {
@@ -155,6 +166,10 @@ impl Publisher {
                     .as_ref()
                     .is_none_or(|b| b.deadline - now <= TimeDelta::seconds(CLAIM_TTL_S));
                 if near {
+                    crate::metrics::incr(
+                        "radar_level2_fallback_total",
+                        &[("reason", reason.as_str()), ("stage", "publish")],
+                    );
                     let _ = self.store.fail(&view.id, &reason, &owner, now).await;
                     Done::Failed(reason)
                 } else {

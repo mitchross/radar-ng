@@ -118,6 +118,7 @@ fn role_default_queues_and_round_trip() {
         (WorkerRole::Aux, "radar-ng-aux"),
         (WorkerRole::Alerts, "radar-ng-alerts"),
         (WorkerRole::OpenMeteo, "radar-ng-open-meteo"),
+        (WorkerRole::Level2, "radar-ng-level2"),
     ];
     assert_eq!(WorkerRole::ALL.len(), expected.len());
     for (role, queue) in expected {

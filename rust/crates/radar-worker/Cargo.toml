@@ -9,6 +9,7 @@ license.workspace = true
 radar-alerts.workspace = true
 radar-storms.workspace = true
 radar-types.workspace = true
+radar-level2 = { path = "../radar-level2" }
 radar-core.workspace = true
 radar-tiler.workspace = true
 radar-ingest.workspace = true

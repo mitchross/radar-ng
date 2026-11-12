@@ -268,7 +268,9 @@ impl Feed {
                 bytes: bytes.len(),
             });
             let result = tokio::task::spawn_blocking(move || {
+                let started = std::time::Instant::now();
                 let completed = decoder.push(&bytes)?;
+                crate::metrics::observe("radar_level2_decode_seconds", started.elapsed());
                 Ok::<_, anyhow::Error>((decoder, completed))
             })
             .await?;
@@ -280,6 +282,11 @@ impl Feed {
                 }
             };
             decoder = next;
+            crate::metrics::add(
+                "radar_level2_sweeps_decoded_total",
+                &[],
+                completed.len() as f64,
+            );
             sweeps.extend(
                 completed
                     .into_iter()

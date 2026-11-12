@@ -79,6 +79,10 @@ pub const OPEN_METEO_RETRY: RetryPolicySpec = RetryPolicySpec::new(10, 2.0, 300,
 pub const POLL_ALERTS_RETRY: RetryPolicySpec = RetryPolicySpec::new(2, 2.0, 15, 3);
 /// Nowcast: a single attempt (deliberate; see spec-temporal section 4.7).
 pub const NOWCAST_RETRY: RetryPolicySpec = RetryPolicySpec::new(1, 2.0, 100, 1);
+/// Level II tick: 1 s, 2.0, 10 s, 3 attempts.
+pub const LEVEL2_TICK_RETRY: RetryPolicySpec = RetryPolicySpec::new(1, 2.0, 10, 3);
+/// Level II station poll: one attempt. The next 10 s pass is the retry, with workflow backoff.
+pub const LEVEL2_POLL_RETRY: RetryPolicySpec = RetryPolicySpec::new(1, 2.0, 10, 1);
 /// Deployment smoke: 1 s, 2.0, 100 s, 2 attempts.
 pub const DEPLOYMENT_SMOKE_RETRY: RetryPolicySpec = RetryPolicySpec::new(1, 2.0, 100, 2);
 /// Push token persist and delete: 1 s, 2.0, 10 s, 3 attempts.
@@ -227,6 +231,20 @@ pub const TILE_CLEANUP_SWEEP: ActivityCallSpec = ActivityCallSpec {
     schedule_to_close_s: None,
     heartbeat_s: None,
     retry: TILE_CLEANUP_RETRY,
+};
+/// `level2_tick`.
+pub const LEVEL2_TICK: ActivityCallSpec = ActivityCallSpec {
+    start_to_close_s: 120,
+    schedule_to_close_s: None,
+    heartbeat_s: None,
+    retry: LEVEL2_TICK_RETRY,
+};
+/// `level2_poll_station`. Bounded well under the 900 s stale-lease reaper.
+pub const LEVEL2_POLL_STATION: ActivityCallSpec = ActivityCallSpec {
+    start_to_close_s: 90,
+    schedule_to_close_s: None,
+    heartbeat_s: Some(30),
+    retry: LEVEL2_POLL_RETRY,
 };
 /// `open_meteo_sync`. Runs on the open-meteo queue.
 pub const OPEN_METEO_SYNC: ActivityCallSpec = ActivityCallSpec {

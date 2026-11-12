@@ -38,6 +38,7 @@ use crate::activities::aqm::AqmActivities;
 use crate::activities::aux::AuxActivities;
 use crate::activities::global_model::GlobalModelActivities;
 use crate::activities::hrrr::HrrrActivities;
+use crate::activities::level2::Level2Activities;
 use crate::activities::mrms::MrmsActivities;
 use crate::activities::nowcast::NowcastActivities;
 use crate::activities::open_meteo::OpenMeteoActivities;
@@ -53,6 +54,7 @@ use crate::workflows::airquality::IngestAirQualityWorkflow;
 use crate::workflows::deployment_smoke::RadarDeploymentSmokeWorkflow;
 use crate::workflows::global_model::IngestGlobalModelWorkflow;
 use crate::workflows::hrrr::IngestHrrrWorkflow;
+use crate::workflows::level2_pool::Level2PoolWorkflow;
 use crate::workflows::lightning::IngestLightningWorkflow;
 use crate::workflows::mrms::IngestMrmsWorkflow;
 use crate::workflows::nowcast::NowcastWorkflow;
@@ -117,6 +119,7 @@ pub fn registration(role: WorkerRole) -> Registration {
             wire::WORKFLOW_DELETE_PUSH_TOKEN,
         ],
         WorkerRole::OpenMeteo => vec![],
+        WorkerRole::Level2 => vec![wire::WORKFLOW_LEVEL2_POOL],
     };
     let mut activities: Vec<&'static str> = match role {
         WorkerRole::Legacy | WorkerRole::All => wire::ALL_ACTIVITY_NAMES
@@ -166,8 +169,15 @@ pub fn registration(role: WorkerRole) -> Registration {
             wire::ACTIVITY_SEND_PUSH_NOTIFICATION,
         ],
         WorkerRole::OpenMeteo => vec![wire::ACTIVITY_OPEN_METEO_SYNC],
+        WorkerRole::Level2 => vec![
+            wire::ACTIVITY_LEVEL2_TICK,
+            wire::ACTIVITY_LEVEL2_POLL_STATION,
+        ],
     };
-    if role != WorkerRole::OpenMeteo && role != WorkerRole::Legacy && role != WorkerRole::All {
+    if !matches!(
+        role,
+        WorkerRole::OpenMeteo | WorkerRole::Level2 | WorkerRole::Legacy | WorkerRole::All
+    ) {
         workflows.push(SMOKE_WORKFLOW);
         activities.push(SMOKE_ACTIVITY);
     }
@@ -215,6 +225,7 @@ struct Deps {
     nowcast: Option<NowcastConfig>,
     alerts: Option<AlertsDeps>,
     open_meteo: Option<OpenMeteoConfig>,
+    level2: Option<Level2Activities>,
 }
 
 fn needs(role: WorkerRole, pool: WorkerRole) -> bool {
@@ -267,7 +278,13 @@ impl Deps {
         } else {
             None
         };
+        let level2 = if role == WorkerRole::Level2 {
+            Some(Level2Activities::from_env()?)
+        } else {
+            None
+        };
         Ok(Self {
+            level2,
             ingest,
             aqm,
             aux,
@@ -331,6 +348,7 @@ pub fn register_workflows<T: WorkflowTarget>(
             wire::WORKFLOW_DELETE_PUSH_TOKEN => target.add::<DeletePushTokenWorkflow>()?,
             wire::WORKFLOW_DEPLOYMENT_SMOKE => target.add::<RadarDeploymentSmokeWorkflow>()?,
             wire::WORKFLOW_INGEST_GLOBAL_MODEL => target.add::<IngestGlobalModelWorkflow>()?,
+            wire::WORKFLOW_LEVEL2_POOL => target.add::<Level2PoolWorkflow>()?,
             other => anyhow::bail!("no workflow implementation for {other}"),
         }
     }
@@ -367,7 +385,11 @@ fn add_activities(
     if let Some(cfg) = deps.open_meteo {
         builder = builder.register_activities(OpenMeteoActivities::new(cfg));
     }
-    builder = builder.register_activities(SmokeActivities::new());
+    if let Some(level2) = deps.level2 {
+        builder = builder.register_activities(level2);
+    } else {
+        builder = builder.register_activities(SmokeActivities::new());
+    }
     Ok(builder)
 }
 
@@ -485,6 +507,12 @@ fn start_background(
         cfg.health_file.clone(),
         cfg.alive_file.clone(),
     ))];
+    if cfg.role == WorkerRole::Level2 {
+        background.push(tokio::spawn(level2_background(
+            client.clone(),
+            cfg.task_queue.clone(),
+        )));
+    }
     if cfg.seed_schedules {
         let isolated = cfg.use_isolated_task_queues;
         let (seed_client, seed_ns) = (client.clone(), namespace.to_owned());
@@ -541,6 +569,31 @@ async fn run_open_meteo_pool(cfg: WorkerConfig) -> anyhow::Result<()> {
     let outcome = worker.run().await;
     health.abort();
     finish(outcome)
+}
+
+/// Level II metrics endpoint and the pool workflow keeper. A start failure is logged and retried.
+async fn level2_background(client: Client, queue: String) {
+    let bind = std::env::var("LEVEL2_METRICS_BIND").unwrap_or_else(|_| "0.0.0.0:9466".into());
+    match bind.parse() {
+        Ok(addr) => {
+            tokio::spawn(async move {
+                if let Err(err) = radar_level2::metrics::serve(addr).await {
+                    tracing::error!(%err, "level2 metrics stopped");
+                }
+            });
+        }
+        Err(err) => tracing::error!(%err, bind, "invalid LEVEL2_METRICS_BIND"),
+    }
+    if !radar_level2::poller::enabled().unwrap_or(false) {
+        tracing::info!("level2 numeric gate off; pool workflow not started");
+        return;
+    }
+    loop {
+        if let Err(err) = crate::temporal_io::ensure_level2_pool(&client, &queue).await {
+            tracing::warn!(%err, "level2 pool workflow not running");
+        }
+        tokio::time::sleep(Duration::from_secs(60)).await;
+    }
 }
 
 /// One-shot schedule seeding, for an operator or job. Creates or updates every declared schedule with bounded
@@ -771,6 +824,54 @@ mod tests {
         let open_meteo = registration(WorkerRole::OpenMeteo);
         assert!(open_meteo.workflows.is_empty());
         assert_eq!(open_meteo.activities, vec![wire::ACTIVITY_OPEN_METEO_SYNC]);
+    }
+
+    #[test]
+    fn level2_pool_is_isolated_from_every_other_role() {
+        let level2 = registration(WorkerRole::Level2);
+        assert_eq!(level2.workflows, vec![wire::WORKFLOW_LEVEL2_POOL]);
+        assert_eq!(
+            level2.activities,
+            vec![
+                wire::ACTIVITY_LEVEL2_TICK,
+                wire::ACTIVITY_LEVEL2_POLL_STATION
+            ]
+        );
+        assert_eq!(
+            WorkerRole::Level2.default_task_queue(),
+            wire::LEVEL2_TASK_QUEUE
+        );
+        for role in POOLS
+            .into_iter()
+            .chain([WorkerRole::Legacy, WorkerRole::All])
+        {
+            let reg = registration(role);
+            assert!(
+                !reg.workflows.contains(&wire::WORKFLOW_LEVEL2_POOL),
+                "{role:?}"
+            );
+            assert!(
+                !reg.activities.contains(&wire::ACTIVITY_LEVEL2_TICK),
+                "{role:?}"
+            );
+            assert!(
+                !reg.activities.contains(&wire::ACTIVITY_LEVEL2_POLL_STATION),
+                "{role:?}"
+            );
+            assert_ne!(role.default_task_queue(), wire::LEVEL2_TASK_QUEUE);
+        }
+    }
+
+    #[test]
+    fn mrms_keeps_its_own_queue_and_activities_beside_level2() {
+        let mrms = registration(WorkerRole::Mrms);
+        assert_eq!(WorkerRole::Mrms.default_task_queue(), wire::MRMS_TASK_QUEUE);
+        assert!(mrms.activities.contains(&wire::ACTIVITY_MRMS_PROCESS_FRAME));
+        assert!(
+            !mrms
+                .activities
+                .contains(&wire::ACTIVITY_LEVEL2_POLL_STATION)
+        );
     }
 
     #[test]

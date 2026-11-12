@@ -403,6 +403,7 @@ fn validate_moment(b: &DataBlock<'_, GenericDataBlock<'_>>) -> Result<()> {
 fn moment(b: &DataBlock<'_, GenericDataBlock<'_>>, blanking: u8) -> Result<Moment> {
     let h = b.inner().header();
     let encoded = b.inner().encoded_values().to_vec();
+    let qc_started = std::time::Instant::now();
     let (values, qc) = qc_values(
         &encoded,
         h.data_word_size_raw(),
@@ -410,6 +411,11 @@ fn moment(b: &DataBlock<'_, GenericDataBlock<'_>>, blanking: u8) -> Result<Momen
         h.offset(),
         blanking,
     )?;
+    crate::metrics::add(
+        "radar_level2_qc_seconds_total",
+        &[],
+        qc_started.elapsed().as_secs_f64(),
+    );
     Ok(Moment {
         first_gate_m: h.data_moment_range_raw() as i16,
         spacing_m: h.data_moment_range_sample_interval_raw() as i16,

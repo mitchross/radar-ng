@@ -28,6 +28,7 @@ links to the guide for it.
 | Serve finished replay cases (read-only API) | [develop/replay-api.md](develop/replay-api.md) |
 | Publish finished replay cases (operator runbook) | [develop/replay-publish.md](develop/replay-publish.md) |
 | Review the Level II close-up design before build | [develop/design/level2-close-up.md](develop/design/level2-close-up.md) |
+| Run the Level II pool (runbook, metrics, harness) | [develop/level2-pool.md](develop/level2-pool.md) |
 | Cut a release | [develop/releasing.md](develop/releasing.md) · [develop/temporal-safe-deployments.md](develop/temporal-safe-deployments.md) |
 | Upgrade Expo / React Native | [develop/expo-rn-upgrade-playbook.md](develop/expo-rn-upgrade-playbook.md) |
 | See how the pieces fit together | [reference/architecture.md](reference/architecture.md) |

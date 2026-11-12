@@ -3019,6 +3019,7 @@ dependencies = [
  "radar-core",
  "radar-grib",
  "radar-ingest",
+ "radar-level2",
  "radar-nowcast",
  "radar-storms",
  "radar-tiler",
