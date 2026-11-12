@@ -132,3 +132,29 @@ impl WatchSignaler for TemporalWatchSignaler {
         Ok(())
     }
 }
+
+/// Keeps the single `level2-pool` workflow running. A running one is reused, a closed one restarts.
+pub async fn ensure_level2_pool(client: &Client, task_queue: &str) -> anyhow::Result<()> {
+    use radar_types::wire::{LEVEL2_POOL_WORKFLOW_ID, WORKFLOW_LEVEL2_POOL};
+    use temporalio_client::{UntypedWorkflow, WorkflowIdConflictPolicy, WorkflowStartOptions};
+    use temporalio_common::data_converters::RawValue;
+    use temporalio_common::protos::temporal::api::common::v1::Payload;
+    let payload = Payload {
+        metadata: [("encoding".to_owned(), b"json/plain".to_vec())].into(),
+        data: b"{}".to_vec(),
+        ..Default::default()
+    };
+    let options =
+        WorkflowStartOptions::new(task_queue.to_owned(), LEVEL2_POOL_WORKFLOW_ID.to_owned())
+            .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
+            .build();
+    client
+        .start_workflow(
+            UntypedWorkflow::new(WORKFLOW_LEVEL2_POOL),
+            RawValue::new(vec![payload]),
+            options,
+        )
+        .await
+        .context("starting the Level II pool workflow")?;
+    Ok(())
+}

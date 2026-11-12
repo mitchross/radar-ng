@@ -174,14 +174,26 @@ impl Pool {
             .await?;
         tx.query_one("SELECT pg_advisory_xact_lock(288,3)", &[])
             .await?;
-        tx.execute(&format!("DELETE FROM {s}.sweeps WHERE station=$1"), &[&station])
-            .await?;
-        tx.execute(&format!("DELETE FROM {s}.objects WHERE id LIKE $1 OR id LIKE $2"), &[&like, &tiles])
-            .await?;
-        tx.execute(&format!("DELETE FROM {s}.tiles WHERE key LIKE $1"), &[&tiles])
-            .await?;
-        tx.execute(&format!("DELETE FROM {s}.stations WHERE station=$1"), &[&station])
-            .await?;
+        tx.execute(
+            &format!("DELETE FROM {s}.sweeps WHERE station=$1"),
+            &[&station],
+        )
+        .await?;
+        tx.execute(
+            &format!("DELETE FROM {s}.objects WHERE id LIKE $1 OR id LIKE $2"),
+            &[&like, &tiles],
+        )
+        .await?;
+        tx.execute(
+            &format!("DELETE FROM {s}.tiles WHERE key LIKE $1"),
+            &[&tiles],
+        )
+        .await?;
+        tx.execute(
+            &format!("DELETE FROM {s}.stations WHERE station=$1"),
+            &[&station],
+        )
+        .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -219,8 +231,11 @@ impl Pool {
             &[&station, &scan_end],
         )
         .await?;
-        tx.execute(&format!("DELETE FROM {s}.objects WHERE id LIKE $1"), &[&like])
-            .await?;
+        tx.execute(
+            &format!("DELETE FROM {s}.objects WHERE id LIKE $1"),
+            &[&like],
+        )
+        .await?;
         tx.commit().await?;
         Ok(())
     }

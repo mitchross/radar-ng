@@ -180,7 +180,11 @@ mod tests {
 
     #[test]
     fn gauge_family_drops_stale_series() {
-        gauge_family("t_age", "station", &[("KGRR".into(), 5.0), ("KDTX".into(), 9.0)]);
+        gauge_family(
+            "t_age",
+            "station",
+            &[("KGRR".into(), 5.0), ("KDTX".into(), 9.0)],
+        );
         gauge_family("t_age", "station", &[("KGRR".into(), 7.0)]);
         let text = render();
         assert!(text.contains("t_age{station=\"KGRR\"} 7"));

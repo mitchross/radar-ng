@@ -31,6 +31,10 @@ pub struct Level2PollResult {
     pub reason: Option<String>,
 }
 
-/// Workflow input. Carries nothing: state lives in Postgres, so a rollover loses nothing.
+/// Workflow input. Only per-station failure counts roll over; all other state lives in Postgres.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Level2PoolInput {}
+pub struct Level2PoolInput {
+    /// Consecutive failed polls per station, for backoff across continue-as-new.
+    #[serde(default)]
+    pub failures: std::collections::BTreeMap<String, u32>,
+}

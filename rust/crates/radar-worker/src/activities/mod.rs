@@ -8,6 +8,7 @@ pub mod aqm;
 pub mod aux;
 pub mod global_model;
 pub mod hrrr;
+pub mod level2;
 pub mod mrms;
 pub mod nowcast;
 pub mod open_meteo;

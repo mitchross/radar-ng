@@ -302,6 +302,14 @@ mod tests {
     }
 
     #[test]
+    fn level2_is_accepted_as_its_own_pool_and_never_seeds() {
+        let cfg = WorkerConfig::from_lookup(&env(&[("WORKER_ROLE", "level2")])).unwrap();
+        assert_eq!(cfg.role, WorkerRole::Level2);
+        assert_eq!(cfg.task_queue, wire::LEVEL2_TASK_QUEUE);
+        assert!(!cfg.seed_schedules);
+    }
+
+    #[test]
     fn open_meteo_is_accepted_as_its_own_pool() {
         let cfg = WorkerConfig::from_lookup(&env(&[("WORKER_ROLE", "open-meteo")])).unwrap();
         assert_eq!(cfg.role, WorkerRole::OpenMeteo);
