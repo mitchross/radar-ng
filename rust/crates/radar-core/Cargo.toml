@@ -17,8 +17,6 @@ rustix.workspace = true
 tempfile.workspace = true
 walkdir.workspace = true
 uuid.workspace = true
-sha2.workspace = true
-hex.workspace = true
 rusqlite.workspace = true
 tokio.workspace = true
 

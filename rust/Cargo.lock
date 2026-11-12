@@ -2793,12 +2793,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "hex",
  "rusqlite",
  "rustix",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "tempfile",
  "thiserror",
  "tokio",
@@ -2843,7 +2841,6 @@ dependencies = [
 name = "radar-grib"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bytes",
  "chrono",
  "flate2",
@@ -2992,7 +2989,6 @@ dependencies = [
 name = "radar-types"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "hex",
  "serde",
  "serde_json",
