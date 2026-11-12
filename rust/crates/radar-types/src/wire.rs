@@ -226,6 +226,16 @@ pub const AUX_TASK_QUEUE: &str = "radar-ng-aux";
 pub const ALERTS_TASK_QUEUE: &str = "radar-ng-alerts";
 /// `radar-ng-open-meteo`: the open-meteo pool; `open_meteo_sync` always targets it.
 pub const OPEN_METEO_TASK_QUEUE: &str = "radar-ng-open-meteo";
+/// `radar-ng-level2`: the Level II close-up pool. No schedule targets it and the legacy pool never polls it.
+pub const LEVEL2_TASK_QUEUE: &str = "radar-ng-level2";
+/// Fixed workflow ID of the single pool workflow on [`LEVEL2_TASK_QUEUE`].
+pub const LEVEL2_POOL_WORKFLOW_ID: &str = "level2-pool";
+/// The pool workflow: one per pool, polls demanded stations only. Not in [`ALL_WORKFLOW_TYPES`].
+pub const WORKFLOW_LEVEL2_POOL: &str = "Level2PoolWorkflow";
+/// Housekeeping and the list of demanded stations. Not in [`ALL_ACTIVITY_NAMES`].
+pub const ACTIVITY_LEVEL2_TICK: &str = "level2_tick";
+/// One bounded poll of one demanded station. Not in [`ALL_ACTIVITY_NAMES`].
+pub const ACTIVITY_LEVEL2_POLL_STATION: &str = "level2_poll_station";
 
 // ---------------------------------------------------------------------------
 // Environment variable names (spec-temporal section 3.1 and section 2.2)
@@ -277,11 +287,13 @@ pub enum WorkerRole {
     Alerts,
     /// Open-meteo sync pool (activity only).
     OpenMeteo,
+    /// Level II close-up pool.
+    Level2,
 }
 
 impl WorkerRole {
     /// Every role, in declaration order.
-    pub const ALL: [WorkerRole; 8] = [
+    pub const ALL: [WorkerRole; 9] = [
         WorkerRole::Legacy,
         WorkerRole::All,
         WorkerRole::Mrms,
@@ -290,6 +302,7 @@ impl WorkerRole {
         WorkerRole::Aux,
         WorkerRole::Alerts,
         WorkerRole::OpenMeteo,
+        WorkerRole::Level2,
     ];
 
     /// Canonical lowercase name (`open-meteo` for the open-meteo pool).
@@ -303,6 +316,7 @@ impl WorkerRole {
             WorkerRole::Aux => "aux",
             WorkerRole::Alerts => "alerts",
             WorkerRole::OpenMeteo => "open-meteo",
+            WorkerRole::Level2 => "level2",
         }
     }
 
@@ -316,6 +330,7 @@ impl WorkerRole {
             WorkerRole::Aux => AUX_TASK_QUEUE,
             WorkerRole::Alerts => ALERTS_TASK_QUEUE,
             WorkerRole::OpenMeteo => OPEN_METEO_TASK_QUEUE,
+            WorkerRole::Level2 => LEVEL2_TASK_QUEUE,
         }
     }
 }
@@ -341,6 +356,7 @@ impl FromStr for WorkerRole {
             "aux" => Ok(WorkerRole::Aux),
             "alerts" => Ok(WorkerRole::Alerts),
             "open-meteo" | "open_meteo" => Ok(WorkerRole::OpenMeteo),
+            "level2" => Ok(WorkerRole::Level2),
             _ => Err(UnknownWorkerRole(s.to_owned())),
         }
     }

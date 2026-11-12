@@ -53,6 +53,12 @@ impl Pool {
             CREATE TABLE IF NOT EXISTS {s}.tiles(key text PRIMARY KEY,sha256 text NOT NULL,bytes bigint NOT NULL,transparent boolean NOT NULL);
             CREATE TABLE IF NOT EXISTS {s}.health(station text PRIMARY KEY,document text NOT NULL);
             CREATE TABLE IF NOT EXISTS {s}.catalogue(id boolean PRIMARY KEY DEFAULT true CHECK(id),document text NOT NULL);
+            ALTER TABLE {s}.stations ADD COLUMN IF NOT EXISTS busy_since timestamptz;
+            ALTER TABLE {s}.decodes ADD COLUMN IF NOT EXISTS leased_at timestamptz;
+            ALTER TABLE {s}.renders ADD COLUMN IF NOT EXISTS leased_at timestamptz;
+            CREATE TABLE IF NOT EXISTS {s}.instances(id text PRIMARY KEY,seen timestamptz NOT NULL);
+            ALTER TABLE {s}.reservations ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT clock_timestamp();
+            CREATE TABLE IF NOT EXISTS {s}.pins(key text NOT NULL,owner text NOT NULL,until timestamptz NOT NULL,PRIMARY KEY(key,owner));
         ")).await?;
         Ok(())
     }
@@ -77,7 +83,7 @@ impl Pool {
         if !active && count >= 8 {
             return Ok(false);
         }
-        tx.execute(&format!("INSERT INTO {s}.stations(station,demand_until,busy) VALUES($1,clock_timestamp()+interval '600 seconds',true) ON CONFLICT(station) DO UPDATE SET demand_until=excluded.demand_until,busy=true"),&[&station]).await?;
+        tx.execute(&format!("INSERT INTO {s}.stations(station,demand_until,busy,busy_since) VALUES($1,clock_timestamp()+interval '600 seconds',true,clock_timestamp()) ON CONFLICT(station) DO UPDATE SET demand_until=excluded.demand_until,busy=true,busy_since=clock_timestamp()"),&[&station]).await?;
         tx.commit().await?;
         Ok(true)
     }
@@ -85,7 +91,7 @@ impl Pool {
         self.client
             .execute(
                 &format!(
-                    "UPDATE {}.stations SET busy=false WHERE station=$1",
+                    "UPDATE {}.stations SET busy=false,busy_since=NULL WHERE station=$1",
                     self.schema
                 ),
                 &[&station],
@@ -104,7 +110,7 @@ impl Pool {
         if used + JOB_RESERVATION as i64 > HOT_LIMIT as i64 {
             return Ok(None);
         }
-        let row=tx.query_opt(&format!("UPDATE {s}.decodes SET owner=$1,bytes=$2 WHERE slot=(SELECT slot FROM {s}.decodes WHERE owner IS NULL ORDER BY slot FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING slot"),&[&owner,&(JOB_RESERVATION as i64)]).await?;
+        let row=tx.query_opt(&format!("UPDATE {s}.decodes SET owner=$1,bytes=$2,leased_at=clock_timestamp() WHERE slot=(SELECT slot FROM {s}.decodes WHERE owner IS NULL ORDER BY slot FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING slot"),&[&owner,&(JOB_RESERVATION as i64)]).await?;
         tx.commit().await?;
         Ok(row.map(|_| owner))
     }
@@ -112,7 +118,7 @@ impl Pool {
         self.client
             .execute(
                 &format!(
-                    "UPDATE {}.decodes SET owner=NULL,bytes=0 WHERE owner=$1",
+                    "UPDATE {}.decodes SET owner=NULL,bytes=0,leased_at=NULL WHERE owner=$1",
                     self.schema
                 ),
                 &[&owner],
@@ -179,14 +185,14 @@ impl Pool {
     pub async fn render_permit(&self) -> Result<Option<String>> {
         let owner = uuid::Uuid::new_v4().to_string();
         let s = &self.schema;
-        let row=self.client.query_opt(&format!("UPDATE {s}.renders SET owner=$1 WHERE slot=(SELECT slot FROM {s}.renders WHERE owner IS NULL AND slot<=$2 ORDER BY slot FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING slot"),&[&owner,&(RENDER_JOBS as i32)]).await?;
+        let row=self.client.query_opt(&format!("UPDATE {s}.renders SET owner=$1,leased_at=clock_timestamp() WHERE slot=(SELECT slot FROM {s}.renders WHERE owner IS NULL AND slot<=$2 ORDER BY slot FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING slot"),&[&owner,&(RENDER_JOBS as i32)]).await?;
         Ok(row.map(|_| owner))
     }
     pub async fn release_render(&self, owner: &str) -> Result<()> {
         self.client
             .execute(
                 &format!(
-                    "UPDATE {}.renders SET owner=NULL WHERE owner=$1",
+                    "UPDATE {}.renders SET owner=NULL,leased_at=NULL WHERE owner=$1",
                     self.schema
                 ),
                 &[&owner],

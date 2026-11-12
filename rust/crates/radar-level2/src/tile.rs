@@ -246,8 +246,68 @@ impl TileService {
         drop(pool);
         match result {
             Ok(outcome) => Outcome::Ready(outcome),
-            Err(reason) => Outcome::Fallback(reason),
+            Err(reason) => {
+                crate::metrics::incr(
+                    "radar_level2_fallback_total",
+                    &[("reason", reason), ("stage", "render")],
+                );
+                Outcome::Fallback(reason)
+            }
         }
+    }
+
+    pub fn instance(&self) -> &str {
+        &self.instance
+    }
+
+    /// Marks this process alive so other replicas keep its reservations.
+    pub async fn beat(&self) -> Result<()> {
+        self.pool.lock().await.beat(&self.instance).await
+    }
+
+    pub fn hot_tile_bytes(&self) -> usize {
+        let state = self.state.lock().expect("state lock");
+        state.tiles.values().map(|c| c.value.0.len()).sum()
+    }
+
+    /// Drops this process's cached sweeps and tiles of idle stations and frees their pool budget.
+    pub async fn evict_stations(&self, stations: &[String]) -> usize {
+        let ids: Vec<String> = {
+            let mut state = self.state.lock().expect("state lock");
+            let sweeps: Vec<String> = state
+                .sweeps
+                .iter()
+                .filter(|(k, c)| {
+                    Arc::strong_count(&c.value) == 1
+                        && parse_commit_key(k)
+                            .is_some_and(|(_, s, _)| stations.iter().any(|x| x == s))
+                })
+                .map(|(k, _)| k.clone())
+                .collect();
+            let tiles: Vec<String> = state
+                .tiles
+                .keys()
+                .filter(|k| {
+                    k.split_once("/tiles/")
+                        .and_then(|(_, rest)| rest.split('/').next())
+                        .is_some_and(|s| stations.iter().any(|x| x == s))
+                })
+                .cloned()
+                .collect();
+            let mut ids = Vec::new();
+            for k in sweeps {
+                ids.extend(state.sweeps.remove(&k).map(|c| c.id));
+            }
+            for k in tiles {
+                ids.extend(state.tiles.remove(&k).map(|c| c.id));
+            }
+            ids
+        };
+        let pool = self.pool.lock().await;
+        for id in &ids {
+            let _ = pool.release(id).await;
+        }
+        ids.len()
     }
 
     fn hot_tile(&self, key: &str) -> Option<Ready> {
@@ -318,8 +378,10 @@ impl TileService {
                 }
             }
             let mut scratch = Scratch::default();
+            let started = std::time::Instant::now();
             let rendered =
                 blocking_sweep.render_tile(z, x, y, &model_ref, &palette, &flag, &mut scratch);
+            crate::metrics::observe("radar_level2_render_seconds", started.elapsed());
             rendered.map(|r| (r, scratch.bytes()))
         });
         let (rendered, scratch_bytes) = match job.await {
