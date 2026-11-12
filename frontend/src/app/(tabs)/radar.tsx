@@ -20,6 +20,9 @@ import { SymbolView } from "expo-symbols";
 import { MapChromeSurface } from "../../components/ui/MapChromeSurface";
 import { WeatherMap } from "../../components/map/WeatherMap";
 import { RadarOverlay } from "../../components/map/RadarOverlay";
+import { Level2Overlay } from "../../components/map/Level2Overlay";
+import { Level2Note } from "../../components/map/Level2Note";
+import { useLevel2 } from "../../hooks/useLevel2";
 import { WeatherLayerOverlay } from "../../components/map/WeatherLayerOverlay";
 import { AlertPolygon } from "../../components/map/AlertPolygon";
 import { LightningOverlay } from "../../components/map/LightningOverlay";
@@ -90,6 +93,7 @@ const FIXED_LAYER_OPACITY: Partial<Record<LayerType, number>> = {
 
 export default function RadarScreen() {
   useManifest();
+  const { onCamera: onLevel2Camera } = useLevel2();
   const { alertStatus } = useAlerts();
   const radar = useRadarStatus();
   const hasFrames = useWeatherStore((s) => s.frames.length > 0);
@@ -168,6 +172,7 @@ export default function RadarScreen() {
           camera.lat.set(c.lat);
           camera.zoom.set(c.zoom);
           camera.bearing.set(c.bearing);
+          onLevel2Camera(c);
         }}
       >
         {/* First child: its anchor layer must sit below every weather layer. */}
@@ -175,6 +180,7 @@ export default function RadarScreen() {
         {(activeLayer === "radar" || activeLayer === "radar-hrrr" || (replaying && activeLayer === "radar-composite")) && (
           <RadarOverlay isPacked={inMapPacked} />
         )}
+        {activeLayer === "radar" && !replaying ? <Level2Overlay /> : null}
         {WEATHER_LAYERS.includes(activeLayer) && (
           <WeatherLayerOverlay key={activeLayer} layerId={activeLayer} opacity={layerOpacity} isPacked={inMapPacked} />
         )}
@@ -227,6 +233,7 @@ export default function RadarScreen() {
       ) : (
         <>
           <RadarStatusChip status={radar.status} style={[styles.statusChip, { top: chrome.top + 14, left: chrome.left + 58 }]} />
+          <Level2Note top={chrome.belowClose + 40} />
           <RadarStatusNotice status={radar.status} hasFrames={hasFrames} onRetry={radar.refetch} top={chrome.belowClose} />
         </>
       )}

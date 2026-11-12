@@ -56,6 +56,8 @@ import { ALERT_PREFERENCES, parseAlertPreference, parseAlertBounds, type AlertBo
 import { approachCopy } from "./shared/stormCone";
 import { startPeriodic } from "./refresh";
 import { observedFrameTime, radarNoticeCopy, radarStatus } from "./radarStatus";
+import { Level2Layer } from "./level2";
+import { closeUpAxisLabels, closeUpFrames, closeUpHeader } from "./shared/level2";
 import { bootLocationStep, cardAfterGeoError, LOCATION_CARD_COPY, locateClickStep, queryLocationPermission, type LocationCardKind } from "./location";
 
 const rainAlerts = new BrowserRainAlerts();
@@ -222,6 +224,20 @@ const packed = new URLSearchParams(location.search).get("raster") === "1" ? null
 /** GOES imagery goes under the lowest radar layer (raster frame or packed), else under the labels. */
 const satellite = new SatelliteLayer(map, state.satellite, () => map.getStyle().layers?.find((l) => l.id.startsWith("wx-") || l.id === packed?.id)?.id ?? radarBeforeId());
 
+/** Level II close-up: only while Observed radar is the live layer; everything else is MRMS as before. */
+const level2 = new Level2Layer(map, {
+  palette: () => state.palette,
+  active: () => state.layer === "radar" && !replaying(),
+  opacity: () => state.opacity,
+  beforeId: () => radarBeforeId(),
+  changed: () => {
+    const was = closeUpOn;
+    rebuildFrames(was && level2.snapshot().view ? currentFrame()?.time : undefined);
+    renderLevel2();
+  },
+});
+let closeUpOn = false;
+
 /** True between a style's "style.load" and the next setStyle; overlays can be added only then. */
 let styleReady = false;
 
@@ -303,6 +319,7 @@ function evict(keep: Set<string>) {
 }
 
 function clearFrames() {
+  level2.clear();
   for (const id of cached.values()) {
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);
@@ -341,6 +358,9 @@ function showCurrentFrame() {
   }
   shownKey = key;
   evict(keep);
+  level2.sync();
+  level2.show(currentFrame()?.level2 ?? null);
+  renderLevel2();
   syncSatellite();
   if (wind.enabled && !replaying()) void syncWind();
 }
@@ -396,6 +416,22 @@ function addPlaceMarker() {
 /** The case layer on screen: composite is the radar layer's second product. */
 const replayLayer = () => (state.layer === "radar" && state.product === "radar-composite" ? "radar-composite" : state.layer);
 
+/** Live frames: the normal MRMS timeline, or the last six Level II sweeps over their MRMS frames. */
+function liveTimeline(manifest: Manifest, now: number): { frames: Frame[]; seq: number[]; closeUp: boolean } {
+  const base = buildFrames(manifest, state.layer, now, state.product);
+  const view = state.layer === "radar" ? level2.snapshot().view : null;
+  if (view) {
+    const observed = base.filter((f) => !isForecastSource(f.source) && f.time <= now);
+    const frames = closeUpFrames(view, observed).map((c): Frame =>
+      c.gap
+        ? { time: c.time, timestamp: c.level2.timestamp, path: "", source: "radar", maxZoom: 7, gap: true, level2: c.level2 }
+        : { ...observed[c.mrmsIndex], time: c.time, level2: c.level2 },
+    );
+    return { frames, seq: frames.map((_, i) => i), closeUp: true };
+  }
+  return { frames: base, seq: playbackSequence(base, state.zoom, now), closeUp: false };
+}
+
 function rebuildFrames(keepTime?: number) {
   const inReplay = replaying();
   if (inReplay ? !state.replay?.manifest : !state.manifest) return;
@@ -403,11 +439,16 @@ function rebuildFrames(keepTime?: number) {
   if (inReplay) {
     state.frames = replayFrames(state.replay!.manifest!, replayLayer());
     state.seq = fullCaseSequence(state.frames.length);
+    closeUpOn = false;
   } else {
-    state.frames = buildFrames(state.manifest!, state.layer, now, state.product);
-    state.seq = playbackSequence(state.frames, state.zoom, now);
+    const t = liveTimeline(state.manifest!, now);
+    state.frames = t.frames;
+    state.seq = t.seq;
+    closeUpOn = t.closeUp;
   }
-  const target = keepTime ?? (inReplay ? state.frames[0]?.time : state.frames[nowIndex(state.frames, now)]?.time);
+  document.body.classList.toggle("closeup", closeUpOn);
+  const newest = closeUpOn ? state.frames[state.frames.length - 1]?.time : state.frames[nowIndex(state.frames, now)]?.time;
+  const target = keepTime ?? (inReplay ? state.frames[0]?.time : newest);
   let best = 0;
   state.seq.forEach((idx, p) => {
     if (Math.abs(state.frames[idx].time - (target ?? now)) < Math.abs(state.frames[state.seq[best]].time - (target ?? now))) best = p;
@@ -460,8 +501,7 @@ async function refreshManifest() {
     if (!hadManifest || availabilityKey() !== chipsBefore) renderChips();
     if (!LAYERS.some((l) => l.id === state.layer && layerAvailable(l.needs)) && !(severeLayer(state.layer) && layerAvailable(state.layer))) state.layer = "radar";
     const now = nowSec();
-    const frames = buildFrames(state.manifest, state.layer, now, state.product);
-    const seq = playbackSequence(frames, state.zoom, now);
+    const { frames, seq } = liveTimeline(state.manifest, now);
     if (hadManifest && sameFrames(state.frames, frames) && seq.length === state.seq.length && seq.every((v, i) => v === state.seq[i])) {
       // Packed bucket versions change while the frame list stays the same.
       syncPacked();
@@ -580,6 +620,13 @@ function renderTimeline() {
     $("frame-title").textContent = "No frames yet";
     return;
   }
+  if (closeUpOn && frame.level2) {
+    const h = closeUpHeader(frame);
+    $("frame-title").textContent = h.title;
+    $("frame-time").textContent = h.note ? `${h.dateLabel} · ${h.note}` : h.dateLabel;
+    slider.setAttribute("aria-valuetext", h.note ? `${h.dateLabel}, ${h.note}` : h.dateLabel);
+    return;
+  }
   const label = offsetLabel(frame.time, nowSec());
   const mode = label === "Now" ? "Now" : `${frame.time > nowSec() ? "Forecast" : "Past"} ${label}`;
   const source = SOURCE_SUFFIX[frame.source] ?? "";
@@ -593,6 +640,11 @@ function renderAxis() {
   if (replaying()) return renderReplayAxis();
   const n = state.seq.length;
   const now = nowSec();
+  if (closeUpOn) {
+    $("track-segments").innerHTML = n ? `<span class="past" style="left:0;width:100%"></span>` : "";
+    $("axis").innerHTML = closeUpAxisLabels(state.seq.map((i) => state.frames[i].time)).map((l) => `<span>${escapeHtml(l)}</span>`).join("");
+    return;
+  }
   const last = Math.max(1, n - 1);
   const pct = (p: number) => `${(p / last) * 100}%`;
   const lastAtOrBefore = (sec: number) => {
@@ -641,6 +693,7 @@ function renderLegend() {
       `<div class="legend-title"><span>Precipitation</span><span class="legend-tag">${PALETTES[state.palette].name}</span></div>` +
       `<div class="legend-bar" style="background:linear-gradient(90deg,${bands.map((b, i) => `${css(b.rgba)} ${pos(b.min)} ${pos(bands[i + 1]?.min ?? hi)}`).join(",")})"></div>` +
       `<div class="legend-ticks">${LEGEND_TICKS.map(([dbz, name]) => `<span style="left:${pos(dbz)}">${name}</span>`).join("")}</div>`;
+    if (closeUpOn) el.innerHTML += `<div class="legend-note">Level II close-up: one radar's reflectivity aloft, not surface rain. Same colours as MRMS.</div>`;
     // Observed radar is colored by precipitation type when the server says so.
     if (!replaying() && state.manifest?.layers.radar?.precip_type === true) {
       el.innerHTML +=
@@ -1353,6 +1406,43 @@ for (const id of ["ov-storm-cells", "ov-warnings-fill", "ov-tropical-position", 
 
 // ---------- replay ----------
 
+let l2PanelKey = "";
+
+/** The Level II provenance line and panel for the shown sweep, and the MRMS fallback chip. */
+function renderLevel2() {
+  const fb = level2.fallback();
+  const chip = $("level2-fallback");
+  chip.hidden = !fb;
+  if (fb) chip.textContent = `${fb.title} · ${fb.reason}`;
+  const note = $("level2-note");
+  const frame = closeUpOn && !replaying() ? currentFrame()?.level2 : undefined;
+  note.hidden = !frame;
+  if (!frame) {
+    $("level2-panel").hidden = true;
+    l2PanelKey = "";
+    return;
+  }
+  const p = level2.provenanceHtml(frame);
+  const key = `${frame.path}|${p.line}|${p.range}`;
+  if (key === l2PanelKey) return;
+  l2PanelKey = key;
+  $("level2-line").textContent = p.line;
+  $("level2-range").textContent = p.range;
+  $("level2-rows").innerHTML = p.panel;
+}
+
+$("level2-note").addEventListener("click", () => {
+  const panel = $("level2-panel");
+  panel.hidden = !panel.hidden;
+  $("level2-note").setAttribute("aria-expanded", String(!panel.hidden));
+});
+
+map.on("zoom", () => level2.sync());
+map.on("moveend", () => {
+  level2.sync();
+  renderLevel2();
+});
+
 const EMPTY_FC = { type: "FeatureCollection" as const, features: [] };
 let liveLayer = state.layer;
 let replayWarnKey = "";
@@ -1453,6 +1543,9 @@ async function enterReplay(c: ReplayCase) {
   toggleSheet(false);
   state.source = { kind: "replay", caseId: c.id, revision: c.revision };
   state.replay = { case: c, manifest: null, warnings: null, error: null };
+  level2.sync();
+  closeUpOn = false;
+  document.body.classList.remove("closeup");
   state.frames = [];
   state.seq = [];
   state.pos = 0;
@@ -1505,6 +1598,7 @@ async function returnToLive() {
   state.layer = liveLayer;
   replayWarnKey = "";
   clearFrames();
+  level2.sync();
   document.body.classList.remove("replay");
   map.setMaxBounds(null);
   overlays.setReplay(false);

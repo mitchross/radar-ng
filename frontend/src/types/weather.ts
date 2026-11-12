@@ -1,3 +1,5 @@
+import type { Level2Frame } from "../../../web/src/shared/level2";
+
 export interface RadarFrame {
   time: number; // Unix epoch seconds
   /** ISO timestamp string used as the tile-server path segment. */
@@ -21,6 +23,8 @@ export interface RadarFrame {
     | "precip-24h";
   /** Replay only: no layer frame within the staleness cap, so draw nothing. */
   gap?: boolean;
+  /** Close-up timeline only: the Level II sweep drawn over this MRMS frame. */
+  level2?: Level2Frame;
   kind?: "observation" | "nowcast" | "model_guidance";
   issuedAt?: string;
   leadMinutes?: number;
