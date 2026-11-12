@@ -169,6 +169,10 @@ impl TileService {
         self.peak_scratch.load(Ordering::Relaxed)
     }
 
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
     pub fn tile_key(&self, req: &TileRequest) -> Option<String> {
         let (ns, station, identity) = parse_commit_key(&req.commit_key)?;
         ((8..=13).contains(&req.z)

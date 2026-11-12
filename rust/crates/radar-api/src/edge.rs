@@ -48,6 +48,10 @@ pub const ROUTE_TEMPLATES: &[&str] = &[
     "/api/replays",
     "/api/replays/{id}/{revision}/manifest.json",
     "/api/replays/{id}/{revision}/warnings.geojson",
+    "/api/level2/sites",
+    "/api/level2/views",
+    "/api/level2/views/{id}",
+    "/api/level2/views/{id}/{revision}/manifest.json",
     "/api/palettes",
     "/api/forecast/{lat}/{lon}",
     "/api/inspect/{layer}/{timestamp}/{lat}/{lon}",
@@ -148,7 +152,7 @@ fn is_api_path(path: &str) -> bool {
 
 /// The client key: the strict client IP from the socket peer and `X-Forwarded-For` (D22: the
 /// `X-Client-IP` header is not trusted).
-fn client_key(state: &AppState, req: &Request) -> String {
+pub(crate) fn client_key(state: &AppState, req: &Request) -> String {
     let peer = req
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()

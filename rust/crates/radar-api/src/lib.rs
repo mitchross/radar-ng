@@ -19,6 +19,7 @@ mod files;
 mod forecast;
 mod grid;
 mod health;
+mod level2;
 mod manifest;
 mod metrics;
 mod nowcast;
@@ -76,6 +77,7 @@ pub fn router(state: AppState) -> Router {
     if state.config.workflow_routes_enabled {
         api = api.merge(workflows::routes());
     }
+    let level2 = level2::routes();
     let api =
         api.layer(CompressionLayer::new().compress_when(SizeAbove::new(1024).and(is_json_or_text)));
     let statics = basemap::static_router(
@@ -85,6 +87,7 @@ pub fn router(state: AppState) -> Router {
     .layer(from_fn(basemap::static_error_override));
     Router::new()
         .merge(api)
+        .merge(level2)
         .merge(statics)
         .fallback(edge::unmatched)
         .layer(from_fn_with_state(state.clone(), edge::edge))
@@ -99,6 +102,7 @@ pub async fn serve(config: Config) -> Result<()> {
     radar_core::logging::init("radar-api")?;
     let addr: SocketAddr = config.listen_addr;
     let state = AppState::new(config)?;
+    attach_level2(&state).await;
     let app = router(state).into_make_service_with_connect_info::<SocketAddr>();
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -109,6 +113,18 @@ pub async fn serve(config: Config) -> Result<()> {
         .await
         .context("serving HTTP")?;
     Ok(())
+}
+
+/// Connects the Level II viewport service when its gate is on. A failure leaves it off (MRMS only).
+async fn attach_level2(state: &AppState) {
+    match radar_level2::runtime::enabled() {
+        Ok(true) => match radar_level2::runtime::service().await {
+            Ok(svc) => state.set_level2(svc),
+            Err(e) => tracing::error!("Level II viewport disabled: {e:#}"),
+        },
+        Ok(false) => {}
+        Err(e) => tracing::error!("Level II viewport gate invalid: {e}"),
+    }
 }
 
 /// Resolves on Ctrl-C, or on SIGTERM where the platform has it.

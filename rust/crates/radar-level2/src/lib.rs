@@ -5,9 +5,15 @@ pub mod decode;
 pub mod feed;
 pub mod health;
 pub mod leases;
+pub mod memstore;
+pub mod pgstore;
 pub mod polar;
+pub mod publish;
+pub mod runtime;
+pub mod service;
 pub mod tile;
 pub mod tracer;
+pub mod viewport;
 
 pub const MIB: usize = 1024 * 1024;
 pub const COMPRESSED_LIMIT: usize = 32 * MIB;
@@ -32,3 +38,6 @@ pub fn checksum(bytes: &[u8]) -> String {
 #[cfg(test)]
 #[path = "../tests/common/mod.rs"]
 pub(crate) mod testdata;
+
+#[cfg(test)]
+mod viewport_tests;

@@ -12,6 +12,7 @@ radar-core.workspace = true
 radar-storms.workspace = true
 radar-alerts.workspace = true
 radar-replay.workspace = true
+radar-level2 = { path = "../radar-level2" }
 
 anyhow.workspace = true
 tracing.workspace = true
@@ -45,3 +46,6 @@ tempfile.workspace = true
 futures.workspace = true
 flate2.workspace = true
 http-body-util = "0.1"
+object_store = { version = "0.12" }
+chrono.workspace = true
+radar-tiler.workspace = true
