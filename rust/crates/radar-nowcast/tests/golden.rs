@@ -22,7 +22,9 @@ fn data_path(name: &str) -> PathBuf {
 fn read_f32(name: &str) -> Vec<f32> {
     let bytes = fs::read(data_path(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
     bytes
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
 }
@@ -30,7 +32,9 @@ fn read_f32(name: &str) -> Vec<f32> {
 fn read_f64(name: &str) -> Vec<f64> {
     let bytes = fs::read(data_path(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
     bytes
-        .chunks_exact(8)
+        .as_chunks::<8>()
+        .0
+        .iter()
         .map(|c| f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
         .collect()
 }

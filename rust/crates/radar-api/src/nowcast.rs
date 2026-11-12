@@ -163,6 +163,10 @@ fn read_status(state: &AppState) -> Option<Map<String, Value>> {
 ///
 /// # Errors
 /// Returns the 503 response when the manifest is unreadable and has no last-good copy.
+#[allow(
+    clippy::result_large_err,
+    reason = "the Err is the ready-made HTTP response; boxing it would add a deref at about 50 call sites for no gain on this cold path"
+)]
 pub async fn nowcast_point(state: &AppState, lat: f64, lon: f64) -> Result<PointResult, Response> {
     state
         .metrics

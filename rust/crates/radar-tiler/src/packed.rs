@@ -571,7 +571,7 @@ fn write_plane(atlas: &mut [u8], width: usize, pos: SlotPosition, tile: usize, p
     for (py, row) in plane.chunks_exact(tile).enumerate() {
         let start = ((pos.y0 + py) * width + pos.x0) * 3;
         let dst = &mut atlas[start..start + tile * 3];
-        for (texel, &q) in dst.chunks_exact_mut(3).zip(row) {
+        for (texel, &q) in dst.as_chunks_mut::<3>().0.iter_mut().zip(row) {
             texel[pos.channel] = q;
         }
     }

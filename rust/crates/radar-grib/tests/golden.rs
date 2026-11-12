@@ -15,16 +15,20 @@ fn testdata(name: &str) -> PathBuf {
 fn read_f64(name: &str) -> Vec<f64> {
     std::fs::read(testdata(&format!("golden/{name}")))
         .unwrap()
-        .chunks_exact(8)
-        .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|c| f64::from_le_bytes(*c))
         .collect()
 }
 
 fn read_f32(name: &str) -> Vec<f32> {
     std::fs::read(testdata(&format!("golden/{name}")))
         .unwrap()
-        .chunks_exact(4)
-        .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| f32::from_le_bytes(*c))
         .collect()
 }
 
@@ -239,7 +243,7 @@ fn radar_geo_lcc_forward_matches_pyproj() {
         radius_m: 6371229.0,
     };
     let (mut worst_xy, mut worst_inv) = (0.0_f64, 0.0_f64);
-    for row in table.chunks_exact(6) {
+    for row in table.as_chunks::<6>().0.iter() {
         let (lon, lat, x, y, ilon, ilat) = (row[0], row[1], row[2], row[3], row[4], row[5]);
         let (fx, fy) = crs.forward(lon, lat);
         worst_xy = worst_xy.max((fx - x).abs()).max((fy - y).abs());

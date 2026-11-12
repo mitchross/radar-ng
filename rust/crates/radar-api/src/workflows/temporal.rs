@@ -65,6 +65,10 @@ fn target_url(address: &str) -> Result<Url, String> {
 ///
 /// # Errors
 /// Returns the 503 response `{"detail":"temporal unavailable"}` when the connection fails.
+#[allow(
+    clippy::result_large_err,
+    reason = "the Err is the ready-made HTTP response; boxing it would add a deref at about 50 call sites for no gain on this cold path"
+)]
 pub async fn get_client(state: &AppState) -> Result<Client, Response> {
     let mut slot = state.temporal.lock().await;
     if let Some(client) = slot.as_ref() {
