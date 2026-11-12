@@ -60,6 +60,101 @@ pub struct Coverage {
     pub layers: Vec<LayerCoverage>,
     /// PrecipFlag companion, checked but not rendered.
     pub precip_flag: LayerCoverage,
+    /// Listed objects the operator left out because they cannot be decoded. Never rendered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub excluded: Vec<ExcludedObject>,
+}
+
+/// An archive object that downloads but cannot be decoded, so the import leaves it out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExcludedObject {
+    /// Exact archive key.
+    pub key: String,
+    /// Why decoding failed.
+    pub reason: String,
+    /// Downloaded (gzip) size.
+    pub bytes: usize,
+    /// SHA-256 of the downloaded bytes, so the defect is reproducible.
+    pub sha256: String,
+}
+
+/// Download `key` and report it when it cannot be decoded as a MRMS grid; `None` when it is fine.
+pub async fn inspect_object(s3: &S3Client, key: &str) -> anyhow::Result<Option<ExcludedObject>> {
+    let (_, bytes) = gmrms::fetch_gz(s3, key).await?;
+    Ok(gmrms::decode_gz(&bytes).err().map(|e| ExcludedObject {
+        key: key.to_string(),
+        reason: e.to_string(),
+        bytes: bytes.len(),
+        sha256: radar_tiler::identity::sha256_hex(&bytes),
+    }))
+}
+
+/// Download and decode every listed object of a case, returning the ones that cannot be decoded.
+/// Writes nothing; run it before an import to decide what to pass as `--exclude-object`.
+pub async fn scan_unusable(
+    s3: &S3Client,
+    coverage: &Coverage,
+) -> anyhow::Result<Vec<ExcludedObject>> {
+    let mut bad = Vec::new();
+    let layers = coverage
+        .layers
+        .iter()
+        .chain(std::iter::once(&coverage.precip_flag));
+    for layer in layers {
+        for key in &layer.keys {
+            if let Some(object) = inspect_object(s3, key).await? {
+                bad.push(object);
+            }
+        }
+    }
+    Ok(bad)
+}
+
+/// Drop `excluded` objects from the coverage and `flags`, recomputing gaps as if they were absent.
+pub fn apply_exclusions(
+    coverage: &mut Coverage,
+    case: &crate::case::CaseDefinition,
+    excluded: Vec<ExcludedObject>,
+    flags: &mut Vec<(DateTime<Utc>, String)>,
+) -> anyhow::Result<()> {
+    let (from, to) = case.window()?;
+    for object in &excluded {
+        let mut found = flags.iter().any(|(_, k)| *k == object.key);
+        found |= coverage
+            .layers
+            .iter()
+            .chain(std::iter::once(&coverage.precip_flag))
+            .any(|l| l.keys.contains(&object.key));
+        anyhow::ensure!(found, "{} is not in the case listing", object.key);
+    }
+    let gone = |key: &str| excluded.iter().any(|o| o.key == key);
+    flags.retain(|(_, k)| !gone(k));
+    let rebuild = |layer: &mut LayerCoverage| -> anyhow::Result<()> {
+        if !layer.keys.iter().any(|k| gone(k)) {
+            return Ok(());
+        }
+        let kept: Vec<(DateTime<Utc>, String)> = layer
+            .keys
+            .iter()
+            .filter(|k| !gone(k))
+            .map(|k| Ok((gmrms::key_time(k)?, k.clone())))
+            .collect::<anyhow::Result<_>>()?;
+        *layer = coverage_for(
+            &layer.layer,
+            &layer.prefix,
+            layer.cadence_s,
+            from,
+            to,
+            &kept,
+        );
+        Ok(())
+    };
+    for layer in &mut coverage.layers {
+        rebuild(layer)?;
+    }
+    rebuild(&mut coverage.precip_flag)?;
+    coverage.excluded = excluded;
+    Ok(())
 }
 
 /// List `prefix` objects in `[from, to)` as `(valid time, key)`, sorted.
@@ -171,6 +266,7 @@ pub async fn check_case(s3: &S3Client, case_id: &str) -> anyhow::Result<Coverage
         checked_at: gmrms::format_valid_time(Utc::now()),
         layers,
         precip_flag,
+        excluded: Vec::new(),
     })
 }
 

@@ -250,3 +250,101 @@ async fn tile_route_refuses_a_revision_that_is_not_ready() {
     let url = "/replays/rolling-fork-2023/contract-1/tiles/radar/classic/t/4/3/6.png";
     assert_eq!(env.get(url, None).await.0, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn published_revision_is_served_and_the_private_source_is_not() {
+    use radar_replay::{case, publish, testkit};
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().to_path_buf();
+    let tiles = root.join("tiles");
+    let case = case::find("greenfield-2024").unwrap();
+    testkit::synthetic_revision(&tiles, case, "full-1", 3).unwrap();
+    let warnings = testkit::warnings_json(case);
+    let warnings_file = root.join("warnings.geojson");
+    fs::write(&warnings_file, &warnings).unwrap();
+    let mut config = Config::defaults_for(root.join("state"), root.join("grid"), tiles.clone());
+    config.rate_limit_burst = 100_000.;
+    config.gibs_wmts_base = String::new();
+    let app = router(AppState::new(config).unwrap());
+    let get = |url: String| {
+        let app = app.clone();
+        async move {
+            let response = app
+                .oneshot(Request::builder().uri(url).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            let status = response.status();
+            let headers = response.headers().clone();
+            let body = response
+                .into_body()
+                .collect()
+                .await
+                .unwrap()
+                .to_bytes()
+                .to_vec();
+            (status, headers, body)
+        }
+    };
+
+    // Before publishing, the finished private import is invisible.
+    let (_, _, body) = get("/api/replays".into()).await;
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap()["cases"],
+        json!([])
+    );
+    let (status, _, _) = get("/api/replays/greenfield-2024/full-1/manifest.json".into()).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let report = publish::run_for_tests(publish::Options {
+        case_id: case.id.into(),
+        revision: "full-1".into(),
+        warnings: warnings_file,
+        tile_root: tiles,
+        published_revision: None,
+    })
+    .unwrap();
+    assert_eq!(report["created"], true);
+
+    let (status, _, body) = get("/api/replays".into()).await;
+    assert_eq!(status, StatusCode::OK);
+    let catalogue: Value = serde_json::from_slice(&body).unwrap();
+    let entry = &catalogue["cases"][0];
+    assert_eq!(catalogue["cases"].as_array().unwrap().len(), 1);
+    assert_eq!(entry["id"], "greenfield-2024");
+    assert_eq!(entry["revision"], "full-1-public");
+    assert_eq!(entry["layers"].as_array().unwrap().len(), 6);
+
+    let (status, _, body) = get(entry["manifest_url"].as_str().unwrap().into()).await;
+    assert_eq!(status, StatusCode::OK);
+    let manifest: Value = serde_json::from_slice(&body).unwrap();
+    let (status, headers, body) = get(entry["warnings_url"].as_str().unwrap().into()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers["content-type"], "application/geo+json");
+    assert_eq!(body, warnings);
+
+    let frame = manifest["layers"]["radar"]["frames"][0]["path"]
+        .as_str()
+        .unwrap();
+    let tile = manifest["tile_url_template"]
+        .as_str()
+        .unwrap()
+        .replace("{layer}", "radar")
+        .replace("{palette}", "classic")
+        .replace("{path}", frame);
+    let some = radar_replay::plan::case_tiles(&case.bounds, &[4])[0];
+    let url = tile
+        .replace("{z}", &some.0.to_string())
+        .replace("{x}", &some.1.to_string())
+        .replace("{y}", &some.2.to_string());
+    let (status, headers, body) = get(url).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers["content-type"], "image/png");
+    assert_eq!(&body[..4], b"\x89PNG");
+
+    // The private source revision and the private files stay hidden.
+    let (status, _, _) = get("/api/replays/greenfield-2024/full-1/manifest.json".into()).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _, _) =
+        get("/tiles/replays/greenfield-2024/full-1-public/revision.json".into()).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

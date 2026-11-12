@@ -42,6 +42,7 @@ lru = "0.12"
 percent-encoding = "2"
 
 [dev-dependencies]
+radar-replay = { workspace = true, features = ["testkit"] }
 tempfile.workspace = true
 futures.workspace = true
 flate2.workspace = true
