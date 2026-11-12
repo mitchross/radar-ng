@@ -23,7 +23,7 @@ interface WeatherMapProps {
   children?: React.ReactNode;
   onPress?: (lat: number, lon: number) => void;
   onLongPress?: (lat: number, lon: number) => void;
-  onCameraChanged?: (camera: { lon: number; lat: number; zoom: number; bearing: number }) => void;
+  onCameraChanged?: (camera: { lon: number; lat: number; zoom: number; bearing: number; bounds: [number, number, number, number] }) => void;
   /**
    * Report every camera frame during a gesture, not just where it settles.
    * Only a live overlay (wind particles) needs this; each event crosses the bridge.
@@ -108,13 +108,14 @@ export function WeatherMap({
   const handleRegionChange = (
     event: NativeSyntheticEvent<ViewStateChangeEvent>,
   ) => {
-    const { center, zoom, bearing } = event.nativeEvent;
+    const { center, zoom, bearing, bounds } = event.nativeEvent;
     zoomRef.current = zoom;
     onCameraChanged?.({
       lon: center[0],
       lat: center[1],
       zoom,
       bearing: bearing ?? 0,
+      bounds,
     });
   };
 

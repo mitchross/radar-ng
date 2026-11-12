@@ -4,6 +4,7 @@
  * track (past / nowcast / HRRR / long-range) + NOW marker + draggable thumb.
  * Playback follows the configured speed within the active zoom window.
  */
+import { closeUpAxisLabels, closeUpHeader } from "../../lib/level2";
 import { View, Text, Pressable, StyleSheet, useWindowDimensions } from "react-native";
 import Slider from "@react-native-community/slider";
 import { SymbolView } from "expo-symbols";
@@ -75,6 +76,7 @@ export function TimelineBar() {
   const setPlaybackWindow = useWeatherStore((s) => s.setPlaybackWindow);
   const replayCase = useWeatherStore((s) => s.replayCase);
   const replaying = useWeatherStore((s) => isReplaySource(s.source));
+  const closeUp = useWeatherStore((s) => !isReplaySource(s.source) && s.frames.length > 0 && s.frames.every((f) => f.level2));
   const timeZone = replayCase?.timezone ?? "UTC";
 
   const [zoom, setZoom] = useState<Zoom>("1h");
@@ -91,8 +93,8 @@ export function TimelineBar() {
   // and the track both run over positions in this sequence, not frame indices.
   // Replay loops every base frame, with no zoom window or thinning.
   const sequence = useMemo(
-    () => (replaying ? fullCaseSequence(frames.length) : playbackSequence(frames, zoom, nowSec)),
-    [replaying, frames, zoom, nowSec],
+    () => (replaying || closeUp ? fullCaseSequence(frames.length) : playbackSequence(frames, zoom, nowSec)),
+    [replaying, closeUp, frames, zoom, nowSec],
   );
   const lastPos = Math.max(0, sequence.length - 1);
   const position = positionOf(sequence, frames, currentFrameIndex);
@@ -110,7 +112,7 @@ export function TimelineBar() {
 
   // Snap the current frame onto the sequence when switching zoom.
   useEffect(() => {
-    if (replaying || sequence.length === 0 || inSequence) return;
+    if (replaying || closeUp || sequence.length === 0 || inSequence) return;
     const nowPos = positionOf(sequence, frames, findClosestIdx(frames, nowSec));
     setCurrentFrameIndex(sequence[nowPos]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -138,6 +140,7 @@ export function TimelineBar() {
   // Memoize them so the playback tick doesn't rescan frames. This hook must
   // stay above the early return below (rules-of-hooks).
   const { nowPct, nowcastPct, longPct, longLabel, axisLabels } = useMemo(() => {
+    if (closeUp) return { nowPct: 100, nowcastPct: 100, longPct: 100, longLabel: "", axisLabels: closeUpAxisLabels(sequence.map((i) => frames[i].time), timeZone) };
     if (replaying) {
       // One solid past-style track; no NOW marker, nowcast or forecast segments.
       return { nowPct: 100, nowcastPct: 100, longPct: 100, longLabel: "", axisLabels: replayAxisLabels(frames, sequence, timeZone) };
@@ -164,7 +167,7 @@ export function TimelineBar() {
       longLabel: longZoomLabel(frames, nowSec),
       axisLabels: labels,
     };
-  }, [replaying, timeZone, frames, sequence, lastPos, nowSec]);
+  }, [replaying, closeUp, timeZone, frames, sequence, lastPos, nowSec]);
 
   if (frames.length === 0) return null;
 
@@ -172,7 +175,7 @@ export function TimelineBar() {
   const offsetMin = currentFrame ? Math.round((currentFrame.time - nowSec) / 60) : 0;
   const layerTitle = LAYER_TITLE[activeLayer] ?? "Radar";
   const frameDate = new Date((currentFrame?.time ?? nowSec) * 1000);
-  const replayHeader = replaying ? replayTimelineHeader(currentFrame, layerTitle, timeZone) : null;
+  const replayHeader = replaying ? replayTimelineHeader(currentFrame, layerTitle, timeZone) : closeUp && currentFrame ? closeUpHeader(currentFrame, timeZone) : null;
   const dateLabel = replayHeader ? replayHeader.dateLabel : FRAME_DATE_FORMAT.format(frameDate);
 
   // MRMS lands a few minutes late; the latest scan within 5 min reads as "Now".
@@ -211,7 +214,7 @@ export function TimelineBar() {
             ) : null}
           </View>
 
-          {replaying ? null : <View style={styles.segmented}>
+          {replaying || closeUp ? null : <View style={styles.segmented}>
             {(["1h", "48h"] as const).map((z) => (
               <Pressable
                 key={z}

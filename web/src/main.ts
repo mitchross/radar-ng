@@ -57,7 +57,7 @@ import { approachCopy } from "./shared/stormCone";
 import { startPeriodic } from "./refresh";
 import { observedFrameTime, radarNoticeCopy, radarStatus } from "./radarStatus";
 import { Level2Layer } from "./level2";
-import { closeUpFrames, scanClock, scanFull } from "./shared/level2";
+import { closeUpAxisLabels, closeUpFrames, closeUpHeader } from "./shared/level2";
 import { bootLocationStep, cardAfterGeoError, LOCATION_CARD_COPY, locateClickStep, queryLocationPermission, type LocationCardKind } from "./location";
 
 const rainAlerts = new BrowserRainAlerts();
@@ -621,10 +621,10 @@ function renderTimeline() {
     return;
   }
   if (closeUpOn && frame.level2) {
-    $("frame-title").textContent = "Radar · Level II close-up";
-    const note = frame.gap ? " · no MRMS underlay within 10 min" : "";
-    $("frame-time").textContent = `Scan ${scanFull(frame.level2.scanEndMs)}${note}`;
-    slider.setAttribute("aria-valuetext", `Level II scan ${scanClock(frame.level2.scanEndMs)}${note}`);
+    const h = closeUpHeader(frame);
+    $("frame-title").textContent = h.title;
+    $("frame-time").textContent = h.note ? `${h.dateLabel} · ${h.note}` : h.dateLabel;
+    slider.setAttribute("aria-valuetext", h.note ? `${h.dateLabel}, ${h.note}` : h.dateLabel);
     return;
   }
   const label = offsetLabel(frame.time, nowSec());
@@ -642,7 +642,7 @@ function renderAxis() {
   const now = nowSec();
   if (closeUpOn) {
     $("track-segments").innerHTML = n ? `<span class="past" style="left:0;width:100%"></span>` : "";
-    $("axis").innerHTML = [0, 0.25, 0.5, 0.75, 1].map((f) => `<span>${escapeHtml(scanClock(state.frames[state.seq[Math.round(f * (n - 1))]].time * 1000))}</span>`).join("");
+    $("axis").innerHTML = closeUpAxisLabels(state.seq.map((i) => state.frames[i].time)).map((l) => `<span>${escapeHtml(l)}</span>`).join("");
     return;
   }
   const last = Math.max(1, n - 1);

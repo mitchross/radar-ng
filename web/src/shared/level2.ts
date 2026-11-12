@@ -410,6 +410,19 @@ export const scanClock = (ms: number, timeZone?: string): string => clockFormat(
 export const scanFull = (ms: number, timeZone?: string): string => fullFormat(timeZone).format(new Date(ms));
 const utcClock = (ms: number): string => `${new Date(ms).toISOString().slice(0, 16).replace("T", " ")} UTC`;
 
+/** Timeline header for a close-up frame: the sweep's own scan time, never "Now". */
+export function closeUpHeader(frame: { level2?: Level2Frame; gap?: boolean }, timeZone?: string): { title: string; dateLabel: string; note: string | null } {
+  const l2 = frame.level2;
+  if (!l2) return { title: "Radar", dateLabel: "", note: null };
+  return { title: "Radar · Level II close-up", dateLabel: `Scan ${scanFull(l2.scanEndMs, timeZone)}`, note: frame.gap ? "No MRMS underlay within 10 min" : null };
+}
+
+/** Five clock labels along the loop, at the real scan times. */
+export function closeUpAxisLabels(timesSec: readonly number[], timeZone?: string): string[] {
+  const last = timesSec.length - 1;
+  return last < 0 ? [] : [0, 0.25, 0.5, 0.75, 1].map((f) => scanClock(timesSec[Math.round(f * last)] * 1000, timeZone));
+}
+
 export interface Provenance {
   /** One line beside the timeline / legend. */
   headline: string;

@@ -81,7 +81,7 @@ export function sameFrames(a: readonly Frame[], b: readonly Frame[]): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
-    if (a[i].time !== b[i].time || a[i].path !== b[i].path || a[i].source !== b[i].source || a[i].maxZoom !== b[i].maxZoom) return false;
+    if (a[i].time !== b[i].time || a[i].path !== b[i].path || a[i].source !== b[i].source || a[i].maxZoom !== b[i].maxZoom || a[i].level2?.path !== b[i].level2?.path) return false;
   }
   return true;
 }

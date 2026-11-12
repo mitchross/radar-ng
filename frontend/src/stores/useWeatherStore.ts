@@ -24,6 +24,17 @@ import { LIVE_SOURCE, isReplaySource, sourceKey, type SourceContext } from "../l
 import type { ReplayCase } from "../lib/replayApi";
 import { replayGuard } from "../lib/replayClient";
 import { layerForCase } from "../lib/replayState";
+import type { Level2View } from "../lib/level2";
+
+/** What the Level II session last decided; the radar screen draws from this and nothing else. */
+export interface Level2State {
+  view: Level2View | null;
+  opacity: number;
+  fallback: { title: string; reason: string } | null;
+  /** Map centre rounded to ~1 km: provenance range and beam height follow it. */
+  centre: { lat: number; lon: number } | null;
+}
+export const NO_LEVEL2: Level2State = { view: null, opacity: 0, fallback: null, centre: null };
 
 interface WeatherState {
   alertPreference: AlertPreference;
@@ -36,6 +47,8 @@ interface WeatherState {
   liveReturnedAt: number | null;
   frames: RadarFrame[];
   currentFrameIndex: number;
+  level2: Level2State;
+  setLevel2: (next: Level2State) => void;
   isPlaying: boolean;
   playbackSpeed: number;
   // Inclusive index range the timeline loops over (1h/48h zoom); null = all frames.
@@ -174,6 +187,8 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   liveReturnedAt: null,
   frames: [],
   currentFrameIndex: -1,
+  level2: NO_LEVEL2,
+  setLevel2: (next) => set({ level2: next }),
   isPlaying: false,
   playbackSpeed: parsePlaybackFps(getString("playbackSpeed", ""), DEFAULTS.PLAYBACK_FPS),
   playbackWindow: null,

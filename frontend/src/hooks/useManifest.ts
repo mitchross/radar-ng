@@ -6,6 +6,7 @@ import { DEFAULTS } from "../lib/constants";
 import { cacheManifestIfChanged, readCachedManifest } from "../lib/manifestCache";
 import { longRangeFrames } from "../lib/playbackSequence";
 import { isReplaySource } from "../lib/replaySource";
+import { closeUpRadarFrames } from "../lib/level2";
 import { liveFramesReady, replayRadarFrames } from "../lib/replayState";
 import { useReplayManifestQuery } from "./useReplay";
 import type { RadarFrame, SelfHostedManifest } from "../types/weather";
@@ -41,7 +42,6 @@ function buildSelfHostedFrames(manifest: SelfHostedManifest, layer: string): Rad
       ...(frame.max_zoom !== undefined ? { maxZoom: frame.max_zoom } : {}),
     }));
   };
-
   const nowSec = Math.floor(Date.now() / 1000);
 
   if (layer === "radar" || layer === "radar-hrrr") {
@@ -120,6 +120,7 @@ export function useManifest() {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const source = useWeatherStore((s) => s.source);
   const liveReturnedAt = useWeatherStore((s) => s.liveReturnedAt);
+  const closeUpView = useWeatherStore((s) => s.level2.view);
   const replaying = isReplaySource(source);
 
   const query = useManifestQuery();
@@ -130,14 +131,18 @@ export function useManifest() {
     if (replaying) return replayManifest ? replayRadarFrames(replayManifest, activeLayer) : [];
     // After Return to live, wait for a manifest fetched since, not the cached one.
     if (!query.data || !liveFramesReady(query.dataUpdatedAt, liveReturnedAt)) return [];
-    return buildSelfHostedFrames(query.data, activeLayer);
-  }, [replaying, replayManifest, query.data, query.dataUpdatedAt, liveReturnedAt, activeLayer]);
+    const live = buildSelfHostedFrames(query.data, activeLayer);
+    if (activeLayer !== "radar" || !closeUpView) return live;
+    // Close-up: the last six Level II sweeps over their MRMS frames; no thinning, no forecast.
+    return closeUpRadarFrames(closeUpView, live.filter((f) => f.source === "radar"));
+  }, [replaying, replayManifest, query.data, query.dataUpdatedAt, liveReturnedAt, activeLayer, closeUpView]);
+  const closeUp = !replaying && frames.some((f) => f.level2);
 
   useEffect(() => {
     // One Zustand transaction keeps consumers from observing new frames with
     // an index that still belongs to the previous manifest.
-    setFrameTimeline(frames, replaying ? 0 : pickNowFrameIndex(frames), source);
-  }, [frames, replaying, source, setFrameTimeline]);
+    setFrameTimeline(frames, replaying ? 0 : closeUp ? frames.length - 1 : pickNowFrameIndex(frames), source);
+  }, [frames, replaying, closeUp, source, setFrameTimeline]);
 
   // Some navigation actions intentionally publish -1 as a request to snap to
   // now. Read the latest store value so a manifest update handled by the
@@ -148,12 +153,12 @@ export function useManifest() {
     const snapToNow = () => {
       const index = useWeatherStore.getState().currentFrameIndex;
       if (index < 0 || index >= frames.length) {
-        setCurrentFrameIndex(replaying ? 0 : pickNowFrameIndex(frames));
+        setCurrentFrameIndex(replaying ? 0 : closeUp ? frames.length - 1 : pickNowFrameIndex(frames));
       }
     };
     snapToNow();
     return useWeatherStore.subscribe(snapToNow);
-  }, [frames, replaying, setCurrentFrameIndex]);
+  }, [frames, replaying, closeUp, setCurrentFrameIndex]);
 
   return query;
 }
