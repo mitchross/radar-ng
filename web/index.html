@@ -86,6 +86,11 @@
         <input id="slider" type="range" min="0" max="0" value="0" step="1" aria-label="Radar time" />
       </div>
       <div id="axis" class="axis"></div>
+      <div id="level2-fallback" class="level2-fallback" role="status" hidden></div>
+      <button id="level2-note" class="level2-note" type="button" aria-expanded="false" aria-controls="level2-panel" hidden>
+        <b id="level2-line"></b><small id="level2-range"></small>
+      </button>
+      <dl id="level2-panel" class="level2-panel" aria-label="Level II scan details" hidden><div id="level2-rows" class="level2-rows"></div></dl>
     </section>
 
     <div id="boot-error" class="boot-error glass" role="alert" hidden>

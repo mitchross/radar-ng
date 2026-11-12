@@ -4,6 +4,7 @@
  * web and app loops visit the same frames.
  */
 export { offsetLabel } from "./shared/offsetLabel";
+import type { Level2Frame } from "./shared/level2";
 
 export interface ManifestFrame {
   timestamp: string;
@@ -34,6 +35,8 @@ export interface Frame {
   maxZoom: number;
   /** Replay only: no layer frame within the staleness cap, so draw nothing. */
   gap?: boolean;
+  /** Close-up timeline only: the Level II sweep drawn over this MRMS frame. */
+  level2?: Level2Frame;
 }
 
 const DEFAULT_MAX_ZOOM: Record<string, number> = { radar: 7, "radar-composite": 7, nowcast: 6, "radar-hrrr": 6, "radar-gfs": 6 };
