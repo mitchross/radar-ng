@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 description = "radar-ng famous-storm replay: bounded case importer (design famous-storm-replay)"
 
+[lints]
+workspace = true
+
 [dependencies]
 radar-core.workspace = true
 radar-geo.workspace = true

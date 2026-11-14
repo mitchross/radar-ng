@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 description = "radar-ng debug harness: live-stack health, latency, disk and Temporal checks (port of tools/debug_harness), and tile-pyramid parity"
 
+[lints]
+workspace = true
+
 [dependencies]
 radar-core.workspace = true
 radar-types.workspace = true
