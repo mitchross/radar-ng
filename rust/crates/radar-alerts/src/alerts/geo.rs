@@ -58,7 +58,7 @@ fn point_in_ring(lng: f64, lat: f64, ring: &Value) -> bool {
             let intersect_lng =
                 (prev_lng - curr_lng) * (lat - curr_lat) / (prev_lat - curr_lat) + curr_lng;
             if lng < intersect_lng {
-                inside = !inside;
+                inside.toggle();
             }
         }
         prev = curr;
