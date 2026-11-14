@@ -109,7 +109,7 @@ pub fn gauge_value(name: &str) -> Option<f64> {
 }
 
 pub fn hist_count(name: &str) -> u64 {
-    lock().hists.get(name).map_or(0, |h| h.count)
+    lock().hists.get(name).map_or_default(|h| h.count)
 }
 
 /// Prometheus text exposition of every series.

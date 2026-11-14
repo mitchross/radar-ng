@@ -128,7 +128,7 @@ pub fn check_handoff(input: &WatchStormInput) -> Result<(), UnsupportedHandoffSc
 
 /// Fan-out `sent` count, or 0 when the fan-out failed after retries.
 pub fn sent_count(result: Option<&FanOutPushResult>) -> i64 {
-    result.map_or(0, |r| r.sent)
+    result.map_or_default(|r| r.sent)
 }
 
 fn epoch_seconds(time: SystemTime) -> f64 {

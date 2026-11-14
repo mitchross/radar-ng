@@ -176,7 +176,7 @@ impl GeometryCache {
         if g.map.contains_key(&key) {
             return;
         }
-        let nbytes = value.as_ref().map_or(0, |v| v.nbytes());
+        let nbytes = value.as_ref().map_or_default(|v| v.nbytes());
         g.tick += 1;
         let tick = g.tick;
         g.order.insert(tick, key.clone());

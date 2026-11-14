@@ -277,7 +277,7 @@ pub struct Comparable {
 }
 
 fn secs(d: Option<&prost_wkt_types::Duration>) -> i64 {
-    d.map_or(0, |d| d.seconds)
+    d.map_or_default(|d| d.seconds)
 }
 
 /// One argument's payload data as a JSON value (lossy text when it is not JSON).

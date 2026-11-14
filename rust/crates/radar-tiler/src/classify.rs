@@ -265,7 +265,7 @@ pub fn build_categorical_class_model(
         ));
     }
     let max_id = category_map.keys().copied().filter(|&v| v >= 0).max();
-    let raw_n = max_id.map_or(0, |m| m as usize) + 1;
+    let raw_n = max_id.map_or_default(|m| m as usize) + 1;
     let names: Vec<&str> = tables.iter().map(|(n, _)| n.as_str()).collect();
     let mut raw = Vec::with_capacity(tables.len());
     for (name, table) in tables {

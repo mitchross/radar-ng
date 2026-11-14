@@ -181,9 +181,9 @@ impl PolarSweep {
                 azimuth_deg: r.azimuth_deg,
                 elevation_deg: r.elevation_deg,
                 spacing_deg: r.azimuth_spacing_deg,
-                first_gate_m: m.map_or(0, |m| m.first_gate_m),
-                gate_m: m.map_or(0, |m| m.spacing_m),
-                gates: m.map_or(0, |m| m.values.len()),
+                first_gate_m: m.map_or_default(|m| m.first_gate_m),
+                gate_m: m.map_or_default(|m| m.spacing_m),
+                gates: m.map_or_default(|m| m.values.len()),
             });
             if let Some(m) = m {
                 values.extend_from_slice(&m.values);

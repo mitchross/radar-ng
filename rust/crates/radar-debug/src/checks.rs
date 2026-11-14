@@ -313,7 +313,7 @@ pub async fn check_api(http: &Http, server: &str, samples: usize) -> Vec<Check> 
             );
             continue;
         }
-        let p95 = stats.map_or(0.0, |s| s.p95_ms);
+        let p95 = stats.map_or_default(|s| s.p95_ms);
         let status = if p95 <= budget_ms as f64 {
             Status::Ok
         } else {
@@ -446,7 +446,7 @@ pub async fn check_tiles(
                 format!("cache-control mismatch: want '{want}', got '{got}'"),
             )
         } else {
-            let p95 = stats.map_or(0.0, |s| s.p95_ms);
+            let p95 = stats.map_or_default(|s| s.p95_ms);
             let status = if p95 <= 800.0 {
                 Status::Ok
             } else {
@@ -670,7 +670,7 @@ pub fn pipeline_checks(
             let n = l
                 .get("features")
                 .and_then(Value::as_array)
-                .map_or(0, Vec::len);
+                .map_or_default(Vec::len);
             let age = generated.map(|g| now.timestamp() as f64 - g);
             let stale = age.is_some_and(|a| a > 120.0);
             let detail = match age {

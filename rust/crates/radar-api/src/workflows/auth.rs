@@ -96,7 +96,7 @@ pub fn authenticate(headers: &HeaderMap, key: &[u8]) -> Result<String, Response>
     };
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_or(0.0, |d| d.as_secs_f64());
+        .map_or_default(|d| d.as_secs_f64());
     if subject.is_empty() || expires_at <= now {
         return Err(invalid());
     }

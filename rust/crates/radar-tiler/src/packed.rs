@@ -452,7 +452,7 @@ pub fn pack_frames(
         .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
 
     let bucket = BucketState {
-        v: previous.map_or(0, |b| b.v) + 1,
+        v: previous.map_or_default(|b| b.v) + 1,
         slots,
         typed: quant.typed,
     };

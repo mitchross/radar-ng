@@ -249,7 +249,7 @@ pub async fn check_temporal(
                 continue;
             }
             retrying += 1;
-            let attempt_name = act.activity_type.as_ref().map_or("", |t| t.name.as_str());
+            let attempt_name = act.activity_type.as_ref().map_or_default(|t| t.name.as_str());
             let max = if act.maximum_attempts == 0 {
                 "∞".to_string()
             } else {

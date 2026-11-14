@@ -266,7 +266,7 @@ pub fn incoming_storm(storms: &Value, lat: f64, lon: f64) -> Option<Value> {
         let history = props
             .get("track_history")
             .and_then(Value::as_array)
-            .map_or(0, Vec::len);
+            .map_or_default(Vec::len);
         // Same test as the web and app: a history-backed fit moving 3 to 90 mph.
         let speed_mph = float_field(&vector, "speed_kmh", 0.0) * KMH_TO_MPH;
         let tracked = history >= 3

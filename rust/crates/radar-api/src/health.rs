@@ -178,7 +178,7 @@ pub async fn get_metrics(State(state): State<AppState>) -> Response {
                 continue;
             };
             let list = layer.get("frames").or_else(|| layer.get("timestamps"));
-            let count = list.and_then(Value::as_array).map_or(0, Vec::len);
+            let count = list.and_then(Value::as_array).map_or_default(Vec::len);
             tile_timestamps.push((name.clone(), count));
         }
     }
