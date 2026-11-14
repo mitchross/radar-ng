@@ -373,7 +373,7 @@ fn normalize_frame(timestamp: &str, palettes_arg: &[String], frame: Option<&Fram
         .and_then(|f| f.path.clone())
         .filter(|p| !p.is_empty())
         .unwrap_or_else(|| timestamp.to_string());
-    let mut extra = frame.map(|f| f.extra.clone()).unwrap_or_default();
+    let mut extra = frame.map_or_default(|f| f.extra.clone());
     for reserved in ["timestamp", "path", "palettes"] {
         extra.remove(reserved);
     }

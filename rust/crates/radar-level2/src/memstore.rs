@@ -87,8 +87,7 @@ impl SweepIndex for MemoryStore {
             .guard()?
             .sweeps
             .get(station)
-            .map(|l| l.iter().take(n).cloned().collect())
-            .unwrap_or_default())
+            .map_or_default(|l| l.iter().take(n).cloned().collect()))
     }
     async fn health(&self, station: &str) -> Result<Health> {
         Ok(self

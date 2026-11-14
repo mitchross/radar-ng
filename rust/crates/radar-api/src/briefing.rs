@@ -322,12 +322,11 @@ pub fn build_facts(
     let times: Vec<String> = hourly
         .get("time")
         .and_then(Value::as_array)
-        .map(|a| {
+        .map_or_default(|a| {
             a.iter()
                 .map(|t| t.as_str().unwrap_or("").to_string())
                 .collect()
-        })
-        .unwrap_or_default();
+        });
     let now_hour = now_local.format("%Y-%m-%dT%H:00").to_string();
     let start = times
         .iter()
@@ -343,9 +342,8 @@ pub fn build_facts(
     };
     let mut next_hours: Vec<Value> = Vec::new();
     for i in (start..(start + 12).min(times.len())).step_by(3) {
-        let time = parse_wall(&times[i])
-            .map(|(naive, _)| naive.format("%-I %p").to_string())
-            .unwrap_or_default();
+        let time =
+            parse_wall(&times[i]).map_or_default(|(naive, _)| naive.format("%-I %p").to_string());
         next_hours.push(json!({
             "time": time,
             "temp_f": round_value(Some(&series("temperature_2m", i))),

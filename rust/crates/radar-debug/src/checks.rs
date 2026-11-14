@@ -234,14 +234,13 @@ fn layer_timestamps(layer: &Value) -> Vec<String> {
     layer
         .get("timestamps")
         .and_then(Value::as_array)
-        .map(|items| {
+        .map_or_default(|items| {
             items
                 .iter()
                 .filter_map(Value::as_str)
                 .map(str::to_string)
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 /// First palette of a layer, or `classic`.
@@ -646,8 +645,7 @@ pub fn pipeline_checks(
     let mut unknown: Vec<String> = manifest
         .get("layers")
         .and_then(Value::as_object)
-        .map(|l| l.keys().cloned().collect())
-        .unwrap_or_default();
+        .map_or_default(|l| l.keys().cloned().collect());
     unknown.retain(|name| !LAYER_EXPECTATIONS.iter().any(|(known, _)| known == name));
     unknown.sort();
     if !unknown.is_empty() {
@@ -717,7 +715,7 @@ pub async fn check_client_sim(
         )];
     };
     let lyr = manifest.get("layers").and_then(|l| l.get(layer));
-    let timestamps = lyr.map(layer_timestamps).unwrap_or_default();
+    let timestamps = lyr.map_or_default(layer_timestamps);
     let Some(lyr) = lyr.filter(|_| !timestamps.is_empty()) else {
         return vec![Check::new(
             "client.frames",
@@ -827,8 +825,7 @@ fn sorted_layers(manifest: &Value) -> Vec<(&str, &Value)> {
     let mut layers: Vec<(&str, &Value)> = manifest
         .get("layers")
         .and_then(Value::as_object)
-        .map(|l| l.iter().map(|(k, v)| (k.as_str(), v)).collect())
-        .unwrap_or_default();
+        .map_or_default(|l| l.iter().map(|(k, v)| (k.as_str(), v)).collect());
     layers.sort_by(|a, b| a.0.cmp(b.0));
     layers
 }

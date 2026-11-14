@@ -41,9 +41,9 @@ pub fn if_none_match_matches(header_value: Option<&str>, etag: &str) -> bool {
     let Some(raw) = header_value else {
         return false;
     };
-    raw.split(',').map(str::trim).any(|candidate| {
-        candidate == "*" || candidate.trim_prefix("W/") == etag
-    })
+    raw.split(',')
+        .map(str::trim)
+        .any(|candidate| candidate == "*" || candidate.trim_prefix("W/") == etag)
 }
 
 /// Read the manifest from disk now and remember it as the last good copy on success.

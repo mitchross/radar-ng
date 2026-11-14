@@ -396,10 +396,7 @@ pub fn pack_frames(
             if quant.typed { "untyped" } else { "typed" }
         )));
     }
-    let mut slots = previous
-        .as_ref()
-        .map(|b| b.slots.clone())
-        .unwrap_or_default();
+    let mut slots = previous.as_ref().map_or_default(|b| b.slots.clone());
     let mut assigned = Vec::with_capacity(frames.len());
     let mut rewrite = false;
     for frame in frames {

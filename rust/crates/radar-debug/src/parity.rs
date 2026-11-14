@@ -1295,14 +1295,13 @@ fn compare_layer(
 ) -> ManifestLayerDiff {
     let pick =
         |l: Option<&radar_core::manifest::Layer>| -> BTreeMap<String, radar_core::manifest::Frame> {
-            l.map(|l| {
+            l.map_or_default(|l| {
                 l.frames
                     .iter()
                     .filter(|f| filter.frame_matches(&f.path) || filter.frame_matches(&f.timestamp))
                     .map(|f| (f.timestamp.clone(), f.clone()))
                     .collect()
             })
-            .unwrap_or_default()
         };
     let (pf, rf) = (pick(py), pick(rs));
     let only_py: Vec<String> = pf

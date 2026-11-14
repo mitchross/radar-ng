@@ -161,8 +161,7 @@ pub fn packed_buckets(manifest: &Manifest, layer: &str) -> Vec<PackedBucket> {
     manifest
         .layers
         .get(layer)
-        .map(|l| buckets_of(&l.extra))
-        .unwrap_or_default()
+        .map_or_default(|l| buckets_of(&l.extra))
 }
 
 fn buckets_of(extra: &Map<String, Value>) -> Vec<PackedBucket> {
@@ -170,8 +169,7 @@ fn buckets_of(extra: &Map<String, Value>) -> Vec<PackedBucket> {
         .get(PACKED_KEY)
         .and_then(|p| p.get("buckets"))
         .and_then(Value::as_array)
-        .map(|items| items.iter().filter_map(PackedBucket::from_value).collect())
-        .unwrap_or_default()
+        .map_or_default(|items| items.iter().filter_map(PackedBucket::from_value).collect())
 }
 
 /// Write `packed` with these buckets (sorted by id), or remove it when there are none.

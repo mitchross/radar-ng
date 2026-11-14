@@ -295,21 +295,14 @@ pub fn comparable(schedule: &Schedule) -> Comparable {
                 info.workflow_id.clone(),
                 info.workflow_type
                     .as_ref()
-                    .map(|w| w.name.clone())
-                    .unwrap_or_default(),
-                info.task_queue
-                    .as_ref()
-                    .map(|t| t.name.clone())
-                    .unwrap_or_default(),
-                info.input
-                    .as_ref()
-                    .map(|p| {
-                        p.payloads
-                            .iter()
-                            .map(|x| parsed_argument(&x.data))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
+                    .map_or_default(|w| w.name.clone()),
+                info.task_queue.as_ref().map_or_default(|t| t.name.clone()),
+                info.input.as_ref().map_or_default(|p| {
+                    p.payloads
+                        .iter()
+                        .map(|x| parsed_argument(&x.data))
+                        .collect()
+                }),
                 secs(info.workflow_execution_timeout.as_ref()),
             ),
             None => (String::new(), String::new(), String::new(), Vec::new(), 0),

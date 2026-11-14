@@ -83,7 +83,7 @@ pub fn parse_idx(text: &str) -> Result<Vec<IdxRecord>> {
             line: raw.to_string(),
             var_name: parts[3].to_string(),
             level: parts[4].to_string(),
-            fcst_time: parts.get(5).map(|s| s.to_string()).unwrap_or_default(),
+            fcst_time: parts.get(5).map_or_default(|s| s.to_string()),
         });
     }
     Ok(out)
