@@ -195,7 +195,7 @@ fn obj(pairs: Vec<(&str, Json)>) -> Json {
 /// Write `lightning.json` atomically (spec 6.9): a unique temp file in the same directory, then rename over the
 /// target. Creates the directory first. Blocking, so call it through `spawn_blocking`.
 pub fn write_geojson(path: &Path, strikes: &[Strike], retention_min: i64) -> io::Result<()> {
-    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+    if let Some(parent) = path.parent().filter(|p| !p.is_empty()) {
         std::fs::create_dir_all(parent)?;
     }
     let text = render_geojson(strikes, now_epoch(), retention_min);
