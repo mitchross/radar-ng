@@ -175,7 +175,7 @@ impl AlertFeed {
 fn point_title(lat: f64, lon: f64) -> String {
     let label = |v: f64| {
         let text = float_repr(v.abs());
-        text.strip_suffix(".0").map_or(text.clone(), str::to_string)
+        text.trim_suffix(".0").to_string()
     };
     let ns = if lat < 0.0 { "S" } else { "N" };
     let ew = if lon < 0.0 { "W" } else { "E" };

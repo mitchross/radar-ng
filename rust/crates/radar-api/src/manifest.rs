@@ -42,7 +42,7 @@ pub fn if_none_match_matches(header_value: Option<&str>, etag: &str) -> bool {
         return false;
     };
     raw.split(',').map(str::trim).any(|candidate| {
-        candidate == "*" || candidate.strip_prefix("W/").unwrap_or(candidate) == etag
+        candidate == "*" || candidate.trim_prefix("W/") == etag
     })
 }
 
