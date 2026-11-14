@@ -330,7 +330,7 @@ pub fn compare_sample(
     }
     let prev_usable = prev_max_dbz.filter(|v| is_usable_dbz(*v));
     let has_prev = prev_usable.is_some();
-    let delta = prev_usable.map_or(0.0, |p| sample.max_dbz - p);
+    let delta = prev_usable.map_or_default(|p| sample.max_dbz - p);
     FrameComparison {
         sampled: true,
         curr_timestamp: sample.timestamp.clone(),

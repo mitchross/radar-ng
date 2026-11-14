@@ -10,6 +10,9 @@ description = "radar-ng backend: one binary for the API server, Temporal workers
 name = "radar"
 path = "src/main.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 radar-core.workspace = true
 radar-api.workspace = true

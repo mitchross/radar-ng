@@ -226,7 +226,7 @@ fn match_candidates(
 /// Globally optimal assignment of `min(rows, cols)` pairs, minimising total distance.
 fn optimal_pairs(dist: &[Vec<f64>]) -> Vec<(usize, usize)> {
     let n_cur = dist.len();
-    let n_prev = dist.first().map_or(0, Vec::len);
+    let n_prev = dist.first().map_or_default(Vec::len);
     if n_cur == 0 || n_prev == 0 {
         return Vec::new();
     }

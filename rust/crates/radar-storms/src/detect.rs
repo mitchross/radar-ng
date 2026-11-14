@@ -213,5 +213,5 @@ impl GridGeometry {
 pub fn now_epoch_seconds() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_or(0.0, |d| d.as_secs_f64())
+        .map_or_default(|d| d.as_secs_f64())
 }

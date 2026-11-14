@@ -396,10 +396,7 @@ pub fn pack_frames(
             if quant.typed { "untyped" } else { "typed" }
         )));
     }
-    let mut slots = previous
-        .as_ref()
-        .map(|b| b.slots.clone())
-        .unwrap_or_default();
+    let mut slots = previous.as_ref().map_or_default(|b| b.slots.clone());
     let mut assigned = Vec::with_capacity(frames.len());
     let mut rewrite = false;
     for frame in frames {
@@ -452,7 +449,7 @@ pub fn pack_frames(
         .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
 
     let bucket = BucketState {
-        v: previous.map_or(0, |b| b.v) + 1,
+        v: previous.map_or_default(|b| b.v) + 1,
         slots,
         typed: quant.typed,
     };

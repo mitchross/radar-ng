@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 description = "radar-ng tile API: axum replacement for Caddy + FastAPI + go-pmtiles"
 
+[lints]
+workspace = true
+
 [dependencies]
 radar-types.workspace = true
 radar-core.workspace = true

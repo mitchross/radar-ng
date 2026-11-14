@@ -26,7 +26,7 @@ pub fn py_float(text: &str) -> Option<f64> {
 #[must_use]
 pub fn py_int_str(text: &str) -> Option<i64> {
     let t = text.trim();
-    let digits = t.strip_prefix(['+', '-']).unwrap_or(t);
+    let digits = t.trim_prefix(['+', '-']);
     if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }

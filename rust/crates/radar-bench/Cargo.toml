@@ -7,6 +7,9 @@ license.workspace = true
 publish = false
 description = "Before/after benchmark runners (Rust side) for the radar-ng port. Not part of the service."
 
+[lints]
+workspace = true
+
 [dependencies]
 radar-core.workspace = true
 radar-geo.workspace = true

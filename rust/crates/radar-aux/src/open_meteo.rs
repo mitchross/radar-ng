@@ -67,7 +67,7 @@ impl OpenMeteoConfig {
     /// The child's working directory: the parent of the data directory (`/app`).
     pub fn working_dir(&self) -> PathBuf {
         match self.data_dir.parent() {
-            Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+            Some(p) if !p.is_empty() => p.to_path_buf(),
             _ => PathBuf::from("."),
         }
     }

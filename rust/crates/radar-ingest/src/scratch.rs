@@ -94,7 +94,7 @@ impl ScratchDir {
 impl Drop for ScratchDir {
     fn drop(&mut self) {
         // An empty path means `remove` already ran.
-        if !self.path.as_os_str().is_empty() {
+        if !self.path.is_empty() {
             let _ = std::fs::remove_dir_all(&self.path);
         }
     }

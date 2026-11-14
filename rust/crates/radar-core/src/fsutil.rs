@@ -154,7 +154,7 @@ pub fn atomic_write_with(
 /// The parent of `path`, or `.` for a bare file name.
 pub fn parent_dir(path: &Path) -> &Path {
     match path.parent() {
-        Some(p) if !p.as_os_str().is_empty() => p,
+        Some(p) if !p.is_empty() => p,
         _ => Path::new("."),
     }
 }

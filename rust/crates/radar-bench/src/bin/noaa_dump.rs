@@ -169,8 +169,7 @@ fn newest_cached(dir: &Path, prefix: &str, suffix: &str) -> Option<PathBuf> {
         .filter(|p| {
             let name = p
                 .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
+                .map_or_default(|n| n.to_string_lossy().into_owned());
             name.starts_with(prefix) && name.ends_with(suffix)
         })
         .collect();

@@ -45,7 +45,7 @@ pub fn ensure_south_up(grid: &mut Grid) -> bool {
 /// The basename of an object key with `.grib2.gz` removed.
 pub fn timestamp_hint(key: &str) -> &str {
     let base = key.rsplit('/').next().unwrap_or(key);
-    base.strip_suffix(".grib2.gz").unwrap_or(base)
+    base.trim_suffix(".grib2.gz")
 }
 
 /// Parses the valid time from an MRMS object key.

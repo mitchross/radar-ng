@@ -449,7 +449,7 @@ pub fn build_envelope(i: &EnvelopeInput) -> Result<String> {
                 "elevation_deg": f.elevation_deg,
                 "geometry_digest": a["geometry_digest"],
                 "max_ground_range_m": MAX_GROUND_RANGE_M,
-                "ray_count": a["rays"].as_array().map_or(0, Vec::len),
+                "ray_count": a["rays"].as_array().map_or_default(Vec::len),
                 "missing_sectors_deg": a["missing_sectors_deg"],
                 "antenna_altitude_m_msl": a["site"]["site_height_m_raw"],
                 "beam_model": "effective-earth-4/3",

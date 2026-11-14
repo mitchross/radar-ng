@@ -191,7 +191,7 @@ pub async fn check_temporal(
                     "{} started {} ago{}",
                     wf.workflow_type,
                     age_str(age),
-                    msg.map(|m| format!(": {m}")).unwrap_or_default()
+                    msg.map_or_default(|m| format!(": {m}"))
                 ),
             ));
         }
@@ -249,7 +249,10 @@ pub async fn check_temporal(
                 continue;
             }
             retrying += 1;
-            let attempt_name = act.activity_type.as_ref().map_or("", |t| t.name.as_str());
+            let attempt_name = act
+                .activity_type
+                .as_ref()
+                .map_or_default(|t| t.name.as_str());
             let max = if act.maximum_attempts == 0 {
                 "∞".to_string()
             } else {
@@ -259,8 +262,7 @@ pub async fn check_temporal(
             let failure_msg = act
                 .last_failure
                 .as_ref()
-                .map(|f| f.message.clone())
-                .unwrap_or_default();
+                .map_or_default(|f| f.message.clone());
             if !failure_msg.is_empty() {
                 detail.push_str(&format!(", last failure: {failure_msg}"));
             }
@@ -414,8 +416,7 @@ async fn terminal_failure_message(client: &Client, wf: &Execution) -> Option<Str
                 .cause
                 .as_deref()
                 .filter(|c| !c.message.is_empty())
-                .map(|c| format!(" ← {}", c.message))
-                .unwrap_or_default();
+                .map_or_default(|c| format!(" ← {}", c.message));
             return Some(format!("{}{inner}", failure.message));
         }
     }

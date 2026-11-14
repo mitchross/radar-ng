@@ -118,7 +118,7 @@ impl Fetch {
 
     /// A response header (lowercase name), or `""`.
     pub fn header(&self, name: &str) -> &str {
-        self.headers.get(name).map_or("", String::as_str)
+        self.headers.get(name).map_or_default(String::as_str)
     }
 }
 

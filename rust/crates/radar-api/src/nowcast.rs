@@ -286,7 +286,7 @@ pub async fn nowcast_point(state: &AppState, lat: f64, lon: f64) -> Result<Point
             "timestamp": py_str(obj.get("timestamp").unwrap_or(&Value::Null)),
             "lead_minutes": obj.get("lead_minutes").cloned().unwrap_or(Value::Null),
             "dbz": dbz,
-            "precipitation_mm_h": dbz.map_or(0.0, dbz_to_rain_rate),
+            "precipitation_mm_h": dbz.map_or_default(dbz_to_rain_rate),
         }));
     }
 

@@ -9,7 +9,10 @@ Read this whole file before changing anything under `rust/`, `deploy/Dockerfile`
 
 - Rust **1.100.0**, pinned in `rust/rust-toolchain.toml` (with clippy and rustfmt). rustup installs it
   automatically. **Never bump it in passing**: CI, the Docker builder and local builds share it so
-  clippy sees the same lints everywhere. A bump is its own PR.
+  clippy sees the same lints everywhere. A bump is its own PR. `rust-version` in `rust/Cargo.toml`
+  (the MSRV) is kept equal to the pin so clippy's MSRV-aware lints suggest the newest std APIs.
+- `[workspace.lints.cargo]` denies `unused_dependencies`: remove a dependency you stop using, or the
+  next cargo command fails. New crates must carry `[lints] workspace = true`.
 - The Temporal SDK build needs **`protoc` plus the well-known types**: `protobuf-compiler` and
   `libprotobuf-dev` on Debian/Ubuntu, `protobuf` on Arch/CachyOS, `brew install protobuf` on macOS.
 - **Resources:** a full `cargo build --release` or `cargo test --workspace` needs several GB in

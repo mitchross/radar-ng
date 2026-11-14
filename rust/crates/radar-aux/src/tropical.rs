@@ -121,7 +121,7 @@ pub fn storms_of(feed: &Value) -> &[Value] {
 pub fn gis_bins(feed: &Value) -> Vec<String> {
     feed.get("activeStorms")
         .and_then(Value::as_array)
-        .map(|storms| {
+        .map_or_default(|storms| {
             storms
                 .iter()
                 .filter_map(|s| s.get("binNumber").and_then(Value::as_str))
@@ -131,7 +131,6 @@ pub fn gis_bins(feed: &Value) -> Vec<String> {
                 .into_iter()
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 /// A finite float from a JSON number or numeric string. Anything else is `None`.
@@ -332,12 +331,11 @@ fn gis_features<'a>(layers: Option<&'a BTreeMap<String, Value>>, kind: &str) -> 
         .and_then(|l| l.get(kind))
         .and_then(|fc| fc.get("features"))
         .and_then(Value::as_array)
-        .map(|fs| {
+        .map_or_default(|fs| {
             fs.iter()
                 .filter(|f| f.get("geometry").is_some_and(truthy))
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 fn merged_props(first: &[(&str, Value)], base: &Value) -> Value {
