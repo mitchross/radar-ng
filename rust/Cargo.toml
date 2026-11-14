@@ -4,7 +4,7 @@ members = ["crates/*"]
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.92"
+rust-version = "1.100"
 license = "MIT"
 version = "0.1.0"
 
