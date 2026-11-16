@@ -15,6 +15,8 @@ export default defineConfig({
   reporter: [["list"], ["html", { outputFolder: "report", open: "never" }], ["json", { outputFile: "results/results.json" }]],
   use: {
     baseURL,
+    actionTimeout: 30_000,
+    navigationTimeout: 60_000,
     viewport: { width: 1280, height: 800 },
     trace: "on",
     screenshot: "on",

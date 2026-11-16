@@ -38,8 +38,12 @@ function record(id: string, check: string, data: Record<string, unknown>) {
   appendFileSync(LOG, JSON.stringify({ at: new Date().toISOString(), base: process.env.E2E_BASE_URL ?? "local-preview", case: id, check, ...data }) + "\n");
 }
 
+/** Open the site, let the live radar paint first, then open the picker. */
 async function openPicker(page: Page, id: string) {
+  const liveTile = page.waitForResponse((r) => isLiveTile(r.request()) && r.status() === 200, { timeout: 60_000 });
   await page.goto("/");
+  await liveTile;
+  await page.waitForTimeout(3_000);
   await page.locator("#storms").click();
   const button = page.locator(`button.replay-case[data-case="${id}"]`);
   await expect(button).toBeVisible();
@@ -51,6 +55,7 @@ async function enter(page: Page, id: string): Promise<number> {
   const button = await openPicker(page, id);
   const t0 = Date.now();
   const tile = page.waitForResponse((r) => isCaseTile(id)(r.request()) && r.url().endsWith(".png") && r.status() === 200, { timeout: 120_000 });
+  clickedAt.set(page, Date.now());
   await button.click();
   await expect(page.locator("body")).toHaveClass(/\breplay\b/);
   await expect(page.locator("#replay-banner")).toContainText("Historical replay");
@@ -71,9 +76,12 @@ async function scrubTo(page: Page, pos: number) {
 
 const sliderValue = (page: Page) => page.locator("#slider").evaluate((el) => Number((el as HTMLInputElement).value));
 
-function watchLive(page: Page): Request[] {
-  const live: Request[] = [];
-  page.on("request", (r) => { if (isLiveTile(r)) live.push(r); });
+const clickedAt = new WeakMap<Page, number>();
+
+/** Live tile requests issued after the case was clicked. */
+function watchLive(page: Page): string[] {
+  const live: string[] = [];
+  page.on("request", (r) => { const t = clickedAt.get(page); if (t !== undefined && isLiveTile(r)) live.push(path(r)); });
   return live;
 }
 
@@ -119,6 +127,7 @@ for (const id of CASES) {
       await hail;
       await shot(page, info, id, "03-hail");
 
+      await page.locator("#sheet-close").click();
       await page.locator("#layers button[data-layer='radar']").click();
       await page.locator("#sheet-toggle").click();
       const comp = page.waitForResponse((r) => path(r.url()).includes("/tiles/radar-composite/classic/") && r.status() === 200);
@@ -127,6 +136,7 @@ for (const id of CASES) {
       await comp;
       await shot(page, info, id, "04-composite");
 
+      await page.locator("#sheet-close").click();
       await page.locator("#layers button[data-layer='precip-24h']").click();
       await expect(page.locator("#frame-title")).toContainText("Past 24 hr precip");
       await expect(page.locator("#frame-time")).toContainText(/Rolling 24-hour total|No data for this layer/);
@@ -218,6 +228,7 @@ for (const id of CASES) {
       const { c, manifest } = await caseData(page, id);
       const frames = replayFrames(manifest, "radar");
       const k = Math.min(5, frames.length - 2);
+      const back = Math.floor(frames.length / 2);
       const prefix = framePrefix(manifest, frames[k]);
       let forced = 0;
       await page.route((u) => u.pathname.startsWith(prefix), (route) => { forced++; return route.fulfill({ status: 404, body: "" }); });
@@ -228,8 +239,9 @@ for (const id of CASES) {
       await expect.poll(() => forced, { timeout: 30_000 }).toBeGreaterThan(0);
       await expect(page.locator("#replay-banner")).toContainText("Historical replay");
       await shot(page, info, id, "10-forced-404");
-      const next = page.waitForResponse((r) => path(r.url()).startsWith(framePrefix(manifest, frames[k + 1])) && r.status() === 200);
-      await scrubTo(page, k + 1);
+      // A later, not yet prefetched frame still loads after the failure.
+      const next = page.waitForResponse((r) => path(r.url()).startsWith(framePrefix(manifest, frames[back])) && r.status() === 200);
+      await scrubTo(page, back);
       await next;
       expect(live, "a failed case tile never falls back to live").toHaveLength(0);
       record(id, "forced-404", { frame: frames[k].timestamp, forced_404s: forced, live_tile_requests: live.length });
@@ -241,6 +253,7 @@ for (const id of CASES) {
       await page.route((u) => u.pathname === c.manifest_url, (route) => (fail ? route.fulfill({ status: 503, body: "" }) : route.continue()));
       const button = await openPicker(page, id);
       const live = watchLive(page);
+      clickedAt.set(page, Date.now());
       await button.click();
       await expect(page.locator("#replay-banner [role=alert]")).toContainText("Couldn't load this replay");
       await expect(page.locator("#frame-title")).toHaveText("Replay unavailable");
@@ -254,10 +267,10 @@ for (const id of CASES) {
 
     test("return to live", async ({ page }, info) => {
       await enter(page, id);
-      const replayAfter: Request[] = [];
+      const replayAfter: string[] = [];
       const liveTile = page.waitForResponse((r) => isLiveTile(r.request()) && r.status() === 200, { timeout: 60_000 });
       await page.locator("#return-live").click();
-      page.on("request", (r) => { if (isCaseTile(id)(r) || path(r).startsWith("/api/replays/")) replayAfter.push(r); });
+      page.on("request", (r) => { if (isCaseTile(id)(r) || path(r).startsWith("/api/replays/")) replayAfter.push(path(r)); });
       await expect(page.locator("body")).not.toHaveClass(/\breplay\b/);
       await expect(page.locator("#replay-banner")).toBeHidden();
       await expect(page.locator("#frame-title")).not.toContainText("Historical replay");
