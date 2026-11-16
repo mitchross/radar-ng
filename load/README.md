@@ -83,7 +83,7 @@ host for the edge clock. On the public hosts Level II is off and `setup()` stops
 | Parameter | Default | Notes |
 |---|---|---|
 | `BASE_URL` | `http://level2-api.radar-ng.svc.cluster.local:8080` | the Level II API; the shadow host for the edge run |
-| `MRMS_URL` | `http://tile-server.radar-ng.svc.cluster.local:8080` | where MRMS is served; the shadow host when it fronts both |
+| `MRMS_URL` | `http://tile-server.radar-ng.svc.cluster.local:8080` | where MRMS is served. Not the shadow host: its route carries only the Level II paths |
 | `VUS` | 5 per pod | a user re-submits every 15 s and `POST /api/level2/views` allows 0.5 rps per IP, so 7 is the ceiling |
 | pods | 20 (`k8s/k6-level2-job.yaml`) | 20 x 5 = 100 users |
 | `PROFILE` | `steady` | `steady`: 1 min ramp, 10 min at `VUS`, 1 min step, 5 min at 2 x `VUS`. `overflow`: users spread over `OVERFLOW_STATIONS` (12) distinct stations, enabled first, then the nearest catalogue sites. `smoke`: 1 user, 30 s |
@@ -115,7 +115,7 @@ Record which case the run covered.
 
 In the cluster, ship `k8s/k6-level2-job.yaml` in a temporary talos PR, as for the MRMS test, with a
 `configMapGenerator` named `k6-level2-script` built from `k6-level2.js`. Run steady against the
-Service, steady against the shadow host (`BASE_URL` and `MRMS_URL` both set to it), then overflow.
+Service, steady against the shadow host (`BASE_URL` set to it, `MRMS_URL` unchanged), then overflow.
 Save each pod's summary line and score the run:
 
 ```sh

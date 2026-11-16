@@ -9,7 +9,8 @@
 # Build the script ConfigMap with a Kustomize configMapGenerator named k6-level2-script from
 # load/k6-level2.js (load/README.md). Runs, in order, each as its own sync:
 #   1. steady, BASE_URL = the in-cluster level2-api Service (this file as written);
-#   2. steady, BASE_URL = MRMS_URL = https://<shadow host> (the edge clock);
+#   2. steady, BASE_URL = https://<shadow host> (the edge clock; that route serves only Level II
+#      paths, so leave MRMS_URL on the tile-server Service);
 #   3. overflow: PROFILE=overflow, same BASE_URL as run 1.
 # Read the per-pod JSON summaries from the logs, then score them with load/drills/gate.py.
 apiVersion: batch/v1
@@ -41,7 +42,6 @@ spec:
                   app: tile-server
               namespaces: [radar-ng]
               topologyKey: kubernetes.io/hostname
-            # TODO(C3): confirm the level2-api pod label from deploy/kubernetes on the C3 branch.
             - labelSelector:
                 matchLabels:
                   app: level2-api
@@ -57,7 +57,7 @@ spec:
           image: grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34
           args: ["run", "--quiet", "/scripts/k6-level2.js"]
           env:
-            # TODO(C3): confirm the level2-api Service name and port.
+            # deploy/kubernetes/components/level2/api.yaml
             - name: BASE_URL
               value: http://level2-api.radar-ng.svc.cluster.local:8080
             - name: MRMS_URL

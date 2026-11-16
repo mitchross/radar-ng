@@ -23,7 +23,7 @@ Three settings decide what a visitor sees. Clients have no flag of their own: th
 | Layer | Setting | Effect when off |
 |---|---|---|
 | Route | Public HTTPRoute rules sending `/api/level2/` and `/level2/tiles/` on the public hosts to the `level2-api` Service | Those paths reach the tile-server, where the gate is off: `404`. Clients show MRMS only. |
-| Gate | `LEVEL2_VIEWPORT_ENABLED=true` on `level2-api` (with its `LEVEL2_PG_*` and `LEVEL2_S3_*` secrets) | Every Level II route returns `404`. |
+| Gate | `LEVEL2_VIEWPORT_ENABLED=true` and `LEVEL2_TILE_ENABLED=true` in the `radar-ng-level2` ConfigMap (with the `LEVEL2_PG_*` and `LEVEL2_S3_*` Secret); `LEVEL2_NUMERIC_ENABLED=true` on the pool | Viewport gate off: every Level II route returns `404`. Tile gate off: the publisher will not start, views stay `pending` and clients time out to MRMS after 30 s. Pool gate off: no new sweeps, stations go `late`. |
 | Stations | `LEVEL2_ENABLED_STATIONS` on `level2-api`, comma-separated station IDs | A station not listed shows `enabled: false`; views near it fall back with `out_of_range`, or go to another enabled station within 150 km. |
 
 Rules for `LEVEL2_ENABLED_STATIONS`:
@@ -33,8 +33,9 @@ Rules for `LEVEL2_ENABLED_STATIONS`:
   `KGRR`, `KDTX`, `KLOT`, `KAPX` at the time of writing). One unknown or unverified ID makes the
   Level II service refuse to start: the API logs `Level II viewport disabled` and all Level II
   routes return `404`. It fails closed, for every station, not only the bad one.
-- <!-- TODO(C3): state whether the pool, publisher and recorder also read this list, from the C3
-  deploy examples. --> Keep the same list on every Level II workload that reads it.
+- `level2-api`, the publisher and the shadow recorder read it from the shared `radar-ng-level2`
+  ConfigMap (`deploy/kubernetes/components/level2/level2.env`), so one edit changes all three.
+  The pool worker does not read it: it decodes whatever stations hold demand.
 
 What clients do after a change:
 

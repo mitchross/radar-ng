@@ -57,15 +57,15 @@ cadence the check is "no task over 100 s". A task between 100 s and 1000 s needs
 history (Temporal UI, the task's scheduled and started events) before the drill passes.
 
 The Level II cadence is the median gap between low sweeps per station from the shadow recorder.
-<!-- TODO(C3): confirm the table, schema and report command against docs/develop/level2-shadow.md
-once C3 lands. The query below follows the C3 work in progress (`sweep_clocks`). -->
+The pool writes one `sweep_clocks` row per indexed lowest sweep
+(`docs/develop/level2-shadow.md`):
 
 ```sql
 SELECT station, percentile_cont(0.5) WITHIN GROUP (ORDER BY gap_s) AS median_gap_s
 FROM (
   SELECT station, EXTRACT(EPOCH FROM scan_end - lag(scan_end) OVER (PARTITION BY station ORDER BY scan_end)) AS gap_s
-  FROM level2_numeric.sweep_clocks
-  WHERE scan_end BETWEEN '<start>' AND '<end>'
+  FROM level2_numeric.sweep_clocks   -- LEVEL2_PG_SCHEMA
+  WHERE source_kind = 'live' AND scan_end BETWEEN '<start>' AND '<end>'
 ) g WHERE gap_s IS NOT NULL GROUP BY station;
 ```
 
@@ -79,10 +79,14 @@ For each drill record: start and end UTC, who ran it, the exact change or comman
 
 **Who:** an agent writes both talos PRs and watches; Mitch merges them.
 
-The feed URLs are constants, so the delay comes from a test-only switch on the Level II pool:
-`LEVEL2_TEST_FEED_DELAY_S` hides NOAA objects newer than that many seconds (0 or unset is off,
-maximum 3600). The pool exports `radar_level2_test_feed_delay_seconds` so the timeline shows when
-it took effect. <!-- TODO(C3): confirm the variable and gauge names in docs/develop/level2-shadow.md. -->
+The feed URLs are constants, so the delay comes from a test-only switch on the Level II pool
+worker (`radar-ng-worker-level2`): `LEVEL2_TEST_FEED_DELAY_S` hides NOAA objects whose
+`LastModified` is newer than that many seconds (0 or unset is off, maximum 3600). The pool logs it
+at start and exports `radar_level2_test_feed_delay_seconds`, so the timeline shows when it took
+effect (`docs/develop/level2-shadow.md`).
+Mark the drill day excluded from the shadow run, because it is not Level II's fault:
+`radar level2-shadow exclude --day <UTC day> --reason "NOAA delay drill"`. Do the same for every
+drill day below.
 
 Steps:
 
@@ -121,10 +125,11 @@ reporting `healthy` for a station whose low sweep is over 600 s old.
 Steps:
 
 1. Baseline 10 minutes with `observe.py` and k6.
-2. Delete the Level II pool pod: `kubectl -n radar-ng delete pod -l <level2 pool label>`
-   (<!-- TODO(C3): exact label from the C3 deploy examples -->the WorkerDeployment's current
-   version). Note the UTC time.
-3. Hold 15 minutes. Then delete the `level2-api` pod the same way and hold 10 minutes.
+2. Delete the Level II pool pod: `kubectl -n radar-ng delete pod -l app=radar-ng-worker-level2`.
+   Note the UTC time.
+3. Hold 15 minutes. Then `kubectl -n radar-ng delete pod -l app=level2-api` and hold 10 minutes.
+   Then `kubectl -n radar-ng delete pod -l app=level2-publisher` and hold 10 minutes (views
+   already ready keep serving; new revisions wait for the publisher).
 
 Expected:
 

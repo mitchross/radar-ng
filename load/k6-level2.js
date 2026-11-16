@@ -18,8 +18,8 @@ import { check, fail, sleep } from "k6";
 import { Counter, Rate, Trend } from "k6/metrics";
 
 const BASE_URL = (__ENV.BASE_URL || "http://level2-api.radar-ng.svc.cluster.local:8080").replace(/\/$/, "");
-// MRMS is served by the tile-server, not the stateless level2-api. On the shadow host both live
-// behind one hostname, so set MRMS_URL to BASE_URL there.
+// MRMS is served by the tile-server, not the stateless level2-api, and the shadow route
+// (components/level2-shadow-route) carries only the Level II paths, so MRMS_URL stays separate.
 const MRMS_URL = (__ENV.MRMS_URL || "http://tile-server.radar-ng.svc.cluster.local:8080").replace(/\/$/, "");
 const VUS = Number(__ENV.VUS || 5); // per pod
 const PROFILE = __ENV.PROFILE || "steady";
