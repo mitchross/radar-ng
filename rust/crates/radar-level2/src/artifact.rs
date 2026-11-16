@@ -643,6 +643,7 @@ pub(crate) mod tests {
             scan_end: now,
             rays,
             missing_sectors_deg: vec![],
+            qc_seconds: 0.0,
         }
     }
 }

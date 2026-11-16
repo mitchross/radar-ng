@@ -60,7 +60,7 @@ impl Pool {
             ALTER TABLE {s}.reservations ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT clock_timestamp();
             CREATE TABLE IF NOT EXISTS {s}.pins(key text NOT NULL,owner text NOT NULL,until timestamptz NOT NULL,PRIMARY KEY(key,owner));
         ")).await?;
-        Ok(())
+        self.initialize_clocks().await
     }
     pub async fn station(&mut self, station: &str) -> Result<bool> {
         let s = &self.schema;

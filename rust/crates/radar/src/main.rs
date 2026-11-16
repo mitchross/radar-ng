@@ -30,6 +30,8 @@ enum Cmd {
     Level2Numeric(radar_level2::tracer::TraceArgs),
     /// Publish ready Level II viewports and collect expired objects (gated).
     Level2Publish,
+    /// Level II shadow recorder and its pilot report (gated, #293).
+    Level2Shadow(radar_level2::shadow::ShadowArgs),
     /// Import isolated historical MRMS cases (operator only).
     Replay(radar_replay::ReplayArgs),
     /// Run a Temporal worker for one role.
@@ -88,7 +90,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Worker { .. } | Cmd::Seed | Cmd::Watchdog => "radar-worker",
         Cmd::Debug(_) => "radar-debug",
         Cmd::RenderOnce { .. } => "radar-render-once",
-        Cmd::Level2Numeric(_) | Cmd::Level2Publish => "radar-level2",
+        Cmd::Level2Numeric(_) | Cmd::Level2Publish | Cmd::Level2Shadow(_) => "radar-level2",
         Cmd::ImportReplayWarnings { .. } => "radar-replay-warnings",
         Cmd::Parity(_) => unreachable!("handled above"),
     };
@@ -109,6 +111,7 @@ fn main() -> anyhow::Result<()> {
             Cmd::Api => radar_api::serve(radar_api::Config::from_env()?).await,
             Cmd::Level2Numeric(args) => radar_level2::tracer::run(args).await,
             Cmd::Level2Publish => radar_level2::runtime::publish_worker().await,
+            Cmd::Level2Shadow(args) => radar_level2::shadow::run(args).await,
             Cmd::Worker { .. } => {
                 radar_worker::run_worker(radar_worker::WorkerConfig::from_env()?).await
             }
