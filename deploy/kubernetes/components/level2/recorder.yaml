@@ -1,0 +1,54 @@
+# `radar level2-shadow record`: holds pilot demand through level2-api (or the shadow edge) and
+# writes one row per lowest sweep, plus a daily summary. Exactly one replica: two would double
+# the demand and the rows. Needs an image built after the recorder landed (#293).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: level2-shadow-recorder
+  namespace: radar-ng
+  labels:
+    app: level2-shadow-recorder
+spec:
+  # Off by default: scale to 1 for the shadow run, with the gates in level2.env set true.
+  replicas: 0
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: level2-shadow-recorder
+  template:
+    metadata:
+      labels:
+        app: level2-shadow-recorder
+        # Scraped on :9466 by the monitoring component's PodMonitor.
+        radar-ng/worker: "true"
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: recorder
+          image: ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.9@sha256:1432031a17e5126eb591a4e0cb3e72f632283a45c3c190fe8cd7865dc51b64a9   # <<< a release that has `level2-shadow`
+          imagePullPolicy: IfNotPresent
+          args: [level2-shadow, record]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          ports:
+            - { containerPort: 9466, name: level2, protocol: TCP }
+          envFrom:
+            - configMapRef:
+                name: radar-ng-level2
+            # <<< your Secret: LEVEL2_PG_URL, LEVEL2_S3_ENDPOINT, LEVEL2_S3_BUCKET, LEVEL2_S3_ACCESS_KEY, LEVEL2_S3_SECRET_KEY
+            - secretRef:
+                name: radar-ng-level2
+                optional: true
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }

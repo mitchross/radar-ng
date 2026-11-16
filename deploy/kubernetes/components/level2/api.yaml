@@ -1,0 +1,85 @@
+# `radar api` for Level II only: stateless, no PVC, so it scales and moves freely. It serves the
+# /api/level2/* and /level2/tiles/* routes once LEVEL2_VIEWPORT_ENABLED=true; the MRMS paths
+# point at empty dirs and simply 404. Keep it behind the ClusterIP Service unless D1 says public.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: level2-api
+  namespace: radar-ng
+  labels:
+    app: level2-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: level2-api
+  template:
+    metadata:
+      labels:
+        app: level2-api
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: ghcr.io/mitchross/radar-ng-tile-server:v2.0.9@sha256:3981502164c2f366f123cad41378a956483247fe7015e1e104ab3703050424dc
+          imagePullPolicy: IfNotPresent
+          args: [api]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          ports:
+            - { containerPort: 8080, name: http, protocol: TCP }
+          envFrom:
+            - configMapRef:
+                name: radar-ng-level2
+            # <<< your Secret: LEVEL2_PG_URL, LEVEL2_S3_ENDPOINT, LEVEL2_S3_BUCKET, LEVEL2_S3_ACCESS_KEY, LEVEL2_S3_SECRET_KEY
+            - secretRef:
+                name: radar-ng-level2
+                optional: true
+          env:
+            - { name: LISTEN_ADDR, value: "0.0.0.0:8080" }
+            - { name: TILE_DIR, value: /data/tiles }
+            - { name: GRID_DIR, value: /data/grids }
+            - { name: STATE_DIR, value: /data/state }
+            - { name: DISABLE_WORKFLOW_ROUTES, value: "1" }
+            - { name: TMPDIR, value: /tmp }
+          livenessProbe:
+            httpGet: { path: /api/livez, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "2", memory: 1Gi }
+      volumes:
+        - name: data
+          emptyDir: { sizeLimit: 256Mi }
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: level2-api
+  namespace: radar-ng
+  labels:
+    app: level2-api
+spec:
+  type: ClusterIP
+  selector:
+    app: level2-api
+  ports:
+    - { name: http, port: 8080, targetPort: http, protocol: TCP }

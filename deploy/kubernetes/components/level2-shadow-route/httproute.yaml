@@ -1,0 +1,24 @@
+# OPTIONAL shadow route. Only the Level II paths reach level2-api; everything else 404s.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: level2-shadow
+  namespace: radar-ng
+spec:
+  parentRefs:
+    # <<< your Gateway
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: my-gateway
+      namespace: gateway
+  hostnames:
+    - level2-shadow.example.com   # <<< your shadow hostname
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /api/level2/ }
+        - path: { type: PathPrefix, value: /level2/tiles/ }
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: level2-api
+          port: 8080
