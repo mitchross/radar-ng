@@ -338,3 +338,11 @@ body.replay #panel, body.replay #locate, body.replay #live, body.replay #zoom, b
 .niceday .nd-fair { color: #b98a17; }
 .niceday .nd-poor { color: #d0703a; }
 .niceday .nd-donot { color: #d0434a; }
+
+/* Holiday countdown card */
+.countdown-card { padding: 4px 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid var(--border); }
+.countdown-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.countdown-row + .countdown-row { border-top: 1px solid var(--border); }
+.countdown-row span { font-size: 14px; }
+.countdown-row small { display: block; font-size: 12px; color: var(--ink-2); }
+.countdown-row b { font-family: var(--display); font-size: 16px; font-weight: 400; white-space: nowrap; }

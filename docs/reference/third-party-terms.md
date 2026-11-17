@@ -164,3 +164,35 @@ was also checked; its empty state uses a `NoArea` placeholder. Clients contact o
 `/api/spc/watches` and `/api/spc/discussions` refresh on demand every 60 seconds, without worker schedules.
 Both retain last-good data on failure and remove expired products on every response. `stale` marks fallback data.
 Responses use `no-store` so downstream caches cannot serve expired polygons.
+
+## astronomy-engine (sun, moon and planet times)
+
+Both clients bundle [`astronomy-engine`](https://github.com/cosinekitty/astronomy) 2.1.19 by Donald
+Cross for sunrise, sunset, twilight, moon phase and planet rise and set. It is MIT licensed, pure
+JavaScript with no dependencies, and runs on the device with no network call. The MIT licence asks
+that the notice ships with the code. The package keeps it in its source header, and this page
+repeats it:
+
+```
+MIT License
+
+Copyright (c) 2019-2023 Don Cross <cosinekitty@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+The holiday countdown uses it for the sunset on each date. Sunset tests are pinned to US Naval
+Observatory values ([`rstt/oneday`](https://aa.usno.navy.mil/data/api)).

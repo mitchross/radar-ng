@@ -34,6 +34,7 @@
     "@tanstack/query-sync-storage-persister": "^5.103.2",
     "@tanstack/react-query": "^5.103.2",
     "@tanstack/react-query-persist-client": "^5.103.2",
+    "astronomy-engine": "2.1.19",
     "expo": "~58.0.26",
     "expo-background-task": "~58.0.13",
     "expo-build-properties": "~58.0.12",
