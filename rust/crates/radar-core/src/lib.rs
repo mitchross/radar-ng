@@ -24,6 +24,7 @@ pub mod fsutil;
 pub mod grid_dump;
 pub mod grid_read;
 pub mod heartbeat;
+pub mod ice;
 pub mod logging;
 pub mod manifest;
 pub mod nowcast_skill;

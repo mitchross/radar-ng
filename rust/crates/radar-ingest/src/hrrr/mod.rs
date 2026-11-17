@@ -20,6 +20,7 @@ pub const HRRR_PROCESSED_MAX: usize = 200;
 pub const HRRR_BEAT: std::time::Duration = std::time::Duration::from_secs(30);
 /// Zooms rendered for HRRR (spec §6.4).
 pub const HRRR_ZOOMS: [u32; 3] = [4, 5, 6];
+pub use radar_core::ice::PRECIP_TYPE_GRID;
 /// Categories for `precip-type` (spec §5.5).
 pub const PRECIP_TYPE_CATEGORIES: [(i64, &str); 4] = [
     (1, "rain"),

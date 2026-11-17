@@ -7,6 +7,8 @@ const unit = {
   testEnvironment: "node",
   roots: ["<rootDir>/__tests__"],
   testPathIgnorePatterns: ["/__tests__/render/"],
+  // Shared web files import astronomy-engine; resolve it from the app's install.
+  modulePaths: ["<rootDir>/node_modules"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
     "^expo-constants$": "<rootDir>/test-mocks/expo-constants.ts",

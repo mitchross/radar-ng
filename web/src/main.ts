@@ -41,6 +41,11 @@ import {
 import { WindLayer } from "./wind";
 import { SatelliteLayer } from "./satellite";
 import { forecastTimeMs, isNightAt } from "./shared/forecastTime";
+import { wallClock } from "./shared/forecastTime";
+import { niceDayCardHtml } from "./niceDayCard";
+import { whiteChristmasCardHtml } from "./whiteChristmasCard";
+import type { FeatureCollection } from "geojson";
+import { inWhiteChristmasSeason, parseNearestStation, WHITE_CHRISTMAS_STATIONS_PATH, whiteChristmasPath, type WhiteChristmasStation } from "./shared/whiteChristmas";
 import { satelliteFrames } from "./shared/satellite";
 import { PackedRadarLayer, type PackedFrameRef } from "./packed/layer";
 import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast";
@@ -809,6 +814,11 @@ function hourIndex(times: string[], utcOffsetSeconds?: number): number {
   return Math.max(0, i);
 }
 
+/** Countdown card, lazy-loaded so astronomy-engine stays out of the first bundle. */
+let countdownModule: typeof import("./countdownCard") | undefined;
+const countdownFor = (fc: Forecast, lat: number, lon: number) =>
+  countdownModule?.countdownCardHtml(wallClock(Date.now(), fc.utc_offset_seconds).dateKey, { lat, lon, timeZone: fc.timezone, utcOffsetSeconds: fc.utc_offset_seconds }) ?? "";
+
 /** `refresh` re-renders in place: it keeps the scroll position, the briefing, and the old data if the fetch fails. */
 async function renderForecast(refresh = false) {
   const body = $("panel-body");
@@ -834,6 +844,8 @@ async function renderForecast(refresh = false) {
   const rainTotal = rain.reduce((a, b) => a + b, 0);
   const peak = Math.max(0.05, ...rain);
   const days = fc.daily.time.slice(0, 7);
+  const countdownHtml = countdownFor(fc, lat, lon);
+  const wxmasHtml = whiteChristmasFor(fc, lat, lon);
   const lows = fc.daily.temperature_2m_min.slice(0, 7).filter((v): v is number => v != null);
   const highs = fc.daily.temperature_2m_max.slice(0, 7).filter((v): v is number => v != null);
   const wLo = Math.min(...lows);
@@ -865,6 +877,7 @@ async function renderForecast(refresh = false) {
       <div class="section-label">HOURLY</div>
       <div class="hourly">${hours.map((i, k) => `<div class="hour ${k === 0 ? "now-hour" : ""}"><b>${fmtHour(fc.hourly.time[i], k)}</b>${iconSvg(conditionOf(fc.hourly.weather_code[i]), 22)}<div class="t">${deg(fc.hourly.temperature_2m[i])}</div></div>`).join("")}</div>
     </div>
+    ${niceDayCardHtml(fc.hourly, start, wallClock(Date.now(), fc.utc_offset_seconds).dateKey)}
     <div class="section">
       <div class="section-label" style="display:flex;justify-content:space-between"><span>RAIN · NEXT 24H</span><span>${rainTotal.toFixed(2)}″</span></div>
       <div class="rainbars">${rain.map((v) => `<i class="${v ? "" : "dry"}" style="height:${v ? Math.max(8, (v / peak) * 100) : 6}%"></i>`).join("")}</div>
@@ -879,6 +892,8 @@ async function renderForecast(refresh = false) {
         return `<div class="day"><b>${dayName(d, i)}</b>${iconSvg(conditionOf(fc.daily.weather_code[i]), 22)}<span class="lo">${deg(lo)}</span><div class="bar"><span style="left:${left}%;width:${width}%"></span></div><span class="hi">${deg(hi)}</span></div>`;
       }).join("")}
     </div>
+    <div id="countdown" class="section countdown"${countdownHtml ? "" : " hidden"}>${countdownHtml}</div>
+    <div id="white-christmas" class="section white-christmas"${wxmasHtml ? "" : " hidden"}>${wxmasHtml}</div>
     <div class="section">
       <div class="section-label">CONDITIONS</div>
       <div class="tiles">
@@ -902,6 +917,64 @@ async function renderForecast(refresh = false) {
     $("briefing").innerHTML = briefing.innerHTML;
   } else void renderBriefing();
   void renderNextHour();
+  if (!countdownHtml) void renderCountdown(fc, lat, lon);
+  void renderWhiteChristmas(fc, lat, lon);
+}
+
+/** Nearest White Christmas station per rounded point; the table never changes, so it is kept for the session. */
+const wxmasNearest = new Map<string, WhiteChristmasStation | null>();
+const whiteChristmasFor = (fc: Forecast, lat: number, lon: number) =>
+  whiteChristmasCardHtml(wallClock(Date.now(), fc.utc_offset_seconds).dateKey, wxmasNearest.get(whiteChristmasPath(lat, lon)) ?? null, overlays.whiteChristmasOn);
+
+async function renderWhiteChristmas(fc: Forecast, lat: number, lon: number) {
+  const path = whiteChristmasPath(lat, lon);
+  if (!inWhiteChristmasSeason(wallClock(Date.now(), fc.utc_offset_seconds).dateKey) || wxmasNearest.has(path)) return;
+  try {
+    const res = await fetch(path);
+    if (!res.ok) return;
+    wxmasNearest.set(path, parseNearestStation(await res.json()));
+  } catch {
+    return;
+  }
+  const el = document.getElementById("white-christmas");
+  if (!el || state.forecast !== fc) return;
+  el.innerHTML = whiteChristmasFor(fc, lat, lon);
+  el.hidden = !el.innerHTML;
+}
+
+/** The card's link: fetch every station once and toggle the dots. No interpolation, just the stations. */
+let wxmasStations: FeatureCollection | null = null;
+async function toggleWhiteChristmasDots() {
+  if (overlays.whiteChristmasOn) overlays.setWhiteChristmas(null);
+  else {
+    try {
+      if (!wxmasStations) {
+        const res = await fetch(WHITE_CHRISTMAS_STATIONS_PATH);
+        if (!res.ok) throw new Error(String(res.status));
+        wxmasStations = (await res.json()) as FeatureCollection;
+      }
+    } catch {
+      toast("Can't load the White Christmas stations");
+      return;
+    }
+    overlays.setWhiteChristmas(wxmasStations);
+    map.easeTo({ center: [state.place.longitude, state.place.latitude], zoom: Math.min(Math.max(map.getZoom(), 5), 7), duration: 700 });
+  }
+  const fc = state.forecast;
+  const el = document.getElementById("white-christmas");
+  if (fc && el) el.innerHTML = whiteChristmasFor(fc, state.place.latitude, state.place.longitude);
+}
+
+async function renderCountdown(fc: Forecast, lat: number, lon: number) {
+  try {
+    countdownModule ??= await import("./countdownCard");
+  } catch {
+    return;
+  }
+  const el = document.getElementById("countdown");
+  if (!el || state.forecast !== fc) return;
+  el.innerHTML = countdownFor(fc, lat, lon);
+  el.hidden = !el.innerHTML;
 }
 
 /** NWS alerts for the place, polled on their own cadence; a failed poll keeps the last result. */
@@ -1113,6 +1186,7 @@ $("panel-body").addEventListener("click", (e) => {
   const t = e.target as HTMLElement;
   if (t.closest("#forecast-retry")) void renderForecast();
   else if (t.closest("#notify-me")) void enableRainAlerts();
+  else if (t.closest("#wxmas-map")) void toggleWhiteChristmasDots();
 });
 
 /** The sheet toggle and the next-hour button share one path, so the hint and card stay in step. */
@@ -1374,13 +1448,14 @@ map.on("click", async (e) => {
   }
   const { lat, lng } = e.lngLat;
   popup.setLngLat(e.lngLat).setHTML('<div class="readout"><small>Reading…</small></div>').addTo(map);
-  const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng).catch(() => null);
+  const detail: { note?: string | null } = {};
+  const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng, detail).catch(() => null);
   if (click !== clickSeq) return; // a newer click owns the popup now
   track("point_inspected", { layer: state.layer, source: frame.source, has_value: value != null });
   const title = SOURCE_TITLE[frame.source] ?? (LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? winterLayer(state.layer)?.name ?? "").toUpperCase();
   let text = "No data here";
   if (value != null) {
-    if (state.layer === "radar") text = `${describeDbz(value)} <small>${Math.round(value)} dBZ</small>`;
+    if (state.layer === "radar") text = `${describeDbz(value)} <small>${Math.round(value)} dBZ</small>` + (detail.note ? `<small class="precip-note">${detail.note}</small>` : "");
     else if (state.layer === "air-quality") text = `AQI ${usAqiFromPm25(value)} · ${aqiLabel(usAqiFromPm25(value))} <small>${Math.round(value)} µg/m³</small>`;
     else if (state.layer === "ozone") text = `${Math.round(value)} ppb`;
     else if (["temperature", "feels-like", "dewpoint"].includes(state.layer)) text = `${Math.round(value)}°F`;

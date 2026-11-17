@@ -82,7 +82,7 @@ The MRMS layers color reflectivity by precipitation type when `PRECIP_TYPE` is o
 slots then hold typed codes, and the manifest says `"version": 2` with a `types` object:
 
 ```json
-"types": {"stride": 32, "classes": ["rain", "snow", "mix"]}
+"types": {"stride": 32, "classes": ["rain", "snow", "mix", "ice"]}
 ```
 
 - `code = class * stride + min(q, stride - 1)`, where `q` is the reflectivity code above. Code 0 is
@@ -94,7 +94,10 @@ slots then hold typed codes, and the manifest says `"version": 2` with a `types`
 - One bucket holds one code space. Its `.packed-bucket-v1.json` has `"types": 32` when it is typed.
   A frame whose encoding differs from its bucket's is not packed (raster path). When a layer's layout
   changes, the manifest drops the buckets of the old layout.
-- A frame without a PrecipFlag file is packed as all rain.
+- A frame without a PrecipFlag file is packed as all rain, plus ice where HRRR says so (below).
+- Ice is class 3. The largest code is `3 * 32 + 31 = 127`, so the byte and the version stay the
+  same. A three-class client draws ice with the palette's `types.ice` ramp from `/api/palettes`,
+  or with the rain ramp on its offline fallback table (`web/src/shared/oldClientIce.test.ts`).
 
 ### Precipitation type source
 
@@ -112,7 +115,19 @@ minute, so a fresh frame often takes the previous file. Flags (NSSL `UserTable_M
 
 PrecipFlag has no freezing-rain or sleet code, so mix is the rain-snow transition zone, not observed
 ice. The rasters sample the class with the nearest cell at native zooms and the largest class of the
-pixel's footprint at overview zooms (mix > snow > rain), the same as the packed slots.
+pixel's footprint at overview zooms (ice > mix > snow > rain), the same as the packed slots.
+
+### Ice from HRRR
+
+Ice (class 3) is model guidance. The HRRR worker always reads `CRAIN`, `CSNOW`, `CFRZR` and `CICEP`
+for `radar-hrrr` and dumps a `precip-type` category grid per valid hour under `GRID_DIR`
+(0.03 degree, nearest neighbour; 0 none, 1 rain, 2 snow, 3 freezing rain, 4 ice pellets). The MRMS
+worker takes the grid valid nearest the frame, at most 90 minutes away. Where the frame has an echo
+(5 dBZ or more) and that grid says freezing rain or ice pellets, the class is ice. With no grid that
+close, the frame keeps its PrecipFlag classes. Radar never waits for HRRR.
+
+`/api/inspect/radar…` applies the same rule and adds `"precip_class": "ice"`. The clients show
+"Ice: freezing rain or sleet, from HRRR model guidance".
 
 ## Buckets
 

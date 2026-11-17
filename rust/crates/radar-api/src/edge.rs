@@ -27,6 +27,7 @@ use axum::routing::get;
 use crate::alerts;
 use crate::briefing;
 use crate::client_ip;
+use crate::climate;
 use crate::files;
 use crate::forecast;
 use crate::grid;
@@ -75,6 +76,7 @@ pub const ROUTE_TEMPLATES: &[&str] = &[
     "/api/reverse-geocode",
     "/api/briefing",
     "/api/alerts/explain",
+    "/api/climate/white-christmas",
     "/v1/push-tokens",
     "/v1/push-tokens/{token}",
     "/v1/watches",
@@ -123,6 +125,10 @@ pub fn api_router() -> Router<AppState> {
         .route("/api/geocode", get(places::get_geocode))
         .route("/api/reverse-geocode", get(places::get_reverse_geocode))
         .route("/api/briefing", get(briefing::get_briefing))
+        .route(
+            "/api/climate/white-christmas",
+            get(climate::get_white_christmas),
+        )
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {

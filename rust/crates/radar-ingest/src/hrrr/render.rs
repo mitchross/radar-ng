@@ -18,7 +18,7 @@ use radar_tiler::{ColorTable, FrameOptions, complete_pyramid_identity, render_fr
 
 use super::dump::{Resampler, safe_dump, target_axes};
 use super::state::{RADAR_HRRR, layer_color_key};
-use super::{HRRR_BEAT, HRRR_ZOOMS, PRECIP_TYPE_CATEGORIES};
+use super::{HRRR_BEAT, HRRR_ZOOMS, PRECIP_TYPE_CATEGORIES, PRECIP_TYPE_GRID};
 use crate::config::IngestConfig;
 
 /// Category id to name map for the precip-type layer.
@@ -452,26 +452,38 @@ pub fn process_hour_sync(
         rendered.push("cloud".into());
         dump("cloud", &tcdc.grid.values, "%");
     }
-    if enabled("precip-type") {
-        let flags: Vec<Option<DecodedMessage>> = [
-            HrrrVar::Crain,
-            HrrrVar::Csnow,
-            HrrrVar::Cfrzr,
-            HrrrVar::Cicep,
-        ]
-        .into_iter()
-        .map(|v| extract(bytes, v))
-        .collect();
-        if flags.iter().any(|f| f.is_some()) {
-            let len = src_h * src_w;
-            let slices: Vec<Option<&[f32]>> = flags
-                .iter()
-                .map(|f| f.as_ref().map(|m| m.grid.values.as_slice()))
-                .collect();
-            let cat = units::precip_type_category(slices[0], slices[1], slices[2], slices[3], len);
-            let vals: Vec<f32> = cat.iter().map(|&c| c as f32).collect();
-            let g = grid_of(vals, &refc.grid);
-            if render_layer(
+    // HRRR precip type: always decoded for the `precip-type` grid that colours MRMS ice; the
+    // standalone PNG layer only when enabled.
+    let flags: Vec<Option<DecodedMessage>> = [
+        HrrrVar::Crain,
+        HrrrVar::Csnow,
+        HrrrVar::Cfrzr,
+        HrrrVar::Cicep,
+    ]
+    .into_iter()
+    .map(|v| extract(bytes, v))
+    .collect();
+    if flags.iter().any(|f| f.is_some()) {
+        let len = src_h * src_w;
+        let slices: Vec<Option<&[f32]>> = flags
+            .iter()
+            .map(|f| f.as_ref().map(|m| m.grid.values.as_slice()))
+            .collect();
+        let cat = units::precip_type_category(slices[0], slices[1], slices[2], slices[3], len);
+        let vals: Vec<f32> = cat.iter().map(|&c| c as f32).collect();
+        let nearest = resampler.resample_nearest(&vals);
+        safe_dump(
+            cfg,
+            PRECIP_TYPE_GRID,
+            valid,
+            &nearest,
+            &lats_t,
+            &lons_t,
+            "category",
+        );
+        let g = grid_of(vals, &refc.grid);
+        if enabled("precip-type")
+            && render_layer(
                 cfg,
                 "precip-type",
                 run_id,
@@ -480,9 +492,9 @@ pub fn process_hour_sync(
                 palettes,
                 "precip_type",
                 true,
-            )? {
-                rendered.push("precip-type".into());
-            }
+            )?
+        {
+            rendered.push("precip-type".into());
         }
     }
     Ok(rendered)

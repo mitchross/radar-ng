@@ -149,24 +149,33 @@ pub async fn process_frame(
     .await?;
     gmrms::ensure_south_up(&mut grid);
     let timestamp = ts_fetch;
-    let (grid, types) = match flag {
-        Some((flag_key, flag_gz)) => {
-            heartbeat::blocking(
-                DOWNLOAD_BEAT,
-                hb,
-                serde_json::json!({"phase": "precip_type", "key": flag_key}),
-                move || {
-                    let types = crate::precip_type::type_plane(&flag_gz, &grid)
+    // PrecipFlag gives rain / snow / mix; the HRRR `precip-type` grid adds ice when one is close.
+    let ice_time = cfg
+        .precip_type
+        .then(|| gmrms::key_time(&key).ok())
+        .flatten();
+    let (grid, types) = if flag.is_some() || ice_time.is_some() {
+        let grid_dir = cfg.grid.grid_dir.clone();
+        heartbeat::blocking(
+            DOWNLOAD_BEAT,
+            hb,
+            serde_json::json!({"phase": "precip_type", "key": key}),
+            move || {
+                let flags = flag.and_then(|(flag_key, flag_gz)| {
+                    crate::precip_type::type_plane(&flag_gz, &grid)
                         .inspect_err(|err| {
                             tracing::warn!(flag_key = %flag_key, err = %format!("{err:#}"), "precip_flag_failed");
                         })
-                        .ok();
-                    (grid, types)
-                },
-            )
-            .await
-        }
-        None => (grid, None),
+                        .ok()
+                });
+                let hrrr = ice_time.and_then(|t| crate::precip_type::load_type_grid(&grid_dir, t));
+                let types = crate::precip_type::frame_types(flags, &grid, hrrr.as_ref());
+                (grid, types)
+            },
+        )
+        .await
+    } else {
+        (grid, None)
     };
 
     hb(

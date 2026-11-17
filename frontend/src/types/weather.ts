@@ -46,6 +46,8 @@ export interface OpenMeteoResponse {
   longitude: number;
   /** Seconds east of UTC at the location; every time string below is wall time in that zone with no offset. */
   utc_offset_seconds?: number;
+  /** IANA zone at the location ("America/Detroit"); the server asks Open-Meteo for `timezone=auto`. */
+  timezone?: string;
   current: {
     time: string;
     temperature_2m: Maybe;

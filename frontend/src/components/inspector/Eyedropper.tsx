@@ -58,6 +58,8 @@ export interface InspectResult {
   readout: string;
   sourceLabel: string;
   layerLabel: string;
+  /** Extra line under the value (the ice class note), or null. */
+  note?: string | null;
 }
 
 /** The active layer's value at `pinned`, refetched when playback pauses on a new frame. */
@@ -123,6 +125,7 @@ export function useInspectReading(pinned: PinnedPoint | null): InspectResult {
     // "N/A" only once a fetch for this pin came back empty, not while waiting.
     sourceLabel: reading?.source === "grid" ? "Grid" : result?.pin === pinned && !loading ? "N/A" : "",
     layerLabel: FRAME_LABEL[inspectSourceFor(activeLayer, frameSource)] ?? LAYER_LABEL[activeLayer],
+    note: loading ? null : (reading?.note ?? null),
   };
 }
 
@@ -184,6 +187,11 @@ export function InspectorPanel({
         </Pressable>
       </View>
       <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelValue}>{inspect.readout}</Text>
+      {inspect.note ? (
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelNote}>
+          {inspect.note}
+        </Text>
+      ) : null}
       <View style={styles.panelMeta}>
         <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelMetaText}>
           {pinned.lat.toFixed(4)}, {pinned.lon.toFixed(4)}
@@ -289,6 +297,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 6,
+  },
+  panelNote: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 11,
+    marginTop: 2,
   },
   panelMetaText: {
     color: "rgba(255,255,255,0.65)",

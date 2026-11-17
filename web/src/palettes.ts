@@ -1,7 +1,7 @@
 /**
  * Reflectivity bands per tile palette, mirrored from rust/crates/radar-tiler/assets/*.json
  * (palettes.test.ts fails when they drift). The legend draws these exact bands. `bands` is rain;
- * `snow` and `mix` color frames the server typed by precipitation type.
+ * `snow`, `mix` and `ice` color frames the server typed by precipitation type.
  */
 export type PaletteId = "classic" | "muted" | "vivid";
 
@@ -10,7 +10,7 @@ export interface Band {
   rgba: [number, number, number, number];
 }
 
-export const PALETTES: Record<PaletteId, { name: string; bands: Band[]; snow: Band[]; mix: Band[] }> = {
+export const PALETTES: Record<PaletteId, { name: string; bands: Band[]; snow: Band[]; mix: Band[]; ice: Band[] }> = {
   classic: {
     name: "Classic",
     bands: [
@@ -45,6 +45,15 @@ export const PALETTES: Record<PaletteId, { name: string; bands: Band[]; snow: Ba
       { min: 25, rgba: [205, 55, 165, 220] },
       { min: 30, rgba: [180, 30, 145, 230] },
       { min: 35, rgba: [140, 10, 120, 240] },
+    ],
+    ice: [
+      { min: 5, rgba: [215, 190, 255, 140] },
+      { min: 10, rgba: [190, 155, 250, 170] },
+      { min: 15, rgba: [165, 120, 240, 195] },
+      { min: 20, rgba: [140, 85, 225, 210] },
+      { min: 25, rgba: [120, 55, 205, 220] },
+      { min: 30, rgba: [100, 30, 180, 230] },
+      { min: 35, rgba: [75, 10, 145, 240] },
     ],
   },
   muted: {
@@ -82,6 +91,15 @@ export const PALETTES: Record<PaletteId, { name: string; bands: Band[]; snow: Ba
       { min: 30, rgba: [125, 70, 130, 215] },
       { min: 35, rgba: [100, 50, 110, 230] },
     ],
+    ice: [
+      { min: 5, rgba: [200, 190, 225, 70] },
+      { min: 10, rgba: [180, 165, 215, 110] },
+      { min: 15, rgba: [160, 140, 200, 150] },
+      { min: 20, rgba: [140, 115, 185, 180] },
+      { min: 25, rgba: [120, 95, 170, 200] },
+      { min: 30, rgba: [100, 75, 150, 215] },
+      { min: 35, rgba: [80, 55, 130, 230] },
+    ],
   },
   vivid: {
     name: "Vivid",
@@ -118,12 +136,21 @@ export const PALETTES: Record<PaletteId, { name: string; bands: Band[]; snow: Ba
       { min: 30, rgba: [215, 55, 160, 225] },
       { min: 35, rgba: [190, 35, 140, 235] },
     ],
+    ice: [
+      { min: 5, rgba: [230, 215, 255, 90] },
+      { min: 10, rgba: [210, 180, 255, 130] },
+      { min: 15, rgba: [190, 145, 255, 165] },
+      { min: 20, rgba: [170, 110, 250, 195] },
+      { min: 25, rgba: [150, 80, 240, 215] },
+      { min: 30, rgba: [130, 55, 225, 225] },
+      { min: 35, rgba: [110, 35, 205, 235] },
+    ],
   },
 };
 
 export const css = ([r, g, b, a]: Band["rgba"]) => `rgba(${r},${g},${b},${(Math.max(a, 150) / 255).toFixed(2)})`;
 
-/** Rain, snow and mix legend ramps (weak to strong) for radar the server colors by precipitation type. */
+/** Rain, snow, mix and ice legend ramps (weak to strong) for radar the server colors by precipitation type. */
 export function typeRamps(palette: PaletteId): { label: string; gradient: string }[] {
   const p = PALETTES[palette];
   const ramp = (bands: Band[]) => `linear-gradient(90deg,${bands.map((b) => css(b.rgba)).join(",")})`;
@@ -131,6 +158,7 @@ export function typeRamps(palette: PaletteId): { label: string; gradient: string
     { label: "Rain", gradient: ramp(p.bands) },
     { label: "Snow", gradient: ramp(p.snow) },
     { label: "Mix", gradient: ramp(p.mix) },
+    { label: "Ice", gradient: ramp(p.ice) },
   ];
 }
 

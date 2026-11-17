@@ -44,14 +44,19 @@ describe("serverLegend", () => {
     expect(serverLegend(palettes, "classic", "temperature", 7, "no_such_key")).toBeNull();
   });
 
-  it("builds rain, snow and mix ramps from the reflectivity table", () => {
+  it("builds rain, snow, mix and ice ramps from the reflectivity table", () => {
     const ramps = precipTypeRamps(palettes, "classic")!;
-    expect(ramps.map((r) => r.label)).toEqual(["Rain", "Snow", "Mix"]);
+    expect(ramps.map((r) => r.label)).toEqual(["Rain", "Snow", "Mix", "Ice"]);
+    expect(ramps[3].colors[0]).toBe("#d7beff");
     expect(ramps[0].colors[0]).toBe("#6eb9e1");
     expect(ramps[1].colors[0]).toBe("#aadcff");
     expect(ramps[2].colors).toHaveLength(7);
     const rainOnly: ServerPalettes = { classic: { reflectivity: { ranges: palettes.classic!.reflectivity.ranges } } };
     expect(precipTypeRamps(rainOnly, "classic")).toBeNull();
+    // An older server without the ice ramp still gets three rows.
+    const { ice: _ice, ...noIce } = palettes.classic!.reflectivity.types!;
+    const threeClass: ServerPalettes = { classic: { reflectivity: { ...palettes.classic!.reflectivity, types: noIce } } };
+    expect(precipTypeRamps(threeClass, "classic")!.map((r) => r.label)).toEqual(["Rain", "Snow", "Mix"]);
     expect(precipTypeRamps(null, "classic")).toBeNull();
   });
 

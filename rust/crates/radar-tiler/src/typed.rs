@@ -1,4 +1,4 @@
-//! Precipitation-type coloring: a per-cell class plane (rain, snow, mix) that picks one of three
+//! Precipitation-type coloring: a per-cell class plane (rain, snow, mix, ice) that picks one of four
 //! reflectivity ramps.
 //!
 //! The indexed renderer folds the class into the value before it classifies:
@@ -15,13 +15,17 @@ use crate::error::{Result, TilerError};
 use crate::palettes::ColorTable;
 
 /// Display classes in class-index order. A higher index wins when overview pixels are max-pooled.
-pub const TYPE_CLASSES: [&str; 3] = ["rain", "snow", "mix"];
+pub const TYPE_CLASSES: [&str; 4] = ["rain", "snow", "mix", "ice"];
 /// Rain, and every cell without a known type.
 pub const TYPE_RAIN: u8 = 0;
 /// Snow.
 pub const TYPE_SNOW: u8 = 1;
 /// Mixed precipitation.
 pub const TYPE_MIX: u8 = 2;
+/// Ice: freezing rain or ice pellets, from HRRR model guidance.
+pub const TYPE_ICE: u8 = 3;
+/// Highest class index.
+pub const TYPE_MAX: u8 = TYPE_ICE;
 /// Offset between the class ramps in the typed value space. Larger than any reflectivity.
 pub const TYPED_VALUE_STRIDE: f32 = 100.0;
 /// Codes per class in a typed packed slot; `q` is clamped to `TYPE_CODE_STRIDE - 1`.
@@ -34,11 +38,11 @@ pub struct TypePlane {
 }
 
 impl TypePlane {
-    /// Wrap per-cell classes. Values above [`TYPE_MIX`] are rejected.
+    /// Wrap per-cell classes. Values above [`TYPE_MAX`] are rejected.
     pub fn new(classes: Vec<u8>) -> Result<Self> {
-        if classes.iter().any(|&c| c > TYPE_MIX) {
+        if classes.iter().any(|&c| c > TYPE_MAX) {
             return Err(TilerError::Invalid(format!(
-                "type classes must be 0..={TYPE_MIX}"
+                "type classes must be 0..={TYPE_MAX}"
             )));
         }
         Ok(Self {
@@ -78,25 +82,29 @@ pub fn apply_types(values: &mut [f32], classes: &[u8]) {
 }
 
 /// The ranges of `class` in a reflectivity table: `ranges` for rain, `types.<class>.ranges` for the
-/// others. A table without that class reuses its rain ranges.
+/// others. A table without that class reuses its rain ranges; ice without a ramp uses mix first.
 pub fn class_ranges(table: &ColorTable, class: u8) -> Value {
     let raw = table.raw();
     let rain = raw.get("ranges").cloned().unwrap_or_else(|| json!([]));
     if class == TYPE_RAIN {
         return rain;
     }
-    raw.get("types")
-        .and_then(|t| t.get(TYPE_CLASSES[usize::from(class)]))
-        .and_then(|t| t.get("ranges"))
-        .cloned()
+    let ramp = |c: u8| {
+        raw.get("types")
+            .and_then(|t| t.get(TYPE_CLASSES[usize::from(c)]))
+            .and_then(|t| t.get("ranges"))
+            .cloned()
+    };
+    ramp(class)
+        .or_else(|| (class == TYPE_ICE).then(|| ramp(TYPE_MIX)).flatten())
         .unwrap_or(rain)
 }
 
-/// The color table the indexed renderer uses for typed frames: rain, snow and mix ranges, each
+/// The color table the indexed renderer uses for typed frames: rain, snow, mix and ice ranges, each
 /// shifted by `class * TYPED_VALUE_STRIDE`. `no_data_below` applies to the rain ramp only.
 pub fn typed_color_table(table: &ColorTable) -> Result<ColorTable> {
     let mut ranges = Vec::new();
-    for class in [TYPE_RAIN, TYPE_SNOW, TYPE_MIX] {
+    for class in [TYPE_RAIN, TYPE_SNOW, TYPE_MIX, TYPE_ICE] {
         let shift = f64::from(class) * f64::from(TYPED_VALUE_STRIDE);
         let items = class_ranges(table, class);
         let items = items
@@ -136,7 +144,8 @@ mod tests {
             "no_data_below": 5,
             "types": {
                 "snow": {"ranges": [{"min": 5, "max": 40, "rgba": [0, 0, 255, 200]}]},
-                "mix": {"ranges": [{"min": 5, "max": 40, "rgba": [255, 0, 255, 200]}]}
+                "mix": {"ranges": [{"min": 5, "max": 40, "rgba": [255, 0, 255, 200]}]},
+                "ice": {"ranges": [{"min": 5, "max": 40, "rgba": [120, 60, 200, 200]}]}
             }
         }))
         .unwrap()
@@ -146,8 +155,9 @@ mod tests {
     fn typed_table_shifts_each_ramp_by_the_stride() {
         let t = typed_color_table(&table()).unwrap();
         let mins: Vec<f64> = t.ranges().unwrap().iter().map(|r| r.min).collect();
-        assert_eq!(mins, [5.0, 105.0, 205.0]);
+        assert_eq!(mins, [5.0, 105.0, 205.0, 305.0]);
         assert_eq!(t.ranges().unwrap()[1].rgba, [0, 0, 255, 200]);
+        assert_eq!(t.ranges().unwrap()[3].rgba, [120, 60, 200, 200]);
         assert_eq!(t.no_data_below(), 5.0);
     }
 
@@ -159,15 +169,26 @@ mod tests {
         .unwrap();
         let t = typed_color_table(&plain).unwrap();
         assert_eq!(t.ranges().unwrap()[2].rgba, [0, 200, 0, 200]);
+        assert_eq!(t.ranges().unwrap()[3].rgba, [0, 200, 0, 200]);
+    }
+
+    #[test]
+    fn missing_ice_ramp_uses_mix() {
+        let mut raw = table().raw().clone();
+        raw["types"].as_object_mut().unwrap().remove("ice");
+        let t = typed_color_table(&ColorTable::from_value(&raw).unwrap()).unwrap();
+        assert_eq!(t.ranges().unwrap()[3].rgba, [255, 0, 255, 200]);
     }
 
     #[test]
     fn apply_types_leaves_missing_values_alone() {
-        let mut v = [20.0, f32::NAN, 30.0];
-        apply_types(&mut v, &[TYPE_SNOW, TYPE_MIX, TYPE_RAIN]);
+        let mut v = [20.0, f32::NAN, 30.0, 10.0];
+        apply_types(&mut v, &[TYPE_SNOW, TYPE_MIX, TYPE_RAIN, TYPE_ICE]);
         assert_eq!(v[0], 120.0);
         assert!(v[1].is_nan());
         assert_eq!(v[2], 30.0);
-        assert!(TypePlane::new(vec![3]).is_err());
+        assert_eq!(v[3], 310.0);
+        assert!(TypePlane::new(vec![TYPE_ICE]).is_ok());
+        assert!(TypePlane::new(vec![4]).is_err());
     }
 }
