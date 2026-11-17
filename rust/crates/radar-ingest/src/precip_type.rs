@@ -10,9 +10,10 @@
 use std::path::Path;
 
 use chrono::{DateTime, Duration, Utc};
+use radar_core::grid_dump::{self, GridConfig, GridInput};
 use radar_core::grid_read::{GridDump, read_grid};
-use radar_core::ice::is_ice_category;
 pub use radar_core::ice::{ICE_ECHO_DBZ, MAX_ICE_GRID_DELTA, nearest_type_grid};
+use radar_core::ice::{OBSERVED_TYPE_GRID, is_ice_category};
 use radar_geo::{Grid, GridGeo};
 use radar_grib::http::MRMS_GET_TIMEOUT;
 use radar_grib::mrms as gmrms;
@@ -161,6 +162,70 @@ pub fn apply_hrrr_ice(classes: &mut [u8], grid: &Grid, hrrr: &GridDump) -> usize
             n
         })
         .sum()
+}
+
+/// Display classes from a model's categorical flags (HRRR or GFS CRAIN / CSNOW / CFRZR / CICEP,
+/// 1 where the type falls). Freezing rain or ice pellets is ice, snow with rain is mix, then snow,
+/// else rain. Missing flags (`None`) count as 0.
+pub fn model_classes(
+    crain: Option<&[f32]>,
+    csnow: Option<&[f32]>,
+    cfrzr: Option<&[f32]>,
+    cicep: Option<&[f32]>,
+    len: usize,
+) -> Vec<u8> {
+    let on = |flag: Option<&[f32]>, i: usize| flag.and_then(|f| f.get(i)).is_some_and(|&v| v > 0.0);
+    (0..len)
+        .into_par_iter()
+        .map(|i| {
+            if on(cfrzr, i) || on(cicep, i) {
+                TYPE_ICE
+            } else if on(csnow, i) && on(crain, i) {
+                TYPE_MIX
+            } else if on(csnow, i) {
+                TYPE_SNOW
+            } else {
+                TYPE_RAIN
+            }
+        })
+        .collect()
+}
+
+/// A plane of `classes`, or `None` when every cell is rain (the plain ramp draws the same).
+pub fn plane_unless_all_rain(classes: Vec<u8>) -> Option<TypePlane> {
+    if classes.iter().all(|&c| c == TYPE_RAIN) {
+        return None;
+    }
+    TypePlane::new(classes).ok()
+}
+
+/// Cell cap of the observed class dump. Classes are resampled by nearest cell, so a coarser dump
+/// than the dBZ input is enough and keeps it near 8 MB.
+pub const OBSERVED_TYPE_MAX_CELLS: usize = 2_000_000;
+
+/// Dump an observed frame's classes as the `radar-type` grid; `None` is all rain, so the nowcast
+/// never holds an older frame's snow. Best effort: a failure is logged.
+pub fn dump_observed_types(
+    cfg: &GridConfig,
+    timestamp: &str,
+    types: Option<&TypePlane>,
+    (lats, lons): (&[f64], &[f64]),
+    max_cells: usize,
+) {
+    let values: Vec<f32> = match types {
+        Some(t) => t.classes().iter().map(|&c| f32::from(c)).collect(),
+        None => vec![f32::from(TYPE_RAIN); lats.len() * lons.len()],
+    };
+    let input = GridInput {
+        max_cells: Some(max_cells.min(OBSERVED_TYPE_MAX_CELLS)),
+        ..GridInput::new(&values, lats, lons, "class")
+    };
+    match grid_dump::write_grid(cfg, OBSERVED_TYPE_GRID, timestamp, &input) {
+        Ok(_) => {
+            grid_dump::prune_grid_layer(cfg, OBSERVED_TYPE_GRID, None);
+        }
+        Err(err) => tracing::warn!(timestamp, err = %err, "observed_types_dump_failed"),
+    }
 }
 
 /// Same shape and the same first and last coordinates on both axes.

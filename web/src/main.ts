@@ -7,7 +7,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabled, track } from "./analytics";
-import { buildFrames, isForecastSource, longZoomLabel, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
+import { buildFrames, forecastLine, forecastTitle, isForecastSource, longZoomLabel, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
 import { escapeHtml } from "./html";
 import { bannerHtml, fetchReplayCatalogue, fetchReplayManifest, fetchReplayWarnings, pickerHtml } from "./replay";
 import type { ReplayCase } from "./shared/replayApi";
@@ -635,10 +635,10 @@ function renderTimeline() {
   }
   const label = offsetLabel(frame.time, nowSec());
   const mode = label === "Now" ? "Now" : `${frame.time > nowSec() ? "Forecast" : "Past"} ${label}`;
-  const source = SOURCE_SUFFIX[frame.source] ?? "";
+  const source = forecastLine(frame.source, frame.time, nowSec()) ?? "";
   const layerName = LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? winterLayer(state.layer)?.name ?? "Radar";
   $("frame-title").textContent = `${layerName} · ${mode}`;
-  $("frame-time").textContent = `${TIME_FMT.format(new Date(frame.time * 1000))}${source}`;
+  $("frame-time").textContent = `${TIME_FMT.format(new Date(frame.time * 1000))}${source ? ` · ${source}` : SOURCE_SUFFIX[frame.source] ?? ""}`;
   slider.setAttribute("aria-valuetext", `${mode}, ${TIME_FMT.format(new Date(frame.time * 1000))}`);
 }
 
@@ -1452,7 +1452,7 @@ map.on("click", async (e) => {
   const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng, detail).catch(() => null);
   if (click !== clickSeq) return; // a newer click owns the popup now
   track("point_inspected", { layer: state.layer, source: frame.source, has_value: value != null });
-  const title = SOURCE_TITLE[frame.source] ?? (LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? winterLayer(state.layer)?.name ?? "").toUpperCase();
+  const title = forecastTitle(frame.source, frame.time, nowSec()) ?? SOURCE_TITLE[frame.source] ?? (LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? winterLayer(state.layer)?.name ?? "").toUpperCase();
   let text = "No data here";
   if (value != null) {
     if (state.layer === "radar") text = `${describeDbz(value)} <small>${Math.round(value)} dBZ</small>` + (detail.note ? `<small class="precip-note">${detail.note}</small>` : "");

@@ -10,14 +10,15 @@ use std::time::Instant;
 use chrono::{DateTime, Duration, Utc};
 use radar_core::manifest::canonical_timestamp;
 use radar_core::manifest::packed::{
-    PACKED_DIR, PackedBucket, PackedLayout, run_bucket_id, run_of_bucket,
+    PACKED_DIR, PackedBucket, PackedLayout, PackedTypes, run_bucket_id, run_of_bucket,
 };
 use radar_core::time::parse_iso_as_utc;
 use radar_tiler::packed::{
     PACKED_COLS, PACKED_MAX_SLOTS, PACKED_TILE_SIZE, PackFrame, PackOutcome, Quantizer,
     ValueSampler, pack_frames,
 };
-use radar_tiler::{Grid, GridGeo, Overview};
+use radar_tiler::typed::{TYPE_CLASSES, TYPE_CODE_STRIDE};
+use radar_tiler::{Grid, GridGeo, Overview, TypePlane};
 
 use crate::config::NowcastConfig;
 use crate::field::Field2;
@@ -41,6 +42,11 @@ pub fn packed_layer_dir(cfg: &NowcastConfig) -> PathBuf {
 
 /// The manifest `packed` object of the nowcast layer, without its buckets.
 pub fn layout() -> PackedLayout {
+    layout_typed(false)
+}
+
+/// [`layout`], with the typed code space when the run was packed with held precipitation types.
+pub fn layout_typed(typed: bool) -> PackedLayout {
     let q = reflectivity();
     PackedLayout {
         tile_size: PACKED_TILE_SIZE as u32,
@@ -52,7 +58,10 @@ pub fn layout() -> PackedLayout {
         categorical: false,
         scale: q.scale,
         offset: q.offset,
-        types: None,
+        types: typed.then(|| PackedTypes {
+            stride: u32::from(TYPE_CODE_STRIDE),
+            classes: TYPE_CLASSES.iter().map(|c| c.to_string()).collect(),
+        }),
     }
 }
 
@@ -61,7 +70,8 @@ fn reflectivity() -> Quantizer {
 }
 
 /// Pack every lead of run `anchor`. `timestamps[i]` is the valid time of `fields[i]`. Returns the
-/// run's buckets in order (one per [`PACKED_MAX_SLOTS`] leads).
+/// run's buckets in order (one per [`PACKED_MAX_SLOTS`] leads). With `types` (the held observed
+/// classes on the science grid) every slot stores typed codes.
 pub fn pack_run(
     cfg: &NowcastConfig,
     anchor: &str,
@@ -69,6 +79,7 @@ pub fn pack_run(
     lons: &[f64],
     fields: &[Field2<f32>],
     timestamps: &[String],
+    types: Option<&TypePlane>,
 ) -> anyhow::Result<Vec<PackedBucket>> {
     anyhow::ensure!(
         fields.len() == timestamps.len(),
@@ -78,7 +89,11 @@ pub fn pack_run(
     );
     let started = Instant::now();
     let layer_dir = packed_layer_dir(cfg);
-    let quant = reflectivity();
+    let quant = if types.is_some() {
+        reflectivity().with_types()
+    } else {
+        reflectivity()
+    };
     let slots: Vec<String> = timestamps
         .iter()
         .map(|t| canonical_timestamp(t))
@@ -108,7 +123,8 @@ pub fn pack_run(
                         &PACKED_ZOOMS,
                         PACKED_TILE_SIZE,
                         Some(Overview::Max),
-                    )
+                    )?
+                    .with_types(types.cloned())
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             let frames: Vec<PackFrame<'_, '_>> = pass_slots
@@ -218,7 +234,7 @@ mod tests {
         let timestamps: Vec<String> = (1..=12)
             .map(|i| format!("2026-10-15T{}:{:02}:00+00:00", 18 + i * 5 / 60, i * 5 % 60))
             .collect();
-        let buckets = pack_run(&cfg, anchor, &lats, &lons, &fields, &timestamps).unwrap();
+        let buckets = pack_run(&cfg, anchor, &lats, &lons, &fields, &timestamps, None).unwrap();
         assert_eq!(buckets.len(), 1);
         assert_eq!(buckets[0].id, anchor);
         assert_eq!(buckets[0].slots, timestamps);
