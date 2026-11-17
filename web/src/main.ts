@@ -41,6 +41,8 @@ import {
 import { WindLayer } from "./wind";
 import { SatelliteLayer } from "./satellite";
 import { forecastTimeMs, isNightAt } from "./shared/forecastTime";
+import { wallClock } from "./shared/forecastTime";
+import { niceDayCardHtml } from "./niceDayCard";
 import { satelliteFrames } from "./shared/satellite";
 import { PackedRadarLayer, type PackedFrameRef } from "./packed/layer";
 import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast";
@@ -800,6 +802,11 @@ function hourIndex(times: string[], utcOffsetSeconds?: number): number {
   return Math.max(0, i);
 }
 
+/** Countdown card, lazy-loaded so astronomy-engine stays out of the first bundle. */
+let countdownModule: typeof import("./countdownCard") | undefined;
+const countdownFor = (fc: Forecast, lat: number, lon: number) =>
+  countdownModule?.countdownCardHtml(wallClock(Date.now(), fc.utc_offset_seconds).dateKey, { lat, lon, timeZone: fc.timezone, utcOffsetSeconds: fc.utc_offset_seconds }) ?? "";
+
 /** `refresh` re-renders in place: it keeps the scroll position, the briefing, and the old data if the fetch fails. */
 async function renderForecast(refresh = false) {
   const body = $("panel-body");
@@ -825,6 +832,7 @@ async function renderForecast(refresh = false) {
   const rainTotal = rain.reduce((a, b) => a + b, 0);
   const peak = Math.max(0.05, ...rain);
   const days = fc.daily.time.slice(0, 7);
+  const countdownHtml = countdownFor(fc, lat, lon);
   const lows = fc.daily.temperature_2m_min.slice(0, 7).filter((v): v is number => v != null);
   const highs = fc.daily.temperature_2m_max.slice(0, 7).filter((v): v is number => v != null);
   const wLo = Math.min(...lows);
@@ -856,6 +864,7 @@ async function renderForecast(refresh = false) {
       <div class="section-label">HOURLY</div>
       <div class="hourly">${hours.map((i, k) => `<div class="hour ${k === 0 ? "now-hour" : ""}"><b>${fmtHour(fc.hourly.time[i], k)}</b>${iconSvg(conditionOf(fc.hourly.weather_code[i]), 22)}<div class="t">${deg(fc.hourly.temperature_2m[i])}</div></div>`).join("")}</div>
     </div>
+    ${niceDayCardHtml(fc.hourly, start, wallClock(Date.now(), fc.utc_offset_seconds).dateKey)}
     <div class="section">
       <div class="section-label" style="display:flex;justify-content:space-between"><span>RAIN · NEXT 24H</span><span>${rainTotal.toFixed(2)}″</span></div>
       <div class="rainbars">${rain.map((v) => `<i class="${v ? "" : "dry"}" style="height:${v ? Math.max(8, (v / peak) * 100) : 6}%"></i>`).join("")}</div>
@@ -870,6 +879,7 @@ async function renderForecast(refresh = false) {
         return `<div class="day"><b>${dayName(d, i)}</b>${iconSvg(conditionOf(fc.daily.weather_code[i]), 22)}<span class="lo">${deg(lo)}</span><div class="bar"><span style="left:${left}%;width:${width}%"></span></div><span class="hi">${deg(hi)}</span></div>`;
       }).join("")}
     </div>
+    <div id="countdown" class="section countdown"${countdownHtml ? "" : " hidden"}>${countdownHtml}</div>
     <div class="section">
       <div class="section-label">CONDITIONS</div>
       <div class="tiles">
@@ -893,6 +903,19 @@ async function renderForecast(refresh = false) {
     $("briefing").innerHTML = briefing.innerHTML;
   } else void renderBriefing();
   void renderNextHour();
+  if (!countdownHtml) void renderCountdown(fc, lat, lon);
+}
+
+async function renderCountdown(fc: Forecast, lat: number, lon: number) {
+  try {
+    countdownModule ??= await import("./countdownCard");
+  } catch {
+    return;
+  }
+  const el = document.getElementById("countdown");
+  if (!el || state.forecast !== fc) return;
+  el.innerHTML = countdownFor(fc, lat, lon);
+  el.hidden = !el.innerHTML;
 }
 
 /** NWS alerts for the place, polled on their own cadence; a failed poll keeps the last result. */

@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "astronomy-engine": "2.1.19",
     "maplibre-gl": "^6.11.2",
     "posthog-js": "^1.434.15"
   },

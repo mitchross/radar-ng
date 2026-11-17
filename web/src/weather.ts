@@ -11,6 +11,8 @@ import type { AlertFeature } from "./shared/alertLevels";
 export interface Forecast {
   /** Seconds east of UTC at the location; `hourly.time` etc. are wall times there with no offset. */
   utc_offset_seconds?: number;
+  /** IANA zone at the location ("America/Detroit"); the server asks Open-Meteo for `timezone=auto`. */
+  timezone?: string;
   current: {
     temperature_2m: number | null;
     apparent_temperature: number | null;

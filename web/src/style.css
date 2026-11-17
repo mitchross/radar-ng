@@ -325,3 +325,24 @@ body.replay #panel, body.replay #locate, body.replay #live, body.replay #zoom, b
 .level2-rows > div { display: grid; grid-template-columns: 7.5em 1fr; gap: 8px; padding: 3px 0; }
 .level2-rows dt { color: var(--ink-2); }
 .level2-rows dd { margin: 0; }
+
+/* Nice Day and Bonfire card */
+.niceday-card { padding: 10px 12px 2px; border-radius: 14px; background: var(--surface-solid); border: 1px solid var(--border); }
+.niceday-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
+.niceday-row + .niceday-row { border-top: 1px solid var(--border); }
+.niceday-row span { font-size: 14px; }
+.niceday-row small { display: block; font-size: 12px; color: var(--ink-2); }
+.niceday-row b { font-family: var(--display); font-size: 18px; font-weight: 400; white-space: nowrap; }
+.niceday .nd-great { color: #2e9e5b; }
+.niceday .nd-good { color: #4a8f3a; }
+.niceday .nd-fair { color: #b98a17; }
+.niceday .nd-poor { color: #d0703a; }
+.niceday .nd-donot { color: #d0434a; }
+
+/* Holiday countdown card */
+.countdown-card { padding: 4px 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid var(--border); }
+.countdown-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.countdown-row + .countdown-row { border-top: 1px solid var(--border); }
+.countdown-row span { font-size: 14px; }
+.countdown-row small { display: block; font-size: 12px; color: var(--ink-2); }
+.countdown-row b { font-family: var(--display); font-size: 16px; font-weight: 400; white-space: nowrap; }

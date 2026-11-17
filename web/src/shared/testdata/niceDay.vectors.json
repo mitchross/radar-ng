@@ -1,0 +1,451 @@
+{
+  "about": "Nice Day and Bonfire test vectors. web/src/shared/niceDay.ts, the app and the Rust nice-day layer must all give this score and word. Units: tempF/feelsF °F, windMph mph, rainChance %, rainIn inches in the hour, humidity %. A missing or null field is unknown. score and word are null when the hour cannot be scored.",
+  "vectors": [
+    {
+      "name": "perfect spring afternoon",
+      "kind": "mild",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 72,
+        "feelsF": 72,
+        "windMph": 6,
+        "rainChance": 5,
+        "rainIn": 0,
+        "humidity": 45
+      },
+      "score": 100,
+      "word": "Great"
+    },
+    {
+      "name": "mild and breezy",
+      "kind": "mild",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 64,
+        "feelsF": 64,
+        "windMph": 14,
+        "rainChance": 10,
+        "rainIn": 0,
+        "humidity": 55
+      },
+      "score": 92,
+      "word": "Great"
+    },
+    {
+      "name": "chilly fall afternoon",
+      "kind": "cold",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 48,
+        "feelsF": 45,
+        "windMph": 7,
+        "rainChance": 10,
+        "rainIn": 0,
+        "humidity": 60
+      },
+      "score": 70,
+      "word": "Good"
+    },
+    {
+      "name": "hot and dry",
+      "kind": "hot",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 94,
+        "feelsF": 96,
+        "windMph": 8,
+        "rainChance": 0,
+        "rainIn": 0,
+        "humidity": 25
+      },
+      "score": 23,
+      "word": "Poor"
+    },
+    {
+      "name": "hot and humid",
+      "kind": "humid",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 88,
+        "feelsF": 99,
+        "windMph": 5,
+        "rainChance": 20,
+        "rainIn": 0,
+        "humidity": 80
+      },
+      "score": 0,
+      "word": "Do Not"
+    },
+    {
+      "name": "warm and muggy",
+      "kind": "humid",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 80,
+        "feelsF": 84,
+        "windMph": 4,
+        "rainChance": 10,
+        "rainIn": 0,
+        "humidity": 90
+      },
+      "score": 54,
+      "word": "Fair"
+    },
+    {
+      "name": "humid but cool (humidity ignored)",
+      "kind": "humid",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 60,
+        "feelsF": 60,
+        "windMph": 5,
+        "rainChance": 10,
+        "rainIn": 0,
+        "humidity": 95
+      },
+      "score": 97,
+      "word": "Great"
+    },
+    {
+      "name": "cold and clear",
+      "kind": "cold",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 30,
+        "feelsF": 22,
+        "windMph": 10,
+        "rainChance": 0,
+        "rainIn": 0,
+        "humidity": 60
+      },
+      "score": 31,
+      "word": "Poor"
+    },
+    {
+      "name": "bitter cold",
+      "kind": "cold",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 10,
+        "feelsF": -5,
+        "windMph": 12,
+        "rainChance": 0,
+        "rainIn": 0,
+        "humidity": 70
+      },
+      "score": 0,
+      "word": "Do Not"
+    },
+    {
+      "name": "windy",
+      "kind": "windy",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 68,
+        "feelsF": 68,
+        "windMph": 28,
+        "rainChance": 5,
+        "rainIn": 0,
+        "humidity": 40
+      },
+      "score": 55,
+      "word": "Fair"
+    },
+    {
+      "name": "gale",
+      "kind": "windy",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 60,
+        "feelsF": 55,
+        "windMph": 42,
+        "rainChance": 10,
+        "rainIn": 0,
+        "humidity": 50
+      },
+      "score": 8,
+      "word": "Do Not"
+    },
+    {
+      "name": "light rain",
+      "kind": "wet",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 62,
+        "feelsF": 62,
+        "windMph": 8,
+        "rainChance": 70,
+        "rainIn": 0.02,
+        "humidity": 90
+      },
+      "score": 50,
+      "word": "Fair"
+    },
+    {
+      "name": "steady rain",
+      "kind": "wet",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 58,
+        "feelsF": 58,
+        "windMph": 10,
+        "rainChance": 90,
+        "rainIn": 0.15,
+        "humidity": 95
+      },
+      "score": 0,
+      "word": "Do Not"
+    },
+    {
+      "name": "downpour",
+      "kind": "wet",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 75,
+        "feelsF": 78,
+        "windMph": 12,
+        "rainChance": 100,
+        "rainIn": 0.6,
+        "humidity": 95
+      },
+      "score": 0,
+      "word": "Do Not"
+    },
+    {
+      "name": "rain chance but no amount",
+      "kind": "wet",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 70,
+        "feelsF": 70,
+        "windMph": 6,
+        "rainChance": 40,
+        "rainIn": 0,
+        "humidity": 60
+      },
+      "score": 90,
+      "word": "Great"
+    },
+    {
+      "name": "no feels-like: air temperature used",
+      "kind": "missing",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 70,
+        "feelsF": null,
+        "windMph": 6,
+        "rainChance": 5,
+        "rainIn": 0,
+        "humidity": 50
+      },
+      "score": 100,
+      "word": "Great"
+    },
+    {
+      "name": "no rain chance (self-hosted Open-Meteo)",
+      "kind": "missing",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 70,
+        "feelsF": 70,
+        "windMph": 6,
+        "rainChance": null,
+        "rainIn": 0,
+        "humidity": 50
+      },
+      "score": 100,
+      "word": "Great"
+    },
+    {
+      "name": "only temperature",
+      "kind": "missing",
+      "mode": "niceDay",
+      "hour": {
+        "tempF": 70
+      },
+      "score": 100,
+      "word": "Great"
+    },
+    {
+      "name": "no temperature: not scored",
+      "kind": "missing",
+      "mode": "niceDay",
+      "hour": {
+        "windMph": 5,
+        "rainChance": 0,
+        "rainIn": 0,
+        "humidity": 50
+      },
+      "score": null,
+      "word": null
+    },
+    {
+      "name": "nothing at all",
+      "kind": "missing",
+      "mode": "niceDay",
+      "hour": {},
+      "score": null,
+      "word": null
+    },
+    {
+      "name": "calm cool evening",
+      "kind": "mild",
+      "mode": "bonfire",
+      "hour": {
+        "tempF": 52,
+        "feelsF": 50,
+        "windMph": 3,
+        "rainChance": 5,
+        "rainIn": 0,
+        "humidity": 70
+      },
+      "score": 100,
+      "word": "Great"
+    },
+    {
+      "name": "breezy evening",
+      "kind": "windy",
+      "mode": "bonfire",
+      "hour": {
+        "tempF": 55,
+        "feelsF": 52,
+        "windMph": 12,
+        "rainChance": 10,
+        "rainIn": 0,
+        "humidity": 60
+      },
+      "score": 77,
+      "word": "Good"
+    },
+    {
+      "name": "wind exactly 20 mph",
+      "kind": "windy",
+      "mode": "bonfire",
+      "hour": {
+        "tempF": 60,
+        "feelsF": 60,
+        "windMph": 20,
+        "rainChance": 0,
+        "rainIn": 0,
+        "humidity": 40
+      },
+      "score": 40,
+      "word": "Fair"
+    },
+    {
+      "name": "wind 21 mph: always Do Not",
+      "kind": "windy",
+      "mode": "bonfire",
+      "hour": {
+        "tempF": 60,
+        "feelsF": 60,
+        "windMph": 21,
+        "rainChance": 0,
+        "rainIn": 0,
+        "humidity": 40
+      },
+      "score": 0,
+      "word": "Do Not"
+    },
+    {
+      "name": "wind 28 mph on a perfect evening",
+      "kind": "windy",
+      "mode": "bonfire",
+      "hour": {
+        "tempF": 55,
+        "feelsF": 55,
+        "windMph": 28,
+        "rainChance": 0,
+        "rainIn": 0,
+        "humidity": 50
+      },
+      "score": 0,
+      "word": "Do Not"
+    },
+    {
+      "name": "cold calm night",
+      "kind": "cold",
+      "mode": "bonfire",
+      "hour": {
+        "tempF": 25,
+        "feelsF": 18,
+        "windMph": 4,
+        "rainChance": 0,
+        "rainIn": 0,
+        "humidity": 60
+      },
+      "score": 41,
+      "word": "Fair"
+    },
+    {
+      "name": "hot sticky night",
+      "kind": "hot",
+      "mode": "bonfire",
+      "hour": {
+        "tempF": 85,
+        "feelsF": 88,
+        "windMph": 4,
+        "rainChance": 0,
+        "rainIn": 0,
+        "humidity": 70
+      },
+      "score": 48,
+      "word": "Fair"
+    },
+    {
+      "name": "drizzle",
+      "kind": "wet",
+      "mode": "bonfire",
+      "hour": {
+        "tempF": 50,
+        "feelsF": 48,
+        "windMph": 4,
+        "rainChance": 60,
+        "rainIn": 0.01,
+        "humidity": 95
+      },
+      "score": 18,
+      "word": "Do Not"
+    },
+    {
+      "name": "humid but calm (humidity not used)",
+      "kind": "humid",
+      "mode": "bonfire",
+      "hour": {
+        "tempF": 55,
+        "feelsF": 55,
+        "windMph": 3,
+        "rainChance": 0,
+        "rainIn": 0,
+        "humidity": 98
+      },
+      "score": 100,
+      "word": "Great"
+    },
+    {
+      "name": "no wind: not scored",
+      "kind": "missing",
+      "mode": "bonfire",
+      "hour": {
+        "tempF": 50,
+        "feelsF": 50,
+        "rainChance": 0,
+        "rainIn": 0
+      },
+      "score": null,
+      "word": null
+    },
+    {
+      "name": "no rain fields",
+      "kind": "missing",
+      "mode": "bonfire",
+      "hour": {
+        "tempF": 50,
+        "feelsF": 50,
+        "windMph": 4
+      },
+      "score": 100,
+      "word": "Great"
+    }
+  ]
+}

@@ -43,6 +43,8 @@ import { requestDeviceLocation } from "../../hooks/useLocation";
 import { ConditionTiles } from "../../components/home/ConditionTiles";
 import { AiBriefingCard } from "../../components/home/AiBriefingCard";
 import { IncomingStormCard } from "../../components/home/IncomingStormCard";
+import { NiceDayCard } from "../../components/home/NiceDayCard";
+import { CountdownCard } from "../../components/home/CountdownCard";
 import { useBriefing } from "../../hooks/useBriefing";
 import { hourlyPrecipitation } from "../../lib/conditions";
 import { useAirQualityNow } from "../../hooks/useAirQualityNow";
@@ -406,6 +408,7 @@ export default function HomeScreen() {
               </View>
             ))}
           </ScrollView>
+          <NiceDayCard forecast={forecast} nowMs={now.getTime()} />
 
           {/* 24h precip chart */}
           <View style={styles.sectionWrap}>
@@ -500,6 +503,7 @@ export default function HomeScreen() {
               );
             })}
           </View>
+          <CountdownCard forecast={forecast} nowMs={now.getTime()} />
 
           {/* Mini radar map */}
           <RadarMiniMap />
