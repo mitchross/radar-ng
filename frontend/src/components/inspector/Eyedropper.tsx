@@ -29,6 +29,8 @@ const LAYER_LABEL: Record<LayerType, string> = {
   "hail-size": "HAIL SIZE",
   "rotation-track": "ROTATION",
   "echo-top": "ECHO TOPS",
+  "snowfall-forecast": "SNOW TOTAL",
+  "ice-forecast": "ICE TOTAL",
   cloud: "CLOUD COVER",
   uv: "UV INDEX",
   cape: "CAPE",
