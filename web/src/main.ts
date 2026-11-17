@@ -52,6 +52,7 @@ import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast"
 import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition } from "./shared/conditions";
 import { describeNowcastSkill } from "./shared/nowcastSkill";
 import { SEVERE_CREDIT, SEVERE_LAYERS, formatSevereReading, severeLayer } from "./shared/severe";
+import { WINTER_EMPTY_HINT, WINTER_LAYERS, formatWinterReading, winterLayer } from "./shared/winterLayers";
 import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
@@ -504,7 +505,7 @@ async function refreshManifest() {
     satellite.setFrames(satelliteFrames(state.manifest));
     // renderChips also rebuilds the open settings sheet, so skip it unless availability changed.
     if (!hadManifest || availabilityKey() !== chipsBefore) renderChips();
-    if (!LAYERS.some((l) => l.id === state.layer && layerAvailable(l.needs)) && !(severeLayer(state.layer) && layerAvailable(state.layer))) state.layer = "radar";
+    if (!LAYERS.some((l) => l.id === state.layer && layerAvailable(l.needs)) && !((severeLayer(state.layer) || winterLayer(state.layer)) && layerAvailable(state.layer))) state.layer = "radar";
     const now = nowSec();
     const { frames, seq } = liveTimeline(state.manifest, now);
     if (hadManifest && sameFrames(state.frames, frames) && seq.length === state.seq.length && seq.every((v, i) => v === state.seq[i])) {
@@ -558,7 +559,7 @@ function renderRadarStatus() {
 
 /** The layers and products the chips and sheet offer. */
 function availabilityKey(): string {
-  return [...LAYERS.map((l) => l.needs), ...SEVERE_LAYERS.map((l) => l.id), "radar-composite", "satellite"].filter(layerAvailable).join();
+  return [...LAYERS.map((l) => l.needs), ...SEVERE_LAYERS.map((l) => l.id), ...WINTER_LAYERS.map((l) => l.id), "radar-composite", "satellite"].filter(layerAvailable).join();
 }
 
 function layerAvailable(key: string) {
@@ -635,7 +636,7 @@ function renderTimeline() {
   const label = offsetLabel(frame.time, nowSec());
   const mode = label === "Now" ? "Now" : `${frame.time > nowSec() ? "Forecast" : "Past"} ${label}`;
   const source = forecastLine(frame.source, frame.time, nowSec()) ?? "";
-  const layerName = LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? "Radar";
+  const layerName = LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? winterLayer(state.layer)?.name ?? "Radar";
   $("frame-title").textContent = `${layerName} · ${mode}`;
   $("frame-time").textContent = `${TIME_FMT.format(new Date(frame.time * 1000))}${source ? ` · ${source}` : SOURCE_SUFFIX[frame.source] ?? ""}`;
   slider.setAttribute("aria-valuetext", `${mode}, ${TIME_FMT.format(new Date(frame.time * 1000))}`);
@@ -683,7 +684,9 @@ function renderAxis() {
 /** The one-line hint and source credit under a severe layer's legend; empty for other layers. */
 function severeNote(layer: string): string {
   const info = severeLayer(layer);
-  return info ? `<div class="legend-note">${escapeHtml(info.hint)} · ${SEVERE_CREDIT}</div>` : "";
+  if (info) return `<div class="legend-note">${escapeHtml(info.hint)} · ${SEVERE_CREDIT}</div>`;
+  const winter = winterLayer(layer);
+  return winter ? `<div class="legend-note">${escapeHtml(winter.hint)} · ${winter.credit}</div>` : "";
 }
 
 function renderLegend() {
@@ -753,6 +756,8 @@ function renderSheet() {
   const composite = layerAvailable("radar-composite");
   const severe = SEVERE_LAYERS.filter((l) => layerAvailable(l.id));
   const severeHint = severeLayer(state.layer)?.hint ?? "Hail, storm rotation and storm height";
+  const winter = WINTER_LAYERS.filter((l) => layerAvailable(l.id));
+  const winterInfo = winterLayer(state.layer);
   const toggles = [
     ...OVERLAYS.map((o) => ({ id: o.id, name: o.name, hint: o.hint, on: state.overlays.has(o.id) })),
     ...(layerAvailable("satellite") ? [{ id: "satellite", name: "Satellite clouds", hint: "GOES imagery under the radar, every 10 minutes", on: state.satellite }] : []),
@@ -766,6 +771,10 @@ function renderSheet() {
       ${seg("palette", (Object.keys(PALETTES) as PaletteId[]).map((id) => [id, PALETTES[id].name, id === "muted" ? "Colorblind-safe (viridis)" : undefined]), state.palette)}
       <p class="hint">Muted is the colorblind-safe palette (viridis). Warning outlines are also labelled TOR, SVR or FFW.</p>
       <label class="range-row"><span>Opacity</span><input id="opacity" type="range" min="0.3" max="1" step="0.05" value="${state.opacity}" aria-label="Radar opacity" /></label>
+    </div>
+    <div class="sheet-section"><div class="section-label">WINTER</div>
+      ${winter.length ? seg("winter", winter.map((l) => [l.id, l.name, l.hint]), state.layer) : ""}
+      <p class="hint">${winter.length ? `${escapeHtml(winterInfo?.hint ?? "Snow and ice forecast totals, out to 3 days")} · NOAA NBM` : WINTER_EMPTY_HINT}</p>
     </div>
     ${severe.length ? `<div class="sheet-section"><div class="section-label">SEVERE</div>
       ${seg("severe", severe.map((l) => [l.id, l.name, l.hint]), state.layer)}
@@ -1261,7 +1270,7 @@ $("sheet-body").addEventListener("click", (e) => {
     if (!replaying()) store("rng.product", value);
     track("radar_product_changed", { product: value });
     rebuildFrames(currentFrame()?.time);
-  } else if (group === "severe" && value !== state.layer) {
+  } else if ((group === "severe" || group === "winter") && value !== state.layer) {
     state.layer = value;
     if (!replaying()) store("rng.layer", state.layer);
     track("layer_changed", { layer: state.layer });
@@ -1443,7 +1452,7 @@ map.on("click", async (e) => {
   const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng, detail).catch(() => null);
   if (click !== clickSeq) return; // a newer click owns the popup now
   track("point_inspected", { layer: state.layer, source: frame.source, has_value: value != null });
-  const title = forecastTitle(frame.source, frame.time, nowSec()) ?? SOURCE_TITLE[frame.source] ?? (LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? "").toUpperCase();
+  const title = forecastTitle(frame.source, frame.time, nowSec()) ?? SOURCE_TITLE[frame.source] ?? (LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? winterLayer(state.layer)?.name ?? "").toUpperCase();
   let text = "No data here";
   if (value != null) {
     if (state.layer === "radar") text = `${describeDbz(value)} <small>${Math.round(value)} dBZ</small>` + (detail.note ? `<small class="precip-note">${detail.note}</small>` : "");
@@ -1455,6 +1464,7 @@ map.on("click", async (e) => {
     else if (state.layer === "precip-accum" || state.layer === "precip-24h") text = `${value.toFixed(2)} in`;
     else if (state.layer === "uv") text = `UV ${Math.round(value)} · ${uvCategory(value)}`;
     else if (severeLayer(state.layer)) text = formatSevereReading(state.layer, value) ?? `${value.toFixed(1)}`;
+    else if (winterLayer(state.layer)) text = formatWinterReading(state.layer, value) ?? `${value.toFixed(2)}`;
     else text = `${value.toFixed(1)}`;
   }
   popup.setHTML(`<div class="readout"><b>${title}</b><div class="v">${text}</div><small>${lat.toFixed(3)}, ${lng.toFixed(3)}</small></div><div class="outlook-slot">Loading SPC outlook…</div>`);
@@ -1527,7 +1537,7 @@ const replayZone = () => state.replay?.case.timezone ?? "UTC";
 
 /** Absolute historical date, time and zone; never "Now". */
 function renderReplayTimeline(frame: Frame | undefined, slider: HTMLInputElement) {
-  const layerName = LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? "Radar";
+  const layerName = LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? winterLayer(state.layer)?.name ?? "Radar";
   if (!frame) {
     $("frame-title").textContent = state.replay?.error ? "Replay unavailable" : "Loading replay…";
     $("frame-time").innerHTML = "&nbsp;";

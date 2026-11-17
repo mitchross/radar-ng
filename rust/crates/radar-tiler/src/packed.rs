@@ -72,6 +72,8 @@ impl Quantizer {
             "pm25" => (1.0, 0.5, 0.0),
             "ozone" => (1.0, 0.0, 0.0),
             "uv_index" => (0.5, 0.5, 0.5),
+            "snowfall" => (0.25, 0.0, 0.1),
+            "ice_accum" => (0.01, 0.0, 0.01),
             _ => return None,
         };
         Some(Quantizer {

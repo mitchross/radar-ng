@@ -93,6 +93,10 @@ pub struct IngestConfig {
     pub precip_type: bool,
     /// `PRECIP_FLAG_PREFIX` (default `CONUS/PrecipFlag_00.00`).
     pub precip_flag_prefix: String,
+    /// `WINTER_ENABLED` (default on): render the NBM `snowfall-forecast` and `ice-forecast` layers.
+    pub winter_enabled: bool,
+    /// Base URL of the NBM bucket.
+    pub nbm_base_url: String,
 }
 
 impl IngestConfig {
@@ -152,6 +156,8 @@ impl IngestConfig {
             precip_type: env::bool_var("PRECIP_TYPE", true)?,
             precip_flag_prefix: env::var("PRECIP_FLAG_PREFIX")
                 .unwrap_or_else(|| crate::precip_type::PRECIP_FLAG_PREFIX.into()),
+            winter_enabled: env::bool_var("WINTER_ENABLED", true)?,
+            nbm_base_url: radar_grib::nbm::BASE_URL.to_string(),
             paths,
         })
     }
@@ -189,6 +195,8 @@ impl IngestConfig {
             mrms_severe: false,
             precip_type: false,
             precip_flag_prefix: crate::precip_type::PRECIP_FLAG_PREFIX.into(),
+            winter_enabled: true,
+            nbm_base_url: radar_grib::nbm::BASE_URL.to_string(),
             paths,
         })
     }

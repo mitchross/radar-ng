@@ -50,6 +50,8 @@ const LAYER_TITLE: Record<LayerType, string> = {
   "hail-size": "Hail Size",
   "rotation-track": "Rotation Tracks",
   "echo-top": "Echo Tops",
+  "snowfall-forecast": "Snow Total",
+  "ice-forecast": "Ice Total",
   cloud: "Clouds",
   uv: "UV Index",
   cape: "Storm Energy",

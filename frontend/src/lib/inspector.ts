@@ -8,6 +8,7 @@ import { recordSpanError, trace } from "./telemetry";
 import { fetchRadarNowcast, fetchWithTimeout } from "./api";
 import { aqiCategory, usAqiFromPm25 } from "./airQuality";
 import { formatSevereReading } from "../../../web/src/shared/severe";
+import { formatWinterReading } from "../../../web/src/shared/winterLayers";
 import { precipClassNote } from "../../../web/src/shared/precipType";
 
 export interface InspectReading {
@@ -120,6 +121,8 @@ export function formatReading(layer: LayerType, r: InspectReading): string {
   if (layer === "precip-accum" || layer === "precip-24h") return v < 0.01 ? "—" : `${v.toFixed(2)} in`;
   const severe = formatSevereReading(layer, v);
   if (severe) return severe;
+  const winter = formatWinterReading(layer, v);
+  if (winter) return winter;
   if (layer === "cloud") return `${Math.round(v)}%`;
   if (layer === "uv") return `UV ${Math.round(v)} · ${describeUV(v)}`;
   if (layer === "air-quality") return `${Math.round(v)} µg/m³ · ${aqiCategory(usAqiFromPm25(v)).label}`;

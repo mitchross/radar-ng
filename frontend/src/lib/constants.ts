@@ -122,6 +122,9 @@ export const LAYERS: LayerConfig[] = [
   { id: "hail-size", label: "Hail", icon: "L", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 7 },
   { id: "rotation-track", label: "Rotation", icon: "N", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 7 },
   { id: "echo-top", label: "Echo Top", icon: "E", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 7 },
+  // NBM winter totals (z3-z6): running snow and ice totals out to 72 h, raster only.
+  { id: "snowfall-forecast", label: "Snow", icon: "W", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
+  { id: "ice-forecast", label: "Ice", icon: "I", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
 ];
 
 /**
