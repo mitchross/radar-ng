@@ -58,6 +58,7 @@ Every `/api` route is a GET (`/api/livez` included). A GET-only route answers HE
 | GET | `/api/reverse-geocode` | `places::get_reverse_geocode` | Config check before range check |
 | GET | `/api/briefing` | `briefing::get_briefing` | LLM narrative, single-flight, breaker |
 | GET | `/api/alerts/explain` | `briefing::explain_alert` | LLM explainer for one NWS alert |
+| GET | `/api/climate/white-christmas` | `climate::get_white_christmas` | Embedded NCEI station odds; `?lat=&lon=` gives the nearest |
 | POST | `/v1/push-tokens` | `workflows::post_push_token` | Bearer auth, owner check, 200 `{"registered":true}`. 503 `{"detail":"push token store is read-only"}` when `STATE_DIR` is not writable (F9) |
 | DELETE | `/v1/push-tokens/{token}` | `workflows::delete_push_token` | 204 always |
 | POST | `/v1/watches` | `workflows::post_watch` | Temporal start; 201, 409, 410, 503 |

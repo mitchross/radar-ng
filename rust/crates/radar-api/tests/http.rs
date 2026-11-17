@@ -2499,3 +2499,31 @@ async fn spc_http_filters_expired_products_on_fresh_fetch() {
         assert!(body["features"].as_array().unwrap().is_empty());
     }
 }
+
+#[tokio::test]
+async fn white_christmas_lists_stations_and_answers_the_nearest() {
+    let env = Env::new();
+    let app = env.app(|_| {});
+    let (status, headers, all) = get_json(&app, "/api/climate/white-christmas").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        header_str(&headers, "cache-control"),
+        "public, max-age=86400"
+    );
+    assert_eq!(all["type"], "FeatureCollection");
+    assert!(all["features"].as_array().unwrap().len() > 4500);
+
+    let (status, _, near) = get_json(
+        &app,
+        "/api/climate/white-christmas?lat=42.3314&lon=-83.0458",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let s = &near["station"];
+    assert!(s["name"].as_str().unwrap().contains("MI US"), "{s}");
+    assert!(s["distance_mi"].as_f64().unwrap() < 30.0, "{s}");
+
+    let (status, _, bad) = get_json(&app, "/api/climate/white-christmas?lat=95").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(bad["detail"].as_array().unwrap().len(), 2);
+}

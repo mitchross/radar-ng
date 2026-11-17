@@ -14,7 +14,7 @@
  */
 import { useState } from "react";
 import { View, StyleSheet, Text, Pressable } from "react-native";
-import { useIsFocused, useRouter } from "expo-router";
+import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SymbolView } from "expo-symbols";
 import { MapChromeSurface } from "../../components/ui/MapChromeSurface";
@@ -34,6 +34,7 @@ import { TropicalDetailSheet } from "../../components/map/TropicalDetailSheet";
 import { StormCellsOverlay } from "../../components/map/StormCellsOverlay";
 import { WarningsOverlay, type WarningDetails } from "../../components/map/WarningsOverlay";
 import { OutlookOverlay } from "../../components/map/OutlookOverlay";
+import { WhiteChristmasOverlay } from "../../components/map/WhiteChristmasOverlay";
 import { SpcOverlay, type SpcSelection } from "../../components/map/SpcOverlay";
 import { SpcSheet } from "../../components/map/SpcSheet";
 import { StormCellSheet, WarningSheet } from "../../components/map/FeatureSheets";
@@ -98,6 +99,8 @@ export default function RadarScreen() {
   const radar = useRadarStatus();
   const hasFrames = useWeatherStore((s) => s.frames.length > 0);
   const router = useRouter();
+  // The Home White Christmas card opens the map with `?wxmas=1`.
+  const { wxmas } = useLocalSearchParams<{ wxmas?: string }>();
   // Replay swaps the data source; live-only overlays and readouts stay mounted but empty.
   const replaying = useIsReplay();
   const currentSource = useWeatherStore((s) => sourceKey(s.source));
@@ -148,6 +151,7 @@ export default function RadarScreen() {
   // the wind field is what carries the smoke plume, so seeing it flow over
   // the PM2.5 wash explains where the plume is headed.
   const windParticlesOn = !replaying && (activeLayer === "wind" || activeLayer === "air-quality");
+  const wxmasOn = wxmas === "1" && !replaying;
 
   return (
     <View style={styles.container}>
@@ -207,6 +211,7 @@ export default function RadarScreen() {
           setSelectedCell(value);
         }} />
         <LightningOverlay />
+        <WhiteChristmasOverlay visible={wxmasOn} />
         <LayerLocationMarker inspecting={pinned != null} />
         <EyedropperPin pinned={pinned} readout={inspect.readout} />
       </WeatherMap>
@@ -232,6 +237,18 @@ export default function RadarScreen() {
         <ReplayBanner />
       ) : (
         <>
+          {wxmasOn ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="White Christmas stations. Hide"
+              onPress={() => router.setParams({ wxmas: undefined })}
+              style={[styles.wxmasChip, { bottom: chrome.aboveTimeline + 8, left: chrome.left }]}
+            >
+              <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.wxmasChipText}>
+                White Christmas odds · NOAA 1991–2020 · Hide
+              </Text>
+            </Pressable>
+          ) : null}
           <RadarStatusChip status={radar.status} style={[styles.statusChip, { top: chrome.top + 14, left: chrome.left + 58 }]} />
           <Level2Note top={chrome.belowClose + 40} />
           <RadarStatusNotice status={radar.status} hasFrames={hasFrames} onRetry={radar.refetch} top={chrome.belowClose} />
@@ -294,6 +311,8 @@ const styles = StyleSheet.create({
   },
   closeButton: { width: 48, height: 48, alignItems: "center", justifyContent: "center" },
   statusChip: { position: "absolute", zIndex: 15 },
+  wxmasChip: { position: "absolute", zIndex: 15, minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderRadius: 22, backgroundColor: "rgba(0,0,0,0.82)" },
+  wxmasChipText: { color: "#fff", fontSize: 12, fontWeight: "600" },
   alertStatus: {
     position: "absolute",
     zIndex: 15,
