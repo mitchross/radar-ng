@@ -13,6 +13,7 @@ mod alerts;
 mod basemap;
 mod briefing;
 mod client_ip;
+mod climate;
 mod config;
 mod edge;
 mod files;

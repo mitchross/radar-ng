@@ -196,3 +196,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 The holiday countdown uses it for the sunset on each date. Sunset tests are pinned to US Naval
 Observatory values ([`rstt/oneday`](https://aa.usno.navy.mil/data/api)).
+
+## NCEI climate normals (White Christmas chance)
+
+The White Christmas card uses the NOAA NCEI
+[U.S. Climate Normals 1991-2020](https://www.ncei.noaa.gov/products/land-based-station/us-climate-normals),
+daily, by station. It is a U.S. Government work in the public domain; credit NOAA NCEI.
+`rust/scripts/build-white-christmas.py` reads the
+[station archive](https://www.ncei.noaa.gov/data/normals-daily/1991-2020/archive/) once and keeps the
+Dec 25 `DLY-SNWD-PCTALL-GE001WI` value: the percent of years with at least 1 inch of snow on the
+ground. The NCEI docs say "tenths of percent", but the values are whole percent. Detroit (34.7),
+Duluth (92.2) and Minneapolis (73.6) match NOAA's published odds. The server embeds the result, and
+clients contact only our server.
