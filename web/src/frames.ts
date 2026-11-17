@@ -4,6 +4,7 @@
  * web and app loops visit the same frames.
  */
 export { offsetLabel } from "./shared/offsetLabel";
+export { forecastLine, forecastTitle, forecastWords } from "./shared/frameWords";
 import type { Level2Frame } from "./shared/level2";
 
 export interface ManifestFrame {

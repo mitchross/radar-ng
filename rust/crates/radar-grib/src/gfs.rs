@@ -72,6 +72,34 @@ pub async fn fetch_refc(s3: &S3Client, init: DateTime<Utc>, fhr: u32) -> Result<
         .unwrap_or(Fetched::Pending))
 }
 
+/// `.idx` names of the categorical precipitation-type records, in `CRAIN, CSNOW, CFRZR, CICEP` order.
+pub const TYPE_FLAG_IDX: [&str; 4] = [
+    "CRAIN:surface",
+    "CSNOW:surface",
+    "CFRZR:surface",
+    "CICEP:surface",
+];
+
+/// `.idx` terms of the four type flags valid at `fhr`. The file also holds an average of each flag
+/// over the last hours (`18-24 hour ave fcst`); the `:<fhr> hour fcst:` term leaves it out.
+pub fn type_flag_terms(fhr: u32) -> [[String; 2]; 4] {
+    TYPE_FLAG_IDX.map(|name| [name.to_string(), format!(":{fhr} hour fcst:")])
+}
+
+/// [`fetch_refc`] plus the instantaneous CRAIN, CSNOW, CFRZR and CICEP records (about 150 KB more).
+pub async fn fetch_refc_typed(s3: &S3Client, init: DateTime<Utc>, fhr: u32) -> Result<Fetched> {
+    let flags = type_flag_terms(fhr);
+    let flag_terms: Vec<[&str; 2]> = flags
+        .iter()
+        .map(|[a, b]| [a.as_str(), b.as_str()])
+        .collect();
+    let mut matchers: Vec<&[&str]> = vec![REFC_IDX];
+    matchers.extend(flag_terms.iter().map(|t| t.as_slice()));
+    Ok(fetch_subset(s3, &file_key(init, fhr), &matchers)
+        .await?
+        .unwrap_or(Fetched::Pending))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,5 +142,40 @@ mod tests {
         let s = refc_selector();
         assert_eq!((s.category, s.number), (Some(16), Some(196)));
         assert_eq!(s.surface_type, Some(SURFACE_ENTIRE_ATMOSPHERE));
+    }
+
+    #[test]
+    fn type_flags_pick_the_instantaneous_records_only() {
+        // Lines of the real gfs.t12z.pgrb2.0p25.f019.idx of 2026-11-16.
+        let idx = "\
+9:3381362:d=2026111612:REFC:entire atmosphere:19 hour fcst:
+10:4251121:d=2026111612:VIS:surface:19 hour fcst:
+600:427609596:d=2026111612:WATR:surface:18-19 hour acc fcst:
+601:427934417:d=2026111612:CSNOW:surface:19 hour fcst:
+602:427973814:d=2026111612:CICEP:surface:19 hour fcst:
+603:427974063:d=2026111612:CFRZR:surface:19 hour fcst:
+604:427974665:d=2026111612:CRAIN:surface:19 hour fcst:
+605:428079058:d=2026111612:CSNOW:surface:18-19 hour ave fcst:
+606:428114079:d=2026111612:CICEP:surface:18-19 hour ave fcst:
+607:428114352:d=2026111612:CFRZR:surface:18-19 hour ave fcst:
+608:428115067:d=2026111612:CRAIN:surface:18-19 hour ave fcst:
+609:428212576:d=2026111612:LHTFL:surface:18-19 hour ave fcst:
+";
+        let records = crate::idx::parse_idx(idx).unwrap();
+        let flags = type_flag_terms(19);
+        let flag_terms: Vec<[&str; 2]> = flags
+            .iter()
+            .map(|[a, b]| [a.as_str(), b.as_str()])
+            .collect();
+        let mut matchers: Vec<&[&str]> = vec![REFC_IDX];
+        matchers.extend(flag_terms.iter().map(|t| t.as_slice()));
+        let starts: Vec<u64> = crate::idx::pick_ranges(&records, &matchers)
+            .iter()
+            .map(|r| r.start)
+            .collect();
+        assert_eq!(
+            starts,
+            [3381362, 427934417, 427973814, 427974063, 427974665]
+        );
     }
 }

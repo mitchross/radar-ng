@@ -9,12 +9,12 @@ use radar_core::grid_dump::{self, GridInput};
 use radar_core::manifest::{ReplaceOptions, read_manifest, replace_layer};
 use radar_geo::Grid;
 use radar_grib::decode::find_message;
-use radar_grib::hrrr::{Fetched, parse_run_id};
+use radar_grib::hrrr::{Fetched, HrrrVar, parse_run_id};
 use radar_grib::mrms::ensure_south_up;
 use radar_tiler::identity::FrameKind;
 use radar_tiler::palettes::Palette;
 use radar_tiler::{
-    ColorTable, FrameOptions, complete_pyramid_identity, frame_identity_is_compatible,
+    ColorTable, FrameOptions, TypePlane, complete_pyramid_identity, frame_identity_is_compatible,
     render_frame_palettes,
 };
 use radar_types::payloads::global_model::GlobalModelFindResult;
@@ -108,6 +108,7 @@ pub fn already_rendered(
 }
 
 /// Render one cropped field for every palette with the layer's key. True when all of them published.
+/// `types` colours the GFS radar by precipitation type (see [`cropped_types`]).
 pub fn render(
     cfg: &IngestConfig,
     product: Product,
@@ -115,6 +116,7 @@ pub fn render(
     valid: &str,
     grid: &Grid,
     tables: &[(String, ColorTable)],
+    types: Option<TypePlane>,
 ) -> anyhow::Result<bool> {
     if tables.is_empty() {
         return Ok(false);
@@ -131,10 +133,49 @@ pub fn render(
         overview: None,
         // UV at night (and a dry GFS hour) has no tiles but is still a frame of the timeline.
         keep_empty: true,
+        types,
         ..FrameOptions::default()
     };
     let result = render_frame_palettes(grid, &KIND, tables, &dirs, &ZOOMS, &options)?;
     Ok(result.outcomes.len() == tables.len())
+}
+
+/// The GFS type flags in `bytes` as display classes on the cropped `grid`, or `None` when the
+/// flags are missing or every cell is rain. A flag record that is absent counts as 0.
+pub fn cropped_types(bytes: &[u8], grid: &Grid) -> anyhow::Result<Option<TypePlane>> {
+    let mut flags = Vec::with_capacity(4);
+    for var in [
+        HrrrVar::Crain,
+        HrrrVar::Csnow,
+        HrrrVar::Cfrzr,
+        HrrrVar::Cicep,
+    ] {
+        flags.push(match find_message(bytes, &var.selector())? {
+            Some(mut msg) => {
+                ensure_south_up(&mut msg.grid);
+                let cut = state::crop(&msg.grid, CONUS_BBOX)?;
+                anyhow::ensure!(
+                    (cut.height, cut.width) == (grid.height, grid.width),
+                    "{} grid {}x{} does not match REFC {}x{}",
+                    var.key(),
+                    cut.height,
+                    cut.width,
+                    grid.height,
+                    grid.width
+                );
+                Some(cut.values)
+            }
+            None => None,
+        });
+    }
+    if flags.iter().all(Option::is_none) {
+        return Ok(None);
+    }
+    let s: Vec<Option<&[f32]>> = flags.iter().map(Option::as_deref).collect();
+    let len = grid.height * grid.width;
+    Ok(crate::precip_type::plane_unless_all_rain(
+        crate::precip_type::model_classes(s[0], s[1], s[2], s[3], len),
+    ))
 }
 
 /// Decode, convert, crop, render and dump one hour's GRIB bytes. Returns the layers rendered.
@@ -153,8 +194,16 @@ pub fn process_bytes_sync(
         *v = product.convert(*v);
     }
     let grid = state::crop(&msg.grid, CONUS_BBOX)?;
+    let types = if product == Product::GfsRadar && cfg.precip_type {
+        cropped_types(bytes, &grid).unwrap_or_else(|err| {
+            tracing::warn!(layer = product.layer(), err = %format!("{err:#}"), "gfs_types_failed");
+            None
+        })
+    } else {
+        None
+    };
     let tables = tables_for_key(palettes, product.color_key());
-    if !render(cfg, product, run_id, valid, &grid, &tables)? {
+    if !render(cfg, product, run_id, valid, &grid, &tables, types)? {
         return Ok(Vec::new());
     }
     let (lats, lons) = common::regular_axes(&grid)?;
@@ -197,6 +246,9 @@ pub async fn process_hour(
     hb(details.clone());
     let fetch = async {
         match product {
+            Product::GfsRadar if ctx.cfg.precip_type => {
+                radar_grib::gfs::fetch_refc_typed(&ctx.gfs_s3, init, fhr_u32).await
+            }
             Product::GfsRadar => radar_grib::gfs::fetch_refc(&ctx.gfs_s3, init, fhr_u32).await,
             Product::Uv => radar_grib::uvi::fetch_hour(&ctx.uv_http, init, fhr_u32).await,
         }

@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
 import { findClosestIdx } from "../../lib/frameIndex";
-import { longZoomLabel, offsetLabel, playbackSequence, positionOf, type TimelineZoom } from "../../lib/playbackSequence";
+import { forecastLine, longZoomLabel, offsetLabel, playbackSequence, positionOf, type TimelineZoom } from "../../lib/playbackSequence";
 import { createThrottle } from "../../lib/throttle";
 import { fullCaseSequence, isReplaySource } from "../../lib/replaySource";
 import { replayAxisLabels, replayTimelineHeader } from "../../lib/replayTimeline";
@@ -176,7 +176,8 @@ export function TimelineBar() {
   const layerTitle = LAYER_TITLE[activeLayer] ?? "Radar";
   const frameDate = new Date((currentFrame?.time ?? nowSec) * 1000);
   const replayHeader = replaying ? replayTimelineHeader(currentFrame, layerTitle, timeZone) : closeUp && currentFrame ? closeUpHeader(currentFrame, timeZone) : null;
-  const dateLabel = replayHeader ? replayHeader.dateLabel : FRAME_DATE_FORMAT.format(frameDate);
+  const forecast = currentFrame?.source && !replayHeader ? forecastLine(currentFrame.source, currentFrame.time, nowSec) : null;
+  const dateLabel = replayHeader ? replayHeader.dateLabel : `${FRAME_DATE_FORMAT.format(frameDate)}${forecast ? ` · ${forecast}` : ""}`;
 
   // MRMS lands a few minutes late; the latest scan within 5 min reads as "Now".
   const mode = Math.abs(offsetMin) <= 5 ? "Now" : `${offsetMin > 0 ? "Forecast" : "Past"} ${offsetLabel(currentFrame?.time ?? nowSec, nowSec)}`;
