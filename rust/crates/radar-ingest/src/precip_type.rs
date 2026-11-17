@@ -1,15 +1,24 @@
 //! Precipitation type for MRMS reflectivity frames, from MRMS `PrecipFlag_00.00` (2-minute cadence,
 //! the same 0.01 degree CONUS grid as the reflectivity products).
 //!
-//! Best effort: any failure gives `None`, and the frame renders with the rain ramp only.
+//! PrecipFlag has no freezing-rain or sleet code, so the ice class comes from the HRRR
+//! `precip-type` grid valid nearest the frame (at most [`MAX_ICE_GRID_DELTA`] away).
+//!
+//! Best effort: any failure gives `None`, and the frame renders with the rain ramp only. A missing
+//! or stale HRRR grid leaves the PrecipFlag classes exactly as they are.
+
+use std::path::Path;
 
 use chrono::{DateTime, Duration, Utc};
+use radar_core::grid_read::{GridDump, read_grid};
+use radar_core::ice::is_ice_category;
+pub use radar_core::ice::{ICE_ECHO_DBZ, MAX_ICE_GRID_DELTA, nearest_type_grid};
 use radar_geo::{Grid, GridGeo};
 use radar_grib::http::MRMS_GET_TIMEOUT;
 use radar_grib::mrms as gmrms;
 use radar_grib::s3::S3Client;
 use radar_tiler::TypePlane;
-use radar_tiler::typed::{TYPE_MIX, TYPE_RAIN, TYPE_SNOW};
+use radar_tiler::typed::{TYPE_ICE, TYPE_MIX, TYPE_RAIN, TYPE_SNOW};
 use rayon::prelude::*;
 
 /// Default `PRECIP_FLAG_PREFIX`.
@@ -66,6 +75,92 @@ pub fn type_plane(gz: &[u8], grid: &Grid) -> anyhow::Result<TypePlane> {
         flags.width,
         MIX_RADIUS_CELLS,
     ))?)
+}
+
+/// The frame's type plane: PrecipFlag classes (`flags`, already decoded), with HRRR ice on top
+/// when `hrrr` is given. Without PrecipFlag the base is all rain, and the plane exists only when
+/// some cell is ice. Without `hrrr` this is `flags` unchanged.
+pub fn frame_types(
+    flags: Option<TypePlane>,
+    grid: &Grid,
+    hrrr: Option<&GridDump>,
+) -> Option<TypePlane> {
+    let Some(hrrr) = hrrr else {
+        return flags;
+    };
+    let mut classes = match &flags {
+        Some(p) => p.classes().to_vec(),
+        None => vec![TYPE_RAIN; grid.values.len()],
+    };
+    if apply_hrrr_ice(&mut classes, grid, hrrr) == 0 {
+        return flags;
+    }
+    TypePlane::new(classes).ok()
+}
+
+/// Read the nearest `precip-type` grid, or `None` (with a warning when one exists but is bad).
+pub fn load_type_grid(grid_dir: &Path, valid_time: DateTime<Utc>) -> Option<GridDump> {
+    let path = nearest_type_grid(grid_dir, valid_time)?;
+    read_grid(&path)
+        .inspect_err(|err| tracing::warn!(path = %path.display(), err = %err, "type_grid_failed"))
+        .ok()
+}
+
+/// Set `classes` to ice where `grid` has an echo (at or above [`ICE_ECHO_DBZ`]) and
+/// the nearest `hrrr` cell is freezing rain or ice pellets. Returns the number of ice cells.
+pub fn apply_hrrr_ice(classes: &mut [u8], grid: &Grid, hrrr: &GridDump) -> usize {
+    let values = &grid.values;
+    let GridGeo::Regular { lats, lons } = &grid.geo else {
+        return 0;
+    };
+    let m = &hrrr.meta;
+    if m.height < 2
+        || m.width < 2
+        || classes.len() != values.len()
+        || values.len() != lats.len() * lons.len()
+    {
+        return 0;
+    }
+    let dlat = (m.lat_max - m.lat_min) / (m.height - 1) as f64;
+    let dlon = (m.lon_max - m.lon_min) / (m.width - 1) as f64;
+    let index = |v: f64, n: usize| {
+        let i = v.round();
+        (i >= 0.0 && i < n as f64).then_some(i as usize)
+    };
+    let rows: Vec<Option<usize>> = lats
+        .iter()
+        .map(|&lat| index((m.lat_max - lat) / dlat, m.height))
+        .collect();
+    let cols: Vec<Option<usize>> = lons
+        .iter()
+        .map(|&lon| {
+            let lon = if lon > 180.0 { lon - 360.0 } else { lon };
+            index((lon - m.lon_min) / dlon, m.width)
+        })
+        .collect();
+    let w = lons.len();
+    classes
+        .par_chunks_mut(w)
+        .zip(values.par_chunks(w))
+        .zip(rows.par_iter())
+        .map(|((out, vals), row)| {
+            let Some(row) = *row else {
+                return 0;
+            };
+            let src = &hrrr.values[row * m.width..(row + 1) * m.width];
+            let mut n = 0;
+            for ((class, &v), col) in out.iter_mut().zip(vals).zip(&cols) {
+                if v >= ICE_ECHO_DBZ
+                    && let Some(col) = *col
+                    && is_ice_category(src[col])
+                {
+                    *class = TYPE_ICE;
+                    n += 1;
+                }
+            }
+            n
+        })
+        .sum()
 }
 
 /// Same shape and the same first and last coordinates on both axes.

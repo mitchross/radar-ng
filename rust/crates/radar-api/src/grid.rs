@@ -209,11 +209,51 @@ pub async fn inspect_point(
         return respond::internal_error();
     };
     let dir = state.config.grid_dir.clone();
-    let body =
-        tokio::task::spawn_blocking(move || sample_point(&dir, &layer, &timestamp, lat, lon, None))
-            .await
-            .unwrap_or_else(|_| json!({ "ok": false, "reason": "read_error" }));
+    let body = tokio::task::spawn_blocking(move || {
+        let mut body = sample_point(&dir, &layer, &timestamp, lat, lon, None);
+        add_ice_class(&mut body, &dir, &layer, &timestamp, lat, lon);
+        body
+    })
+    .await
+    .unwrap_or_else(|_| json!({ "ok": false, "reason": "read_error" }));
     respond::json(StatusCode::OK, &body, None).into_response()
+}
+
+/// Observed radar only: `"precip_class": "ice"` where the frame has an echo and the HRRR
+/// `precip-type` grid nearest the frame says freezing rain or ice pellets (the tile rule).
+fn add_ice_class(body: &mut Value, dir: &Path, layer: &str, timestamp: &str, lat: f64, lon: f64) {
+    use radar_core::ice::{ICE_ECHO_DBZ, is_ice_category, nearest_type_grid};
+    if !matches!(layer, "radar" | "radar-composite") {
+        return;
+    }
+    let Some(dbz) = body.get("value").and_then(Value::as_f64) else {
+        return;
+    };
+    if dbz < f64::from(ICE_ECHO_DBZ) {
+        return;
+    }
+    let Some(t) = radar_core::time::parse_iso_as_utc(timestamp) else {
+        return;
+    };
+    let Some(meta_path) = nearest_type_grid(dir, t) else {
+        return;
+    };
+    let Ok(meta) = read_meta(&meta_path) else {
+        return;
+    };
+    let Some((row, col)) = radar_core::grid_read::nearest_cell(&meta, lat, lon) else {
+        return;
+    };
+    let bin = meta_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join(&meta.data_file);
+    let mut buf = [0u8; 4];
+    let read = File::open(&bin)
+        .and_then(|f| f.read_exact_at(&mut buf, ((row * meta.width + col) * 4) as u64));
+    if read.is_ok() && is_ice_category(f32::from_le_bytes(buf)) {
+        body["precip_class"] = json!("ice");
+    }
 }
 
 #[cfg(test)]
@@ -250,6 +290,44 @@ mod tests {
         (0..3)
             .flat_map(|r| (0..4).map(move |c| (r * 10 + c) as f32))
             .collect()
+    }
+
+    #[test]
+    fn inspector_marks_ice_under_an_echo_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        // precip-type grid valid 17z: freezing rain (3) in the north-west cell, rain elsewhere.
+        let types = tmp.path().join("precip-type");
+        std::fs::create_dir_all(&types).unwrap();
+        let stamp = "2026-11-17T17:00:00+00:00";
+        let mut f = File::create(types.join(format!("{stamp}.bin"))).unwrap();
+        for v in [
+            3.0f32, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        ] {
+            f.write_all(&v.to_le_bytes()).unwrap();
+        }
+        std::fs::write(
+            types.join(format!("{stamp}.meta.json")),
+            format!("{{\"height\":3,\"width\":4,\"lat_min\":40.0,\"lat_max\":42.0,\"lon_min\":-86.0,\"lon_max\":-83.0,\"unit\":\"category\",\"fill\":null,\"stride\":1,\"data_file\":\"{stamp}.bin\"}}"),
+        )
+        .unwrap();
+        let ice = |layer: &str, ts: &str, dbz: f64, lat: f64, lon: f64| {
+            let mut body = json!({"ok": true, "value": dbz});
+            add_ice_class(&mut body, tmp.path(), layer, ts, lat, lon);
+            body.get("precip_class").cloned()
+        };
+        let frame = "2026-11-17T18:28:00+00:00";
+        assert_eq!(ice("radar", frame, 20.0, 42.0, -86.0), Some(json!("ice")));
+        assert_eq!(
+            ice("radar-composite", frame, 20.0, 42.0, -86.0),
+            Some(json!("ice"))
+        );
+        assert_eq!(ice("radar", frame, 20.0, 40.0, -83.0), None); // rain cell
+        assert_eq!(ice("radar", frame, 3.0, 42.0, -86.0), None); // no echo
+        assert_eq!(ice("radar-hrrr", frame, 20.0, 42.0, -86.0), None); // not observed radar
+        assert_eq!(
+            ice("radar", "2026-11-17T18:31:00+00:00", 20.0, 42.0, -86.0),
+            None
+        ); // stale
     }
 
     #[test]

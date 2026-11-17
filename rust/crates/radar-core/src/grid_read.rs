@@ -260,5 +260,45 @@ fn legacy_data_file(meta_path: &Path) -> String {
     format!("{}.bin", grid_dump::grid_timestamp_of(name))
 }
 
+/// The `<valid>.meta.json` of `layer` under `grid_dir` valid nearest `t`, at most `max` away.
+pub fn nearest_grid_meta(
+    grid_dir: &Path,
+    layer: &str,
+    t: chrono::DateTime<chrono::Utc>,
+    max: chrono::Duration,
+) -> Option<PathBuf> {
+    let mut best: Option<(chrono::Duration, PathBuf)> = None;
+    for entry in fs::read_dir(grid_dir.join(layer)).ok()?.flatten() {
+        let name = entry.file_name();
+        let Some(stamp) = name.to_str().and_then(|n| n.strip_suffix(".meta.json")) else {
+            continue;
+        };
+        let Ok(valid) = chrono::DateTime::parse_from_rfc3339(stamp) else {
+            continue;
+        };
+        let gap = (valid.to_utc() - t).abs();
+        if gap <= max && best.as_ref().is_none_or(|(g, _)| gap < *g) {
+            best = Some((gap, entry.path()));
+        }
+    }
+    best.map(|(_, p)| p)
+}
+
+/// `(row, col)` of the cell nearest `(lat, lon)`, or `None` outside the grid.
+#[must_use]
+pub fn nearest_cell(meta: &GridMeta, lat: f64, lon: f64) -> Option<(usize, usize)> {
+    if meta.height < 2 || meta.width < 2 {
+        return None;
+    }
+    let lon = if lon > 180.0 { lon - 360.0 } else { lon };
+    let index = |f: f64, n: usize| {
+        let i = f.round();
+        (i >= 0.0 && i < n as f64).then_some(i as usize)
+    };
+    let fy = (meta.lat_max - lat) / (meta.lat_max - meta.lat_min) * (meta.height - 1) as f64;
+    let fx = (lon - meta.lon_min) / (meta.lon_max - meta.lon_min) * (meta.width - 1) as f64;
+    Some((index(fy, meta.height)?, index(fx, meta.width)?))
+}
+
 #[cfg(test)]
 mod tests;
