@@ -41,6 +41,8 @@ import {
 import { WindLayer } from "./wind";
 import { SatelliteLayer } from "./satellite";
 import { forecastTimeMs, isNightAt } from "./shared/forecastTime";
+import { wallClock } from "./shared/forecastTime";
+import { niceDayCardHtml } from "./niceDayCard";
 import { satelliteFrames } from "./shared/satellite";
 import { PackedRadarLayer, type PackedFrameRef } from "./packed/layer";
 import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast";
@@ -856,6 +858,7 @@ async function renderForecast(refresh = false) {
       <div class="section-label">HOURLY</div>
       <div class="hourly">${hours.map((i, k) => `<div class="hour ${k === 0 ? "now-hour" : ""}"><b>${fmtHour(fc.hourly.time[i], k)}</b>${iconSvg(conditionOf(fc.hourly.weather_code[i]), 22)}<div class="t">${deg(fc.hourly.temperature_2m[i])}</div></div>`).join("")}</div>
     </div>
+    ${niceDayCardHtml(fc.hourly, start, wallClock(Date.now(), fc.utc_offset_seconds).dateKey)}
     <div class="section">
       <div class="section-label" style="display:flex;justify-content:space-between"><span>RAIN · NEXT 24H</span><span>${rainTotal.toFixed(2)}″</span></div>
       <div class="rainbars">${rain.map((v) => `<i class="${v ? "" : "dry"}" style="height:${v ? Math.max(8, (v / peak) * 100) : 6}%"></i>`).join("")}</div>
