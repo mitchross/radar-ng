@@ -5,6 +5,7 @@
 
 import { getCumulusCondition, type CumulusCondition } from "./shared/conditions";
 import { forecastTimeMs } from "./shared/forecastTime";
+import { precipClassNote } from "./shared/precipType";
 import type { AlertFeature } from "./shared/alertLevels";
 
 export interface Forecast {
@@ -119,6 +120,8 @@ export async function readPoint(
   timestamp: string,
   lat: number,
   lon: number,
+  /** Filled with the inspector note (ice) when the server gives one. */
+  detail?: { note?: string | null },
 ): Promise<number | null> {
   const la = round(lat, 3);
   const lo = round(lon, 3);
@@ -128,9 +131,10 @@ export async function readPoint(
     return body.points.find((p) => Date.parse(p.timestamp) === at)?.dbz ?? null;
   }
   const inspectLayer = layer === "radar" ? source : layer;
-  const body = await json<{ ok: boolean; value: number | null }>(
+  const body = await json<{ ok: boolean; value: number | null; precip_class?: string }>(
     `/api/inspect/${inspectLayer}/${encodeURIComponent(timestamp)}/${la}/${lo}`,
   );
+  if (detail) detail.note = precipClassNote(body);
   return body.ok ? body.value : null;
 }
 

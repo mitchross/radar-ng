@@ -162,11 +162,15 @@ fn h22_extended_tail_ignores_non_extended_runs() {
 fn h23_needed_vars_and_required_layers() {
     let both = state::needed_vars(&["radar-hrrr".into(), "wind".into()]);
     let keys: Vec<&str> = both.iter().map(|v| v.key()).collect();
-    assert_eq!(keys, vec!["refc", "u10", "v10"]);
+    assert_eq!(
+        keys,
+        vec!["cfrzr", "cicep", "crain", "csnow", "refc", "u10", "v10"]
+    );
+    // radar-hrrr always reads the four type flags: they feed the `precip-type` grid (MRMS ice).
     let only_radar = state::needed_vars(&["radar-hrrr".into()]);
     assert_eq!(
         only_radar.iter().map(|v| v.key()).collect::<Vec<_>>(),
-        vec!["refc"]
+        vec!["cfrzr", "cicep", "crain", "csnow", "refc"]
     );
 
     let classic = load_palette("classic").unwrap();

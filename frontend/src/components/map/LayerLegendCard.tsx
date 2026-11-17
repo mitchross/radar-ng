@@ -135,7 +135,7 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
     ],
   },
   "precip-type": {
-    title: "Rain or Snow",
+    title: "Rain, Snow or Ice",
     stops: [
       { label: "Heavy", color: "#ffb04a" },
       { label: "Light", color: "#4fb8ff" },

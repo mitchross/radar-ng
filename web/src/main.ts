@@ -1365,13 +1365,14 @@ map.on("click", async (e) => {
   }
   const { lat, lng } = e.lngLat;
   popup.setLngLat(e.lngLat).setHTML('<div class="readout"><small>Reading…</small></div>').addTo(map);
-  const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng).catch(() => null);
+  const detail: { note?: string | null } = {};
+  const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng, detail).catch(() => null);
   if (click !== clickSeq) return; // a newer click owns the popup now
   track("point_inspected", { layer: state.layer, source: frame.source, has_value: value != null });
   const title = SOURCE_TITLE[frame.source] ?? (LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? "").toUpperCase();
   let text = "No data here";
   if (value != null) {
-    if (state.layer === "radar") text = `${describeDbz(value)} <small>${Math.round(value)} dBZ</small>`;
+    if (state.layer === "radar") text = `${describeDbz(value)} <small>${Math.round(value)} dBZ</small>` + (detail.note ? `<small class="precip-note">${detail.note}</small>` : "");
     else if (state.layer === "air-quality") text = `AQI ${usAqiFromPm25(value)} · ${aqiLabel(usAqiFromPm25(value))} <small>${Math.round(value)} µg/m³</small>`;
     else if (state.layer === "ozone") text = `${Math.round(value)} ppb`;
     else if (["temperature", "feels-like", "dewpoint"].includes(state.layer)) text = `${Math.round(value)}°F`;

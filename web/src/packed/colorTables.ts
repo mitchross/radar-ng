@@ -20,7 +20,7 @@ export function fallbackTable(palette: PaletteId, colorKey: string): ColorTable 
     unit: "dBZ",
     ranges: ranges(p.bands),
     no_data_below: REFLECTIVITY_NO_DATA_BELOW,
-    types: { snow: { ranges: ranges(p.snow) }, mix: { ranges: ranges(p.mix) } },
+    types: { snow: { ranges: ranges(p.snow) }, mix: { ranges: ranges(p.mix) }, ice: { ranges: ranges(p.ice) } },
   };
 }
 

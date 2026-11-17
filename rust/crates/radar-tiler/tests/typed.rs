@@ -1,15 +1,15 @@
-//! Precipitation-type coloring: rasters and packed codes pick the rain, snow or mix ramp per pixel.
+//! Precipitation-type coloring: rasters and packed codes pick the rain, snow, mix or ice ramp per pixel.
 
 use std::collections::BTreeSet;
 
 use radar_tiler::packed::{PACKED_TILE_SIZE, PackOutcome, decode_rgb8, tile_path};
-use radar_tiler::typed::{TYPE_MIX, TYPE_RAIN, TYPE_SNOW};
+use radar_tiler::typed::{TYPE_ICE, TYPE_MIX, TYPE_RAIN, TYPE_SNOW};
 use radar_tiler::{
     FrameKind, FrameOptions, Grid, GridGeo, Overview, PackFrame, Quantizer, TypePlane,
     ValueSampler, decode_indexed, load_palette, pack_frames, render_frame_palettes,
 };
 
-/// 0.01 degree grid over lon -100..-96, lat 38..40 at 30 dBZ: rain west, snow middle, mix east.
+/// 0.01 degree grid over lon -100..-96, lat 38..40 at 30 dBZ: rain west, then snow, mix, and ice east.
 fn grid_and_types() -> (Grid, TypePlane) {
     let lats: Vec<f64> = (0..200).map(|i| 38.0 + 0.01 * f64::from(i)).collect();
     let lons: Vec<f64> = (0..400).map(|i| -100.0 + 0.01 * f64::from(i)).collect();
@@ -17,8 +17,9 @@ fn grid_and_types() -> (Grid, TypePlane) {
     let classes = (0..h * w)
         .map(|i| match i % w {
             c if c < 130 => TYPE_RAIN,
-            c if c < 270 => TYPE_SNOW,
-            _ => TYPE_MIX,
+            c if c < 230 => TYPE_SNOW,
+            c if c < 330 => TYPE_MIX,
+            _ => TYPE_ICE,
         })
         .collect();
     let grid = Grid {
@@ -30,7 +31,7 @@ fn grid_and_types() -> (Grid, TypePlane) {
     (grid, TypePlane::new(classes).unwrap())
 }
 
-fn class_colors() -> [[u8; 4]; 3] {
+fn class_colors() -> [[u8; 4]; 4] {
     let table = load_palette("classic")
         .unwrap()
         .color_table("reflectivity")
@@ -55,6 +56,7 @@ fn class_colors() -> [[u8; 4]; 3] {
         at(&raw["ranges"]),
         at(&raw["types"]["snow"]["ranges"]),
         at(&raw["types"]["mix"]["ranges"]),
+        at(&raw["types"]["ice"]["ranges"]),
     ]
 }
 
@@ -86,7 +88,7 @@ fn rasters_color_each_pixel_with_its_class_ramp() {
     )
     .unwrap();
     let expected = class_colors();
-    // z4 is max-pooled, z7 is bilinear: both routes see all three ramps and nothing else.
+    // z4 is max-pooled, z7 is bilinear: both routes see all four ramps and nothing else.
     for z in ["4", "7"] {
         let mut seen = BTreeSet::new();
         for x in std::fs::read_dir(root.join(z)).unwrap() {
@@ -142,9 +144,9 @@ fn packed_slots_hold_typed_codes() {
                 .filter(|&c| c != 0),
         );
     }
-    // 32.5 dBZ is q = 13 (12 where bilinear rounding lands just below): rain q, snow 32 + q, mix 64 + q.
+    // 32.5 dBZ is q = 13 (12 where bilinear rounding lands just below): rain q, snow 32 + q, mix 64 + q, ice 96 + q.
     let classes: BTreeSet<u8> = codes.iter().map(|c| c / 32).collect();
-    assert_eq!(classes, BTreeSet::from([0, 1, 2]));
+    assert_eq!(classes, BTreeSet::from([0, 1, 2, 3]));
     assert!(codes.iter().all(|c| matches!(c % 32, 12 | 13)), "{codes:?}");
     // An untyped quantizer cannot add slots to a typed bucket.
     let plain = Quantizer::for_color_key("reflectivity").unwrap();
@@ -163,6 +165,8 @@ fn typed_codes_clamp_q_and_keep_zero() {
     assert_eq!(q.code(30.0, TYPE_RAIN), 12);
     assert_eq!(q.code(30.0, TYPE_SNOW), 44);
     assert_eq!(q.code(30.0, TYPE_MIX), 76);
+    assert_eq!(q.code(30.0, TYPE_ICE), 108);
+    assert_eq!(q.code(90.0, TYPE_ICE), 127); // the largest typed code
     assert_eq!(q.code(90.0, TYPE_SNOW), 63); // q 36 clamps to 31
     assert_eq!(q.code(2.0, TYPE_MIX), 0);
     assert_eq!(q.code(f32::NAN, TYPE_SNOW), 0);

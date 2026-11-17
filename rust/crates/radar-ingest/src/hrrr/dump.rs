@@ -137,6 +137,23 @@ impl Resampler {
             .collect()
     }
 
+    /// Nearest-neighbour sample for categorical fields; out-of-range coordinates give NaN.
+    pub fn resample_nearest(&self, src: &[f32]) -> Vec<f32> {
+        debug_assert_eq!(src.len(), self.src_h * self.src_w);
+        let (h, w) = (self.src_h as f64, self.src_w as f64);
+        self.rows
+            .iter()
+            .zip(&self.cols)
+            .map(|(&r, &c)| {
+                let (r, c) = (r.round(), c.round());
+                if !(r >= 0.0 && c >= 0.0 && r < h && c < w) {
+                    return f32::NAN;
+                }
+                src[r as usize * self.src_w + c as usize]
+            })
+            .collect()
+    }
+
     /// Rotate resampled `(u, v)` by the grid-x angle (earth-relative), element-wise.
     pub fn rotate(&self, u: &[f32], v: &[f32]) -> (Vec<f32>, Vec<f32>) {
         let mut ou = Vec::with_capacity(u.len());

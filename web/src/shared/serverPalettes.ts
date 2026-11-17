@@ -17,7 +17,7 @@ export interface ColorTable {
   unit?: string;
   ranges: ColorRange[];
   no_data_below?: number;
-  /** Reflectivity only: ramps of the other precipitation classes (snow, mix); `ranges` is rain. */
+  /** Reflectivity only: ramps of the other precipitation classes (snow, mix, ice); `ranges` is rain. */
   types?: Record<string, { ranges: ColorRange[] }>;
 }
 
