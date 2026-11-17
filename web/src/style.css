@@ -346,3 +346,10 @@ body.replay #panel, body.replay #locate, body.replay #live, body.replay #zoom, b
 .countdown-row span { font-size: 14px; }
 .countdown-row small { display: block; font-size: 12px; color: var(--ink-2); }
 .countdown-row b { font-family: var(--display); font-size: 16px; font-weight: 400; white-space: nowrap; }
+
+/* White Christmas card (Nov 15 to Dec 25) */
+.wxmas-card { display: flex; gap: 14px; align-items: flex-start; padding: 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid var(--border); }
+.wxmas-pct { font-family: var(--display); font-size: 30px; font-weight: 400; line-height: 1; min-width: 64px; }
+.wxmas-card span { font-size: 14px; }
+.wxmas-card small { display: block; margin-top: 4px; font-size: 12px; color: var(--ink-2); }
+.wxmas-link { margin-top: 8px; padding: 6px 0; min-height: 32px; background: none; border: 0; color: var(--accent, #3f6fe0); font: inherit; font-size: 13px; cursor: pointer; }

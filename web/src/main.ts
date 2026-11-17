@@ -43,6 +43,9 @@ import { SatelliteLayer } from "./satellite";
 import { forecastTimeMs, isNightAt } from "./shared/forecastTime";
 import { wallClock } from "./shared/forecastTime";
 import { niceDayCardHtml } from "./niceDayCard";
+import { whiteChristmasCardHtml } from "./whiteChristmasCard";
+import type { FeatureCollection } from "geojson";
+import { inWhiteChristmasSeason, parseNearestStation, WHITE_CHRISTMAS_STATIONS_PATH, whiteChristmasPath, type WhiteChristmasStation } from "./shared/whiteChristmas";
 import { satelliteFrames } from "./shared/satellite";
 import { PackedRadarLayer, type PackedFrameRef } from "./packed/layer";
 import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast";
@@ -833,6 +836,7 @@ async function renderForecast(refresh = false) {
   const peak = Math.max(0.05, ...rain);
   const days = fc.daily.time.slice(0, 7);
   const countdownHtml = countdownFor(fc, lat, lon);
+  const wxmasHtml = whiteChristmasFor(fc, lat, lon);
   const lows = fc.daily.temperature_2m_min.slice(0, 7).filter((v): v is number => v != null);
   const highs = fc.daily.temperature_2m_max.slice(0, 7).filter((v): v is number => v != null);
   const wLo = Math.min(...lows);
@@ -880,6 +884,7 @@ async function renderForecast(refresh = false) {
       }).join("")}
     </div>
     <div id="countdown" class="section countdown"${countdownHtml ? "" : " hidden"}>${countdownHtml}</div>
+    <div id="white-christmas" class="section white-christmas"${wxmasHtml ? "" : " hidden"}>${wxmasHtml}</div>
     <div class="section">
       <div class="section-label">CONDITIONS</div>
       <div class="tiles">
@@ -904,6 +909,51 @@ async function renderForecast(refresh = false) {
   } else void renderBriefing();
   void renderNextHour();
   if (!countdownHtml) void renderCountdown(fc, lat, lon);
+  void renderWhiteChristmas(fc, lat, lon);
+}
+
+/** Nearest White Christmas station per rounded point; the table never changes, so it is kept for the session. */
+const wxmasNearest = new Map<string, WhiteChristmasStation | null>();
+const whiteChristmasFor = (fc: Forecast, lat: number, lon: number) =>
+  whiteChristmasCardHtml(wallClock(Date.now(), fc.utc_offset_seconds).dateKey, wxmasNearest.get(whiteChristmasPath(lat, lon)) ?? null, overlays.whiteChristmasOn);
+
+async function renderWhiteChristmas(fc: Forecast, lat: number, lon: number) {
+  const path = whiteChristmasPath(lat, lon);
+  if (!inWhiteChristmasSeason(wallClock(Date.now(), fc.utc_offset_seconds).dateKey) || wxmasNearest.has(path)) return;
+  try {
+    const res = await fetch(path);
+    if (!res.ok) return;
+    wxmasNearest.set(path, parseNearestStation(await res.json()));
+  } catch {
+    return;
+  }
+  const el = document.getElementById("white-christmas");
+  if (!el || state.forecast !== fc) return;
+  el.innerHTML = whiteChristmasFor(fc, lat, lon);
+  el.hidden = !el.innerHTML;
+}
+
+/** The card's link: fetch every station once and toggle the dots. No interpolation, just the stations. */
+let wxmasStations: FeatureCollection | null = null;
+async function toggleWhiteChristmasDots() {
+  if (overlays.whiteChristmasOn) overlays.setWhiteChristmas(null);
+  else {
+    try {
+      if (!wxmasStations) {
+        const res = await fetch(WHITE_CHRISTMAS_STATIONS_PATH);
+        if (!res.ok) throw new Error(String(res.status));
+        wxmasStations = (await res.json()) as FeatureCollection;
+      }
+    } catch {
+      toast("Can't load the White Christmas stations");
+      return;
+    }
+    overlays.setWhiteChristmas(wxmasStations);
+    map.easeTo({ center: [state.place.longitude, state.place.latitude], zoom: Math.min(Math.max(map.getZoom(), 5), 7), duration: 700 });
+  }
+  const fc = state.forecast;
+  const el = document.getElementById("white-christmas");
+  if (fc && el) el.innerHTML = whiteChristmasFor(fc, state.place.latitude, state.place.longitude);
 }
 
 async function renderCountdown(fc: Forecast, lat: number, lon: number) {
@@ -1127,6 +1177,7 @@ $("panel-body").addEventListener("click", (e) => {
   const t = e.target as HTMLElement;
   if (t.closest("#forecast-retry")) void renderForecast();
   else if (t.closest("#notify-me")) void enableRainAlerts();
+  else if (t.closest("#wxmas-map")) void toggleWhiteChristmasDots();
 });
 
 /** The sheet toggle and the next-hour button share one path, so the hint and card stay in step. */
