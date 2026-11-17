@@ -380,21 +380,21 @@ same files.
 
 | # | Slice | Server | Web + app (same PR) | Needs |
 |---|---|---|---|---|
-| 1 | `winter-ice-class` | HRRR type grid; ice class in typed radar; palettes; packed class 3 | Four-ramp legend, inspector text, decoder tests | none |
-| 2 | `winter-future` | Types on nowcast, HRRR and GFS frames | Future frames coloured; "Future radar" vs "Precipitation forecast" words | 1 |
-| 3 | `snow-forecast` | `IngestWinterWorkflow`; NBM `snowfall-forecast` and `ice-forecast` | Winter picker group, legends, inspector | none |
-| 4 | `snow-ground` | SNODAS `snow-depth`; NOHRSC `snowfall-24h` | Two Winter rows | 3 |
-| 5 | `snow-chance` | WPC PPP `snow-chance-1/4/8` | One Winter row with a threshold chip | 4 |
-| 6 | `snow-spot` | `GET /api/snow/{lat}/{lon}` | Snow at your spot card | 5 |
-| 7 | `snow-notice` | Precip class in the point nowcast | "Snow starts in ~N min" on both, local notification words | 2 |
-| 8 | `nice-day` | none | Shared scorer, Nice Day and Bonfire card | none |
-| 9 | `countdowns` | none | `astro.ts` wrapper, holiday countdown with sunset | 8 |
-| 10 | `white-christmas` | Station JSON and `GET /api/climate/white-christmas` | Seasonal card, station dots | 9 |
-| 11 | `sky-tonight` | `ingest-iss`, `GET /api/sky/tonight`, hourly cloud cover in the point forecast | Look up tonight card, pass notice | 10 |
-| 12 | `nice-day-layer` | `nice-day` HRRR layer from the shared vectors | Layer row, legend | 7, 8 |
-| 13 | `temp-normal` | Normals bootstrap, `temp-anomaly`, `GET /api/normals` | Layer row and "above normal" line | 6 |
-| 14 | `star-map` | `stargazing` layer: cloud, darkness, moon | Layer row, legend, best-window line on the card | 11, 12 |
-| 15 | `star-seeing` | ECCC seeing and transparency, folded into the score | Legend detail and credit | 14 |
+| 1 | [`winter-ice-class`](https://github.com/mitchross/radar-ng/issues/316) | HRRR type grid; ice class in typed radar; palettes; packed class 3 | Four-ramp legend, inspector text, decoder tests | none |
+| 2 | [`winter-future`](https://github.com/mitchross/radar-ng/issues/317) | Types on nowcast, HRRR and GFS frames | Future frames coloured; "Future radar" vs "Precipitation forecast" words | 1 |
+| 3 | [`snow-forecast`](https://github.com/mitchross/radar-ng/issues/318) | `IngestWinterWorkflow`; NBM `snowfall-forecast` and `ice-forecast` | Winter picker group, legends, inspector | none |
+| 4 | [`snow-ground`](https://github.com/mitchross/radar-ng/issues/319) | SNODAS `snow-depth`; NOHRSC `snowfall-24h` | Two Winter rows | 3 |
+| 5 | [`snow-chance`](https://github.com/mitchross/radar-ng/issues/320) | WPC PPP `snow-chance-1/4/8` | One Winter row with a threshold chip | 4 |
+| 6 | [`snow-spot`](https://github.com/mitchross/radar-ng/issues/321) | `GET /api/snow/{lat}/{lon}` | Snow at your spot card | 5 |
+| 7 | [`snow-notice`](https://github.com/mitchross/radar-ng/issues/322) | Precip class in the point nowcast | "Snow starts in ~N min" on both, local notification words | 2 |
+| 8 | [`nice-day`](https://github.com/mitchross/radar-ng/issues/323) | none | Shared scorer, Nice Day and Bonfire card | none |
+| 9 | [`countdowns`](https://github.com/mitchross/radar-ng/issues/324) | none | `astro.ts` wrapper, holiday countdown with sunset | 8 |
+| 10 | [`white-christmas`](https://github.com/mitchross/radar-ng/issues/325) | Station JSON and `GET /api/climate/white-christmas` | Seasonal card, station dots | 9 |
+| 11 | [`sky-tonight`](https://github.com/mitchross/radar-ng/issues/326) | `ingest-iss`, `GET /api/sky/tonight`, hourly cloud cover in the point forecast | Look up tonight card, pass notice | 10 |
+| 12 | [`nice-day-layer`](https://github.com/mitchross/radar-ng/issues/327) | `nice-day` HRRR layer from the shared vectors | Layer row, legend | 7, 8 |
+| 13 | [`temp-normal`](https://github.com/mitchross/radar-ng/issues/328) | Normals bootstrap, `temp-anomaly`, `GET /api/normals` | Layer row and "above normal" line | 6 |
+| 14 | [`star-map`](https://github.com/mitchross/radar-ng/issues/329) | `stargazing` layer: cloud, darkness, moon | Layer row, legend, best-window line on the card | 11, 12 |
+| 15 | [`star-seeing`](https://github.com/mitchross/radar-ng/issues/330) | ECCC seeing and transparency, folded into the score | Legend detail and credit | 14 |
 | 16 | integrate | All gates on the combined branch, then the master PR | Feature table in the PR | all |
 
 Lanes: radar and HRRR render (1, 2, 7, 12, 14, 15), winter ingest (3, 4, 5, 6, 13), client cards
