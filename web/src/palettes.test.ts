@@ -11,12 +11,14 @@ describe("palettes", () => {
       expect(PALETTES[id].bands).toEqual(bands(table.ranges));
       expect(PALETTES[id].snow).toEqual(bands(table.types.snow.ranges));
       expect(PALETTES[id].mix).toEqual(bands(table.types.mix.ranges));
+      expect(PALETTES[id].ice).toEqual(bands(table.types.ice.ranges));
     }
   });
 
-  it("builds rain, snow and mix legend ramps", () => {
+  it("builds rain, snow, mix and ice legend ramps", () => {
     const ramps = typeRamps("classic");
-    expect(ramps.map((r) => r.label)).toEqual(["Rain", "Snow", "Mix"]);
+    expect(ramps.map((r) => r.label)).toEqual(["Rain", "Snow", "Mix", "Ice"]);
+    expect(ramps[3].gradient).toContain(css(PALETTES.classic.ice[0].rgba));
     expect(ramps[1].gradient).toContain(css(PALETTES.classic.snow[0].rgba));
     expect(ramps[2].gradient).toContain(css(PALETTES.classic.mix[6].rgba));
   });

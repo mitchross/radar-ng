@@ -30,7 +30,7 @@ export interface PackedMeta {
   offset: number;
   url_template: string;
   buckets: PackedBucket[];
-  /** v2 only: code = class * stride + q, classes such as ["rain", "snow", "mix"]. */
+  /** v2 only: code = class * stride + q, classes such as ["rain", "snow", "mix", "ice"]. */
   types?: PackedTypes;
 }
 

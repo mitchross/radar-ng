@@ -124,7 +124,14 @@ pub fn needed_vars(enabled: &[String]) -> Vec<HrrrVar> {
 /// The variables a layer reads (spec §12.2 `LAYER_VARS`).
 pub fn layer_vars(layer: &str) -> Vec<HrrrVar> {
     match layer {
-        "radar-hrrr" => vec![HrrrVar::Refc],
+        // The type flags feed the `precip-type` grid (MRMS ice), whatever layers are enabled.
+        "radar-hrrr" => vec![
+            HrrrVar::Refc,
+            HrrrVar::Crain,
+            HrrrVar::Csnow,
+            HrrrVar::Cfrzr,
+            HrrrVar::Cicep,
+        ],
         "temperature" => vec![HrrrVar::T2m],
         "feels-like" => vec![HrrrVar::T2m, HrrrVar::Rh2m, HrrrVar::U10, HrrrVar::V10],
         "dewpoint" => vec![HrrrVar::Dpt2m],

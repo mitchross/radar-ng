@@ -8,6 +8,7 @@ import { recordSpanError, trace } from "./telemetry";
 import { fetchRadarNowcast, fetchWithTimeout } from "./api";
 import { aqiCategory, usAqiFromPm25 } from "./airQuality";
 import { formatSevereReading } from "../../../web/src/shared/severe";
+import { precipClassNote } from "../../../web/src/shared/precipType";
 
 export interface InspectReading {
   ok: boolean;
@@ -15,6 +16,8 @@ export interface InspectReading {
   unit: string;
   source: "grid" | "unavailable";
   reason?: string;
+  /** Observed radar: "Ice: freezing rain or sleet, …" where the server draws the ice class. */
+  note?: string | null;
 }
 
 interface InspectOptions {
@@ -42,7 +45,7 @@ export async function inspectPoint(
           const json = await resp.json();
           if (json.ok && json.value != null) {
             span.setAttribute("inspector.value", json.value);
-            return { ok: true, value: json.value, unit: json.unit ?? "", source: "grid" };
+            return { ok: true, value: json.value, unit: json.unit ?? "", source: "grid", note: precipClassNote(json) };
           }
           return {
             ok: false,

@@ -41,7 +41,7 @@ const meta = (over: Partial<PackedMeta> = {}): PackedMeta => ({
 
 describe("typed codes (v2)", () => {
   const classic = palette("classic").reflectivity;
-  const types = { stride: 32, classes: ["rain", "snow", "mix"] };
+  const types = { stride: 32, classes: ["rain", "snow", "mix", "ice"] };
   const lut = buildLut(classic, 2.5, 0, types);
 
   it("colors class * 32 + q with that class's ramp", () => {
@@ -50,7 +50,8 @@ describe("typed codes (v2)", () => {
     expect(rgba(lut, 64 + 12)).toEqual(classic.types!.mix.ranges[5].rgba); // mix 30-35
     expect(rgba(lut, 32 + 2)).toEqual(classic.types!.snow.ranges[0].rgba); // snow 5 dBZ
     expect(rgba(lut, 32)).toEqual([0, 0, 0, 0]); // q = 0 in any class
-    expect(rgba(lut, 96 + 12)).toEqual([0, 0, 0, 0]); // no fourth class
+    expect(rgba(lut, 96 + 12)).toEqual(classic.types!.ice.ranges[5].rgba); // ice 30-35
+    expect(rgba(lut, 128 + 12)).toEqual([0, 0, 0, 0]); // no fifth class
   });
 
   it("matches the untyped table for rain codes", () => {
@@ -72,6 +73,7 @@ describe("typed codes (v2)", () => {
 
   it("gives the reflectivity fallback table snow and mix ramps", () => {
     expect(fallbackTable("vivid", "reflectivity")?.types?.snow.ranges).toEqual(palette("vivid").reflectivity.types!.snow.ranges);
+    expect(fallbackTable("vivid", "reflectivity")?.types?.ice.ranges).toEqual(palette("vivid").reflectivity.types!.ice.ranges);
   });
 });
 
