@@ -43,6 +43,7 @@ use crate::activities::mrms::MrmsActivities;
 use crate::activities::nowcast::NowcastActivities;
 use crate::activities::open_meteo::OpenMeteoActivities;
 use crate::activities::smoke::SmokeActivities;
+use crate::activities::winter::WinterActivities;
 use crate::config::WorkerConfig;
 use crate::health::health_file_loop;
 use crate::seed::{
@@ -64,6 +65,7 @@ use crate::workflows::push_tokens::{DeletePushTokenWorkflow, RegisterPushTokenWo
 use crate::workflows::tile_cleanup::TileCleanupWorkflow;
 use crate::workflows::tropical::IngestTropicalWorkflow;
 use crate::workflows::watch_storm::WatchStormWorkflow;
+use crate::workflows::winter::IngestWinterWorkflow;
 
 /// How long the worker runs alone before background work starts. The SDK exposes no running-state check, so
 /// this delay replaces a running-state poll (spec 3.4). A worker that fails within this window starts
@@ -104,6 +106,7 @@ pub fn registration(role: WorkerRole) -> Registration {
         WorkerRole::Hrrr => vec![
             wire::WORKFLOW_INGEST_HRRR,
             wire::WORKFLOW_INGEST_GLOBAL_MODEL,
+            wire::WORKFLOW_INGEST_WINTER,
         ],
         WorkerRole::Aux => vec![
             wire::WORKFLOW_INGEST_LIGHTNING,
@@ -146,6 +149,11 @@ pub fn registration(role: WorkerRole) -> Registration {
             wire::ACTIVITY_GLOBAL_MODEL_PUBLISH_RUN,
             wire::ACTIVITY_GLOBAL_MODEL_MARK_PROCESSED,
             wire::ACTIVITY_GLOBAL_MODEL_CLEANUP,
+            wire::ACTIVITY_WINTER_FIND_LATEST_RUN,
+            wire::ACTIVITY_WINTER_PROCESS_HOUR,
+            wire::ACTIVITY_WINTER_PUBLISH_RUN,
+            wire::ACTIVITY_WINTER_MARK_PROCESSED,
+            wire::ACTIVITY_WINTER_CLEANUP,
         ],
         WorkerRole::Aux => vec![
             wire::ACTIVITY_LIGHTNING_CONSUME_STREAM,
@@ -348,6 +356,7 @@ pub fn register_workflows<T: WorkflowTarget>(
             wire::WORKFLOW_DELETE_PUSH_TOKEN => target.add::<DeletePushTokenWorkflow>()?,
             wire::WORKFLOW_DEPLOYMENT_SMOKE => target.add::<RadarDeploymentSmokeWorkflow>()?,
             wire::WORKFLOW_INGEST_GLOBAL_MODEL => target.add::<IngestGlobalModelWorkflow>()?,
+            wire::WORKFLOW_INGEST_WINTER => target.add::<IngestWinterWorkflow>()?,
             wire::WORKFLOW_LEVEL2_POOL => target.add::<Level2PoolWorkflow>()?,
             other => anyhow::bail!("no workflow implementation for {other}"),
         }
@@ -367,6 +376,7 @@ fn add_activities(
         }
         if needs(role, WorkerRole::Hrrr) {
             builder = builder.register_activities(GlobalModelActivities::new(ctx.clone()));
+            builder = builder.register_activities(WinterActivities::new(ctx.clone()));
             builder = builder.register_activities(HrrrActivities::new(ctx));
         }
     }
@@ -656,13 +666,13 @@ mod tests {
     fn legacy_and_all_register_the_full_registry_minus_open_meteo() {
         for role in [WorkerRole::Legacy, WorkerRole::All] {
             let reg = registration(role);
-            assert_eq!(reg.workflows.len(), 14, "{role:?} workflow count");
+            assert_eq!(reg.workflows.len(), 15, "{role:?} workflow count");
             assert_eq!(
                 set(&reg.workflows),
                 set(&wire::ALL_WORKFLOW_TYPES),
                 "{role:?} workflows"
             );
-            assert_eq!(reg.activities.len(), 34, "{role:?} activity count");
+            assert_eq!(reg.activities.len(), 39, "{role:?} activity count");
             assert_eq!(
                 set(&reg.activities),
                 all_but_open_meteo(),
@@ -788,10 +798,11 @@ mod tests {
             set(&[
                 wire::WORKFLOW_INGEST_HRRR,
                 wire::WORKFLOW_INGEST_GLOBAL_MODEL,
+                wire::WORKFLOW_INGEST_WINTER,
                 smoke_wf
             ])
         );
-        assert_eq!(hrrr.activities.len(), 12);
+        assert_eq!(hrrr.activities.len(), 17);
 
         let aux = registration(WorkerRole::Aux);
         assert_eq!(

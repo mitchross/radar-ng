@@ -13,3 +13,4 @@ pub mod mrms;
 pub mod nowcast;
 pub mod open_meteo;
 pub mod smoke;
+pub mod winter;

@@ -44,6 +44,8 @@ back to PNG rasters otherwise.
 | `pm25` (air-quality) | 1 | 0.5 | 0 µg/m³ | 1.5 to 255.5 µg/m³ | 9.1, 20, 45, 90, 175, 500, 20000 |
 | `ozone` (ozone) | 1 | 0 | 0 ppb | 1 to 255 ppb | 600 |
 | `uv_index` (uv; not packed yet, `radar-gfs` and `uv` are raster only) | 0.5 | 0.5 | 0.5 | 1 to 128 | none |
+| `snowfall` (snowfall-forecast; not packed yet, raster only) | 0.25 | 0 | 0.1 in | 0.25 to 63.75 in | 100 |
+| `ice_accum` (ice-forecast; not packed yet, raster only) | 0.01 | 0 | 0.01 in | 0.01 to 2.55 in | 10 |
 
 NaN or a value below `floor` stores 0. Otherwise `q = clamp(floor((value - offset) / scale), 1, 255)`.
 The client decodes `value = offset + q * scale`, the bottom of the code's bin. A floor below

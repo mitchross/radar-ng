@@ -14,6 +14,7 @@ import { precipTypeRamps, serverLegend } from "../../lib/serverPalettes";
 import { useManifestQuery } from "../../hooks/useManifest";
 import { useReplayManifestQuery } from "../../hooks/useReplay";
 import { SEVERE_CREDIT, isSevereLayer } from "../../../../web/src/shared/severe";
+import { winterLayer } from "../../../../web/src/shared/winterLayers";
 
 // Plain-English tag at the top of the legend telling the user whether
 // they're looking at "Now" (live radar), "Soon" (next hour, pysteps
@@ -36,6 +37,8 @@ const LAYER_SOURCE: Record<LayerType, SourceTag> = {
   "hail-size": "Now",
   "rotation-track": "Now",
   "echo-top": "Now",
+  "snowfall-forecast": "Later",
+  "ice-forecast": "Later",
   cloud: "Later",
   uv: "Later",
   "air-quality": "Now",
@@ -176,6 +179,24 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
       { label: "0.005", color: "#ffc846" },
     ],
   },
+  "snowfall-forecast": {
+    title: "Snow Total",
+    stops: [
+      { label: "24+", color: "#e6466e" },
+      { label: "12", color: "#be3caa" },
+      { label: "6", color: "#08269a" },
+      { label: "1", color: "#6baed6" },
+    ],
+  },
+  "ice-forecast": {
+    title: "Ice Total",
+    stops: [
+      { label: "1+", color: "#3c0a50" },
+      { label: "0.5", color: "#962882" },
+      { label: "0.25", color: "#d23ca0" },
+      { label: "0.01", color: "#ffbedc" },
+    ],
+  },
   "echo-top": {
     title: "Echo Tops",
     stops: [
@@ -295,6 +316,11 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
         {isSevereLayer(activeLayer) && (
           <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
             {SEVERE_CREDIT}
+          </Text>
+        )}
+        {winterLayer(activeLayer) && (
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
+            {winterLayer(activeLayer)?.credit}
           </Text>
         )}
         {typeRamps && (

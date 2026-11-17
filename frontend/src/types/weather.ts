@@ -207,7 +207,9 @@ export type LayerType =
   | "ozone"
   | "hail-size"
   | "rotation-track"
-  | "echo-top";
+  | "echo-top"
+  | "snowfall-forecast"
+  | "ice-forecast";
 
 export interface LayerConfig {
   id: LayerType;

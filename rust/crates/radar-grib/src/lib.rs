@@ -9,6 +9,7 @@
 //! - [`hrrr`]: HRRR file keys, latest-run finder and subset fetch.
 //! - [`gfs`]: GFS 0.25 degree keys, latest-run finder and REFC fetch (long-range radar).
 //! - [`uvi`]: NOAA/CPC UV Index forecast keys, latest-run finder and fetch.
+//! - [`nbm`]: National Blend of Models keys, latest-run finder and 6 hour snow/ice record fetch.
 //! - [`naqfc`]: NAQFC (AQM) file URLs, latest-run finder and chunk download.
 //! - [`http`]: the shared reqwest client settings.
 //!
@@ -23,6 +24,7 @@ pub mod http;
 pub mod idx;
 pub mod mrms;
 pub mod naqfc;
+pub mod nbm;
 mod packing;
 pub mod s3;
 pub mod units;
