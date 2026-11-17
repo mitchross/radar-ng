@@ -4,27 +4,34 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use radar_alerts::lightning::{LightningConfig, LightningError, lightning_consume_stream};
+use radar_aux::sky::{SkyConfig, SkyError, sky_fetch_and_publish};
 use radar_aux::tile_cleanup::{TileCleanupConfig, tile_cleanup_sweep};
 use radar_aux::tropical::{TropicalConfig, tropical_fetch_and_publish};
 use radar_types::payloads::cleanup::TileCleanupResult;
 use radar_types::payloads::lightning::LightningRunResult;
+use radar_types::payloads::sky::SkyResult;
 use radar_types::payloads::tropical::TropicalResult;
 use temporalio_macros::activities;
 use temporalio_sdk::activities::{ActivityContext, ActivityError};
 use tokio_util::sync::CancellationToken;
 
-use crate::support::{json_heartbeat, with_cancel};
+use crate::support::{json_heartbeat, non_retryable, with_cancel};
 
-/// Activity implementer for lightning, tropical and tile-cleanup (`aux` role, and `legacy`/`all`).
+/// Activity implementer for lightning, tropical, sky and tile-cleanup (`aux` role, and `legacy`/`all`).
 pub struct AuxActivities {
     http: reqwest::Client,
     tropical: TropicalConfig,
+    sky: SkyConfig,
 }
 
 impl AuxActivities {
-    /// Build from the shared HTTP client and the tropical configuration.
-    pub fn new(http: reqwest::Client, tropical: TropicalConfig) -> Self {
-        Self { http, tropical }
+    /// Build from the shared HTTP client and the tropical and sky configuration.
+    pub fn new(http: reqwest::Client, tropical: TropicalConfig, sky: SkyConfig) -> Self {
+        Self {
+            http,
+            tropical,
+            sky,
+        }
     }
 }
 
@@ -82,6 +89,22 @@ impl AuxActivities {
                 .await
                 .map_err(|err| anyhow::anyhow!("tropical task failed: {err}"))?;
             joined.map_err(anyhow::Error::from)
+        };
+        with_cancel(&ctx, work).await
+    }
+
+    /// `sky_fetch_and_publish`: one sky product, at most one upstream request. Upstream failures are
+    /// reported in the result; local failures are non-retryable, so nothing re-requests in this slot.
+    #[activity(name = "sky_fetch_and_publish")]
+    pub async fn sky_fetch_and_publish(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        product: String,
+    ) -> Result<SkyResult, ActivityError> {
+        let work = async move {
+            sky_fetch_and_publish(&self.sky, &product)
+                .await
+                .map_err(|err: SkyError| non_retryable(err.to_string()))
         };
         with_cancel(&ctx, work).await
     }

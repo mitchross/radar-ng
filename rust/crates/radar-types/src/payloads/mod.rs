@@ -25,6 +25,7 @@ pub mod mrms;
 pub mod nowcast;
 pub mod open_meteo;
 pub mod push;
+pub mod sky;
 pub mod smoke;
 pub mod tropical;
 pub mod watch_storm;

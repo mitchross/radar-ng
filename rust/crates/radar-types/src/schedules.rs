@@ -53,6 +53,8 @@ pub const SCHEDULE_OPEN_METEO_SYNC_HRRR: &str = "open-meteo-sync-hrrr";
 pub const SCHEDULE_INGEST_GFS_RADAR: &str = "ingest-gfs-radar";
 /// Schedule ID of the UV Index schedule (`uv`).
 pub const SCHEDULE_INGEST_UV: &str = "ingest-uv";
+/// Schedule ID of the ISS elements schedule (`IngestSkyWorkflow`, product `iss`).
+pub const SCHEDULE_INGEST_ISS: &str = "ingest-iss";
 
 /// `GFS013_VARIABLES`, exact comma-joined list.
 pub const GFS013_VARIABLES: &str = "temperature_2m,relative_humidity_2m,precipitation,showers,snowfall_water_equivalent,frozen_precipitation_percent,cloud_cover,wind_u_component_10m,wind_v_component_10m,shortwave_radiation,uv_index";
@@ -341,6 +343,15 @@ pub fn all_schedules() -> Vec<ScheduleDef> {
             "mrms_prefix": "CONUS/EchoTop_18_00.50",
             "layer_name": "echo-top",
         })]),
+        // CelesTrak asks for few requests: one per 6 h slot, never retried.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_ISS,
+            wire::WORKFLOW_INGEST_SKY,
+            6 * 60 * 60,
+            5 * 60,
+            AUX_TASK_QUEUE,
+        )
+        .with_args(vec![json!("iss")]),
     ]
 }
 

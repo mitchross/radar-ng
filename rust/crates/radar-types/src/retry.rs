@@ -71,6 +71,8 @@ pub const AQM_CHUNK_RETRY: RetryPolicySpec = RetryPolicySpec::new(5, 2.0, 60, 2)
 pub const LIGHTNING_RETRY: RetryPolicySpec = RetryPolicySpec::new(5, 2.0, 120, 3);
 /// Tropical fetch: 2 s, 2.0, 100 s, 5 attempts.
 pub const TROPICAL_RETRY: RetryPolicySpec = RetryPolicySpec::new(2, 2.0, 100, 5);
+/// Sky fetch: a single attempt. CelesTrak asks for no retries; the next 6 h slot is the retry.
+pub const SKY_RETRY: RetryPolicySpec = RetryPolicySpec::new(1, 2.0, 100, 1);
 /// Tile cleanup sweep: 2 s, 2.0, 60 s, 3 attempts.
 pub const TILE_CLEANUP_RETRY: RetryPolicySpec = RetryPolicySpec::new(2, 2.0, 60, 3);
 /// Open-Meteo sync: 10 s, 2.0, 5 min, 3 attempts.
@@ -217,6 +219,13 @@ pub const TROPICAL_FETCH_AND_PUBLISH: ActivityCallSpec = ActivityCallSpec {
     schedule_to_close_s: None,
     heartbeat_s: None,
     retry: TROPICAL_RETRY,
+};
+/// `sky_fetch_and_publish`. One attempt, no heartbeat.
+pub const SKY_FETCH_AND_PUBLISH: ActivityCallSpec = ActivityCallSpec {
+    start_to_close_s: 60,
+    schedule_to_close_s: None,
+    heartbeat_s: None,
+    retry: SKY_RETRY,
 };
 /// `nowcast_run`. One attempt only.
 pub const NOWCAST_RUN: ActivityCallSpec = ActivityCallSpec {
