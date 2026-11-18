@@ -16,9 +16,10 @@ const serverErrors = new Rate("server_errors");
 const rateLimited = new Rate("rate_limited");
 const playbackFrame = new Trend("playback_frame_ms", true);
 
-// 404 is a normal answer here (dry tiles are not written; no nowcast for a
-// point), so it must not count toward http_req_failed. 5xx and 429 still do.
-http.setResponseCallback(http.expectedStatuses(200, 404));
+// 204 and 404 are normal answers here (a dry tile in a complete pyramid is an
+// empty 204; no nowcast for a point is 404), so they must not count toward
+// http_req_failed. 5xx and 429 still do.
+http.setResponseCallback(http.expectedStatuses(200, 204, 404));
 
 // PROFILE=stress climbs in four 3-minute steps to VUS per pod (keep VUS <= 20
 // so no pod reaches the API rate limit) to find where latency bends; scale
@@ -86,9 +87,9 @@ function tiles(path, lat, lon, z, span, tag) {
       reqs.push(["GET", `${BASE_URL}/tiles/radar/classic/${encodePath(path)}/${z}/${cx + dx}/${cy + dy}.png`, null, { tags: { name: "tile", client: tag } }]);
     }
   }
-  // Transparent (dry) tiles are not written, so 404 is an expected result.
+  // Transparent (dry) tiles are not written: 204 inside a complete pyramid, 404 otherwise.
   const started = Date.now();
-  for (const r of http.batch(reqs)) record(r, [200, 404]);
+  for (const r of http.batch(reqs)) record(r, [200, 204, 404]);
   return Date.now() - started;
 }
 
