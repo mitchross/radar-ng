@@ -33,6 +33,7 @@ import type { WeatherClearTheme } from "../theme/weatherClearTheme";
 import WeatherIcon from "../components/weather/WeatherIcon";
 import { RainAlertButton } from "../components/home/RainAlertButton";
 import { interpolateRadarNowcast } from "../lib/radarNowcast";
+import { winterStart, winterStartLead } from "../lib/rainAlerts";
 import { describeNowcastSkill } from "../lib/nowcastSkill";
 import type { RadarNowcastPoint } from "../types/weather";
 import { readingColumnStyle } from "../lib/tabletLayout";
@@ -144,6 +145,8 @@ export default function NowcastScreen() {
     : buildMinutes(forecast.minutely_15, nowMs);
   const minutes = minuteSeries ?? [];
   const verdict = getNowcastVerdict(minuteSeries?.map((minute) => minute.intensity));
+  // Snow, mix or ice starting this hour, from the server's class; null for rain and old servers.
+  const winter = winterStart(pointNowcast, nowMs);
   const rainStart =
     verdict.kind === "starting"
       ? verdict.startMinute
@@ -211,7 +214,14 @@ export default function NowcastScreen() {
 
           {/* Hero verdict */}
           <View style={styles.hero}>
-            {verdict.kind === "unavailable" ? (
+            {winter ? (
+              <Text style={styles.heroDry} accessibilityLabel={winter.words}>
+                {winterStartLead(winter.precipClass)}{"\n"}
+                <Text style={{ color: theme.colors.rain }}>
+                  {winter.startInMin} {winter.startInMin === 1 ? "minute" : "minutes"}
+                </Text>
+              </Text>
+            ) : verdict.kind === "unavailable" ? (
               <Text style={styles.heroDry}>
                 Forecast{"\n"}
                 <Text style={styles.heroDrySub}>unavailable</Text>
@@ -238,7 +248,7 @@ export default function NowcastScreen() {
                 </Text>
               </Text>
             )}
-            {rainStart >= 0 && rainEndMin > 0 ? (
+            {!winter && rainStart >= 0 && rainEndMin > 0 ? (
               <Text style={styles.heroSub}>
                 Expected to last ~{rainEndMin - rainStart} min
                 <Text style={styles.heroDim}>  {"\u00B7"}  peaks at </Text>
@@ -254,7 +264,7 @@ export default function NowcastScreen() {
                 {skill.beatsPersistence === false ? "  \u00B7  no better than a still radar" : ""}
               </Text>
             ) : null}
-            {rainStart >= 0 ? (
+            {winter || rainStart >= 0 ? (
               <View style={styles.heroActions}>
                 <RainAlertButton />
               </View>
