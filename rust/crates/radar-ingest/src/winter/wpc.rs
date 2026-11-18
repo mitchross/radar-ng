@@ -90,7 +90,7 @@ pub fn listed_hours(index: &str, init: DateTime<Utc>) -> Vec<u32> {
         let other = hours_for(inches);
         hours.retain(|h| other.contains(h));
     }
-    hours.retain(|&h| (1..=MAX_FHR).contains(&h) && (init.hour() + h) % 6 == 0);
+    hours.retain(|&h| (1..=MAX_FHR).contains(&h) && (init.hour() + h).is_multiple_of(6));
     hours.sort_unstable();
     hours.dedup();
     hours

@@ -106,7 +106,7 @@ fn quantization_edges() {
 
 /// Every palette band edge, as `(color key, edge)`, where a decoded value can land in another band
 /// than the raw value (docs/reference/packed-tiles.md, "Quantization per palette key").
-const INEXACT_EDGES: [(&str, f64); 15] = [
+const INEXACT_EDGES: [(&str, f64); 14] = [
     ("humidity", 100.01),
     ("cloud_cover", 101.0),
     ("precip_accum", 20.0),
@@ -121,7 +121,6 @@ const INEXACT_EDGES: [(&str, f64); 15] = [
     ("snowfall", 100.0),
     ("ice_accum", 10.0),
     ("snow_depth", 1000.0),
-    ("snow_chance", 101.0),
 ];
 
 /// The renderer's rule: below `no_data_below` is transparent, else the last range holding `v`.
