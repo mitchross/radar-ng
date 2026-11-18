@@ -134,10 +134,21 @@ pub fn render_layer_typed(
         publication_lock_root: Some(tile_layer.clone()),
         overview: None,
         types: types.clone(),
+        // An all-day stargazing hour has no tiles; publish it empty so the hour resumes.
+        keep_empty: super::state::KEEP_EMPTY_LAYERS.contains(&layer),
         ..FrameOptions::default()
     };
+    let keep_empty = options.keep_empty;
     let result = render_frame_palettes(grid, &kind, &tables, &dirs, &HRRR_ZOOMS, &options)?;
-    let rendered = result.rendered_palettes().len() == tables.len();
+    let rendered = if keep_empty {
+        result.outcomes.len() == tables.len()
+            && result
+                .outcomes
+                .iter()
+                .all(|(_, o)| o.status != radar_tiler::PublishStatus::Empty)
+    } else {
+        result.rendered_palettes().len() == tables.len()
+    };
     let typed = super::packed::is_typed(layer, cfg.precip_type);
     if rendered
         && cfg.packed_tiles
@@ -515,8 +526,11 @@ pub fn process_hour_sync(
             dump("precip-accum", &g.values, "in");
         }
     }
+    let tcdc_msg = (enabled("cloud") || enabled("stargazing"))
+        .then(|| extract(bytes, HrrrVar::Tcdc))
+        .flatten();
     if enabled("cloud")
-        && let Some(tcdc) = extract(bytes, HrrrVar::Tcdc)
+        && let Some(tcdc) = &tcdc_msg
         && render_layer(
             cfg,
             "cloud",
@@ -559,6 +573,29 @@ pub fn process_hour_sync(
         )? {
             rendered.push("nice-day".into());
             dump("nice-day", &g.values, "score");
+        }
+    }
+    if enabled("stargazing")
+        && let Some(tcdc) = &tcdc_msg
+        && let Ok(at) = chrono::DateTime::parse_from_rfc3339(valid)
+    {
+        let vals = radar_grib::stargazing::stargazing_grid(&tcdc.grid, at.timestamp() as f64);
+        let g = grid_of(vals, &tcdc.grid);
+        if render_layer(
+            cfg,
+            "stargazing",
+            run_id,
+            valid,
+            &g,
+            palettes,
+            "stargazing",
+            false,
+        )? {
+            rendered.push("stargazing".into());
+            // A daytime hour has no values to read back.
+            if g.values.iter().any(|v| v.is_finite()) {
+                dump("stargazing", &g.values, "score");
+            }
         }
     }
     if has_flags {
