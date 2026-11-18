@@ -216,6 +216,7 @@ export type LayerType =
   | "snow-depth"
   | "snowfall-24h"
   | "nice-day"
+  | "temp-anomaly"
   | "snow-chance-1"
   | "snow-chance-4"
   | "snow-chance-8";

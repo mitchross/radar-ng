@@ -73,6 +73,8 @@ pub const LIGHTNING_RETRY: RetryPolicySpec = RetryPolicySpec::new(5, 2.0, 120, 3
 pub const TROPICAL_RETRY: RetryPolicySpec = RetryPolicySpec::new(2, 2.0, 100, 5);
 /// Sky fetch: a single attempt. CelesTrak asks for no retries; the next 6 h slot is the retry.
 pub const SKY_RETRY: RetryPolicySpec = RetryPolicySpec::new(1, 2.0, 100, 1);
+/// Static-data build: 60 s, 2.0, 10 min, 3 attempts. A failed attempt keeps the finished arrays.
+pub const STATIC_DATA_RETRY: RetryPolicySpec = RetryPolicySpec::new(60, 2.0, 600, 3);
 /// Tile cleanup sweep: 2 s, 2.0, 60 s, 3 attempts.
 pub const TILE_CLEANUP_RETRY: RetryPolicySpec = RetryPolicySpec::new(2, 2.0, 60, 3);
 /// Open-Meteo sync: 10 s, 2.0, 5 min, 3 attempts.
@@ -226,6 +228,13 @@ pub const SKY_FETCH_AND_PUBLISH: ActivityCallSpec = ActivityCallSpec {
     schedule_to_close_s: None,
     heartbeat_s: None,
     retry: SKY_RETRY,
+};
+/// `static_data_ensure`. Two 1.2 GB downloads at most; heartbeats every ten converted days.
+pub const STATIC_DATA_ENSURE: ActivityCallSpec = ActivityCallSpec {
+    start_to_close_s: 2 * 60 * 60,
+    schedule_to_close_s: Some(5 * 60 * 60 + 30 * 60),
+    heartbeat_s: Some(300),
+    retry: STATIC_DATA_RETRY,
 };
 /// `nowcast_run`. One attempt only.
 pub const NOWCAST_RUN: ActivityCallSpec = ActivityCallSpec {

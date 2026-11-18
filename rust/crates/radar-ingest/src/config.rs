@@ -85,6 +85,8 @@ pub struct IngestConfig {
     pub uv_last_hour: u32,
     /// Base URL of the UV Index product.
     pub uv_base_url: String,
+    /// `TEMP_ANOMALY_ENABLED` (default on): render `temp-anomaly` once the normals store exists.
+    pub temp_anomaly_enabled: bool,
     /// `MRMS_QPE_24H_ENABLED` (default off): render the `precip-24h` layer from MRMS 24-hour QPE.
     pub mrms_qpe_24h: bool,
     /// `MRMS_SEVERE_ENABLED` (default off): render the `hail-size`, `rotation-track` and `echo-top`
@@ -159,6 +161,7 @@ impl IngestConfig {
             uv_enabled: env::bool_var("UV_ENABLED", true)?,
             uv_last_hour: env::int_var_clamped("UV_LAST_HOUR", 96, 1, 120)? as u32,
             uv_base_url: radar_grib::uvi::BASE_URL.to_string(),
+            temp_anomaly_enabled: env::bool_var("TEMP_ANOMALY_ENABLED", true)?,
             mrms_qpe_24h: env::bool_var("MRMS_QPE_24H_ENABLED", false)?,
             mrms_severe: env::bool_var("MRMS_SEVERE_ENABLED", false)?,
             precip_type: env::bool_var("PRECIP_TYPE", true)?,
@@ -202,6 +205,7 @@ impl IngestConfig {
             uv_enabled: true,
             uv_last_hour: 96,
             uv_base_url: radar_grib::uvi::BASE_URL.to_string(),
+            temp_anomaly_enabled: true,
             mrms_qpe_24h: false,
             mrms_severe: false,
             precip_type: false,

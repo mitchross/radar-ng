@@ -309,6 +309,24 @@
     ],
     "no_data_below": 0
   },
+  "temp_anomaly": {
+    "_comment": "Forecast daily high minus the 1991-2020 normal high, degrees F. Blue below, red above; within 2 F is a faint grey.",
+    "unit": "F",
+    "ranges": [
+      { "min": -60, "max": -20, "rgba": [49, 54, 149, 190] },
+      { "min": -20, "max": -15, "rgba": [69, 117, 180, 180] },
+      { "min": -15, "max": -10, "rgba": [116, 173, 209, 170] },
+      { "min": -10, "max": -5, "rgba": [171, 217, 233, 160] },
+      { "min": -5, "max": -2, "rgba": [224, 243, 248, 130] },
+      { "min": -2, "max": 2, "rgba": [245, 245, 245, 60] },
+      { "min": 2, "max": 5, "rgba": [254, 224, 144, 130] },
+      { "min": 5, "max": 10, "rgba": [253, 174, 97, 160] },
+      { "min": 10, "max": 15, "rgba": [244, 109, 67, 170] },
+      { "min": 15, "max": 20, "rgba": [215, 48, 39, 180] },
+      { "min": 20, "max": 60, "rgba": [165, 0, 38, 190] }
+    ],
+    "no_data_below": -999
+  },
   "snow_chance": {
     "_comment": "WPC chance of at least 1, 4 or 8 in of snow in 24 h, percent; pale blue through purple to red.",
     "unit": "percent",

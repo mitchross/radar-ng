@@ -70,6 +70,7 @@ Everything periodic is a Temporal Schedule. There are no CronJobs and no crontab
 | `ingest-lightning` | `IngestLightningWorkflow` | 60 min (activity streams ~50 min) |
 | `ingest-tropical` | `IngestTropicalWorkflow` | 1 h |
 | `ingest-iss` | `IngestSkyWorkflow` (product `iss`) | 6 h (one CelesTrak request per slot) |
+| `ensure-static-data` | `EnsureStaticDataWorkflow` (product `normals`) | 1 day (builds the normals once, then checks a marker) |
 | `tile-cleanup` | `TileCleanupWorkflow` | 1 h |
 | `open-meteo-sync-hrrr` / `-gfs` / `-gfs025` | `OpenMeteoSyncWorkflow` | 1 h / 6 h / 6 h |
 

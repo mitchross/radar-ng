@@ -10,6 +10,7 @@ workspace = true
 
 [dependencies]
 radar-storms.workspace = true
+radar-aux.workspace = true
 radar-geo.workspace = true
 radar-types.workspace = true
 radar-core.workspace = true

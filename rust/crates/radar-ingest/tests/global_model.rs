@@ -22,6 +22,18 @@ fn message(
     fhr: u32,
     field: impl Fn(f64, f64) -> f64,
 ) -> Vec<u8> {
+    message_at(category, number, surface, 0, fhr, field)
+}
+
+/// [`message`] at a surface level value (2 for "2 m above ground").
+fn message_at(
+    category: u8,
+    number: u8,
+    surface: u8,
+    level: u32,
+    fhr: u32,
+    field: impl Fn(f64, f64) -> f64,
+) -> Vec<u8> {
     let (ni, nj) = (144u32, 73u32);
     let n = (ni * nj) as usize;
     let mut values = Vec::with_capacity(n);
@@ -59,7 +71,9 @@ fn message(
         0, 0, 0, 34, 4, 0, 0, 0, 0, category, number, 2, 0, 96, 0, 0, 0, 1,
     ];
     s4.extend_from_slice(&fhr.to_be_bytes());
-    s4.extend_from_slice(&[surface, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255]);
+    s4.extend_from_slice(&[surface, 0]);
+    s4.extend_from_slice(&level.to_be_bytes());
+    s4.extend_from_slice(&[255, 255, 255, 255, 255, 255]);
     let mut s5 = vec![0, 0, 0, 21, 5];
     s5.extend_from_slice(&(ni * nj).to_be_bytes());
     s5.extend_from_slice(&[0, 0]);
@@ -130,7 +144,20 @@ fn put_gfs_hour(s3: &common::FakeS3, fhr: u32) {
     s3.put(&format!("{key}.idx"), idx.into_bytes());
 }
 
-fn sample(h: &Harness, layer: &str, valid: &str, lat: f64, lon: f64) -> Sample {
+/// The grid root a [`sample`] reads.
+struct GridView {
+    paths: Paths,
+}
+
+impl Harness {
+    fn view(paths: &Paths) -> GridView {
+        GridView {
+            paths: paths.clone(),
+        }
+    }
+}
+
+fn sample(h: &GridView, layer: &str, valid: &str, lat: f64, lon: f64) -> Sample {
     let meta = h
         .paths
         .grid_dir
@@ -168,11 +195,11 @@ async fn gfs_run_renders_publishes_and_resumes() {
     // Only the REFC record is fetched, by range: TMP (50 everywhere) would paint the whole box.
     let valid = "2026-10-16T12:00:00+00:00";
     assert_eq!(
-        sample(&h, "radar-gfs", valid, 37.5, -90.0),
+        sample(&Harness::view(&h.paths), "radar-gfs", valid, 37.5, -90.0),
         Sample::Value(35.0)
     );
     assert_eq!(
-        sample(&h, "radar-gfs", valid, 50.0, -120.0),
+        sample(&Harness::view(&h.paths), "radar-gfs", valid, 50.0, -120.0),
         Sample::Value(-20.0)
     );
     let frame = h
@@ -274,7 +301,7 @@ async fn uv_converts_to_index_and_keeps_night_hours_as_empty_frames() {
             .unwrap()
             .is_empty()
     );
-    let Sample::Value(uvi) = sample(&h, "uv", "2026-10-15T14:00:00+00:00", 37.5, -90.0) else {
+    let Sample::Value(uvi) = sample(&Harness::view(&h.paths), "uv", "2026-10-15T14:00:00+00:00", 37.5, -90.0) else {
         panic!("no UV value");
     };
     assert!((uvi - 8.0).abs() < 1e-3, "{uvi}");
@@ -324,4 +351,179 @@ async fn cleanup_keeps_live_and_recent_runs() {
     assert!(!runs.join("20261014_00").exists());
     assert!(runs.join("20261015_06").exists());
     assert!(runs.join(RUN).exists());
+}
+
+// ---------------------------------------------------------------------------
+// temp-anomaly
+// ---------------------------------------------------------------------------
+
+/// A normals store on a 0.5 degree grid over the crop box: normal high 10 C over land, no normal east
+/// of 70 W (the "ocean").
+fn write_normals(state_dir: &std::path::Path) {
+    use radar_aux::static_data::normals::{self, DAYS, GridSpec, MISSING, NormalsMeta, Var};
+    let grid = GridSpec {
+        rows: 81,
+        cols: 181,
+        lat0: 18.0,
+        lon0: -140.0,
+        step: 0.5,
+    };
+    let dir = normals::store_dir(state_dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for var in Var::ALL {
+        let mut plane = Vec::with_capacity(grid.rows * grid.cols * 2);
+        for _r in 0..grid.rows {
+            for c in 0..grid.cols {
+                let lon = grid.lon0 + grid.step * c as f64;
+                let v: i16 = if lon > -70.0 {
+                    MISSING
+                } else if var == Var::Tmax {
+                    100
+                } else {
+                    0
+                };
+                plane.extend_from_slice(&v.to_le_bytes());
+            }
+        }
+        std::fs::write(dir.join(var.file()), plane.repeat(DAYS)).unwrap();
+    }
+    let meta = NormalsMeta {
+        version: normals::FORMAT_VERSION,
+        grid,
+        days: DAYS,
+        scale: 0.1,
+        period: "1991-2020".into(),
+        sources: Vec::new(),
+        bytes: 2 * grid.file_bytes(),
+        created_at: "2026-10-15T00:00:00Z".into(),
+    };
+    normals::write_meta(state_dir, &meta).unwrap();
+}
+
+/// GFS 6-hour TMAX records: 283.15 K (10 C) everywhere, and 288.15 K (15 C) over the central US in
+/// the record ending at `hot_fhr`.
+fn put_tmax_hours(s3: &common::FakeS3, hours: &[u32], hot_fhr: u32) {
+    for &fhr in hours {
+        let tmp = message(0, 0, 1, fhr, |_, _| 50.0);
+        let tmax = message_at(0, 4, 103, 2, fhr, |lat, lon| {
+            let hot =
+                fhr == hot_fhr && (30.0..=45.0).contains(&lat) && (-100.0..=-80.0).contains(&lon);
+            if hot { 288.15 } else { 283.15 }
+        });
+        let idx = format!(
+            "1:0:d=2026101512:TMP:surface:{fhr} hour fcst:\n2:{}:d=2026101512:TMAX:2 m above ground:{}-{fhr} hour max fcst:\n",
+            tmp.len(),
+            fhr - 6
+        );
+        let key = format!("gfs.20261015/12/atmos/gfs.t12z.pgrb2.0p25.f{fhr:03}");
+        s3.put(&key, [tmp, tmax].concat());
+        s3.put(&format!("{key}.idx"), idx.into_bytes());
+    }
+}
+
+#[tokio::test]
+async fn temp_anomaly_compares_the_daily_high_with_the_normal_high() {
+    let h = harness(|_| {}).await;
+    let now = Utc.with_ymd_and_hms(2026, 10, 15, 20, 0, 0).unwrap();
+    // The 12z run's first day is Oct 16 06Z to Oct 17 06Z: records f24, f30, f36, f42.
+    put_tmax_hours(&h.s3, &[24, 30, 36, 42, 186], 36);
+
+    // No normals yet: nothing to compare, and the bucket is not asked.
+    let find = act::find_latest_run(&h.ctx, Product::TempAnomaly, now)
+        .await
+        .unwrap();
+    assert_eq!(find.run_id, None);
+    assert!(h.s3.requests().is_empty());
+
+    write_normals(&h.paths.state_dir);
+    let find = act::find_latest_run(&h.ctx, Product::TempAnomaly, now)
+        .await
+        .unwrap();
+    assert_eq!(find.run_id.as_deref(), Some(RUN));
+    assert_eq!(find.hours, [30, 54, 78, 102, 126, 150, 174]);
+
+    let hb = heartbeat::noop();
+    let day1 = act::process_hour(&h.ctx, Product::TempAnomaly, RUN, 30, &hb)
+        .await
+        .unwrap();
+    assert_eq!(day1.rendered_layers, ["temp-anomaly"]);
+    let valid = "2026-10-16T18:00:00+00:00";
+    assert_eq!(day1.valid_timestamp, valid);
+    let value = |lat, lon| match sample(&Harness::view(&h.paths), "temp-anomaly", valid, lat, lon) {
+        Sample::Value(v) => v,
+        other => panic!("{other:?}"),
+    };
+    // 15 C high against a 10 C normal: 9 F above. Elsewhere the high is the normal.
+    assert!((value(37.5, -90.0) - 9.0).abs() < 0.05);
+    assert!(value(50.0, -120.0).abs() < 0.05);
+    // No normal (the "ocean" east of 70 W): no value.
+    assert!(!matches!(
+        sample(&Harness::view(&h.paths), "temp-anomaly", valid, 40.0, -60.0),
+        Sample::Value(_)
+    ));
+
+    // Day 2 is not posted: the run publishes its one-day prefix and stays incomplete.
+    let day2 = act::process_hour(&h.ctx, Product::TempAnomaly, RUN, 54, &hb)
+        .await
+        .unwrap();
+    assert!(day2.rendered_layers.is_empty());
+    let published = act::publish_run(&h.ctx, Product::TempAnomaly, RUN, &[day1, day2])
+        .await
+        .unwrap();
+    assert_eq!(published, 1);
+    let manifest = read_manifest(&h.paths.state_dir).unwrap();
+    let layer = &manifest.layers["temp-anomaly"];
+    assert_eq!(layer.frames.len(), 1);
+    assert_eq!(layer.frames[0].timestamp, valid);
+    assert_eq!(layer.extra["complete"], false);
+    assert_eq!(layer.extra["palette_key"], "temp_anomaly");
+}
+
+#[tokio::test]
+async fn temp_anomaly_off_finds_nothing() {
+    let h = harness(|c| c.temp_anomaly_enabled = false).await;
+    write_normals(&h.paths.state_dir);
+    let now = Utc.with_ymd_and_hms(2026, 10, 15, 20, 0, 0).unwrap();
+    let find = act::find_latest_run(&h.ctx, Product::TempAnomaly, now)
+        .await
+        .unwrap();
+    assert_eq!(find.run_id, None);
+    assert!(h.s3.requests().is_empty());
+}
+
+/// A real run against the NOAA bucket and a real normals store, for the measured cost in the docs:
+/// `TEMP_ANOMALY_LIVE_STATE=<state dir holding static/normals> TEMP_ANOMALY_LIVE_OUT=<dir>`. Skipped otherwise.
+#[tokio::test]
+async fn temp_anomaly_live_run() {
+    let (Ok(state), Ok(out)) = (
+        std::env::var("TEMP_ANOMALY_LIVE_STATE"),
+        std::env::var("TEMP_ANOMALY_LIVE_OUT"),
+    ) else {
+        return;
+    };
+    let out = std::path::PathBuf::from(out);
+    let paths = Paths::new(std::path::PathBuf::from(state), out.join("grids"), out.join("tiles"));
+    let cfg = IngestConfig::with_roots(paths.clone(), out.join("work")).unwrap();
+    let ctx = IngestCtx::new(cfg, None).unwrap();
+    let find = act::find_latest_run(&ctx, Product::TempAnomaly, Utc::now())
+        .await
+        .unwrap();
+    let run = find.run_id.expect("a posted GFS run");
+    let hb = heartbeat::noop();
+    for fhr in find.hours {
+        let t = std::time::Instant::now();
+        let r = act::process_hour(&ctx, Product::TempAnomaly, &run, fhr, &hb)
+            .await
+            .unwrap();
+        let v = &r.valid_timestamp;
+        let at = |lat, lon| sample(&Harness::view(&paths), "temp-anomaly", v, lat, lon);
+        eprintln!(
+            "{run} f{fhr} {v} {:?} {:.1}s detroit {:?} phoenix {:?} gulf {:?}",
+            r.rendered_layers,
+            t.elapsed().as_secs_f64(),
+            at(42.33, -83.05),
+            at(33.43, -112.0),
+            at(26.0, -90.0)
+        );
+    }
 }

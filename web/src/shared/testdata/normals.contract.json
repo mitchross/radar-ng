@@ -1,0 +1,24 @@
+{
+  "detroit": {
+    "lat": 42.33,
+    "lon": -83.05,
+    "date": "2026-11-18",
+    "high_f": 46.9,
+    "low_f": 30.9,
+    "high_c": 8.3,
+    "low_c": -0.6,
+    "period": "1991-2020",
+    "source": "NOAA NCEI nClimGrid-Daily 1991-2020 normals"
+  },
+  "phoenix_july": {
+    "lat": 33.43,
+    "lon": -112.0,
+    "date": "2026-07-15",
+    "high_f": 106.7,
+    "low_f": 81.0,
+    "high_c": 41.5,
+    "low_c": 27.2,
+    "period": "1991-2020",
+    "source": "NOAA NCEI nClimGrid-Daily 1991-2020 normals"
+  }
+}

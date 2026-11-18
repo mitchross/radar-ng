@@ -56,6 +56,7 @@ import { describeNowcastSkill } from "./shared/nowcastSkill";
 import { SEVERE_CREDIT, SEVERE_LAYERS, formatSevereReading, severeLayer } from "./shared/severe";
 import { WINTER_EMPTY_HINT, WINTER_LAYERS, formatWinterReading, winterAsOf, winterLayer, winterPickerRows, winterRowChips, winterSheetHint } from "./shared/winterLayers";
 import { NICE_DAY_LAYER, formatNiceDayReading, niceDayLegend } from "./shared/niceDayLayer";
+import { TEMP_NORMAL_LAYER, formatAnomalyReading, inLower48, normalsLine, normalsPath, parseNormals, tempAnomalyLegend, type DayNormals } from "./shared/tempNormal";
 import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR, SNOW_START_IN_HR, winterStart } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
@@ -107,6 +108,7 @@ const LAYERS: { id: string; name: string; needs: string }[] = [
   { id: "precip-24h", name: "Past 24 hr precip", needs: "precip-24h" },
   { id: "cloud", name: "Clouds", needs: "cloud" },
   { id: NICE_DAY_LAYER.id, name: NICE_DAY_LAYER.name, needs: NICE_DAY_LAYER.id },
+  { id: TEMP_NORMAL_LAYER.id, name: TEMP_NORMAL_LAYER.name, needs: TEMP_NORMAL_LAYER.id },
   { id: "uv", name: "UV index", needs: "uv" },
   { id: "air-quality", name: "Air quality", needs: "air-quality" },
   { id: "ozone", name: "Ozone", needs: "ozone" },
@@ -730,6 +732,17 @@ function renderLegend() {
       `<div class="legend-note">${NICE_DAY_LAYER.credit}</div>`;
     return;
   }
+  if (state.layer === TEMP_NORMAL_LAYER.id) {
+    const ranges = (serverPalettes?.[state.palette] ?? serverPalettes?.classic)?.[TEMP_NORMAL_LAYER.paletteKey]?.ranges;
+    const stops = tempAnomalyLegend(ranges);
+    el.hidden = false;
+    el.innerHTML =
+      `<div class="legend-title">${TEMP_NORMAL_LAYER.name} (\u00B0F)</div>` +
+      `<div class="legend-bar" style="background:linear-gradient(90deg,${stops.map((s, i) => `${s.color} ${i * 20}% ${(i + 1) * 20}%`).join(",")})"></div>` +
+      `<div class="legend-labels">${stops.map((s) => `<span>${s.label}</span>`).join("")}</div>` +
+      `<div class="legend-note">Daily high above or below normal \u00B7 ${TEMP_NORMAL_LAYER.credit}</div>`;
+    return;
+  }
   const table = layerLegend(serverPalettes, replaying() ? REPLAY_PALETTE : state.palette, state.layer, activeManifest()?.layers[state.layer]?.palette_key);
   if (table) {
     el.hidden = false;
@@ -870,6 +883,7 @@ async function renderForecast(refresh = false) {
   const wxmasHtml = whiteChristmasFor(fc, lat, lon);
   const skyHtml = skyTonightFor(fc, lat, lon);
   const snowHtml = snowSpotFor(fc, lat, lon);
+  const normalsHtml = normalsFor(fc, lat, lon);
   const lows = fc.daily.temperature_2m_min.slice(0, 7).filter((v): v is number => v != null);
   const highs = fc.daily.temperature_2m_max.slice(0, 7).filter((v): v is number => v != null);
   const wLo = Math.min(...lows);
@@ -893,6 +907,7 @@ async function renderForecast(refresh = false) {
       ${iconSvg(cond, 84)}
     </div>
     <div class="now-meta">Feels ${deg(c.apparent_temperature)} · H ${deg(fc.daily.temperature_2m_max[0])} L ${deg(fc.daily.temperature_2m_min[0])}</div>
+    <div id="normals-line" class="now-meta"${normalsHtml ? "" : " hidden"}>${normalsHtml}</div>
     <div id="briefing" class="briefing" hidden></div>
     <div id="threat" class="threat" hidden></div>
     <div id="alerts" class="section" hidden></div>
@@ -947,6 +962,36 @@ async function renderForecast(refresh = false) {
   void renderWhiteChristmas(fc, lat, lon);
   void renderSkyTonight(fc, lat, lon);
   void renderSnowSpot(fc, lat, lon);
+  void renderNormals(fc, lat, lon);
+}
+
+/** Normal high and low per point and local date; they never change, so they are kept for the session. */
+const normalsCache = new Map<string, DayNormals | null>();
+function normalsKey(fc: Forecast, lat: number, lon: number): string | null {
+  const date = fc.daily.time[0];
+  return date && inLower48(lat, lon) ? normalsPath(lat, lon, date) : null;
+}
+function normalsFor(fc: Forecast, lat: number, lon: number): string {
+  const key = normalsKey(fc, lat, lon);
+  const n = key ? normalsCache.get(key) : undefined;
+  return escapeHtml(normalsLine(fc.daily.temperature_2m_max[0], n ?? null) ?? "");
+}
+
+async function renderNormals(fc: Forecast, lat: number, lon: number) {
+  const key = normalsKey(fc, lat, lon);
+  if (!key || normalsCache.has(key)) return;
+  // 503 (not built yet) and errors are not cached; 404 (no normal here) is.
+  try {
+    const res = await fetch(key);
+    if (res.ok) normalsCache.set(key, parseNormals(await res.json()));
+    else if (res.status === 404) normalsCache.set(key, null);
+  } catch {
+    return;
+  }
+  const el = document.getElementById("normals-line");
+  if (!el || state.forecast !== fc) return;
+  el.textContent = normalsLine(fc.daily.temperature_2m_max[0], normalsCache.get(key) ?? null) ?? "";
+  el.hidden = !el.textContent;
 }
 
 /** Snow answers per 0.1° cell, kept 15 min like the server and capped by size. */
@@ -1574,6 +1619,7 @@ map.on("click", async (e) => {
     else if (state.layer === "wind") text = `${Math.round(value)} mph`;
     else if (state.layer === "cloud") text = `${Math.round(value)}%`;
     else if (state.layer === NICE_DAY_LAYER.id) text = formatNiceDayReading(value) ?? `${Math.round(value)}`;
+    else if (state.layer === TEMP_NORMAL_LAYER.id) text = formatAnomalyReading(value) ?? `${Math.round(value)}°F`;
     else if (state.layer === "precip-accum" || state.layer === "precip-24h") text = `${value.toFixed(2)} in`;
     else if (state.layer === "uv") text = `UV ${Math.round(value)} · ${uvCategory(value)}`;
     else if (severeLayer(state.layer)) text = formatSevereReading(state.layer, value) ?? `${value.toFixed(1)}`;

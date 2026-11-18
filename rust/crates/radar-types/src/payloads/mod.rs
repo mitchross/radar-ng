@@ -27,6 +27,7 @@ pub mod open_meteo;
 pub mod push;
 pub mod sky;
 pub mod smoke;
+pub mod static_data;
 pub mod tropical;
 pub mod watch_storm;
 pub mod winter;

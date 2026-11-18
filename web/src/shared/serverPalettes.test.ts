@@ -29,6 +29,7 @@ describe("LAYER_PALETTE_KEY", () => {
       "rotation-track": "rotation_track",
       "echo-top": "echo_top",
       "nice-day": "nice_day",
+      "temp-anomaly": "temp_anomaly",
       "snowfall-forecast": "snowfall",
       "ice-forecast": "ice_accum",
       "snow-depth": "snow_depth",
@@ -53,9 +54,9 @@ describe("LAYER_PALETTE_KEY", () => {
     for (const [, layers, key] of fn.slice(0, fn.indexOf("\n}\n")).matchAll(/((?:"[\w-]+"\s*\|?\s*)+)=>\s*"(\w+)"/g)) {
       for (const [, layer] of layers.matchAll(/"([\w-]+)"/g)) server[layer] = key;
     }
-    // uv, precip-24h, the severe and the winter layers are not HRRR layers.
+    // uv, temp-anomaly, precip-24h, the severe and the winter layers are not HRRR layers.
     for (const [layer, key] of Object.entries(LAYER_PALETTE_KEY)) {
-      if (layer in server || !["uv", "precip-24h", "hail-size", "rotation-track", "echo-top"].includes(layer) && !isWinterLayer(layer)) expect(server[layer], layer).toBe(key);
+      if (layer in server || !["uv", "temp-anomaly", "precip-24h", "hail-size", "rotation-track", "echo-top"].includes(layer) && !isWinterLayer(layer)) expect(server[layer], layer).toBe(key);
     }
   });
 });
