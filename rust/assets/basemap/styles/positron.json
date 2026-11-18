@@ -22,6 +22,7 @@
       "type": "fill",
       "source": "protomaps",
       "source-layer": "earth",
+      "filter": ["==", "$type", "Polygon"],
       "paint": { "fill-color": "#e9e8e2" }
     },
     {
@@ -29,7 +30,7 @@
       "type": "fill",
       "source": "protomaps",
       "source-layer": "landuse",
-      "filter": ["in", "kind", "park", "forest", "nature_reserve", "cemetery", "wood"],
+      "filter": ["all", ["==", "$type", "Polygon"], ["in", "kind", "park", "forest", "nature_reserve", "cemetery", "wood"]],
       "paint": { "fill-color": "#d4e3c3" }
     },
     {
@@ -39,6 +40,24 @@
       "source-layer": "water",
       "filter": ["==", "$type", "Polygon"],
       "paint": { "fill-color": "#b8d8e6" }
+    },
+    {
+      "id": "water_river",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "water",
+      "minzoom": 9,
+      "filter": ["all", ["==", "$type", "LineString"], ["in", "kind", "river", "canal"]],
+      "paint": { "line-color": "#b8d8e6", "line-width": ["interpolate", ["exponential", 1.6], ["zoom"], 9, 0, 9.5, 1, 18, 12] }
+    },
+    {
+      "id": "water_stream",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "water",
+      "minzoom": 14,
+      "filter": ["all", ["==", "$type", "LineString"], ["in", "kind", "stream"]],
+      "paint": { "line-color": "#b8d8e6", "line-width": 0.5 }
     },
     {
       "id": "roads_minor",

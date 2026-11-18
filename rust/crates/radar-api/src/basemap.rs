@@ -628,29 +628,39 @@ mod tests {
     }
 
     #[test]
-    fn water_fill_skips_river_lines() {
-        // Protomaps water mixes river lines with polygons; a fill closes each line into a wedge (#350).
+    fn vector_layers_match_geometry_type() {
+        // Protomaps mixes lines and points into polygon layers; a fill closes each line into a wedge (#350).
         let dir =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/basemap/styles");
+        let has = |l: &serde_json::Value, geom: &str| {
+            l["filter"]
+                .to_string()
+                .contains(&format!(r#"["==","$type","{geom}"]"#))
+        };
         for name in ["positron.json", "dark-matter.json"] {
             let style: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(dir.join(name)).expect("read"))
                     .expect("json");
-            let fills: Vec<_> = style["layers"]
-                .as_array()
-                .expect("layers")
-                .iter()
-                .filter(|l| l["source-layer"] == "water" && l["type"] == "fill")
-                .collect();
-            assert!(!fills.is_empty(), "{name}: no water fill");
-            for l in fills {
-                assert_eq!(
-                    l["filter"],
-                    serde_json::json!(["==", "$type", "Polygon"]),
-                    "{name}: {}",
+            let layers = style["layers"].as_array().expect("layers");
+            for l in layers.iter().filter(|l| l["type"] == "fill") {
+                assert!(
+                    has(l, "Polygon"),
+                    "{name}: fill {} needs a Polygon filter",
                     l["id"]
                 );
             }
+            for l in layers
+                .iter()
+                .filter(|l| l["type"] == "line" && l["source-layer"] == "water")
+            {
+                assert!(
+                    has(l, "LineString"),
+                    "{name}: line {} needs a LineString filter",
+                    l["id"]
+                );
+            }
+            let ids: Vec<_> = layers.iter().filter_map(|l| l["id"].as_str()).collect();
+            assert!(ids.contains(&"water_river"), "{name}: river lines missing");
         }
     }
 
