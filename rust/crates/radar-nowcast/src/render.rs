@@ -11,10 +11,13 @@ use std::path::PathBuf;
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use radar_core::grid_dump::{GridInput, write_grid};
+use radar_core::grid_read::read_grid;
+use radar_core::ice::{classes_on, nearest_observed_types};
 use radar_core::manifest::FrameSpec;
 use radar_core::time::{isoformat_utc, round_digits};
+use radar_tiler::typed::TYPE_ICE;
 use radar_tiler::{
-    ColorTable, FrameKind, FrameOptions, Grid, GridGeo, Overview, render_frame_palettes,
+    ColorTable, FrameKind, FrameOptions, Grid, GridGeo, Overview, TypePlane, render_frame_palettes,
 };
 use serde_json::{Map, Value};
 
@@ -50,6 +53,32 @@ pub struct RenderContext<'a> {
     pub input_interval_min: f64,
     /// Grid resolution in km for the manifest.
     pub resolution_km: f64,
+    /// Precipitation classes of the newest observed frame, held still on every lead.
+    pub types: Option<&'a TypePlane>,
+}
+
+/// The newest observed `radar-type` dump near `anchor`, as classes on the science grid, or `None`
+/// when there is none (precip type off) or every cell is rain. Type boundaries move slowly over the
+/// one-hour horizon, so every lead holds these classes still.
+pub fn held_types(
+    cfg: &NowcastConfig,
+    anchor: DateTime<Utc>,
+    lats: &[f64],
+    lons: &[f64],
+) -> Option<TypePlane> {
+    let path = nearest_observed_types(&cfg.grid.grid_dir, anchor)?;
+    let dump = read_grid(&path)
+        .inspect_err(
+            |err| tracing::warn!(path = %path.display(), err = %err, "nowcast_types_failed"),
+        )
+        .ok()?;
+    let classes = classes_on(&dump, lats, lons, TYPE_ICE);
+    if classes.iter().all(|&c| c == 0) {
+        return None;
+    }
+    TypePlane::new(classes)
+        .inspect_err(|err| tracing::warn!(err = %err, "nowcast_types_failed"))
+        .ok()
 }
 
 /// A lead that passed the acceptance rule.
@@ -115,7 +144,7 @@ pub fn render_lead(
         overview: Some(Overview::Max),
         png_compress_level: cfg.png_compress_level,
         keep_empty: false,
-        types: None,
+        types: ctx.types.cloned(),
         tile_allowlist: None,
         source_window: None,
     };
@@ -210,4 +239,77 @@ pub fn resolution_km(lats: &[f64]) -> f64 {
         (max - min).abs() / (lats.len().max(2) - 1) as f64 * 111.0,
         2,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use radar_core::env::Paths;
+    use radar_core::grid_dump::GridConfig;
+    use radar_core::ice::OBSERVED_TYPE_GRID;
+    use radar_tiler::packed::read_bucket;
+
+    use crate::inputs::linspace;
+
+    fn cfg_in(dir: &std::path::Path) -> NowcastConfig {
+        let mut cfg = NowcastConfig::with_paths(Paths::new(
+            dir.join("state"),
+            dir.join("grids"),
+            dir.join("tiles"),
+        ));
+        cfg.grid = GridConfig::with_dir(dir.join("grids"));
+        cfg
+    }
+
+    #[test]
+    fn leads_hold_the_newest_observed_types() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = cfg_in(dir.path());
+        let lats = linspace(45.0, 40.0, 16);
+        let lons = linspace(-90.0, -80.0, 16);
+        let anchor: DateTime<Utc> = "2026-11-17T19:00:00Z".parse().unwrap();
+        assert!(
+            held_types(&cfg, anchor, &lats, &lons).is_none(),
+            "no dump, no plane"
+        );
+
+        // The observed dump: snow on the north half, ice in the south-east corner.
+        let mut classes = vec![0.0f32; 16 * 16];
+        for (i, c) in classes.iter_mut().enumerate() {
+            let (r, col) = (i / 16, i % 16);
+            *c = if r < 8 {
+                1.0
+            } else if col >= 12 {
+                3.0
+            } else {
+                0.0
+            };
+        }
+        let ts = "2026-11-17T18:58:00+00:00";
+        let input = GridInput::new(&classes, &lats, &lons, "class");
+        write_grid(&cfg.grid, OBSERVED_TYPE_GRID, ts, &input).unwrap();
+        let plane = held_types(&cfg, anchor, &lats, &lons).unwrap();
+        assert_eq!(plane.classes()[0], 1);
+        assert_eq!(plane.classes()[16 * 15 + 15], 3);
+        assert_eq!(plane.classes()[16 * 15], 0);
+        // Older than the hold window: rain colours, never stale snow.
+        let late = anchor + chrono::TimeDelta::minutes(45);
+        assert!(held_types(&cfg, late, &lats, &lons).is_none());
+
+        // The run packs typed codes, and the manifest layout says so.
+        let fields = vec![crate::field::Field2::filled(16, 16, 30.0f32); 2];
+        let stamps = vec![
+            "2026-11-17T19:05:00+00:00".to_string(),
+            "2026-11-17T19:10:00+00:00".to_string(),
+        ];
+        let anchor_s = "2026-11-17T19:00:00+00:00";
+        crate::packed::pack_run(&cfg, anchor_s, &lats, &lons, &fields, &stamps, Some(&plane))
+            .unwrap();
+        let on_disk = read_bucket(&crate::packed::packed_layer_dir(&cfg).join(anchor_s))
+            .unwrap()
+            .unwrap();
+        assert!(on_disk.typed);
+        assert!(crate::packed::layout_typed(true).types.is_some());
+        assert!(crate::packed::layout().types.is_none());
+    }
 }

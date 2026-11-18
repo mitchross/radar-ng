@@ -79,7 +79,9 @@ server-only.
 
 ## Typed codes (v2)
 
-The MRMS layers color reflectivity by precipitation type when `PRECIP_TYPE` is on (default). Their
+The MRMS layers color reflectivity by precipitation type when `PRECIP_TYPE` is on (default). So do
+the forecast layers: `nowcast` holds the newest observed classes still on every lead, and
+`radar-hrrr` and `radar-gfs` take theirs from the model's CRAIN/CSNOW/CFRZR/CICEP flags. Their
 slots then hold typed codes, and the manifest says `"version": 2` with a `types` object:
 
 ```json

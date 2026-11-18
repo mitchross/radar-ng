@@ -29,7 +29,7 @@ use radar_core::nowcast_skill::Summary;
 use radar_core::processed_set::ProcessedSet;
 use radar_core::pycompat::float_repr;
 use radar_core::time::round_digits;
-use radar_tiler::{ColorTable, load_palette};
+use radar_tiler::{ColorTable, TypePlane, load_palette};
 use radar_types::payloads::nowcast::NowcastResult;
 use serde_json::{Map, Value};
 
@@ -38,7 +38,7 @@ use crate::error::NowcastError;
 use crate::field::Field2;
 use crate::inputs;
 use crate::motion::{MotionParams, estimate_motion};
-use crate::render::{AcceptedLead, NODATA, RenderContext, render_lead, resolution_km};
+use crate::render::{AcceptedLead, NODATA, RenderContext, held_types, render_lead, resolution_km};
 use crate::score::{self, OBSERVED_KEY};
 use crate::select::{input_interval_min, lead_steps};
 use crate::sprog::{self, SprogParams};
@@ -137,6 +137,7 @@ pub async fn nowcast_run(
             let lats = lats.clone();
             let lons = lons.clone();
             blocking(every, &heartbeat, move || {
+                let types = held_types(&cfg, latest_dt, &lats, &lons);
                 let rendered = render_all(
                     &cfg,
                     &latest,
@@ -146,9 +147,18 @@ pub async fn nowcast_run(
                     method,
                     interval_min,
                     &fields,
+                    types.as_ref(),
                 )?;
                 // Outside the render pool: packing takes a file lock (see `crate::packed`).
-                let packed = pack_leads(&cfg, &latest, &lats, &lons, &fields, &rendered);
+                let packed = pack_leads(
+                    &cfg,
+                    &latest,
+                    &lats,
+                    &lons,
+                    &fields,
+                    &rendered,
+                    types.as_ref(),
+                );
                 Ok((rendered, packed))
             })
             .await?
@@ -474,6 +484,7 @@ fn render_all(
     method: &'static str,
     interval_min: f64,
     fields: &[Field2<f32>],
+    types: Option<&TypePlane>,
 ) -> anyhow::Result<Vec<Option<AcceptedLead>>> {
     let set = load_palette_set(cfg);
     if set.expected.is_empty() {
@@ -490,6 +501,7 @@ fn render_all(
         method,
         input_interval_min: interval_min,
         resolution_km: resolution_km(lats),
+        types,
     };
     render_pool(cfg.render_workers)?.install(|| {
         // Nested lead tasks can block on publication locks held by suspended tile tasks in this pool.
@@ -517,7 +529,8 @@ fn render_pool(threads: usize) -> anyhow::Result<Arc<rayon::ThreadPool>> {
     Ok(pool)
 }
 
-/// Pack the run when packing is on and every lead was accepted. Failures are logged, not raised.
+/// Pack the run when packing is on and every lead was accepted, typed when `types` is given.
+/// Returns whether the buckets are typed, and the buckets. Failures are logged, not raised.
 fn pack_leads(
     cfg: &NowcastConfig,
     anchor: &str,
@@ -525,7 +538,8 @@ fn pack_leads(
     lons: &[f64],
     fields: &[Field2<f32>],
     rendered: &[Option<AcceptedLead>],
-) -> Option<Vec<PackedBucket>> {
+    types: Option<&TypePlane>,
+) -> Option<(bool, Vec<PackedBucket>)> {
     if !cfg.packed_tiles {
         return None;
     }
@@ -533,8 +547,8 @@ fn pack_leads(
         .iter()
         .map(|lead| lead.as_ref().map(|l| l.timestamp.clone()))
         .collect::<Option<_>>()?;
-    match crate::packed::pack_run(cfg, anchor, lats, lons, fields, &timestamps) {
-        Ok(buckets) => Some(buckets),
+    match crate::packed::pack_run(cfg, anchor, lats, lons, fields, &timestamps, types) {
+        Ok(buckets) => Some((types.is_some(), buckets)),
         Err(err) => {
             tracing::warn!(anchor, error = %format!("{err:#}"), "nowcast_packed_failed");
             None
@@ -564,8 +578,9 @@ pub(crate) struct CommitPlan<'a> {
     pub method: &'static str,
     /// True for a dry window: no leads, and the layer is removed.
     pub no_rain: bool,
-    /// The run's packed buckets, or `None` when packing is off or failed.
-    pub packed: Option<Vec<PackedBucket>>,
+    /// Whether the run's packed buckets hold typed codes, and the buckets; `None` when packing is
+    /// off or failed.
+    pub packed: Option<(bool, Vec<PackedBucket>)>,
 }
 
 /// Commit a run (spec 9.5). Order: observed anchor, generation marker, manifest swap, retention,
@@ -630,11 +645,12 @@ pub(crate) fn commit_run(plan: CommitPlan<'_>) -> anyhow::Result<()> {
     replace_layer(&cfg.paths.state_dir, LAYER, &timestamps, &options)
         .context("replacing the nowcast manifest layer")?;
     // The layer lists only this run's buckets (none when packing is off), before old ones are deleted.
+    let (typed, buckets) = packed.unwrap_or_default();
     match replace_packed_buckets(
         &cfg.paths.state_dir,
         LAYER,
-        &crate::packed::layout(),
-        packed.unwrap_or_default(),
+        &crate::packed::layout_typed(typed),
+        buckets,
     ) {
         Ok(_) => {
             if let Err(err) = crate::packed::prune_run_buckets(cfg, anchor, Utc::now()) {
@@ -781,6 +797,7 @@ mod tests {
             METHOD_SPROG,
             5.0,
             &fields,
+            None,
         )
         .unwrap();
         assert_eq!(leads.len(), fields.len());
