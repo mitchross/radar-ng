@@ -534,7 +534,10 @@ fn full_build_from_real_files() {
     let state = std::path::PathBuf::from(state);
     let beat: radar_aux::beat::Beat = Arc::new(|_| {});
     let mut open = |var: Var| -> io::Result<Box<dyn ReadAt>> {
-        Ok(Box::new(std::fs::File::open(format!("{src}/{}.nc", var.name()))?))
+        Ok(Box::new(std::fs::File::open(format!(
+            "{src}/{}.nc",
+            var.name()
+        ))?))
     };
     let meta = radar_aux::static_data::build_normals(&state, &[], &mut open, &beat).unwrap();
     assert_eq!(meta.bytes, 2 * 604_236_720);
@@ -544,8 +547,14 @@ fn full_build_from_real_files() {
             let date = NaiveDate::from_ymd_opt(2024, m, d).unwrap();
             let got = n.point(lat, lon, date).unwrap().expect("land cell");
             let (hi, lo) = (got.high_c * 1.8 + 32.0, got.low_c * 1.8 + 32.0);
-            assert!((hi - tmax).abs() <= 1.0, "{name} {m}/{d} high {hi:.1} vs {tmax}");
-            assert!((lo - tmin).abs() <= 5.5, "{name} {m}/{d} low {lo:.1} vs {tmin}");
+            assert!(
+                (hi - tmax).abs() <= 1.0,
+                "{name} {m}/{d} high {hi:.1} vs {tmax}"
+            );
+            assert!(
+                (lo - tmin).abs() <= 5.5,
+                "{name} {m}/{d} low {lo:.1} vs {tmin}"
+            );
         }
     }
 }

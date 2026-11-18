@@ -301,7 +301,13 @@ async fn uv_converts_to_index_and_keeps_night_hours_as_empty_frames() {
             .unwrap()
             .is_empty()
     );
-    let Sample::Value(uvi) = sample(&Harness::view(&h.paths), "uv", "2026-10-15T14:00:00+00:00", 37.5, -90.0) else {
+    let Sample::Value(uvi) = sample(
+        &Harness::view(&h.paths),
+        "uv",
+        "2026-10-15T14:00:00+00:00",
+        37.5,
+        -90.0,
+    ) else {
         panic!("no UV value");
     };
     assert!((uvi - 8.0).abs() < 1e-3, "{uvi}");
@@ -502,7 +508,11 @@ async fn temp_anomaly_live_run() {
         return;
     };
     let out = std::path::PathBuf::from(out);
-    let paths = Paths::new(std::path::PathBuf::from(state), out.join("grids"), out.join("tiles"));
+    let paths = Paths::new(
+        std::path::PathBuf::from(state),
+        out.join("grids"),
+        out.join("tiles"),
+    );
     let cfg = IngestConfig::with_roots(paths.clone(), out.join("work")).unwrap();
     let ctx = IngestCtx::new(cfg, None).unwrap();
     let find = act::find_latest_run(&ctx, Product::TempAnomaly, Utc::now())
