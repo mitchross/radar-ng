@@ -211,6 +211,8 @@ fn expected_table() -> Vec<Row> {
             300,
             "radar-ng-aux",
             json!(["iss"]),
+        ),
+        (
             "ingest-nbm-snow",
             "IngestWinterWorkflow",
             1800,
