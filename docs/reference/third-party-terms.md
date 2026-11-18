@@ -168,6 +168,15 @@ a public-domain NWS product. We do not use the NOHRSC `collaborators` folder: it
 For both, credit NOAA, do not imply NOAA endorses the app, and say we converted the values to inches.
 Clients contact only our server.
 
+## NOAA WPC Probabilistic Precipitation Portal (snow chance)
+
+The `snow-chance-1`, `snow-chance-4` and `snow-chance-8` layers come from the NWS Weather Prediction
+Center [Probabilistic Precipitation Portal](https://www.wpc.ncep.noaa.gov/pwpf/about_ppp_products.php)
+files on `ftp-wpc.ncep.noaa.gov` (`prob_precip_portal/co/`, `ndfd_co_pw24ige{1,4,8}p00_*.grib2`). They
+are public-domain NWS products, free and keyless. We do not use the legacy `pwpf` files, which end on
+or about 2026-11-30. Credit NOAA WPC, do not imply NOAA endorses the app, and say we converted the
+stored fractions to percent. Clients contact only our server.
+
 ## SPC watches, discussions and outlooks
 
 Attribute these products to NOAA/NWS Storm Prediction Center. These federal weather products are free and keyless.

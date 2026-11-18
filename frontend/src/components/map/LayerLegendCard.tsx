@@ -41,6 +41,9 @@ const LAYER_SOURCE: Record<LayerType, SourceTag> = {
   "ice-forecast": "Later",
   "snow-depth": "Now",
   "snowfall-24h": "Now",
+  "snow-chance-1": "Later",
+  "snow-chance-4": "Later",
+  "snow-chance-8": "Later",
   cloud: "Later",
   uv: "Later",
   "air-quality": "Now",
@@ -83,6 +86,16 @@ const RAIN_TOTAL_STOPS: LegendStop[] = [
   { label: "0.1", color: "#4696ff" },
   { label: "0", color: "#8cc8ff" },
 ];
+
+const SNOW_CHANCE_LEGEND: LegendSpec = {
+  title: "Snow Chance",
+  stops: [
+    { label: "90%", color: "#f0555a" },
+    { label: "50%", color: "#5541af" },
+    { label: "20%", color: "#69a5e1" },
+    { label: "5%", color: "#bedcf5" },
+  ],
+};
 
 const LEGENDS: Record<LayerType, LegendSpec> = {
   radar: {
@@ -217,6 +230,9 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
       { label: "1", color: "#6baed6" },
     ],
   },
+  "snow-chance-1": SNOW_CHANCE_LEGEND,
+  "snow-chance-4": SNOW_CHANCE_LEGEND,
+  "snow-chance-8": SNOW_CHANCE_LEGEND,
   "echo-top": {
     title: "Echo Tops",
     stops: [
