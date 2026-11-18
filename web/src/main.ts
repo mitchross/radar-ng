@@ -43,6 +43,8 @@ import { SatelliteLayer } from "./satellite";
 import { forecastTimeMs, isNightAt } from "./shared/forecastTime";
 import { wallClock } from "./shared/forecastTime";
 import { niceDayCardHtml } from "./niceDayCard";
+import { snowSpotCardHtml, snowSpotSkeletonHtml } from "./snowSpotCard";
+import { ByteCappedCache, parseSnowSpot, snowCardShows, snowLikely, snowSpotPath, type SnowSpot } from "./shared/snowSpot";
 import { whiteChristmasCardHtml } from "./whiteChristmasCard";
 import type { FeatureCollection } from "geojson";
 import { inWhiteChristmasSeason, parseNearestStation, WHITE_CHRISTMAS_STATIONS_PATH, whiteChristmasPath, type WhiteChristmasStation } from "./shared/whiteChristmas";
@@ -780,7 +782,14 @@ function renderSheet() {
     { id: "wind", name: "Wind flow", hint: "Animated HRRR surface wind", on: state.wind },
     { id: "ai", name: "AI narration", hint: "Local-LLM summaries; hides itself if the model is down", on: state.ai },
   ];
+  // While the snow card shows, the Winter group opens first.
+  const winterSection = `<div class="sheet-section"><div class="section-label">WINTER</div>
+      ${winter.length ? seg("winter", winter.map((l) => [l.id, l.name, l.hint]), state.layer) : ""}
+      ${winterChips.length > 1 ? seg("winter", winterChips.map((l) => [l.id, l.chip ?? l.name, l.hint]), state.layer) : ""}
+      <p class="hint">${winter.length ? escapeHtml(winterSheetHint(state.layer)) : WINTER_EMPTY_HINT}</p>
+    </div>`;
   $("sheet-body").innerHTML = `
+    ${snowCardVisible ? winterSection : ""}
     <div class="sheet-section"><div class="section-label">RADAR</div>
       ${composite ? seg("product", (Object.keys(PRODUCTS) as ProductId[]).map((id) => [id, PRODUCTS[id].name, PRODUCTS[id].hint]), state.product) : ""}
       <p class="hint">${PRODUCTS[state.product].hint}</p>
@@ -788,11 +797,7 @@ function renderSheet() {
       <p class="hint">Muted is the colorblind-safe palette (viridis). Warning outlines are also labelled TOR, SVR or FFW.</p>
       <label class="range-row"><span>Opacity</span><input id="opacity" type="range" min="0.3" max="1" step="0.05" value="${state.opacity}" aria-label="Radar opacity" /></label>
     </div>
-    <div class="sheet-section"><div class="section-label">WINTER</div>
-      ${winter.length ? seg("winter", winter.map((l) => [l.id, l.name, l.hint]), state.layer) : ""}
-      ${winterChips.length > 1 ? seg("winter", winterChips.map((l) => [l.id, l.chip ?? l.name, l.hint]), state.layer) : ""}
-      <p class="hint">${winter.length ? escapeHtml(winterSheetHint(state.layer)) : WINTER_EMPTY_HINT}</p>
-    </div>
+    ${snowCardVisible ? "" : winterSection}
     ${severe.length ? `<div class="sheet-section"><div class="section-label">SEVERE</div>
       ${seg("severe", severe.map((l) => [l.id, l.name, l.hint]), state.layer)}
       <p class="hint">${escapeHtml(severeHint)} · ${SEVERE_CREDIT}</p>
@@ -864,6 +869,7 @@ async function renderForecast(refresh = false) {
   const countdownHtml = countdownFor(fc, lat, lon);
   const wxmasHtml = whiteChristmasFor(fc, lat, lon);
   const skyHtml = skyTonightFor(fc, lat, lon);
+  const snowHtml = snowSpotFor(fc, lat, lon);
   const lows = fc.daily.temperature_2m_min.slice(0, 7).filter((v): v is number => v != null);
   const highs = fc.daily.temperature_2m_max.slice(0, 7).filter((v): v is number => v != null);
   const wLo = Math.min(...lows);
@@ -890,6 +896,7 @@ async function renderForecast(refresh = false) {
     <div id="briefing" class="briefing" hidden></div>
     <div id="threat" class="threat" hidden></div>
     <div id="alerts" class="section" hidden></div>
+    <div id="snow-spot" class="section snow-spot"${snowHtml ? "" : " hidden"}>${snowHtml}</div>
     <div id="nexthour" class="section" hidden></div>
     <div class="section">
       <div class="section-label">HOURLY</div>
@@ -939,6 +946,45 @@ async function renderForecast(refresh = false) {
   if (!countdownHtml) void renderCountdown(fc, lat, lon);
   void renderWhiteChristmas(fc, lat, lon);
   void renderSkyTonight(fc, lat, lon);
+  void renderSnowSpot(fc, lat, lon);
+}
+
+/** Snow answers per 0.1° cell, kept 15 min like the server and capped by size. */
+const snowSpots = new ByteCappedCache<SnowSpot | null>(256 * 1024, 15 * 60_000);
+let snowCardVisible = false;
+const setSnowCardVisible = (on: boolean) => {
+  if (on === snowCardVisible) return;
+  snowCardVisible = on;
+  renderSheet();
+};
+/** Card from a cached answer, a fixed-height skeleton while a snowy forecast loads, else nothing. */
+function snowSpotFor(fc: Forecast, lat: number, lon: number): string {
+  const spot = snowSpots.get(snowSpotPath(lat, lon));
+  const clock = { timeZone: fc.timezone, utcOffsetSeconds: fc.utc_offset_seconds };
+  if (spot !== undefined) return spot && snowCardShows(spot, Date.now()) ? snowSpotCardHtml(spot, Date.now(), clock) : "";
+  return snowLikely(fc.hourly, Date.now(), fc.utc_offset_seconds) ? snowSpotSkeletonHtml() : "";
+}
+
+async function renderSnowSpot(fc: Forecast, lat: number, lon: number) {
+  const path = snowSpotPath(lat, lon);
+  let spot = snowSpots.get(path);
+  if (spot === undefined) {
+    // A failed call is not cached: the next forecast refresh tries again.
+    try {
+      const res = await fetch(path);
+      const text = res.ok ? await res.text() : "";
+      spot = text ? parseSnowSpot(JSON.parse(text)) : null;
+      if (res.ok) snowSpots.set(path, spot, Math.max(64, text.length));
+    } catch {
+      spot = null;
+    }
+  }
+  const el = document.getElementById("snow-spot");
+  if (!el || state.forecast !== fc) return;
+  const shows = snowCardShows(spot, Date.now());
+  setSnowCardVisible(shows);
+  el.innerHTML = spot && shows ? snowSpotCardHtml(spot, Date.now(), { timeZone: fc.timezone, utcOffsetSeconds: fc.utc_offset_seconds }) : "";
+  el.hidden = !el.innerHTML;
 }
 
 /** Nearest White Christmas station per rounded point; the table never changes, so it is kept for the session. */

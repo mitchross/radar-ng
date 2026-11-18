@@ -15,6 +15,7 @@ import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { MapStyle } from "../../types/weather";
 import { LAYER_SYMBOLS, liveLayerOptions, SATELLITE_OVERLAY, SEVERE_OPTIONS, WINTER_OPTIONS, replayLayerOptions } from "./radarLayers";
 import { useManifestQuery } from "../../hooks/useManifest";
+import { useSnowCardVisible } from "../../hooks/useSnowSpot";
 import { SEVERE_CREDIT } from "../../../../web/src/shared/severe";
 import { WINTER_EMPTY_HINT, winterPickerRows, winterRowChips, winterSheetHint } from "../../../../web/src/shared/winterLayers";
 
@@ -62,6 +63,66 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
   const contentWidth = Math.min(500, width - 32);
   const tileWidth = (contentWidth - 2 * 10) / 3;
 
+  // While the Home snow card shows, the Winter group opens first.
+  const snowFirst = useSnowCardVisible((s) => s.visible);
+  const winterSection = replaying ? null : (
+    <>
+      <Text style={styles.section}>WINTER</Text>
+      {winterOptions.length > 0 && (
+        <View style={styles.grid}>
+          {winterOptions.map((opt) => {
+            const active = activeLayer === opt.id;
+            return (
+              <Pressable
+                key={opt.id}
+                accessibilityRole="radio"
+                accessibilityLabel={`${opt.name} layer. ${opt.hint}`}
+                accessibilityState={{ checked: active }}
+                onPress={() => { selectionHaptic(); setActiveLayer(opt.id); onClose(); }}
+                style={({ pressed }) => [
+                  styles.layerTile,
+                  { width: tileWidth },
+                  active ? styles.layerTileActive : null,
+                  pressed ? styles.pressed : null,
+                ]}
+              >
+                <SymbolView
+                  name={LAYER_SYMBOLS[opt.icon]}
+                  size={24}
+                  tintColor={active ? theme.colors.accent : theme.colors.text}
+                  type="hierarchical"
+                />
+                <Text style={[styles.layerName, active ? { color: theme.colors.accent } : null]} numberOfLines={1}>
+                  {opt.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+      {winterChips.length > 1 && (
+        <View style={styles.chipRow} accessibilityRole="radiogroup">
+          {winterChips.map((opt) => {
+            const active = activeLayer === opt.id;
+            return (
+              <Pressable
+                key={opt.id}
+                accessibilityRole="radio"
+                accessibilityLabel={`${opt.chip ?? opt.name}. ${opt.hint}`}
+                accessibilityState={{ checked: active }}
+                onPress={() => { selectionHaptic(); setActiveLayer(opt.id); }}
+                style={({ pressed }) => [styles.chip, active ? styles.chipActive : null, pressed ? styles.pressed : null]}
+              >
+                <Text style={[styles.layerName, active ? { color: theme.colors.accent } : null]}>{opt.chip ?? opt.name}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+      <Text style={styles.tip}>{winterHint}</Text>
+    </>
+  );
+
   return (
     <BottomSheet isPresented={visible} onDismiss={onClose} containerColor={theme.colors.surface}>
       <RNHostView matchContents>
@@ -72,6 +133,8 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
               <Text style={styles.doneText}>Done</Text>
             </Pressable>
           </View>
+
+          {snowFirst ? winterSection : null}
 
           <Text style={styles.section}>WEATHER LAYER</Text>
           <View style={styles.grid}>
@@ -105,63 +168,7 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
             })}
           </View>
 
-          {replaying ? null : (
-            <>
-              <Text style={styles.section}>WINTER</Text>
-              {winterOptions.length > 0 && (
-                <View style={styles.grid}>
-                  {winterOptions.map((opt) => {
-                    const active = activeLayer === opt.id;
-                    return (
-                      <Pressable
-                        key={opt.id}
-                        accessibilityRole="radio"
-                        accessibilityLabel={`${opt.name} layer. ${opt.hint}`}
-                        accessibilityState={{ checked: active }}
-                        onPress={() => { selectionHaptic(); setActiveLayer(opt.id); onClose(); }}
-                        style={({ pressed }) => [
-                          styles.layerTile,
-                          { width: tileWidth },
-                          active ? styles.layerTileActive : null,
-                          pressed ? styles.pressed : null,
-                        ]}
-                      >
-                        <SymbolView
-                          name={LAYER_SYMBOLS[opt.icon]}
-                          size={24}
-                          tintColor={active ? theme.colors.accent : theme.colors.text}
-                          type="hierarchical"
-                        />
-                        <Text style={[styles.layerName, active ? { color: theme.colors.accent } : null]} numberOfLines={1}>
-                          {opt.name}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
-              {winterChips.length > 1 && (
-                <View style={styles.chipRow} accessibilityRole="radiogroup">
-                  {winterChips.map((opt) => {
-                    const active = activeLayer === opt.id;
-                    return (
-                      <Pressable
-                        key={opt.id}
-                        accessibilityRole="radio"
-                        accessibilityLabel={`${opt.chip ?? opt.name}. ${opt.hint}`}
-                        accessibilityState={{ checked: active }}
-                        onPress={() => { selectionHaptic(); setActiveLayer(opt.id); }}
-                        style={({ pressed }) => [styles.chip, active ? styles.chipActive : null, pressed ? styles.pressed : null]}
-                      >
-                        <Text style={[styles.layerName, active ? { color: theme.colors.accent } : null]}>{opt.chip ?? opt.name}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
-              <Text style={styles.tip}>{winterHint}</Text>
-            </>
-          )}
+          {snowFirst ? null : winterSection}
 
           {severeOptions.length > 0 && (
             <>

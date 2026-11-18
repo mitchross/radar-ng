@@ -48,6 +48,7 @@ import { NiceDayCard } from "../../components/home/NiceDayCard";
 import { CountdownCard } from "../../components/home/CountdownCard";
 import { WhiteChristmasCard } from "../../components/home/WhiteChristmasCard";
 import { SkyTonightCard } from "../../components/home/SkyTonightCard";
+import { SnowSpotCard } from "../../components/home/SnowSpotCard";
 import { useBriefing } from "../../hooks/useBriefing";
 import { hourlyPrecipitation } from "../../lib/conditions";
 import { useAirQualityNow } from "../../hooks/useAirQualityNow";
@@ -392,6 +393,8 @@ export default function HomeScreen() {
               <Text style={styles.chevron}>{"\u203A"}</Text>
             </Pressable>
           ) : null}
+
+          <SnowSpotCard forecast={forecast} nowMs={now.getTime()} />
 
           {/* Hourly strip */}
           <View style={styles.sectionWrap}>

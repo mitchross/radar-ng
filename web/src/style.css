@@ -365,3 +365,19 @@ body.replay #panel, body.replay #locate, body.replay #live, body.replay #zoom, b
 .sky-card small { display: block; margin-top: 10px; font-size: 12px; color: var(--ink-2); }
 .sky-link-row { display: flex; align-items: center; justify-content: space-between; }
 .sky-link { min-height: 32px; padding: 6px 0; background: none; border: 0; color: var(--accent, #3f6fe0); font: inherit; font-size: 13px; cursor: pointer; }
+
+/* Snow at your spot: fixed height, so the skeleton, the card and every missing line take the same room */
+.snow-card { box-sizing: border-box; height: 196px; overflow: hidden; padding: 12px; border-radius: 14px; background: var(--surface-solid); border: 1px solid var(--border); }
+.snow-head { font-family: var(--display); font-size: 18px; line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.snow-window { font-size: 13px; line-height: 18px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.snow-bars { display: flex; align-items: flex-end; gap: 1px; height: 44px; margin: 10px 0; }
+.snow-bars span { flex: 1; min-width: 1px; border-radius: 1px; background: var(--border); }
+.snow-bars span.on { background: var(--accent, #3f6fe0); }
+.snow-lines { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 20px 20px; gap: 2px 8px; font-size: 13px; line-height: 20px; }
+.snow-lines span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.snow-card small { display: block; margin-top: 8px; font-size: 12px; line-height: 16px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.snow-skeleton i { display: block; height: 14px; margin: 6px 0 14px; border-radius: 6px; background: var(--border); animation: snow-pulse 1.2s ease-in-out infinite alternate; }
+.snow-skeleton i:first-child { width: 60%; height: 20px; }
+.snow-skeleton i.snow-skel-bars { height: 44px; }
+@keyframes snow-pulse { from { opacity: 0.45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .snow-skeleton i { animation: none; } }
