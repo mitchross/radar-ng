@@ -148,6 +148,22 @@ Nominatim is no longer called at all. See `docs/app/privacy.md` §3. The usage-p
   be updated together.
 - `docs/self-host/configuration.md` documents the `EXPO_PUBLIC_BASEMAP_*` overrides.
 
+## Weather data: processed by radar-ng, not an official NWS product
+
+Every weather layer, card and notice below is processed by radar-ng from public NOAA, NWS and ECCC
+data. None of it is an official NWS product, and neither NOAA nor ECCC endorses the app.
+
+## NOAA MRMS, HRRR and GFS (winter radar, Nice Day and star maps)
+
+Observed radar and its rain, snow and mix classes come from NOAA
+[MRMS](https://registry.opendata.aws/noaa-mrms-pds/) on NOAA Open Data Dissemination. The ice class,
+the winter colours on future frames, and the `nice-day` and `stargazing` layers use NOAA
+[HRRR](https://registry.opendata.aws/noaa-hrrr-pds/) fields (CRAIN, CSNOW, CFRZR, CICEP, cloud
+cover, temperature, wind, humidity, rain). Frames past HRRR use NOAA
+[GFS](https://registry.opendata.aws/noaa-gfs-bdp-pds/). All are free and keyless. Credit NOAA, do
+not imply NOAA endorses the app, and say the data was modified: we recolour, score and re-grid it.
+Clients contact only our server.
+
 ## NOAA National Blend of Models (snow and ice totals)
 
 The `snowfall-forecast` and `ice-forecast` layers come from NBM `ASNOW` and `FICEAC` in the

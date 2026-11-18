@@ -1,0 +1,217 @@
+[
+  {
+    "id": "kewx-2021-04-29-hail",
+    "category": [
+      "hail_low_cc",
+      "folded_gates",
+      "missing_dual_pol"
+    ],
+    "station": "KEWX",
+    "time_utc": "SPC storm reports 2021-04-28, hail 0045Z HONDO MEDINA TX 4.00 in (EWX): https://www.spc.noaa.gov/climo/reports/210428_rpts_filtered.html",
+    "file": "KEWX20210429_004538_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2021/04/29/KEWX/KEWX20210429_004538_V06",
+    "bytes": 12023398,
+    "sha256": "68abfcbb689fa855c771d5109a445529ad3acc9bbaf89360e18b96c4ccdd3c0d",
+    "why": "2021-04-29T00:45:38Z",
+    "source": "Supercell over Hondo, TX producing 3-4 inch hail at 00:45Z; giant hail lowers RHO inside a >60 dBZ core, so a naive low-CC clutter rule would cut the core."
+  },
+  {
+    "id": "kdmx-2022-03-05-tornado",
+    "category": [
+      "tornado_debris",
+      "folded_gates",
+      "missing_dual_pol"
+    ],
+    "station": "KDMX",
+    "time_utc": "SPC storm reports 2022-03-05, tornado 2235Z WINTERSET MADISON IA 'TORNADO ONGOING WITH DEBRIS' (DMX): https://www.spc.noaa.gov/climo/reports/220305_rpts_filtered.html",
+    "file": "KDMX20220305_223552_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2022/03/05/KDMX/KDMX20220305_223552_V06",
+    "bytes": 11766293,
+    "sha256": "6fb73d0d8f05b71d01e1dbbb7de48a43c6503a92415e2d04740147320c8501f8",
+    "why": "2022-03-05T22:35:52Z",
+    "source": "Winterset, IA EF4 tornado ~45 km SW of the radar with debris reported at 22:35Z; a lofted-debris signature is high REF with very low RHO and must stay visible."
+  },
+  {
+    "id": "ksgf-2011-05-22-joplin",
+    "category": [
+      "tornado_debris",
+      "missing_dual_pol"
+    ],
+    "station": "KSGF",
+    "time_utc": "SPC storm reports 2011-05-22, tornado 2241Z JOPLIN JASPER MO EF-5 (SGF): https://www.spc.noaa.gov/climo/reports/110522_rpts.html",
+    "file": "KSGF20110522_224348_V03.gz",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2011/05/22/KSGF/KSGF20110522_224348_V03.gz",
+    "bytes": 3825468,
+    "sha256": "6fca562c3c7c021ff578f6b3c126db3072295c4e5f36897baf6766e3420a0649",
+    "why": "2011-05-22T22:43:48Z",
+    "source": "Joplin EF5 tornado; pre-dual-pol legacy V03 gzip volume, so it also tests how a whole volume with no RHO/ZDR is handled."
+  },
+  {
+    "id": "kdtx-2025-03-16-light-rain",
+    "category": [
+      "light_rain",
+      "folded_gates",
+      "missing_dual_pol"
+    ],
+    "station": "KDTX",
+    "time_utc": "Iowa Environmental Mesonet ASOS archive, KDTW 2025-03-16 02:53Z/03:53Z wxcodes '-RA': https://mesonet.agron.iastate.edu/request/download.phtml?network=MI_ASOS",
+    "file": "KDTX20250316_031344_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2025/03/16/KDTX/KDTX20250316_031344_V06",
+    "bytes": 8825937,
+    "sha256": "01292f16b5633d83d85d565dd052580540fa6232f4b761adc9a5a6091617e5f3",
+    "why": "2025-03-16T03:13:44Z",
+    "source": "Widespread light rain over SE Michigan: DTW METAR -RA at 02:53Z and 03:53Z, 56-57 F; weak (10-30 dBZ) echo should survive QC intact."
+  },
+  {
+    "id": "kdtx-2025-01-02-light-snow",
+    "category": [
+      "light_snow",
+      "missing_dual_pol"
+    ],
+    "station": "KDTX",
+    "time_utc": "Iowa Environmental Mesonet ASOS archive, KDTW 2025-01-02 05:53Z-07:53Z wxcodes '-SN': https://mesonet.agron.iastate.edu/request/download.phtml?network=MI_ASOS",
+    "file": "KDTX20250102_061811_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2025/01/02/KDTX/KDTX20250102_061811_V06",
+    "bytes": 2129319,
+    "sha256": "27dc0532420ec33b065cb681e4a73fcdcb5f48838029312d14c224cfd2f10cbf",
+    "why": "2025-01-02T06:18:11Z",
+    "source": "Lake-effect/synoptic light snow: DTW METAR -SN at 05:53Z-07:53Z, 29-30 F; low-dBZ dry snow is the echo most at risk from thresholds."
+  },
+  {
+    "id": "kdtx-2025-01-31-melting-layer",
+    "category": [
+      "melting_layer",
+      "light_rain",
+      "missing_dual_pol"
+    ],
+    "station": "KDTX",
+    "time_utc": "IEM ASOS KDTW 2025-01-31 16:53Z/17:53Z '-RA BR'; IEM RAOB KDTX 2025-01-31 12Z (0 C at 765 hPa, ~2.24-2.37 km): https://mesonet.agron.iastate.edu/archive/raob/",
+    "file": "KDTX20250131_171657_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2025/01/31/KDTX/KDTX20250131_171657_V06",
+    "bytes": 9402255,
+    "sha256": "10813b416081bd82730af4e69708aaf3be71e68a6a8b02860a6126170bf9b60b",
+    "why": "2025-01-31T17:16:57Z",
+    "source": "Stratiform rain with a low freezing level: DTW -RA 38 F, KDTX 12Z sounding crosses 0 C near 2.2-2.4 km MSL, so the 0.5 deg beam enters the bright band inside 150 km (RHO dips in a ring)."
+  },
+  {
+    "id": "klsx-2025-09-26-birds",
+    "category": [
+      "clear_air_biology",
+      "folded_gates",
+      "missing_dual_pol"
+    ],
+    "station": "KLSX",
+    "time_utc": "Cornell Chronicle, 'Record-breaking night of bird migration detected with radar' (25 Sep 2025): https://news.cornell.edu/stories/2025/09/record-breaking-night-bird-migration-detected-radar",
+    "file": "KLSX20250926_040226_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2025/09/26/KLSX/KLSX20250926_040226_V06",
+    "bytes": 10113473,
+    "sha256": "d0fb7796833863188d8e7e38d076e9483d6420bdae3c4a503ab7c6a762e33445",
+    "why": "2025-09-26T04:02:26Z",
+    "source": "Night of 25 Sep 2025, BirdCast's record fall migration night (>1.2 billion birds); KLSX at 23:02 CDT shows a migration bloom: low REF, low RHO, non-weather."
+  },
+  {
+    "id": "kmkx-2025-09-26-birds",
+    "category": [
+      "clear_air_biology",
+      "folded_gates",
+      "missing_dual_pol"
+    ],
+    "station": "KMKX",
+    "time_utc": "Cornell Chronicle (as above): https://news.cornell.edu/stories/2025/09/record-breaking-night-bird-migration-detected-radar",
+    "file": "KMKX20250926_040347_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2025/09/26/KMKX/KMKX20250926_040347_V06",
+    "bytes": 9086050,
+    "sha256": "eb6eb02da544142cfac7060a7379b7097637f088bed146cf8821a3244d60af13",
+    "why": "2025-09-26T04:03:47Z",
+    "source": "Same record migration night at KMKX (Upper Midwest corridor); also contains the Butler Ridge wind farm 48 km N."
+  },
+  {
+    "id": "kmkx-2025-09-26-truncated",
+    "category": [
+      "azimuth_gaps"
+    ],
+    "station": "KMKX",
+    "time_utc": "Found by screening the archive with qc_review --screen; no external event.",
+    "file": "KMKX20250926_043857_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2025/09/26/KMKX/KMKX20250926_043857_V06",
+    "bytes": 6688332,
+    "sha256": "139566b5a9a297eabcb782f1a5b8ccb8ad87bcf9a5bea4cfebc53a58d864c047",
+    "why": "2025-09-26T04:38:57Z",
+    "source": "Archive object that ends mid-sweep (6.7 MB vs ~9 MB neighbours); its first two lowest sweeps are complete but the volume is incomplete."
+  },
+  {
+    "id": "klix-2020-05-11-ap",
+    "category": [
+      "anomalous_propagation",
+      "folded_gates",
+      "missing_dual_pol"
+    ],
+    "station": "KLIX",
+    "time_utc": "Fox News 2020-05-13 quoting NWS New Orleans tweets: https://www.foxnews.com/us/weather-radar-new-orleans-radar-beam-ducting-phenomenon-temperature-inversion",
+    "file": "KLIX20200511_121334_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2020/05/11/KLIX/KLIX20200511_121334_V06",
+    "bytes": 5294352,
+    "sha256": "c792ec9020971b4ebe3d9a57859e2fcfadcd902c79492443b84bf5f8885e8426",
+    "why": "2020-05-11T12:13:34Z",
+    "source": "NWS New Orleans tweeted on Monday morning 11 May 2020 that a temperature inversion was ducting the radar beam; ground/sea returns from superrefraction."
+  },
+  {
+    "id": "kmkx-2026-11-15-wind-farm",
+    "category": [
+      "wind_farms",
+      "missing_dual_pol"
+    ],
+    "station": "KMKX",
+    "time_utc": "NWS Milwaukee/Sullivan, 'Wind Farm Interference Shows Up on Doppler Radar': https://www.weather.gov/mkx/windfarm",
+    "file": "KMKX20261115_120409_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2026/11/15/KMKX/KMKX20261115_120409_V06",
+    "bytes": 3443666,
+    "sha256": "2c4abb4694279213861b4247e18bc01f97096bb81cd870fda6c83e03f04133c9",
+    "why": "2026-11-15T12:04:09Z",
+    "source": "Quiet morning at KMKX; the 36-turbine Butler Ridge wind farm ~30 mi (48 km) N is in the radar line of sight and shows as persistent point returns."
+  },
+  {
+    "id": "kmpx-2024-07-10-azimuth",
+    "category": [
+      "azimuth_gaps"
+    ],
+    "station": "KMPX",
+    "time_utc": "Found by screening 142 stations at 2024-07-10 18Z with qc_review --screen; no external event.",
+    "file": "KMPX20240710_180457_V06",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2024/07/10/KMPX/KMPX20240710_180457_V06",
+    "bytes": 11077879,
+    "sha256": "456a40e53f77b7c3e547a9da5f8ded58fc98d85a845b9d055ca25fc553c06789",
+    "why": "2024-07-10T18:04:57Z",
+    "source": "Real volume whose azimuth sequence fails the decoder's spacing check ('duplicate or reversed azimuth'); elevation 2 has a 0.83 deg step on a 0.5 deg cut."
+  },
+  {
+    "id": "kgrr-2012-07-01-legacy",
+    "category": [
+      "missing_dual_pol"
+    ],
+    "station": "KGRR",
+    "time_utc": "Archive object only; picked for era, no external event.",
+    "file": "KGRR20120701_000708_V06.gz",
+    "url": "https://unidata-nexrad-level2.s3.amazonaws.com/2012/07/01/KGRR/KGRR20120701_000708_V06.gz",
+    "bytes": 1929712,
+    "sha256": "9ab504b5b9b4f38dbcd7d0f2d8f90eb7258a763d7fa0151151a298b1dffaafef",
+    "why": "2012-07-01T00:07:08Z",
+    "source": "Pre-dual-pol era gzip V06 volume from KGRR (Grand Rapids); whole volume has no RHO/ZDR."
+  },
+  {
+    "id": "blanked-gates",
+    "category": [
+      "blanked_gates"
+    ],
+    "file": null,
+    "reason": "No radial with spot blanking set was found in 423 archive volumes screened (first V06 volume of the hour for every K-site with data at 2026-11-15 12Z, 2025-05-20 00Z and 2024-07-10 18Z) or in any case above. Folded gates are covered by the split-cut sweeps."
+  },
+  {
+    "id": "azimuth-gap-served",
+    "category": [
+      "azimuth_gaps"
+    ],
+    "file": null,
+    "reason": "No volume was found whose lowest sweep decodes with a non-empty missing_sectors_deg; the decoder requires 360/spacing radials, so real gaps show up as rejected volumes (kmpx, kmkx-truncated) instead."
+  }
+]

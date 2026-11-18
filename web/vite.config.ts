@@ -1,17 +1,28 @@
 import { defineConfig } from "vite";
 
 // Same-origin in the browser: the tile-server API sends no CORS headers, so
-// dev proxies /api, /tiles and /basemap to it and production serves this site
-// from the same host (radar api). RADAR_API overrides the upstream, RADAR_BASEMAP the /basemap one.
+// dev proxies /api, /tiles, /replays, /level2 and /basemap to it and production serves this site
+// from the same host (radar api). RADAR_API overrides the upstream, RADAR_BASEMAP the /basemap one,
+// RADAR_REPLAYS the replay routes (a local `radar api` over imported cases, live radar elsewhere).
 const upstream = process.env.RADAR_API ?? "https://radar-ng-api.vanillax.me";
 const basemapUpstream = process.env.RADAR_BASEMAP ?? upstream;
+const replayUpstream = process.env.RADAR_REPLAYS ?? upstream;
+const targets: [string, string][] = [
+  // First match wins, so the replay API sits before /api.
+  ["/api/replays", replayUpstream],
+  ["/replays", replayUpstream],
+  ["/api", upstream],
+  ["/tiles", upstream],
+  ["/level2", upstream],
+  ["/basemap", basemapUpstream],
+];
 // Cloudflare hotlink protection rejects image requests whose Referer isn't a
 // vanillax.me page, so the dev proxy drops it (production is same-host).
 const proxy = Object.fromEntries(
-  ["/api", "/tiles", "/basemap"].map((p) => [
+  targets.map(([p, target]) => [
     p,
     {
-      target: p === "/basemap" ? basemapUpstream : upstream,
+      target,
       changeOrigin: true,
       configure: (server: { on: (event: "proxyReq", cb: (req: { removeHeader: (h: string) => void }) => void) => void }) => {
         server.on("proxyReq", (req) => {

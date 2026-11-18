@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 pub mod artifact;
 pub mod catalogue;
+pub mod clocks;
 pub mod decode;
 pub mod feed;
 pub mod health;
@@ -14,6 +15,7 @@ pub mod pool_ops;
 pub mod publish;
 pub mod runtime;
 pub mod service;
+pub mod shadow;
 pub mod tile;
 pub mod tracer;
 pub mod viewport;

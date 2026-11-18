@@ -1,0 +1,14 @@
+# Level II viewport stack for the #293 shadow run. Works for either D1 answer: level2-api is a
+# separate, stateless `radar api` (emptyDir only, no PVC), so it can stay private or later
+# take the public route. Everything is off by default (see level2.env). Docs:
+# docs/develop/level2-shadow.md. Needs the worker-controller component's level2 pool for sweeps.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - api.yaml
+  - publisher.yaml
+  - recorder.yaml
+configMapGenerator:
+  - name: radar-ng-level2
+    envs:
+      - level2.env

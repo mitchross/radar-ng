@@ -64,6 +64,9 @@ pub struct Sweep {
     pub scan_end: DateTime<Utc>,
     pub rays: Vec<Ray>,
     pub missing_sectors_deg: Vec<[f32; 2]>,
+    /// QC time summed over every moment of this sweep's rays (per-sweep QC clock).
+    #[serde(default)]
+    pub qc_seconds: f64,
 }
 
 pub struct Decoder {
@@ -254,6 +257,7 @@ impl Decoder {
                 scan_end: time,
                 rays: vec![],
                 missing_sectors_deg: vec![],
+                qc_seconds: 0.0,
             });
         }
         let s = self
@@ -312,8 +316,15 @@ impl Decoder {
             blocks[1].map(|b| moment(b, h.radial_spot_blanking_status_raw())),
             blocks[2].map(|b| moment(b, h.radial_spot_blanking_status_raw())),
         ];
-        let [a, b, c] = moments;
+        let [a, b, c] = moments.map(|m| m.transpose());
+        let (a, b, c) = (a?, b?, c?);
         let s = self.current.as_mut().unwrap();
+        s.qc_seconds += [&a, &b, &c]
+            .into_iter()
+            .flatten()
+            .map(|(_, qc)| qc.as_secs_f64())
+            .sum::<f64>();
+        let [a, b, c] = [a, b, c].map(|m| m.map(|(m, _)| m));
         s.rays.push(Ray {
             number: h.azimuth_number(),
             time,
@@ -322,7 +333,7 @@ impl Decoder {
             azimuth_spacing_deg: spacing,
             radial_status: status,
             blanking: h.radial_spot_blanking_status_raw(),
-            moments: [a.transpose()?, b.transpose()?, c.transpose()?],
+            moments: [a, b, c],
         });
         s.scan_end = time;
         if [2, 4].contains(&status) {
@@ -400,7 +411,11 @@ fn validate_moment(b: &DataBlock<'_, GenericDataBlock<'_>>) -> Result<()> {
     Ok(())
 }
 
-fn moment(b: &DataBlock<'_, GenericDataBlock<'_>>, blanking: u8) -> Result<Moment> {
+/// Decodes one moment and returns it with the time its QC took.
+fn moment(
+    b: &DataBlock<'_, GenericDataBlock<'_>>,
+    blanking: u8,
+) -> Result<(Moment, std::time::Duration)> {
     let h = b.inner().header();
     let encoded = b.inner().encoded_values().to_vec();
     let qc_started = std::time::Instant::now();
@@ -411,24 +426,24 @@ fn moment(b: &DataBlock<'_, GenericDataBlock<'_>>, blanking: u8) -> Result<Momen
         h.offset(),
         blanking,
     )?;
-    crate::metrics::add(
-        "radar_level2_qc_seconds_total",
-        &[],
-        qc_started.elapsed().as_secs_f64(),
-    );
-    Ok(Moment {
-        first_gate_m: h.data_moment_range_raw() as i16,
-        spacing_m: h.data_moment_range_sample_interval_raw() as i16,
-        word_bits: h.data_word_size_raw(),
-        scale: h.scale(),
-        offset: h.offset(),
-        control_flags: h.control_flags_raw(),
-        snr_threshold_raw: h.snr_threshold_raw(),
-        tover_raw: h.tover_raw(),
-        encoded,
-        values,
-        qc,
-    })
+    let qc_time = qc_started.elapsed();
+    crate::metrics::add("radar_level2_qc_seconds_total", &[], qc_time.as_secs_f64());
+    Ok((
+        Moment {
+            first_gate_m: h.data_moment_range_raw() as i16,
+            spacing_m: h.data_moment_range_sample_interval_raw() as i16,
+            word_bits: h.data_word_size_raw(),
+            scale: h.scale(),
+            offset: h.offset(),
+            control_flags: h.control_flags_raw(),
+            snr_threshold_raw: h.snr_threshold_raw(),
+            tover_raw: h.tover_raw(),
+            encoded,
+            values,
+            qc,
+        },
+        qc_time,
+    ))
 }
 
 pub fn qc_values(

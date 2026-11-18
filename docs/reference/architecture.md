@@ -96,7 +96,10 @@ Why Temporal instead of CronJobs:
 server, plus, in this deployment, VersaTiles at `maps.vanillax.me` for the basemap, satellite
 imagery and raster renders. The tile server fetches the public data clients need and serves it
 itself: `/api/alerts` (NWS), `/api/geocode` and `/api/reverse-geocode` (a self-hosted Photon), and
-`/basemap/imagery` (USGS orthoimagery). No API keys exist anywhere in the stack. See
+`/basemap/imagery` (USGS orthoimagery). The weather extras work the same way: `/api/snow/{lat}/{lon}`
+(Open-Meteo plus the winter layers), `/api/normals/{lat}/{lon}` (NCEI normals),
+`/api/climate/white-christmas` (NCEI station odds) and `/api/sky/tonight/{lat}/{lon}` (CelesTrak
+ISS passes). No API keys exist anywhere in the stack. See
 [CONTRIBUTING.md](../../CONTRIBUTING.md#self-hosted-only).
 
 <img src="../diagrams/frontend-architecture.svg" width="100%">

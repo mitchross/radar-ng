@@ -70,36 +70,56 @@ warnings file returns 200 and a sampled tile returns `image/png`.
 
 ## Operator runbook (in cluster)
 
-Run in order, as one pod with the tile-server volume mounted at `/data/tiles` and outbound
-internet. Use the `radar` image (`ghcr.io/mitchross/radar-ng-tile-server`; it contains the `radar` binary).
+Run in order, as one Job with:
+
+- the `ghcr.io/mitchross/radar-ng-tile-server` image (it contains the `radar` binary), pinned by digest;
+- the tile volume (`tiles-v2`) mounted read-write at `/data/tiles`, on the tile-server's node (the volume is RWO);
+- an `emptyDir` at `/work` for the warnings files (publish copies them into the revision, so they need not survive);
+- uid and gid 1000, outbound HTTPS to `noaa-mrms-pds.s3.amazonaws.com` and `mesonet.agron.iastate.edu`;
+- about 3 GiB memory and a CPU limit, so live MRMS ingest on the same node is not starved.
+
 No writing to the volume while another replay job runs (the importer takes a lock and will refuse).
 
+The image is distroless plus a few busybox links: `sh`, `wget`, `ls`, `cat`, `find`, `test`, `touch`,
+`sleep`. There is no `curl`, and `mkdir`, `df` and `rm` are not on the `PATH`; call them as
+`busybox <applet>`. Checked on the v2.0.43 tile-server pod.
+
 ```
+set -e
 export TILE_DIR=/data/tiles
-W=/data/replay-warnings            # any scratch dir on the volume
-mkdir -p $W
+W=/work                              # the emptyDir
+# An archive download that drops mid-import stops the import; the same command resumes it.
+retry() { for n in 1 2 3; do "$@" && return 0; echo "attempt $n failed: $*"; sleep 30; done; return 1; }
 
 # 0. Free space: each case is well under 1 GiB of output, but the importer
 #    needs 20 GiB live free headroom (see replay-importer.md).
-df -h /data/tiles
+busybox df -h /data/tiles
 
 # 1. Greenfield
-radar replay import --case greenfield-2024 --revision full-1 --verify-crop
-radar import-replay-warnings greenfield-2024 $W/greenfield-2024.geojson
+retry radar replay import --case greenfield-2024 --revision full-1 --verify-crop
+retry radar import-replay-warnings greenfield-2024 $W/greenfield-2024.geojson
 radar replay publish --case greenfield-2024 --revision full-1 --warnings $W/greenfield-2024.geojson
 
 # 2. Rolling Fork (skip the one truncated object)
-radar replay import --case rolling-fork-2023 --revision full-1 --verify-crop \
+retry radar replay import --case rolling-fork-2023 --revision full-1 --verify-crop \
   --exclude-object CONUS/MergedBaseReflectivityQC_00.50/20230324/MRMS_MergedBaseReflectivityQC_00.50_20230324-231159.grib2.gz
-radar import-replay-warnings rolling-fork-2023 $W/rolling-fork-2023.geojson
+retry radar import-replay-warnings rolling-fork-2023 $W/rolling-fork-2023.geojson
 radar replay publish --case rolling-fork-2023 --revision full-1 --warnings $W/rolling-fork-2023.geojson
 
 # 3. Check (the API caches readiness for 10 s)
-curl -s http://<tile-server>/api/replays
+sleep 15
+wget -qO- http://tile-server.radar-ng.svc:8080/api/replays
 ```
 
-Expect about 20 and 31 minutes for the two imports; publish about a minute each. Needs ~2.5 GiB
-RAM. If an import fails midway, see replay-importer.md for resume and cleanup of `.staging-full-1`.
+Import and publish print JSON reports (frames, per-layer gaps, warnings checksum, allocated bytes).
+Keep the Job logs; they are the evidence for [replay-acceptance.md](replay-acceptance.md). Per-object
+archive checksums stay in each revision's `progress.json` and `coverage.json`.
+
+On the 30-core host the imports took about 20 and 31 minutes. On a 6-core pod (2026-11-16) each took
+about 40 minutes, and an archive download dropped mid-import three times in five import runs.
+Running the same command again resumed each time, which is what `retry` does. Publish takes about a
+minute per case. Needs ~2.5 GiB RAM. If an import fails midway, see replay-importer.md for resume
+and cleanup of `.staging-full-1`.
 If the archive has since changed, `radar replay check --case <id> --decode` shows which objects
 fail to decode before you start.
 
@@ -109,9 +129,11 @@ different warnings; pick a new `--published-revision` (for example `full-1-publi
 ### Rollback
 
 Delete the public revision directory. The case leaves the catalogue within about 10 s; nothing else changes.
+The tile-server mounts the volume read-only, so run this from a one-off Job built like the import Job
+(same image, volume, node and uid), with the command:
 
 ```
-rm -rf /data/tiles/replays/<case>/full-1-public
+busybox rm -rf /data/tiles/replays/<case>/full-1-public
 ```
 
 The private `full-1` revision stays, so publishing again needs no re-import. To reclaim space,
