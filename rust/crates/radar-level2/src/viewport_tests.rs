@@ -157,6 +157,7 @@ fn sweep(station: &str, lat: f32, lon: f32, end: DateTime<Utc>) -> Sweep {
         scan_end: end,
         rays,
         missing_sectors_deg: vec![],
+        qc_seconds: 0.0,
     }
 }
 

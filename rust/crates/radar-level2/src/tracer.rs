@@ -211,6 +211,7 @@ pub(crate) async fn trace(
     station: &str,
     namespace: &str,
 ) -> Result<serde_json::Value> {
+    let started = Instant::now();
     let mut health = pool.health(station).await?;
     health.active = true;
     let latest = pool.latest(station).await?;
@@ -276,6 +277,11 @@ pub(crate) async fn trace(
         ) <= 1500.0,
         "decoded station geometry disagrees with catalogue"
     );
+    let arrived = acquired.arrived;
+    let archive = acquired
+        .sources
+        .iter()
+        .any(|s| s.bucket == "unidata-nexrad-level2");
     let artifact = Artifact::build(&sweep, acquired.sources, namespace)?;
     if let Some((end, identity, key)) = latest
         && sweep.scan_end == end
@@ -297,9 +303,37 @@ pub(crate) async fn trace(
         &artifact.commit_key,
     )
     .await?;
+    let indexed_at = Utc::now();
+    crate::metrics::observe(
+        "radar_level2_qc_sweep_seconds",
+        Duration::from_secs_f64(sweep.qc_seconds),
+    );
+    let clock = crate::clocks::SweepClock {
+        station: station.into(),
+        sweep_id: artifact.commit.identity.clone(),
+        volume_start: sweep.volume_start,
+        scan_start: sweep.scan_start,
+        scan_end: sweep.scan_end,
+        vcp: sweep.vcp.map(i32::from),
+        elevation_number: i32::from(sweep.elevation_number),
+        source_kind: if archive { "archive" } else { "live" }.into(),
+        source_arrival_at: arrived,
+        first_available_at: indexed_at,
+        qc_ms: sweep.qc_seconds * 1000.0,
+        rays: sweep.rays.len() as i32,
+        missing_sectors: sweep.missing_sectors_deg.len() as i32,
+        missing_deg: crate::clocks::missing_degrees(&sweep.missing_sectors_deg),
+        source_bytes: artifact.commit.sources.iter().map(|s| s.bytes as i64).sum(),
+        artifact_bytes: artifact.bytes()?,
+        poll_ms: started.elapsed().as_secs_f64() * 1000.0,
+    };
+    // Clocks are evidence, not part of publication: a write failure never blocks the sweep.
+    if let Err(e) = pool.record_clock(&clock).await {
+        eprintln!("level2_clock_record_error={e}");
+    }
     ensure_fresh(sweep.scan_end, Utc::now())?;
     Ok(
-        json!({"status":"numeric_ready","public_frame_ready":false,"commit":artifact.commit_key,"identity":artifact.commit.identity,"source_bytes":artifact.commit.sources.iter().map(|s|s.bytes).sum::<usize>(),"sources":artifact.commit.sources,"rays":sweep.rays.len(),"scan_end":sweep.scan_end,"objects":artifact.commit.entries.len()+1,"artifact_bytes":artifact.bytes()?,"health":report,"clocks":health}),
+        json!({"status":"numeric_ready","public_frame_ready":false,"qc_ms":clock.qc_ms,"commit":artifact.commit_key,"identity":artifact.commit.identity,"source_bytes":artifact.commit.sources.iter().map(|s|s.bytes).sum::<usize>(),"sources":artifact.commit.sources,"rays":sweep.rays.len(),"scan_end":sweep.scan_end,"objects":artifact.commit.entries.len()+1,"artifact_bytes":artifact.bytes()?,"health":report,"clocks":health}),
     )
 }
 
