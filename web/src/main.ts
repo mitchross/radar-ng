@@ -57,6 +57,7 @@ import { SEVERE_CREDIT, SEVERE_LAYERS, formatSevereReading, severeLayer } from "
 import { WINTER_EMPTY_HINT, WINTER_LAYERS, formatWinterReading, winterAsOf, winterLayer, winterPickerRows, winterRowChips, winterSheetHint } from "./shared/winterLayers";
 import { NICE_DAY_LAYER, formatNiceDayReading, niceDayLegend } from "./shared/niceDayLayer";
 import { TEMP_NORMAL_LAYER, formatAnomalyReading, inLower48, normalsLine, normalsPath, parseNormals, tempAnomalyLegend, type DayNormals } from "./shared/tempNormal";
+import { STARGAZING_LAYER, formatStargazingReading, stargazingLegend } from "./shared/stargazingLayer";
 import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR, SNOW_START_IN_HR, winterStart } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
@@ -109,6 +110,7 @@ const LAYERS: { id: string; name: string; needs: string }[] = [
   { id: "cloud", name: "Clouds", needs: "cloud" },
   { id: NICE_DAY_LAYER.id, name: NICE_DAY_LAYER.name, needs: NICE_DAY_LAYER.id },
   { id: TEMP_NORMAL_LAYER.id, name: TEMP_NORMAL_LAYER.name, needs: TEMP_NORMAL_LAYER.id },
+  { id: STARGAZING_LAYER.id, name: STARGAZING_LAYER.name, needs: STARGAZING_LAYER.id },
   { id: "uv", name: "UV index", needs: "uv" },
   { id: "air-quality", name: "Air quality", needs: "air-quality" },
   { id: "ozone", name: "Ozone", needs: "ozone" },
@@ -719,6 +721,17 @@ function renderLegend() {
           .join("") +
         `</div>`;
     }
+    return;
+  }
+  if (state.layer === STARGAZING_LAYER.id) {
+    const ranges = (serverPalettes?.[state.palette] ?? serverPalettes?.classic)?.[STARGAZING_LAYER.paletteKey]?.ranges;
+    const stops = stargazingLegend(ranges).reverse();
+    el.hidden = false;
+    el.innerHTML =
+      `<div class="legend-title">${STARGAZING_LAYER.name}</div>` +
+      `<div class="legend-bar" style="background:linear-gradient(90deg,${stops.map((s, i) => `${s.color} ${i * 25}% ${(i + 1) * 25}%`).join(",")})"></div>` +
+      `<div class="legend-labels">${stops.map((s) => `<span>${s.word}</span>`).join("")}</div>` +
+      `<div class="legend-note">Night hours only. ${STARGAZING_LAYER.credit}</div>`;
     return;
   }
   if (state.layer === NICE_DAY_LAYER.id) {
@@ -1340,6 +1353,7 @@ $("panel-body").addEventListener("click", (e) => {
   if (t.closest("#forecast-retry")) void renderForecast();
   else if (t.closest("#notify-me")) void enableRainAlerts();
   else if (t.closest("#wxmas-map")) void toggleWhiteChristmasDots();
+  else if (t.closest("#sky-star-map")) showLayer(STARGAZING_LAYER.id);
   else if (t.closest("#sky-tonight-open") && state.forecast) {
     skyExpanded = true;
     void renderSkyTonight(state.forecast, state.place.latitude, state.place.longitude);
@@ -1371,6 +1385,17 @@ $("layers").addEventListener("click", (e) => {
   renderChips();
   rebuildFrames();
 });
+
+/** Switch the map to a layer from outside the layer row (the sky card's star map link). */
+function showLayer(id: string) {
+  if (replaying() || state.layer === id || !layerAvailable(id)) return;
+  state.layer = id;
+  store("rng.layer", state.layer);
+  track("layer_changed", { layer: state.layer });
+  clearFrames();
+  renderChips();
+  rebuildFrames();
+}
 
 $("styles").addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-style]");
@@ -1620,6 +1645,7 @@ map.on("click", async (e) => {
     else if (state.layer === "cloud") text = `${Math.round(value)}%`;
     else if (state.layer === NICE_DAY_LAYER.id) text = formatNiceDayReading(value) ?? `${Math.round(value)}`;
     else if (state.layer === TEMP_NORMAL_LAYER.id) text = formatAnomalyReading(value) ?? `${Math.round(value)}°F`;
+    else if (state.layer === STARGAZING_LAYER.id) text = formatStargazingReading(value) ?? `${Math.round(value)}`;
     else if (state.layer === "precip-accum" || state.layer === "precip-24h") text = `${value.toFixed(2)} in`;
     else if (state.layer === "uv") text = `UV ${Math.round(value)} · ${uvCategory(value)}`;
     else if (severeLayer(state.layer)) text = formatSevereReading(state.layer, value) ?? `${value.toFixed(1)}`;

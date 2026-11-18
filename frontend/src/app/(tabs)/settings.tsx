@@ -1125,6 +1125,7 @@ function buildStackActivity(
     "snowfall-24h": "Past-24-hour snowfall published",
     "nice-day": "Nice Day layer published",
     "temp-anomaly": "Temp-vs-normal forecast published",
+    stargazing: "Stargazing layer published",
     "snow-chance-1": "Snow-chance forecast published",
     "snow-chance-4": "Snow-chance forecast published",
     "snow-chance-8": "Snow-chance forecast published",

@@ -9,8 +9,9 @@ import { SEVERE_LAYERS, type SevereLayerId } from "../../../../web/src/shared/se
 import { WINTER_LAYERS, type WinterLayerId } from "../../../../web/src/shared/winterLayers";
 import { NICE_DAY_LAYER } from "../../../../web/src/shared/niceDayLayer";
 import { TEMP_NORMAL_LAYER } from "../../../../web/src/shared/tempNormal";
+import { STARGAZING_LAYER } from "../../../../web/src/shared/stargazingLayer";
 
-export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" | "sun" | "ozone" | "hail" | "rotation" | "tower" | "snow" | "ice" | "snowDepth" | "snowPast" | "snowChance" | "niceDay" | "tempNormal";
+export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" | "sun" | "ozone" | "hail" | "rotation" | "tower" | "snow" | "ice" | "snowDepth" | "snowPast" | "snowChance" | "niceDay" | "tempNormal" | "stars";
 
 export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] = [
   { id: "radar", name: "Radar", icon: "rain" },
@@ -23,6 +24,7 @@ export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] =
   { id: "cloud", name: "Clouds", icon: "cloud" },
   { id: "nice-day", name: NICE_DAY_LAYER.name, icon: "niceDay" },
   { id: "temp-anomaly", name: TEMP_NORMAL_LAYER.name, icon: "tempNormal" },
+  { id: "stargazing", name: STARGAZING_LAYER.name, icon: "stars" },
   { id: "uv", name: "UV Index", icon: "sun" },
   { id: "air-quality", name: "Air Quality", icon: "dust" },
   { id: "ozone", name: "Ozone", icon: "ozone" },
@@ -80,6 +82,7 @@ export const LAYER_SYMBOLS: Record<LayerIcon, SymbolViewProps["name"]> = {
   snowPast: { ios: "clock.arrow.circlepath", android: "history" },
   niceDay: { ios: "sun.horizon.fill", android: "nature_people" },
   tempNormal: { ios: "thermometer.variable.and.figure", android: "device_thermostat" },
+  stars: { ios: "moon.stars.fill", android: "nights_stay" },
   snowChance: { ios: "percent", android: "percent" },
 };
 
@@ -104,8 +107,8 @@ const REPLAY_LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] =
 ];
 
 /** The layers a replay case offers, in picker order; nothing the live manifest alone has. */
-/** Main layers the server may leave out (nice-day unless HRRR_ENABLED_LAYERS lists it; temp-anomaly until the normals exist). */
-const MANIFEST_GATED: readonly LayerType[] = [NICE_DAY_LAYER.id, TEMP_NORMAL_LAYER.id];
+/** Main layers the server may leave out (HRRR_ENABLED_LAYERS layers; temp-anomaly until the normals exist). */
+const MANIFEST_GATED: readonly LayerType[] = [NICE_DAY_LAYER.id, STARGAZING_LAYER.id, TEMP_NORMAL_LAYER.id];
 
 /** The main layer list, minus gated layers the live manifest has no frames for. */
 export function liveLayerOptions(manifestLayers?: Record<string, { frames?: unknown[]; timestamps?: unknown[] } | undefined>) {

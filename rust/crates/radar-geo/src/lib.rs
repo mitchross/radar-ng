@@ -11,6 +11,8 @@
 use serde::{Deserialize, Serialize};
 use std::f64::consts::{FRAC_PI_4, PI};
 
+pub mod ephemeris;
+
 /// Coordinate reference system of a projected source grid.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

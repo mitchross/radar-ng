@@ -395,3 +395,49 @@ async fn h18_contract_changes_do_not_resume() {
         );
     }
 }
+
+/// An all-day stargazing hour has no tiles but still publishes a complete (empty) pyramid, so the
+/// resume check counts it and the hour is not downloaded again.
+#[tokio::test]
+async fn stargazing_day_hour_publishes_empty_and_resumes() {
+    let h = harness(&["classic", "muted"], &["radar-hrrr", "stargazing"]).await;
+    let pals = load_hrrr_palettes(&["classic".into(), "muted".into()]);
+    let mut day = refc_grid();
+    day.values.iter_mut().for_each(|v| *v = f32::NAN);
+    let rendered = render_layer(
+        &h.ctx.cfg,
+        "stargazing",
+        RUN,
+        VALID_F01,
+        &day,
+        &pals,
+        "stargazing",
+        false,
+    )
+    .unwrap();
+    assert!(
+        rendered,
+        "an empty stargazing hour still counts as rendered"
+    );
+    assert!(
+        layer_dir(&h, "stargazing", "classic", VALID_F01)
+            .join(PYRAMID_COMPLETE_FILE)
+            .is_file()
+    );
+    let existing = existing_rendered_layers(&h.ctx.cfg, &pals, RUN, VALID_F01);
+    assert!(existing.iter().any(|l| l == "stargazing"), "{existing:?}");
+
+    // Other layers keep the old rule: no tiles, nothing published.
+    let empty = render_layer(
+        &h.ctx.cfg,
+        "cloud",
+        RUN,
+        VALID_F01,
+        &day,
+        &pals,
+        "cloud_cover",
+        false,
+    )
+    .unwrap();
+    assert!(!empty);
+}

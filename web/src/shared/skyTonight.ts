@@ -6,6 +6,7 @@
  */
 import { bodyAltitude, bodyRiseSet, clockLabel, moonPhase, sunTimes, twilight, type Planet } from "./astro";
 import { forecastTimeMs } from "./forecastTime";
+import { bestWindowLine, parseStargazing, type StargazingTonight } from "./stargazingLayer";
 
 export const SKY_CREDIT = "Orbital elements: CelesTrak";
 /** The card shows from this long before sunset until sunrise; the "Tonight" link works any time. */
@@ -42,11 +43,13 @@ export type IssStatus = "ok" | "stale" | "no_data";
 export interface IssReport {
   status: IssStatus;
   passes: IssPass[];
+  /** Present only when the server publishes the stargazing layer. */
+  stargazing?: StargazingTonight | null;
 }
 
 /** The server body, or null when it is not one. Malformed passes are dropped. */
 export function parseSkyTonight(body: unknown): IssReport | null {
-  const b = body as { status?: unknown; passes?: unknown } | null;
+  const b = body as { status?: unknown; passes?: unknown; stargazing?: unknown } | null;
   if (!b || typeof b !== "object") return null;
   const status: IssStatus = b.status === "ok" || b.status === "stale" ? b.status : "no_data";
   const list = Array.isArray(b.passes) ? b.passes : [];
@@ -65,7 +68,12 @@ export function parseSkyTonight(body: unknown): IssReport | null {
     };
     if (Object.values(pass).every(Number.isFinite)) passes.push(pass);
   }
-  return { status, passes: status === "ok" ? passes.sort((a, b) => a.start - b.start) : [] };
+  const stargazing = parseStargazing(b.stargazing);
+  return {
+    status,
+    passes: status === "ok" ? passes.sort((a, b) => a.start - b.start) : [],
+    ...(stargazing ? { stargazing } : {}),
+  };
 }
 
 /** 16-point compass name of an azimuth (0 = north, clockwise). */
@@ -213,6 +221,10 @@ export interface SkyTonightCard {
   issNote: string | null;
   planets: string[];
   moon: string;
+  /** "Best 10 PM – 2 AM · Excellent" from the stargazing layer, when there is one. */
+  bestWindow: string | null;
+  /** The server has the stargazing layer, so the card links to it. */
+  starMap: boolean;
   credit: string;
 }
 
@@ -251,6 +263,8 @@ export function skyTonightCard(input: {
     issNote,
     planets: planetsTonight(night, lat, lon).map((p) => planetLine(p, night, c)),
     moon: moonLine(night, lat, lon, c),
+    bestWindow: bestWindowLine(report?.stargazing?.best, nowMs, c),
+    starMap: report?.stargazing != null,
     credit: SKY_CREDIT,
   };
 }

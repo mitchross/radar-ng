@@ -327,6 +327,17 @@
     ],
     "no_data_below": -999
   },
+  "stargazing": {
+    "_comment": "Stargazing score 0-100, our own index from cloud, darkness and the moon: Poor, Fair, Good, Excellent in steps of 25. Day is transparent.",
+    "unit": "score",
+    "ranges": [
+      { "min": 0, "max": 25, "rgba": [110, 70, 70, 150] },
+      { "min": 25, "max": 50, "rgba": [95, 95, 150, 140] },
+      { "min": 50, "max": 75, "rgba": [60, 120, 190, 145] },
+      { "min": 75, "max": 101, "rgba": [150, 110, 230, 160] }
+    ],
+    "no_data_below": 0
+  },
   "snow_chance": {
     "_comment": "WPC chance of at least 1, 4 or 8 in of snow in 24 h, percent; pale blue through purple to red.",
     "unit": "percent",

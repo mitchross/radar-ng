@@ -41,6 +41,7 @@ pub const LAYER_RETENTION_MIN: [(&str, i64); 27] = [
     ("precip-accum", 720),
     ("cloud", 720),
     ("nice-day", 720),
+    ("stargazing", 720),
     ("radar-gfs", 720),
     ("uv", 2160),
     ("temp-anomaly", 2160),

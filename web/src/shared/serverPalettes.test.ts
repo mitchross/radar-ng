@@ -30,6 +30,7 @@ describe("LAYER_PALETTE_KEY", () => {
       "echo-top": "echo_top",
       "nice-day": "nice_day",
       "temp-anomaly": "temp_anomaly",
+      stargazing: "stargazing",
       "snowfall-forecast": "snowfall",
       "ice-forecast": "ice_accum",
       "snow-depth": "snow_depth",

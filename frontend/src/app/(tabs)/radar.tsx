@@ -87,6 +87,7 @@ const WEATHER_LAYERS: readonly LayerType[] = [
   "snowfall-24h",
   "nice-day",
   "temp-anomaly",
+  "stargazing",
   "snow-chance-1",
   "snow-chance-4",
   "snow-chance-8",
