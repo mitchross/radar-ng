@@ -68,6 +68,7 @@ export interface OpenMeteoResponse {
     weather_code: Maybe[];
     wind_speed_10m: Maybe[];
     visibility?: Maybe[];
+    cloud_cover?: Maybe[];
   };
   daily: {
     time: string[];

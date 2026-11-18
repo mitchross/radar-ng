@@ -9,7 +9,7 @@ use std::fmt::Debug;
 
 use radar_types::payloads::{
     airquality::*, alerts::*, cleanup::*, hrrr::*, lightning::*, mrms::*, nowcast::*,
-    open_meteo::*, push::*, smoke::*, tropical::*, watch_storm::*,
+    open_meteo::*, push::*, sky::*, smoke::*, tropical::*, watch_storm::*,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -170,6 +170,14 @@ fn lightning_result_roundtrip() {
 #[test]
 fn tropical_result_roundtrip() {
     let _: TropicalResult = check(r#"{"storm_count":2,"feature_count":7}"#);
+}
+
+#[test]
+fn sky_result_roundtrip() {
+    let v: SkyResult = check(
+        r#"{"product":"iss","outcome":"published","http_status":200,"epoch":"2026-11-17T12:40:23.465568+00:00"}"#,
+    );
+    assert_eq!(v.outcome, "published");
 }
 
 #[test]

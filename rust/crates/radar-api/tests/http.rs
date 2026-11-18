@@ -2527,3 +2527,17 @@ async fn white_christmas_lists_stations_and_answers_the_nearest() {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(bad["detail"].as_array().unwrap().len(), 2);
 }
+
+#[tokio::test]
+async fn sky_tonight_without_elements_says_why_and_validates_the_path() {
+    let env = Env::new();
+    let app = env.app(|_| {});
+    let (status, headers, body) = get_json(&app, "/api/sky/tonight/42.3314/-83.0458").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(header_str(&headers, "cache-control"), "no-store");
+    assert_eq!(body["status"], "no_data");
+    assert_eq!(body["source"], "Orbital elements: CelesTrak");
+
+    let (status, _, _) = get_json(&app, "/api/sky/tonight/95/0").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+}

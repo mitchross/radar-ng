@@ -847,6 +847,7 @@ async function renderForecast(refresh = false) {
   const days = fc.daily.time.slice(0, 7);
   const countdownHtml = countdownFor(fc, lat, lon);
   const wxmasHtml = whiteChristmasFor(fc, lat, lon);
+  const skyHtml = skyTonightFor(fc, lat, lon);
   const lows = fc.daily.temperature_2m_min.slice(0, 7).filter((v): v is number => v != null);
   const highs = fc.daily.temperature_2m_max.slice(0, 7).filter((v): v is number => v != null);
   const wLo = Math.min(...lows);
@@ -895,6 +896,7 @@ async function renderForecast(refresh = false) {
     </div>
     <div id="countdown" class="section countdown"${countdownHtml ? "" : " hidden"}>${countdownHtml}</div>
     <div id="white-christmas" class="section white-christmas"${wxmasHtml ? "" : " hidden"}>${wxmasHtml}</div>
+    <div id="sky-tonight" class="section sky-tonight"${skyHtml ? "" : " hidden"}>${skyHtml}</div>
     <div class="section">
       <div class="section-label">CONDITIONS</div>
       <div class="tiles">
@@ -920,6 +922,7 @@ async function renderForecast(refresh = false) {
   void renderNextHour();
   if (!countdownHtml) void renderCountdown(fc, lat, lon);
   void renderWhiteChristmas(fc, lat, lon);
+  void renderSkyTonight(fc, lat, lon);
 }
 
 /** Nearest White Christmas station per rounded point; the table never changes, so it is kept for the session. */
@@ -975,6 +978,46 @@ async function renderCountdown(fc: Forecast, lat: number, lon: number) {
   const el = document.getElementById("countdown");
   if (!el || state.forecast !== fc) return;
   el.innerHTML = countdownFor(fc, lat, lon);
+  el.hidden = !el.innerHTML;
+}
+
+/** Sky card, lazy-loaded like the countdown. Passes are fetched once per rounded point and hour. */
+let skyModule: typeof import("./skyTonightCard") | undefined;
+let skyShared: typeof import("./shared/skyTonight") | undefined;
+const skyReports = new Map<string, import("./shared/skyTonight").IssReport | null>();
+let skyExpanded = false;
+const skyKey = (lat: number, lon: number) => `${skyShared?.skyTonightPath(lat, lon)}@${Math.floor(Date.now() / 3_600_000)}`;
+const skyTonightFor = (fc: Forecast, lat: number, lon: number) =>
+  skyModule?.skyTonightCardHtml({
+    nowMs: Date.now(),
+    dateKey: wallClock(Date.now(), fc.utc_offset_seconds).dateKey,
+    lat,
+    lon,
+    report: skyReports.get(skyKey(lat, lon)) ?? null,
+    hourly: fc.hourly,
+    clock: { timeZone: fc.timezone, utcOffsetSeconds: fc.utc_offset_seconds },
+    expanded: skyExpanded,
+  }) ?? "";
+
+async function renderSkyTonight(fc: Forecast, lat: number, lon: number) {
+  try {
+    skyModule ??= await import("./skyTonightCard");
+    skyShared ??= await import("./shared/skyTonight");
+  } catch {
+    return;
+  }
+  const key = skyKey(lat, lon);
+  if (!skyReports.has(key)) {
+    try {
+      const res = await fetch(skyShared.skyTonightPath(lat, lon));
+      skyReports.set(key, res.ok ? skyShared.parseSkyTonight(await res.json()) : null);
+    } catch {
+      skyReports.set(key, null);
+    }
+  }
+  const el = document.getElementById("sky-tonight");
+  if (!el || state.forecast !== fc) return;
+  el.innerHTML = skyTonightFor(fc, lat, lon);
   el.hidden = !el.innerHTML;
 }
 
@@ -1188,6 +1231,10 @@ $("panel-body").addEventListener("click", (e) => {
   if (t.closest("#forecast-retry")) void renderForecast();
   else if (t.closest("#notify-me")) void enableRainAlerts();
   else if (t.closest("#wxmas-map")) void toggleWhiteChristmasDots();
+  else if (t.closest("#sky-tonight-open") && state.forecast) {
+    skyExpanded = true;
+    void renderSkyTonight(state.forecast, state.place.latitude, state.place.longitude);
+  }
 });
 
 /** The sheet toggle and the next-hour button share one path, so the hint and card stay in step. */

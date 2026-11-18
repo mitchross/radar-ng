@@ -37,6 +37,7 @@ import { SELF_HOSTED } from "../../lib/constants";
 import { PLAYBACK_FPS_RANGE } from "../../lib/persistedPrefs";
 import { RAIN_ALERT_LEAD_OPTIONS, parseRainAlertLead } from "../../lib/rainAlerts";
 import { useStormNoticeOptIn } from "../../hooks/useStormNoticeOptIn";
+import { useIssAlertOptIn } from "../../hooks/useSkyTonight";
 import { useRainAlertOptIn } from "../../hooks/useRainAlertOptIn";
 import { ALERT_PREFERENCES, parseAlertPreference } from "../../lib/alertLevels";
 import { requestAlertNotificationPermission, sendTestAlert } from "../../lib/alertNotificationScheduler";
@@ -82,6 +83,7 @@ export default function SettingsScreen() {
   const setAiNarration = useWeatherStore((s) => s.setAiNarration);
   const { enabled: rainAlertsEnabled, blocked: rainAlertsBlocked, setRainAlerts } = useRainAlertOptIn();
   const { enabled: stormNoticeEnabled, blocked: stormNoticeBlocked, setStormNotice } = useStormNoticeOptIn();
+  const { enabled: issAlertsOn, blocked: issAlertsBlocked, setIssAlerts } = useIssAlertOptIn();
   const alertPreference = useWeatherStore((s) => s.alertPreference);
   const setAlertPreference = useWeatherStore((s) => s.setAlertPreference);
   const [testAlertBusy, setTestAlertBusy] = useState(false);
@@ -485,6 +487,24 @@ export default function SettingsScreen() {
                     title="Notifications are off in system settings"
                     sub="Allow them for Radar NG to get storm notices."
                   />
+                </Row>
+              </>
+            ) : null}
+          </View>
+
+          <SectionHeader>ISS passes</SectionHeader>
+          <View style={styles.card}>
+            <ToggleRow
+              label="Space station overhead"
+              sub="A notification about 10 minutes before a pass 25° or higher, when the forecast is not cloudy. Passes come from your own server; the reminder is set on this phone."
+              value={issAlertsOn}
+              onChange={(v) => void setIssAlerts(v)}
+            />
+            {issAlertsBlocked ? (
+              <>
+                <Sep />
+                <Row>
+                  <RowLeft title="Notifications are off in system settings" sub="Allow them for Radar NG to get ISS pass reminders." />
                 </Row>
               </>
             ) : null}

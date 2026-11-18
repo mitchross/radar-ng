@@ -5,6 +5,7 @@
 //! - [`aqm`]: NAQFC air quality. `aqm_find_latest_run`, `aqm_render_chunk`, `aqm_publish_run`,
 //!   `aqm_mark_processed` and `aqm_cleanup`.
 //! - [`tropical`]: NHC tropical cyclones. `tropical_fetch_and_publish`.
+//! - [`sky`]: ISS elements from CelesTrak and visible passes. `sky_fetch_and_publish`.
 //! - [`tile_cleanup`]: tile and grid retention. `tile_cleanup_sweep`.
 //! - [`open_meteo`]: Open-Meteo sync. Runs the upstream binary as a child process. `open_meteo_sync`.
 //!
@@ -19,6 +20,7 @@
 pub mod aqm;
 pub mod beat;
 pub mod open_meteo;
+pub mod sky;
 pub mod tile_cleanup;
 pub mod tropical;
 
