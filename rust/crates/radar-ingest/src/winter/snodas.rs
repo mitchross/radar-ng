@@ -194,8 +194,8 @@ pub fn product_grid(tar: &[u8], code: &str, scale: f32) -> anyhow::Result<(Grid,
     // North row first in the file; the grid is south-up.
     for r in (0..h.rows).rev() {
         let row = &raw[r * h.cols * 2..(r + 1) * h.cols * 2];
-        values.extend(row.chunks_exact(2).map(|p| {
-            let v = f64::from(i16::from_be_bytes([p[0], p[1]]));
+        values.extend(row.as_chunks::<2>().0.iter().map(|p| {
+            let v = f64::from(i16::from_be_bytes(*p));
             if v == h.nodata {
                 f32::NAN
             } else {
