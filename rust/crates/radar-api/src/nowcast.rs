@@ -362,6 +362,8 @@ pub const CLASS_ECHO_DBZ: f32 = 15.0;
 /// A winter class wins with at least 1 / this share of the votes. PrecipFlag files echoes that do
 /// not reach the ground as rain, and ahead of the 2025-01-06 Washington snow they outnumbered snow.
 pub const WINTER_SHARE_DEN: usize = 3;
+/// Class names by code, as the typed tiles use them (`radar_tiler::typed::TYPE_CLASSES`).
+pub const CLASS_NAMES: [&str; 4] = ["rain", "snow", "mix", "ice"];
 
 /// The grid layer the nowcast reads its observed dBZ from (as `radar_core::grid_dump::GridConfig`).
 fn input_layer() -> String {
@@ -424,7 +426,7 @@ pub fn point_class(
     } else {
         0
     };
-    (total > 0).then_some(radar_tiler::typed::TYPE_CLASSES[class])
+    (total > 0).then_some(CLASS_NAMES[class])
 }
 
 /// A grid dump read a few cells at a time.
@@ -452,8 +454,10 @@ impl Dump {
         let offset = ((r * self.meta.width + c0) * 4) as u64;
         self.file.read_exact_at(&mut buf, offset).ok()?;
         Some(
-            buf.chunks_exact(4)
-                .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            buf.as_chunks::<4>()
+                .0
+                .iter()
+                .map(|b| f32::from_le_bytes(*b))
                 .collect(),
         )
     }
@@ -597,6 +601,11 @@ mod tests {
         );
         // Snow and ice tie: the lower code, snow.
         assert_eq!(class(|la| if la > 38.85 { 1.0 } else { 3.0 }), Some("snow"));
+    }
+
+    #[test]
+    fn class_names_match_the_tiles() {
+        assert_eq!(CLASS_NAMES, radar_tiler::typed::TYPE_CLASSES);
     }
 
     #[test]
