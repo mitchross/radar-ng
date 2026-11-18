@@ -37,6 +37,7 @@
       "type": "fill",
       "source": "protomaps",
       "source-layer": "water",
+      "filter": ["==", "$type", "Polygon"],
       "paint": { "fill-color": "#10212e" }
     },
     {

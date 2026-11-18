@@ -628,6 +628,33 @@ mod tests {
     }
 
     #[test]
+    fn water_fill_skips_river_lines() {
+        // Protomaps water mixes river lines with polygons; a fill closes each line into a wedge (#350).
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/basemap/styles");
+        for name in ["positron.json", "dark-matter.json"] {
+            let style: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(dir.join(name)).expect("read"))
+                    .expect("json");
+            let fills: Vec<_> = style["layers"]
+                .as_array()
+                .expect("layers")
+                .iter()
+                .filter(|l| l["source-layer"] == "water" && l["type"] == "fill")
+                .collect();
+            assert!(!fills.is_empty(), "{name}: no water fill");
+            for l in fills {
+                assert_eq!(
+                    l["filter"],
+                    serde_json::json!(["==", "$type", "Polygon"]),
+                    "{name}: {}",
+                    l["id"]
+                );
+            }
+        }
+    }
+
+    #[test]
     fn upstream_cache_headers_are_dropped() {
         let mut up = HeaderMap::new();
         up.insert(header::CACHE_CONTROL, HeaderValue::from_static("max-age=5"));
