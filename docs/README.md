@@ -18,6 +18,7 @@ links to the guide for it.
 | Run or host the web radar | [app/web-radar.md](app/web-radar.md) |
 | Set up CarPlay or the Apple Watch app | [app/carplay-watch-setup.md](app/carplay-watch-setup.md) |
 | Build an Android release | [app/android-release.md](app/android-release.md) |
+| Test the app on real phones (Android fast radar, storm replay, Level II) | [app/phone-acceptance.md](app/phone-acceptance.md) |
 | Know what the app sends, and to whom | [app/privacy.md](app/privacy.md) |
 | Contribute code | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 | Fork it with my own app name, server and images | [../FORKING.md](../FORKING.md) |
@@ -30,6 +31,7 @@ links to the guide for it.
 | Review the Level II close-up design before build | [develop/design/level2-close-up.md](develop/design/level2-close-up.md) |
 | Review the weather extras design (winter radar, snow, star map) before build | [develop/design/weather-extras.md](develop/design/weather-extras.md) |
 | Run the Level II pool (runbook, metrics, harness) | [develop/level2-pool.md](develop/level2-pool.md) |
+| Run the Level II 30-day shadow pilot (recorder, report) | [develop/level2-shadow.md](develop/level2-shadow.md) |
 | Cut a release | [develop/releasing.md](develop/releasing.md) · [develop/temporal-safe-deployments.md](develop/temporal-safe-deployments.md) |
 | Upgrade Expo / React Native | [develop/expo-rn-upgrade-playbook.md](develop/expo-rn-upgrade-playbook.md) |
 | See how the pieces fit together | [reference/architecture.md](reference/architecture.md) |

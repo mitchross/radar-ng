@@ -1,0 +1,7 @@
+# OPTIONAL. A shadow hostname for level2-api, so the recorder can measure the real edge
+# (LEVEL2_SHADOW_EDGE_URL=https://<this hostname>). Not the public site and not linked from it.
+# Leave this out until you have picked a hostname; nothing else depends on it.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - httproute.yaml

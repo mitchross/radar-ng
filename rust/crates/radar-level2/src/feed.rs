@@ -11,6 +11,9 @@ use std::time::Duration;
 pub const CHUNKS: &str = "https://unidata-nexrad-level2-chunks.s3.amazonaws.com";
 pub const ARCHIVE: &str = "https://unidata-nexrad-level2.s3.amazonaws.com";
 const LIST_LIMIT: usize = 1024 * 1024;
+/// Test-only NOAA delay drill: hide source objects newer than this many seconds. Unset or 0 is off.
+pub const FEED_DELAY_ENV: &str = "LEVEL2_TEST_FEED_DELAY_S";
+const FEED_DELAY_MAX_S: i64 = 3600;
 
 pub async fn bounded_body(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8>> {
     ensure!(
@@ -56,6 +59,20 @@ pub struct Feed {
     pub http: reqwest::Client,
     pub(crate) chunks_base: String,
     pub(crate) archive_base: String,
+    /// Injected source delay (drills only); objects modified within it are treated as unpublished.
+    pub delay: chrono::TimeDelta,
+}
+
+/// Reads the test-only feed delay. Off unless set to a positive number of seconds.
+pub fn feed_delay_from_env() -> Result<chrono::TimeDelta> {
+    let s = radar_core::env::int_var(FEED_DELAY_ENV, 0, 0, FEED_DELAY_MAX_S)?;
+    if s > 0 {
+        eprintln!(
+            "level2_test_feed_delay_s={s} (test drill: NOAA objects newer than this are hidden)"
+        );
+    }
+    crate::metrics::gauge("radar_level2_test_feed_delay_seconds", s as f64);
+    Ok(chrono::TimeDelta::seconds(s))
 }
 
 impl Feed {
@@ -67,7 +84,14 @@ impl Feed {
                 .build()?,
             chunks_base: CHUNKS.into(),
             archive_base: ARCHIVE.into(),
+            delay: feed_delay_from_env()?,
         })
+    }
+
+    /// Overrides the injected delay, for drills and tests.
+    pub fn with_delay(mut self, delay: chrono::TimeDelta) -> Self {
+        self.delay = delay;
+        self
     }
     pub async fn list(&self, base: &str, prefix: &str) -> Result<Vec<Object>> {
         let mut token = None;
@@ -91,7 +115,12 @@ impl Feed {
                     .all(|o| o.key.starts_with(prefix) && o.key.len() < 256),
                 "invalid source listing"
             );
-            all.extend(page.contents);
+            let visible = Utc::now() - self.delay;
+            all.extend(
+                page.contents
+                    .into_iter()
+                    .filter(|o| self.delay.is_zero() || o.modified <= visible),
+            );
             if !page.truncated {
                 return Ok(all);
             }
@@ -221,6 +250,8 @@ pub fn chunk_identity(key: &str) -> Option<(String, u16, char)> {
 pub struct Acquisition {
     pub sweeps: Vec<Sweep>,
     pub sources: Vec<Source>,
+    /// Newest source `LastModified` among the objects read: when the sweep's data reached NOAA's bucket.
+    pub arrived: Option<DateTime<Utc>>,
 }
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Source {
@@ -242,6 +273,7 @@ impl Feed {
         let mut sweeps = vec![];
         let mut sources = vec![];
         let mut total = 0;
+        let mut arrived: Option<DateTime<Utc>> = None;
         let stamp = chunk_identity(&group.first().context("empty chunks")?.key)
             .context("bad chunk")?
             .0;
@@ -261,6 +293,7 @@ impl Feed {
                 }
             };
             health.observe(&object.key, object.modified, Utc::now());
+            arrived = arrived.max(Some(object.modified));
             sources.push(Source {
                 bucket: "unidata-nexrad-level2-chunks".into(),
                 key: object.key.clone(),
@@ -298,7 +331,11 @@ impl Feed {
         }
         ensure!(!sweeps.is_empty(), "low sweep still warming");
         health.processing_failure = None;
-        Ok(Acquisition { sweeps, sources })
+        Ok(Acquisition {
+            sweeps,
+            sources,
+            arrived,
+        })
     }
     pub async fn archive(
         &self,
@@ -332,6 +369,7 @@ impl Feed {
         ensure!(!sweeps.is_empty(), "archive has no completed low sweep");
         Ok(Acquisition {
             sweeps,
+            arrived: Some(object.modified),
             sources: vec![Source {
                 bucket: "unidata-nexrad-level2".into(),
                 key: object.key.clone(),
@@ -393,6 +431,37 @@ mod tests {
         assert!(bounded_body(response, 4).await.is_err());
         server.abort();
     }
+    #[tokio::test]
+    async fn injected_delay_hides_recent_objects_only() -> Result<()> {
+        use axum::{Router, routing::get};
+        let fresh = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let body = format!(
+            "<ListBucketResult><Contents><Key>KGRR/1/old</Key><LastModified>2020-01-01T00:00:00Z</LastModified><Size>1</Size></Contents><Contents><Key>KGRR/1/new</Key><LastModified>{fresh}</LastModified><Size>1</Size></Contents></ListBucketResult>"
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let task = tokio::spawn(
+            axum::serve(
+                listener,
+                Router::new().route("/", get(move || async move { body.clone() })),
+            )
+            .into_future(),
+        );
+        let base = format!("http://{addr}/");
+        let feed = Feed::new()?.with_delay(chrono::TimeDelta::zero());
+        assert_eq!(feed.list(&base, "KGRR/").await?.len(), 2);
+        let late = feed.with_delay(chrono::TimeDelta::seconds(300));
+        let keys: Vec<_> = late
+            .list(&base, "KGRR/")
+            .await?
+            .into_iter()
+            .map(|o| o.key)
+            .collect();
+        assert_eq!(keys, ["KGRR/1/old"]);
+        task.abort();
+        Ok(())
+    }
+
     #[tokio::test]
     async fn listing_pages_and_recovery_size_are_bounded() -> Result<()> {
         use axum::{Router, extract::Query, routing::get};
