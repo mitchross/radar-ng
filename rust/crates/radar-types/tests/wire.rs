@@ -6,10 +6,10 @@ use std::str::FromStr;
 use radar_types::wire::*;
 
 #[test]
-fn workflow_types_are_fourteen_unique_exact_names() {
-    assert_eq!(ALL_WORKFLOW_TYPES.len(), 15);
+fn workflow_types_are_sixteen_unique_exact_names() {
+    assert_eq!(ALL_WORKFLOW_TYPES.len(), 16);
     let unique: HashSet<&str> = ALL_WORKFLOW_TYPES.iter().copied().collect();
-    assert_eq!(unique.len(), 15);
+    assert_eq!(unique.len(), 16);
     for name in [
         "RadarDeploymentSmokeWorkflow",
         "IngestMrmsWorkflow",
@@ -25,6 +25,7 @@ fn workflow_types_are_fourteen_unique_exact_names() {
         "RegisterPushTokenWorkflow",
         "DeletePushTokenWorkflow",
         "IngestGlobalModelWorkflow",
+        "IngestSkyWorkflow",
         "IngestWinterWorkflow",
     ] {
         assert!(ALL_WORKFLOW_TYPES.contains(&name), "missing {name}");
@@ -32,10 +33,10 @@ fn workflow_types_are_fourteen_unique_exact_names() {
 }
 
 #[test]
-fn activity_names_are_thirty_five_unique_exact_names() {
-    assert_eq!(ALL_ACTIVITY_NAMES.len(), 40);
+fn activity_names_are_forty_one_unique_exact_names() {
+    assert_eq!(ALL_ACTIVITY_NAMES.len(), 41);
     let unique: HashSet<&str> = ALL_ACTIVITY_NAMES.iter().copied().collect();
-    assert_eq!(unique.len(), 40);
+    assert_eq!(unique.len(), 41);
     assert_eq!(
         ACTIVITY_GLOBAL_MODEL_PROCESS_HOUR,
         "global_model_process_hour"

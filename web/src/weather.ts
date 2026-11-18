@@ -24,7 +24,7 @@ export interface Forecast {
     wind_gusts_10m: number | null;
     wind_direction_10m: number | null;
   };
-  hourly: { time: string[]; temperature_2m: (number | null)[]; precipitation: (number | null)[]; weather_code: (number | null)[] };
+  hourly: { time: string[]; temperature_2m: (number | null)[]; precipitation: (number | null)[]; weather_code: (number | null)[]; cloud_cover?: (number | null)[] };
   daily: {
     time: string[];
     temperature_2m_max: (number | null)[];

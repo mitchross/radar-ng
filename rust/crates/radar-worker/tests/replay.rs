@@ -147,6 +147,7 @@ const REQUIRED_SCENARIOS: &[(&str, Scenarios)] = &[
     ),
     ("IngestLightningWorkflow", SINGLE_ACTIVITY),
     ("IngestTropicalWorkflow", SINGLE_ACTIVITY),
+    ("IngestSkyWorkflow", SINGLE_ACTIVITY),
     ("NowcastWorkflow", SINGLE_ACTIVITY),
     ("TileCleanupWorkflow", SINGLE_ACTIVITY),
     ("RegisterPushTokenWorkflow", SINGLE_ACTIVITY),

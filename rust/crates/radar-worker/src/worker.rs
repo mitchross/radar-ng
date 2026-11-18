@@ -10,6 +10,7 @@ use radar_alerts::alerts::AlertsConfig;
 use radar_alerts::push::{PushConfig, PushSender};
 use radar_aux::aqm::AqmConfig;
 use radar_aux::open_meteo::OpenMeteoConfig;
+use radar_aux::sky::SkyConfig;
 use radar_aux::tropical::TropicalConfig;
 use radar_core::env::Paths;
 use radar_core::push_tokens::PushTokenStore;
@@ -62,6 +63,7 @@ use crate::workflows::nowcast::NowcastWorkflow;
 use crate::workflows::open_meteo_sync::OpenMeteoSyncWorkflow;
 use crate::workflows::poll_alerts::PollAlertsWorkflow;
 use crate::workflows::push_tokens::{DeletePushTokenWorkflow, RegisterPushTokenWorkflow};
+use crate::workflows::sky::IngestSkyWorkflow;
 use crate::workflows::tile_cleanup::TileCleanupWorkflow;
 use crate::workflows::tropical::IngestTropicalWorkflow;
 use crate::workflows::watch_storm::WatchStormWorkflow;
@@ -111,6 +113,7 @@ pub fn registration(role: WorkerRole) -> Registration {
         WorkerRole::Aux => vec![
             wire::WORKFLOW_INGEST_LIGHTNING,
             wire::WORKFLOW_INGEST_TROPICAL,
+            wire::WORKFLOW_INGEST_SKY,
             wire::WORKFLOW_INGEST_AIRQUALITY,
             wire::WORKFLOW_TILE_CLEANUP,
             wire::WORKFLOW_OPEN_METEO_SYNC,
@@ -158,6 +161,7 @@ pub fn registration(role: WorkerRole) -> Registration {
         WorkerRole::Aux => vec![
             wire::ACTIVITY_LIGHTNING_CONSUME_STREAM,
             wire::ACTIVITY_TROPICAL_FETCH_AND_PUBLISH,
+            wire::ACTIVITY_SKY_FETCH_AND_PUBLISH,
             wire::ACTIVITY_AQM_FIND_LATEST_RUN,
             wire::ACTIVITY_AQM_RENDER_CHUNK,
             wire::ACTIVITY_AQM_PUBLISH_RUN,
@@ -257,7 +261,11 @@ impl Deps {
             None
         };
         let aux = if needs(role, WorkerRole::Aux) {
-            Some(AuxActivities::new(http.clone(), TropicalConfig::from_env()))
+            Some(AuxActivities::new(
+                http.clone(),
+                TropicalConfig::from_env(),
+                SkyConfig::from_env(),
+            ))
         } else {
             None
         };
@@ -347,6 +355,7 @@ pub fn register_workflows<T: WorkflowTarget>(
             wire::WORKFLOW_INGEST_AIRQUALITY => target.add::<IngestAirQualityWorkflow>()?,
             wire::WORKFLOW_INGEST_LIGHTNING => target.add::<IngestLightningWorkflow>()?,
             wire::WORKFLOW_INGEST_TROPICAL => target.add::<IngestTropicalWorkflow>()?,
+            wire::WORKFLOW_INGEST_SKY => target.add::<IngestSkyWorkflow>()?,
             wire::WORKFLOW_NOWCAST => target.add::<NowcastWorkflow>()?,
             wire::WORKFLOW_TILE_CLEANUP => target.add::<TileCleanupWorkflow>()?,
             wire::WORKFLOW_OPEN_METEO_SYNC => target.add::<OpenMeteoSyncWorkflow>()?,
@@ -666,13 +675,13 @@ mod tests {
     fn legacy_and_all_register_the_full_registry_minus_open_meteo() {
         for role in [WorkerRole::Legacy, WorkerRole::All] {
             let reg = registration(role);
-            assert_eq!(reg.workflows.len(), 15, "{role:?} workflow count");
+            assert_eq!(reg.workflows.len(), 16, "{role:?} workflow count");
             assert_eq!(
                 set(&reg.workflows),
                 set(&wire::ALL_WORKFLOW_TYPES),
                 "{role:?} workflows"
             );
-            assert_eq!(reg.activities.len(), 39, "{role:?} activity count");
+            assert_eq!(reg.activities.len(), 40, "{role:?} activity count");
             assert_eq!(
                 set(&reg.activities),
                 all_but_open_meteo(),
@@ -810,13 +819,14 @@ mod tests {
             set(&[
                 wire::WORKFLOW_INGEST_LIGHTNING,
                 wire::WORKFLOW_INGEST_TROPICAL,
+                wire::WORKFLOW_INGEST_SKY,
                 wire::WORKFLOW_INGEST_AIRQUALITY,
                 wire::WORKFLOW_TILE_CLEANUP,
                 wire::WORKFLOW_OPEN_METEO_SYNC,
                 smoke_wf,
             ])
         );
-        assert_eq!(aux.activities.len(), 9);
+        assert_eq!(aux.activities.len(), 10);
         assert!(!aux.activities.contains(&wire::ACTIVITY_OPEN_METEO_SYNC));
 
         let alerts = registration(WorkerRole::Alerts);

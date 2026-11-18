@@ -3,7 +3,7 @@
  * astronomy-engine (MIT, pure JS, no network). The one place either client
  * touches the library, so the sky cards share it.
  */
-import { Body, Illumination, MoonPhase, Observer, SearchAltitude, SearchRiseSet } from "astronomy-engine";
+import { Body, Equator, Horizon, Illumination, MoonPhase, Observer, SearchAltitude, SearchRiseSet } from "astronomy-engine";
 
 const DAY_MS = 86_400_000;
 const DATE_KEY = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -58,6 +58,14 @@ export function twilight(dateKey: string, lat: number, lon: number, kind: Twilig
 /** Next rise and next set of a planet or the moon in the 24 h after `fromMs`. */
 export function bodyRiseSet(body: SkyBody, lat: number, lon: number, fromMs: number): RiseSet {
   return riseSetFrom(Body[body], lat, lon, fromMs);
+}
+
+/** Geometric degrees above the horizon (no refraction, like `twilight`) of a planet, the moon or the sun. */
+export function bodyAltitude(body: SkyBody | "Sun", lat: number, lon: number, atMs: number): number {
+  const obs = new Observer(lat, lon, 0);
+  const at = new Date(atMs);
+  const eq = Equator(Body[body], at, obs, true, true);
+  return Horizon(at, obs, eq.ra, eq.dec).altitude;
 }
 
 export type MoonPhaseName =

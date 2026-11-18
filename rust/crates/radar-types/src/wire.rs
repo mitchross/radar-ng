@@ -41,11 +41,13 @@ pub const WORKFLOW_REGISTER_PUSH_TOKEN: &str = "RegisterPushTokenWorkflow";
 pub const WORKFLOW_DELETE_PUSH_TOKEN: &str = "DeletePushTokenWorkflow";
 /// `IngestGlobalModelWorkflow` (Rust-only): GFS long-range radar and the UV Index, one layer per run.
 pub const WORKFLOW_INGEST_GLOBAL_MODEL: &str = "IngestGlobalModelWorkflow";
+/// `IngestSkyWorkflow` (Rust-only): sky products (ISS elements), one product per run.
+pub const WORKFLOW_INGEST_SKY: &str = "IngestSkyWorkflow";
 /// `IngestWinterWorkflow` (Rust-only): snow and ice layers, one product per run.
 pub const WORKFLOW_INGEST_WINTER: &str = "IngestWinterWorkflow";
 
-/// All 15 registered workflow type names.
-pub const ALL_WORKFLOW_TYPES: [&str; 15] = [
+/// All 16 registered workflow type names.
+pub const ALL_WORKFLOW_TYPES: [&str; 16] = [
     WORKFLOW_DEPLOYMENT_SMOKE,
     WORKFLOW_INGEST_MRMS,
     WORKFLOW_INGEST_HRRR,
@@ -60,6 +62,7 @@ pub const ALL_WORKFLOW_TYPES: [&str; 15] = [
     WORKFLOW_REGISTER_PUSH_TOKEN,
     WORKFLOW_DELETE_PUSH_TOKEN,
     WORKFLOW_INGEST_GLOBAL_MODEL,
+    WORKFLOW_INGEST_SKY,
     WORKFLOW_INGEST_WINTER,
 ];
 
@@ -129,6 +132,8 @@ pub const ACTIVITY_AQM_CLEANUP: &str = "aqm_cleanup";
 pub const ACTIVITY_LIGHTNING_CONSUME_STREAM: &str = "lightning_consume_stream";
 /// `tropical_fetch_and_publish`.
 pub const ACTIVITY_TROPICAL_FETCH_AND_PUBLISH: &str = "tropical_fetch_and_publish";
+/// `sky_fetch_and_publish` (Rust-only): one sky product, at most one upstream request.
+pub const ACTIVITY_SKY_FETCH_AND_PUBLISH: &str = "sky_fetch_and_publish";
 /// `nowcast_run`.
 pub const ACTIVITY_NOWCAST_RUN: &str = "nowcast_run";
 /// `tile_cleanup_sweep`.
@@ -156,10 +161,10 @@ pub const ACTIVITY_SIGNAL_MATCHING_STORM_WATCHES: &str = "signal_matching_storm_
 /// name stays reserved for compatibility (spec-temporal section 8.1).
 pub const ACTIVITY_SEND_PUSH_NOTIFICATION: &str = "send_push_notification";
 
-/// All 40 activity names: the 30 the original Python registered (including the reserved
-/// `send_push_notification`) and the Rust-only `global_model_*` and `winter_*` ones. The legacy pool
-/// serves all of them except `open_meteo_sync`.
-pub const ALL_ACTIVITY_NAMES: [&str; 40] = [
+/// All 41 activity names: the 30 the original Python registered (including the reserved
+/// `send_push_notification`) and the Rust-only `global_model_*`, `winter_*` and `sky_fetch_and_publish`
+/// ones. The legacy pool serves all of them except `open_meteo_sync`.
+pub const ALL_ACTIVITY_NAMES: [&str; 41] = [
     ACTIVITY_RADAR_DEPLOYMENT_SMOKE,
     ACTIVITY_MRMS_LIST_UNPROCESSED_KEYS,
     ACTIVITY_MRMS_PROCESS_FRAME,
@@ -183,6 +188,7 @@ pub const ALL_ACTIVITY_NAMES: [&str; 40] = [
     ACTIVITY_AQM_CLEANUP,
     ACTIVITY_LIGHTNING_CONSUME_STREAM,
     ACTIVITY_TROPICAL_FETCH_AND_PUBLISH,
+    ACTIVITY_SKY_FETCH_AND_PUBLISH,
     ACTIVITY_NOWCAST_RUN,
     ACTIVITY_TILE_CLEANUP_SWEEP,
     ACTIVITY_OPEN_METEO_SYNC,
