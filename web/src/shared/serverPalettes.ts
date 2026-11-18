@@ -44,6 +44,7 @@ export const LAYER_PALETTE_KEY: Readonly<Record<string, string>> = {
   "rotation-track": "rotation_track",
   "echo-top": "echo_top",
   "nice-day": "nice_day",
+  "temp-anomaly": "temp_anomaly",
   stargazing: "stargazing",
   ...WINTER_PALETTE_KEYS,
 };

@@ -33,6 +33,7 @@ use crate::forecast;
 use crate::grid;
 use crate::health;
 use crate::manifest;
+use crate::normals;
 use crate::nowcast;
 use crate::outlooks;
 use crate::palettes;
@@ -81,6 +82,7 @@ pub const ROUTE_TEMPLATES: &[&str] = &[
     "/api/climate/white-christmas",
     "/api/sky/tonight/{lat}/{lon}",
     "/api/snow/{lat}/{lon}",
+    "/api/normals/{lat}/{lon}",
     "/v1/push-tokens",
     "/v1/push-tokens/{token}",
     "/v1/watches",
@@ -135,6 +137,7 @@ pub fn api_router() -> Router<AppState> {
         )
         .route("/api/sky/tonight/{lat}/{lon}", get(sky::get_sky_tonight))
         .route("/api/snow/{lat}/{lon}", get(snow::get_snow))
+        .route("/api/normals/{lat}/{lon}", get(normals::get_normals))
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {

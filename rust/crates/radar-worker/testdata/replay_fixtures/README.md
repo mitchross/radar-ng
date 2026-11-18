@@ -16,9 +16,11 @@ come from the Rust workflow with scripted fake activities on a local
 `IngestSkyWorkflow` has no Python version either. Its `src-81a482a` histories are the
 Tropical `v1.1.49` ones with the workflow type, activity name, `"iss"` input, one-attempt
 retry policy and result payload rewritten (`jq`); the command sequence is the same single
-activity, so the replay gate checks it like any other history. `IngestSkyWorkflow/src-3c5edc6`
-holds the same histories for the `star-seeing` product, with the input and result product
-rewritten.
+activity, so the replay gate checks it like any other history.
+`EnsureStaticDataWorkflow/src-d727262` is the same rewrite of the `IngestSkyWorkflow` histories:
+workflow type, activity name, `"normals"` input, timeouts and result payload. It is one activity too.
+`IngestSkyWorkflow/src-3c5edc6` holds the `src-81a482a` histories for the `star-seeing` product,
+with the input and result product rewritten.
 
 Every history is synthetic: real workflow code, fake activities, placeholder
 inputs (`synthetic-*` identifiers, a `synthetic-placeholder` token, 0.0
@@ -37,7 +39,7 @@ tokens, coordinates and alert geometry.
 | IngestAirQualityWorkflow | success, no-run, already-processed, partial (ozone unrendered), chunk-activity-error (PM2.5 lost, not marked), find-activity-error |
 | PollAlertsWorkflow | geometry-fanout, zoneless-alerts, no-new-alerts, signal-activity-error (one alert isolated), fetch-activity-error |
 | WatchStormWorkflow | signal-unpin, timer-poll, push-change, push-activity-error (watch survives), alert-signal-push, compare-activity-error, continue-as-new (1000 polls) |
-| Lightning, Tropical, Sky, Nowcast, TileCleanup, RegisterPushToken, DeletePushToken, OpenMeteoSync | success, activity-error |
+| Lightning, Tropical, Sky, EnsureStaticData, Nowcast, TileCleanup, RegisterPushToken, DeletePushToken, OpenMeteoSync | success, activity-error |
 
 `REQUIRED_SCENARIOS` in `tests/replay.rs` is the subset every workflow must
 keep, each with the event or activity that proves it took the named path.

@@ -44,8 +44,13 @@ pub async fn find_latest_run(
     let (true, Some(&probe)) = (state::enabled(product, &ctx.cfg), hours.last()) else {
         return Ok(GlobalModelFindResult::default());
     };
+    if product == Product::TempAnomaly && !super::anomaly::normals_ready(&ctx.cfg).await? {
+        return Ok(GlobalModelFindResult::default());
+    }
     let run = match product {
-        Product::GfsRadar => radar_grib::gfs::find_latest_run(&ctx.gfs_s3, now, probe).await?,
+        Product::GfsRadar | Product::TempAnomaly => {
+            radar_grib::gfs::find_latest_run(&ctx.gfs_s3, now, probe).await?
+        }
         Product::Uv => radar_grib::uvi::find_latest_run(&ctx.uv_http, now, probe).await?,
     };
     let Some(run) = run else {
@@ -57,6 +62,7 @@ pub async fn find_latest_run(
         Ok(processed_set(&cfg, product.processed_file(), PROCESSED_MAX)?.contains(&check))
     })
     .await??;
+    let hours = state::run_hours(product, &ctx.cfg, run_init(&run)?);
     Ok(GlobalModelFindResult {
         run_id: Some(run),
         already_processed,
@@ -222,6 +228,9 @@ pub async fn process_hour(
     fhr: i64,
     hb: &Heartbeat,
 ) -> anyhow::Result<ForecastHourResult> {
+    if product == Product::TempAnomaly {
+        return super::anomaly::process_day(ctx, run_id, fhr, hb).await;
+    }
     let started = Instant::now();
     let init = run_init(run_id)?;
     let fhr_u32 = u32::try_from(fhr).map_err(|_| anyhow::anyhow!("fhr out of range: {fhr}"))?;
@@ -251,6 +260,7 @@ pub async fn process_hour(
             }
             Product::GfsRadar => radar_grib::gfs::fetch_refc(&ctx.gfs_s3, init, fhr_u32).await,
             Product::Uv => radar_grib::uvi::fetch_hour(&ctx.uv_http, init, fhr_u32).await,
+            Product::TempAnomaly => unreachable!("temp-anomaly returned above"),
         }
     };
     let bytes = match heartbeat::during(HRRR_BEAT, hb, details, fetch).await? {
@@ -280,7 +290,7 @@ pub fn publish_run_sync(
     run_id: &str,
     results: &[ForecastHourResult],
 ) -> anyhow::Result<i64> {
-    let hours = state::forecast_hours(product, cfg);
+    let hours = state::run_hours(product, cfg, run_init(run_id)?);
     let prefix = state::publishable_prefix(results, &hours, product.layer());
     let mut palette_names: Vec<String> = load_hrrr_palettes(&cfg.palettes)
         .iter()

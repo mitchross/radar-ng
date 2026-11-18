@@ -45,9 +45,11 @@ pub const WORKFLOW_INGEST_GLOBAL_MODEL: &str = "IngestGlobalModelWorkflow";
 pub const WORKFLOW_INGEST_SKY: &str = "IngestSkyWorkflow";
 /// `IngestWinterWorkflow` (Rust-only): snow and ice layers, one product per run.
 pub const WORKFLOW_INGEST_WINTER: &str = "IngestWinterWorkflow";
+/// `EnsureStaticDataWorkflow` (Rust-only): build static reference data (the temperature normals) once.
+pub const WORKFLOW_ENSURE_STATIC_DATA: &str = "EnsureStaticDataWorkflow";
 
-/// All 16 registered workflow type names.
-pub const ALL_WORKFLOW_TYPES: [&str; 16] = [
+/// All 17 registered workflow type names.
+pub const ALL_WORKFLOW_TYPES: [&str; 17] = [
     WORKFLOW_DEPLOYMENT_SMOKE,
     WORKFLOW_INGEST_MRMS,
     WORKFLOW_INGEST_HRRR,
@@ -64,6 +66,7 @@ pub const ALL_WORKFLOW_TYPES: [&str; 16] = [
     WORKFLOW_INGEST_GLOBAL_MODEL,
     WORKFLOW_INGEST_SKY,
     WORKFLOW_INGEST_WINTER,
+    WORKFLOW_ENSURE_STATIC_DATA,
 ];
 
 // ---------------------------------------------------------------------------
@@ -134,6 +137,8 @@ pub const ACTIVITY_LIGHTNING_CONSUME_STREAM: &str = "lightning_consume_stream";
 pub const ACTIVITY_TROPICAL_FETCH_AND_PUBLISH: &str = "tropical_fetch_and_publish";
 /// `sky_fetch_and_publish` (Rust-only): one sky product, at most one upstream request.
 pub const ACTIVITY_SKY_FETCH_AND_PUBLISH: &str = "sky_fetch_and_publish";
+/// `static_data_ensure` (Rust-only): build one static-data product if its marker is missing.
+pub const ACTIVITY_STATIC_DATA_ENSURE: &str = "static_data_ensure";
 /// `nowcast_run`.
 pub const ACTIVITY_NOWCAST_RUN: &str = "nowcast_run";
 /// `tile_cleanup_sweep`.
@@ -161,10 +166,10 @@ pub const ACTIVITY_SIGNAL_MATCHING_STORM_WATCHES: &str = "signal_matching_storm_
 /// name stays reserved for compatibility (spec-temporal section 8.1).
 pub const ACTIVITY_SEND_PUSH_NOTIFICATION: &str = "send_push_notification";
 
-/// All 41 activity names: the 30 the original Python registered (including the reserved
-/// `send_push_notification`) and the Rust-only `global_model_*`, `winter_*` and `sky_fetch_and_publish`
-/// ones. The legacy pool serves all of them except `open_meteo_sync`.
-pub const ALL_ACTIVITY_NAMES: [&str; 41] = [
+/// All 42 activity names: the 30 the original Python registered (including the reserved
+/// `send_push_notification`) and the Rust-only `global_model_*`, `winter_*`, `sky_fetch_and_publish`
+/// and `static_data_ensure` ones. The legacy pool serves all of them except `open_meteo_sync`.
+pub const ALL_ACTIVITY_NAMES: [&str; 42] = [
     ACTIVITY_RADAR_DEPLOYMENT_SMOKE,
     ACTIVITY_MRMS_LIST_UNPROCESSED_KEYS,
     ACTIVITY_MRMS_PROCESS_FRAME,
@@ -206,6 +211,7 @@ pub const ALL_ACTIVITY_NAMES: [&str; 41] = [
     ACTIVITY_WINTER_PUBLISH_RUN,
     ACTIVITY_WINTER_MARK_PROCESSED,
     ACTIVITY_WINTER_CLEANUP,
+    ACTIVITY_STATIC_DATA_ENSURE,
 ];
 
 // ---------------------------------------------------------------------------

@@ -36,6 +36,16 @@ pub fn forecast_hours(product: Product, cfg: &IngestConfig) -> Vec<u32> {
     match product {
         Product::GfsRadar => (cfg.gfs_radar_first_hour..=cfg.gfs_radar_last_hour).collect(),
         Product::Uv => (1..=cfg.uv_last_hour).collect(),
+        // One frame a day; the hours depend on the init (see `run_hours`).
+        Product::TempAnomaly => vec![super::anomaly::PROBE_FHR],
+    }
+}
+
+/// Forecast hours of one run, ascending. Only `temp-anomaly` depends on the init hour.
+pub fn run_hours(product: Product, cfg: &IngestConfig, init: DateTime<Utc>) -> Vec<u32> {
+    match product {
+        Product::TempAnomaly => super::anomaly::day_hours(init),
+        _ => forecast_hours(product, cfg),
     }
 }
 
@@ -44,6 +54,7 @@ pub fn enabled(product: Product, cfg: &IngestConfig) -> bool {
     match product {
         Product::GfsRadar => cfg.gfs_radar_enabled,
         Product::Uv => cfg.uv_enabled,
+        Product::TempAnomaly => cfg.temp_anomaly_enabled,
     }
 }
 

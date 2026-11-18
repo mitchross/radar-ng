@@ -49,6 +49,8 @@ import { CountdownCard } from "../../components/home/CountdownCard";
 import { WhiteChristmasCard } from "../../components/home/WhiteChristmasCard";
 import { SkyTonightCard } from "../../components/home/SkyTonightCard";
 import { SnowSpotCard } from "../../components/home/SnowSpotCard";
+import { useNormals } from "../../hooks/useNormals";
+import { normalsLine } from "../../lib/tempNormal";
 import { useBriefing } from "../../hooks/useBriefing";
 import { hourlyPrecipitation } from "../../lib/conditions";
 import { useAirQualityNow } from "../../hooks/useAirQualityNow";
@@ -76,6 +78,9 @@ export default function HomeScreen() {
   const { data: alertData, alertStatus } = useAlerts();
   const briefing = useBriefing(location.name);
   const { data: radarNowcast } = useRadarNowcast();
+  const serverUrl = useWeatherStore((s) => s.serverUrl);
+  // Lower 48 only; hidden until the server has built the normals.
+  const { data: normals } = useNormals(serverUrl, forecast?.latitude ?? 0, forecast?.longitude ?? 0, forecast?.daily.time[0]);
   const firstAlert = alertData?.features[0];
   const firstAlertEndAt = firstAlert ? getAlertEndTime(firstAlert) : null;
   const queryClient = useQueryClient();
@@ -157,6 +162,7 @@ export default function HomeScreen() {
   const feels = temperature(forecast.current.apparent_temperature);
   const hi = temperature(forecast.daily.temperature_2m_max[0]);
   const lo = temperature(forecast.daily.temperature_2m_min[0]);
+  const vsNormal = normalsLine(forecast.daily.temperature_2m_max[0], normals ?? null, temperatureUnit === "celsius");
 
   const conditionLabel = CONDITION_HEADLINES[condition];
   const locationLabel = location.label;
@@ -315,6 +321,11 @@ export default function HomeScreen() {
             <Text style={styles.heroMeta}>
               Feels {formatDegrees(feels)}   {"\u00B7"}   H {formatDegrees(hi)}   L {formatDegrees(lo)}
             </Text>
+            {vsNormal ? (
+              <Text testID="normals-line" style={styles.heroMeta}>
+                {vsNormal}
+              </Text>
+            ) : null}
           </View>
 
           <AiBriefingCard briefing={briefing} />

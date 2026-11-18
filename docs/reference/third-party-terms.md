@@ -177,6 +177,15 @@ are public-domain NWS products, free and keyless. We do not use the legacy `pwpf
 or about 2026-11-30. Credit NOAA WPC, do not imply NOAA endorses the app, and say we converted the
 stored fractions to percent. Clients contact only our server.
 
+## NOAA NCEI nClimGrid-Daily normals (temp vs normal)
+
+The `temp-anomaly` layer and `GET /api/normals` use the NCEI nClimGrid-Daily 1991-2020 daily normals
+([archive](https://www.ncei.noaa.gov/data/oceans/archive/arc0207/0259962/1.1/data/0-data/),
+`tmax-` and `tmin-1991_2020-daily-normals-v1.0.nc`). The file headers say "no restrictions". The aux
+worker downloads them once into `STATE_DIR/static/normals/` and converts them to int16 tenths of a
+degree. The forecast high is the NOAA GFS `TMAX` record. Credit NOAA NCEI, do not imply NOAA endorses
+the app, and say the normals are converted. Clients contact only our server.
+
 ## SPC watches, discussions and outlooks
 
 Attribute these products to NOAA/NWS Storm Prediction Center. These federal weather products are free and keyless.

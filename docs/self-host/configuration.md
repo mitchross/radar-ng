@@ -124,6 +124,8 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `GFS_RADAR_FIRST_HOUR` / `GFS_RADAR_LAST_HOUR` | `24` / `84` | GFS forecast hours rendered. The run is used once its last hour is posted (about 5 h after init). |
 | `UV_ENABLED` | `1` | Render the NOAA/CPC UV Index forecast (TUV model on the 12z GFS, from NOMADS) as `uv`. One run a day, posted about 18:30 UTC: about 35 CPU-seconds and 30 MB. Requests are paced to one a second, under the NOMADS limit of 120 a minute. Raster tiles only (no packed buckets). Read by the hrrr worker. |
 | `UV_LAST_HOUR` | `96` | Last UV forecast hour rendered (from f01). 96 keeps 72 h ahead until the next run lands. |
+| `TEMP_ANOMALY_ENABLED` | `1` | Render `temp-anomaly`: each day's GFS high (max of the four 6-hour `TMAX` records, 06Z to 06Z) minus the 1991-2020 normal high, degrees F, days 1 to 7, one frame a day at 18Z. Lower 48 only. Does nothing until the normals store exists. A run waits until f186 is posted; measured, one run took about 14 s and wrote 0.7 MB of tiles and 1.6 MB of grids. Raster tiles only. Read by the hrrr worker. |
+| `NORMALS_BASE_URL` | NCEI archive | Where the aux worker's `ensure-static-data` schedule fetches the nClimGrid normals (`tmax-` and `tmin-1991_2020-daily-normals-v1.0.nc`, 1.2 GB each, read by byte range). Built once into `STATE_DIR/static/normals/` (1,208,473,738 bytes measured, not under `GRID_DIR`); later runs only check the `normals.json` marker. Delete the folder to rebuild. |
 
 ### Nowcast (Lucas-Kanade motion + S-PROG)
 | Var | Default | Notes |
