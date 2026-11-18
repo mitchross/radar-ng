@@ -54,6 +54,7 @@ const LAYER_TITLE: Record<LayerType, string> = {
   "ice-forecast": "Ice Total",
   "snow-depth": "Snow Depth",
   "snowfall-24h": "Past 24 Hr Snow",
+  "nice-day": "Nice Day",
   "snow-chance-1": "Snow Chance 1 in",
   "snow-chance-4": "Snow Chance 4 in",
   "snow-chance-8": "Snow Chance 8 in",

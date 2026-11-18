@@ -146,6 +146,13 @@ pub fn layer_vars(layer: &str) -> Vec<HrrrVar> {
         ],
         "precip-accum" => vec![HrrrVar::Apcp],
         "cloud" => vec![HrrrVar::Tcdc],
+        "nice-day" => vec![
+            HrrrVar::T2m,
+            HrrrVar::Rh2m,
+            HrrrVar::U10,
+            HrrrVar::V10,
+            HrrrVar::Apcp,
+        ],
         _ => Vec::new(),
     }
 }
@@ -162,6 +169,7 @@ pub fn layer_color_key(layer: &str) -> Option<&'static str> {
         "precip-type" => "precip_type",
         "precip-accum" => "precip_accum",
         "cloud" => "cloud_cover",
+        "nice-day" => "nice_day",
         _ => return None,
     })
 }

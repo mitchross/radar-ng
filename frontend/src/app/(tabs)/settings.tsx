@@ -1123,6 +1123,7 @@ function buildStackActivity(
     "ice-forecast": "Ice-total forecast published",
     "snow-depth": "Snow-depth analysis published",
     "snowfall-24h": "Past-24-hour snowfall published",
+    "nice-day": "Nice Day layer published",
     "snow-chance-1": "Snow-chance forecast published",
     "snow-chance-4": "Snow-chance forecast published",
     "snow-chance-8": "Snow-chance forecast published",

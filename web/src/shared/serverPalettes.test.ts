@@ -28,6 +28,7 @@ describe("LAYER_PALETTE_KEY", () => {
       "hail-size": "hail_size",
       "rotation-track": "rotation_track",
       "echo-top": "echo_top",
+      "nice-day": "nice_day",
       "snowfall-forecast": "snowfall",
       "ice-forecast": "ice_accum",
       "snow-depth": "snow_depth",

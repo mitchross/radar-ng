@@ -13,7 +13,7 @@ import { selectionHaptic } from "../../lib/haptics";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { MapStyle } from "../../types/weather";
-import { LAYER_OPTIONS, LAYER_SYMBOLS, SATELLITE_OVERLAY, SEVERE_OPTIONS, WINTER_OPTIONS, replayLayerOptions } from "./radarLayers";
+import { LAYER_SYMBOLS, liveLayerOptions, SATELLITE_OVERLAY, SEVERE_OPTIONS, WINTER_OPTIONS, replayLayerOptions } from "./radarLayers";
 import { useManifestQuery } from "../../hooks/useManifest";
 import { SEVERE_CREDIT } from "../../../../web/src/shared/severe";
 import { WINTER_EMPTY_HINT, winterPickerRows, winterRowChips, winterSheetHint } from "../../../../web/src/shared/winterLayers";
@@ -42,9 +42,9 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
   const replayCase = useWeatherStore((s) => s.replayCase);
   // Replay offers only the case's layers; live overlays have no historical data.
   const replaying = useWeatherStore((s) => s.source.kind === "replay");
-  const layerOptions = replaying ? replayLayerOptions(replayCase?.layers ?? []) : LAYER_OPTIONS;
   // The Severe group lists only layers the server has frames for.
   const manifestLayers = useManifestQuery().data?.layers;
+  const layerOptions = replaying ? replayLayerOptions(replayCase?.layers ?? []) : liveLayerOptions(manifestLayers);
   const severeOptions = replaying
     ? []
     : SEVERE_OPTIONS.filter((o) => (manifestLayers?.[o.id]?.frames?.length ?? manifestLayers?.[o.id]?.timestamps?.length ?? 0) > 0);

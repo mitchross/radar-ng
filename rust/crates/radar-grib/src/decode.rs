@@ -162,6 +162,36 @@ pub fn find_message(bytes: &[u8], selector: &MessageSelector) -> Result<Option<D
     Ok(None)
 }
 
+/// Like [`find_message`], but among the matches picks the one with the latest forecast time (the
+/// start of an accumulation window), the last one on a tie. HRRR's `APCP` comes as `0-N` and
+/// `N-1-N`; this returns the one-hour window.
+pub fn find_latest_window(
+    bytes: &[u8],
+    selector: &MessageSelector,
+) -> Result<Option<DecodedMessage>> {
+    let file = parse_file(bytes)?;
+    let mut best: Option<(usize, u32)> = None;
+    for (n, (_, sub)) in file.iter().enumerate() {
+        if !selector.matches(&info_of(&sub)?) {
+            continue;
+        }
+        let start = sub.prod_def().forecast_time().map_or(0, |t| t.value);
+        if best.is_none_or(|(_, s)| start >= s) {
+            best = Some((n, start));
+        }
+    }
+    let Some((pick, _)) = best else {
+        return Ok(None);
+    };
+    for (n, (_, sub)) in file.iter().enumerate() {
+        if n == pick {
+            let info = info_of(&sub)?;
+            return decode_submessage(bytes, sub, info).map(Some);
+        }
+    }
+    Ok(None)
+}
+
 /// Lists the metadata of every message in `bytes`, in file order, without decoding values.
 pub fn list_messages(bytes: &[u8]) -> Result<Vec<MessageInfo>> {
     let file = parse_file(bytes)?;

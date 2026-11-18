@@ -43,6 +43,7 @@ export const LAYER_PALETTE_KEY: Readonly<Record<string, string>> = {
   "hail-size": "hail_size",
   "rotation-track": "rotation_track",
   "echo-top": "echo_top",
+  "nice-day": "nice_day",
   ...WINTER_PALETTE_KEYS,
 };
 

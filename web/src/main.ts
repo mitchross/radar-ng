@@ -53,6 +53,7 @@ import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition } from "./s
 import { describeNowcastSkill } from "./shared/nowcastSkill";
 import { SEVERE_CREDIT, SEVERE_LAYERS, formatSevereReading, severeLayer } from "./shared/severe";
 import { WINTER_EMPTY_HINT, WINTER_LAYERS, formatWinterReading, winterAsOf, winterLayer, winterPickerRows, winterRowChips, winterSheetHint } from "./shared/winterLayers";
+import { NICE_DAY_LAYER, formatNiceDayReading, niceDayLegend } from "./shared/niceDayLayer";
 import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR, SNOW_START_IN_HR, winterStart } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
@@ -103,6 +104,7 @@ const LAYERS: { id: string; name: string; needs: string }[] = [
   { id: "precip-accum", name: "Rain total", needs: "precip-accum" },
   { id: "precip-24h", name: "Past 24 hr precip", needs: "precip-24h" },
   { id: "cloud", name: "Clouds", needs: "cloud" },
+  { id: NICE_DAY_LAYER.id, name: NICE_DAY_LAYER.name, needs: NICE_DAY_LAYER.id },
   { id: "uv", name: "UV index", needs: "uv" },
   { id: "air-quality", name: "Air quality", needs: "air-quality" },
   { id: "ozone", name: "Ozone", needs: "ozone" },
@@ -713,6 +715,17 @@ function renderLegend() {
           .join("") +
         `</div>`;
     }
+    return;
+  }
+  if (state.layer === NICE_DAY_LAYER.id) {
+    const ranges = (serverPalettes?.[state.palette] ?? serverPalettes?.classic)?.[NICE_DAY_LAYER.paletteKey]?.ranges;
+    const stops = niceDayLegend(ranges).reverse();
+    el.hidden = false;
+    el.innerHTML =
+      `<div class="legend-title">${NICE_DAY_LAYER.name}</div>` +
+      `<div class="legend-bar" style="background:linear-gradient(90deg,${stops.map((s, i) => `${s.color} ${i * 20}% ${(i + 1) * 20}%`).join(",")})"></div>` +
+      `<div class="legend-labels">${stops.map((s) => `<span>${s.word}</span>`).join("")}</div>` +
+      `<div class="legend-note">${NICE_DAY_LAYER.credit}</div>`;
     return;
   }
   const table = layerLegend(serverPalettes, replaying() ? REPLAY_PALETTE : state.palette, state.layer, activeManifest()?.layers[state.layer]?.palette_key);
@@ -1514,6 +1527,7 @@ map.on("click", async (e) => {
     else if (["temperature", "feels-like", "dewpoint"].includes(state.layer)) text = `${Math.round(value)}°F`;
     else if (state.layer === "wind") text = `${Math.round(value)} mph`;
     else if (state.layer === "cloud") text = `${Math.round(value)}%`;
+    else if (state.layer === NICE_DAY_LAYER.id) text = formatNiceDayReading(value) ?? `${Math.round(value)}`;
     else if (state.layer === "precip-accum" || state.layer === "precip-24h") text = `${value.toFixed(2)} in`;
     else if (state.layer === "uv") text = `UV ${Math.round(value)} · ${uvCategory(value)}`;
     else if (severeLayer(state.layer)) text = formatSevereReading(state.layer, value) ?? `${value.toFixed(1)}`;
