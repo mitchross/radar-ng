@@ -1,0 +1,73 @@
+appId: ${APP_ID}
+name: fast radar status line, layers and relaunch (#252)
+---
+# Drives the parts of #252 that need no human eye. Smoothness, overlay order and
+# "fills back in quickly after a pan" stay human checks (docs/app/phone-acceptance.md).
+# Not run on a device when written. Fast radar is on by default (fastRadar = "1").
+# Run with rain over the phone's location, or set a rainy city first.
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- runFlow: common/dismiss-system-prompts.yaml
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Radar
+- extendedWaitUntil:
+    visible: "Choose radar layer"
+    timeout: 30000
+- takeScreenshot: fast-radar-map
+# Let tiles arrive, then read the status line under Fast radar in Settings.
+- waitForAnimationToEnd:
+    timeout: 15000
+- tapOn: "Close radar"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Settings
+- scrollUntilVisible:
+    element: "Fast radar \\(GPU\\)"
+    direction: DOWN
+- assertVisible: "In-map: [1-9][0-9]* frames.*"
+- assertVisible: ".*no errors.*"
+- assertNotVisible: ".*fallback:.*"
+- takeScreenshot: fast-radar-status
+# Air Quality and Wind: no crash. A crash shows up as a failed assert on the next screen.
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Radar
+- tapOn: "Choose radar layer"
+- tapOn: "Air Quality radar layer"
+- takeScreenshot: fast-radar-air-quality
+- tapOn: "Choose radar layer"
+- tapOn: "Wind radar layer"
+- takeScreenshot: fast-radar-wind
+- tapOn: "Choose radar layer"
+- tapOn: "Radar radar layer"
+- assertVisible: "Choose radar layer"
+# Kill and relaunch: radar draws again.
+- stopApp
+- launchApp
+- runFlow: common/dismiss-system-prompts.yaml
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Radar
+- extendedWaitUntil:
+    visible: "Choose radar layer"
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: fast-radar-relaunch
+- tapOn: "Close radar"
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Settings
+- scrollUntilVisible:
+    element: "Fast radar \\(GPU\\)"
+    direction: DOWN
+- assertVisible: "In-map: [1-9][0-9]* frames.*"
+- assertVisible: ".*no errors.*"

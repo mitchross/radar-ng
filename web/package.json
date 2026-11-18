@@ -7,13 +7,15 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test -c e2e"
   },
   "dependencies": {
     "maplibre-gl": "^6.11.2",
     "posthog-js": "^1.434.15"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@types/node": "^26.6.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",

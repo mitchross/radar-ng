@@ -1,0 +1,47 @@
+appId: ${APP_ID}
+name: famous storm replay opens, plays and returns to live (#285)
+---
+# Needs a server with both replay cases published (GET /api/replays lists them).
+# Pass -e REPLAY_CASE=Greenfield (or "Rolling Fork"). There is no default: Maestro fails if unset.
+# Scrubbing quality, layer changes, slow network, missing data, memory and notification
+# isolation stay human checks (docs/app/phone-acceptance.md). Not run on a device when written.
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- runFlow: common/dismiss-system-prompts.yaml
+- runFlow:
+    file: common/open-tab.yaml
+    env:
+      TAB: Radar
+- extendedWaitUntil:
+    visible: "Famous storms"
+    timeout: 30000
+- tapOn: "Famous storms"
+- extendedWaitUntil:
+    visible: "Replay .*${REPLAY_CASE}.*"
+    timeout: 30000
+- takeScreenshot: replay-picker
+- tapOn: "Replay .*${REPLAY_CASE}.*"
+- extendedWaitUntil:
+    visible: "HISTORICAL REPLAY"
+    timeout: 60000
+- assertNotVisible: "Could not load this replay.*"
+- takeScreenshot: replay-open
+- tapOn: "Play radar animation"
+- assertVisible: "Pause radar animation"
+- waitForAnimationToEnd:
+    timeout: 10000
+- takeScreenshot: replay-playing
+- tapOn: "Pause radar animation"
+- assertNotVisible: "Could not load this replay.*"
+# Change layer while replaying, then back to Radar.
+- tapOn: "Choose radar layer"
+- takeScreenshot: replay-layers
+- tapOn: "Close map options"
+- assertVisible: "HISTORICAL REPLAY"
+# Return to live.
+- tapOn: "Return to live radar"
+- assertNotVisible: "HISTORICAL REPLAY"
+- assertVisible: "Choose radar layer"
+- takeScreenshot: replay-back-to-live

@@ -37,6 +37,8 @@ Served on port 9466 and scraped by the `level2` endpoint of the `radar-ng-worker
 | `radar_level2_active_stations`, `_busy_stations`, `_decodes_running` | Pool occupancy against 8 and 2. |
 | `radar_level2_permit_wait_seconds` | Decode permit wait (queue start latency). |
 | `radar_level2_poll_seconds`, `_decode_seconds`, `_qc_seconds_total`, `_render_seconds` | Stage timings. |
+| `radar_level2_qc_sweep_seconds` | QC time of one indexed lowest sweep (the #293 ≤25 ms gate). |
+| `radar_level2_test_feed_delay_seconds` | Injected feed delay; non-zero only during a drill. |
 | `radar_level2_sweep_cache_bytes`, `_render_cache_bytes`, `_object_bytes` | Cache and object bytes in use. |
 | `radar_level2_feed_age_seconds`, `_sweep_age_seconds` | Newest chunk age versus newest complete low sweep age, per station. |
 | `radar_level2_fallback_total{reason,stage}` | Why a poll or tile fell back to MRMS. |
@@ -56,6 +58,16 @@ feed stale, sweep stale, fallback rate, permit backlog, object quota, pool workf
 | Permit wait grows | `radar_level2_decodes_running` stuck at 2: a lease the reaper has not freed yet (15 minutes). |
 | Evictions failing | RustFS reachability. Data stays; the claim is released and retried each tick. |
 | No pool workflow | Gate off, or the worker cannot reach Temporal. The worker retries the start every minute. |
+
+## Sweep clocks
+
+Each newly indexed lowest sweep also writes one row to `sweep_clocks`: scan end, NOAA arrival,
+first availability, QC ms, VCP, missing sectors and bytes. A failed write is logged
+(`level2_clock_record_error`) and never blocks the sweep. The shadow recorder joins these rows
+with what it saw at the edge: [level2-shadow.md](level2-shadow.md).
+
+`LEVEL2_TEST_FEED_DELAY_S` (default 0, off) hides NOAA objects newer than N seconds, for the
+NOAA-delay drill only.
 
 ## Reproduce the harness
 

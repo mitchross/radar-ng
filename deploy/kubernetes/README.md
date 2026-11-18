@@ -15,6 +15,8 @@ deploy/kubernetes/
     monitoring/         Prometheus Operator ServiceMonitor, PodMonitor and alert rules
     worker-controller/  production-style workers: five role pools via the Temporal Worker Controller
     autoscaling/        VPA
+    level2/             Level II shadow stack: stateless level2-api, publisher, recorder (all gated off)
+    level2-shadow-route/  OPTIONAL shadow HTTPRoute for level2-api only
   examples/
     minimal/            base + temporal-dev: the one-command try-out
     production/         base + worker-controller + gateway-api + monitoring + autoscaling
@@ -232,6 +234,10 @@ The tile-server Service (`tile-server:8080`) is the only thing that needs to be 
 - `components/gateway-api`: an HTTPRoute. Needs the Gateway API CRDs and a Gateway.
 
 Both use `radar-ng-api.example.com`. Change it to your hostname.
+
+Level II is not part of either. `components/level2` runs its own stateless `level2-api` (no PVC)
+behind a ClusterIP Service, with every gate off. `components/level2-shadow-route` is an optional
+shadow hostname for it. See [docs/develop/level2-shadow.md](../../docs/develop/level2-shadow.md).
 
 ## Going to production
 

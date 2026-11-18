@@ -1,0 +1,59 @@
+# `radar level2-publish`: builds ready viewports and collects expired objects. One replica; it
+# leases work in Postgres, so a second replica is safe but not needed for the pilot.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: level2-publisher
+  namespace: radar-ng
+  labels:
+    app: level2-publisher
+spec:
+  # Off by default: scale to 1 for the shadow run, with the gates in level2.env set true.
+  replicas: 0
+  selector:
+    matchLabels:
+      app: level2-publisher
+  template:
+    metadata:
+      labels:
+        app: level2-publisher
+        # Scraped on :9466 by the monitoring component's PodMonitor.
+        radar-ng/worker: "true"
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: publisher
+          image: ghcr.io/mitchross/radar-ng-temporal-worker:v2.0.9@sha256:1432031a17e5126eb591a4e0cb3e72f632283a45c3c190fe8cd7865dc51b64a9
+          imagePullPolicy: IfNotPresent
+          args: [level2-publish]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          ports:
+            - { containerPort: 9466, name: level2, protocol: TCP }
+          envFrom:
+            - configMapRef:
+                name: radar-ng-level2
+            # <<< your Secret: LEVEL2_PG_URL, LEVEL2_S3_ENDPOINT, LEVEL2_S3_BUCKET, LEVEL2_S3_ACCESS_KEY, LEVEL2_S3_SECRET_KEY
+            - secretRef:
+                name: radar-ng-level2
+                optional: true
+          env:
+            - { name: TMPDIR, value: /tmp }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "2", memory: 2Gi }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
