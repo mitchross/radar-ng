@@ -3,6 +3,7 @@ import {
   parseRainAlertLead,
   planRainAlert,
   shouldNotify,
+  winterStartWords,
   type RainAlertPlan,
 } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
@@ -95,10 +96,11 @@ export class BrowserRainAlerts {
     if (!this.enabled || !this.supported || Notification.permission !== "granted") return;
     const startInMin = Math.max(1, Math.round((plan.startAt - Date.now()) / 60_000));
     const body = plan.body.replace(/in about \d+ min/, `in about ${startInMin} min`);
+    const title = plan.precipClass && plan.precipClass !== "rain" ? winterStartWords(plan.precipClass, startInMin) : plan.title;
     const options = { body, tag: "radar-ng-rain" };
     try {
-      if (this.registration) await this.registration.showNotification(plan.title, options);
-      else new Notification(plan.title, options);
+      if (this.registration) await this.registration.showNotification(title, options);
+      else new Notification(title, options);
       this.write("last", JSON.stringify({ key: plan.key, startAt: plan.startAt, firedAt: Date.now() }));
     } catch {
       this.message = "This browser cannot deliver alerts here. Use the app for rain alerts.";

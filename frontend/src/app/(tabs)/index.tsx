@@ -28,6 +28,7 @@ import {
   weekRange,
 } from "../../lib/forecastView";
 import { getForecastScreenState } from "../../lib/weatherPresentation";
+import { winterStart } from "../../lib/rainAlerts";
 import {
   ScreenState,
   SectionLabel,
@@ -160,7 +161,17 @@ export default function HomeScreen() {
   const locationLabel = location.label;
   const locationName = location.name;
 
-  const nowcastBanner = nextHourBanner(radarNowcast, forecast.minutely_15, now.getTime(), forecast.utc_offset_seconds);
+  const rainBanner = nextHourBanner(radarNowcast, forecast.minutely_15, now.getTime(), forecast.utc_offset_seconds);
+  // Snow, mix or ice starting this hour takes the banner; old servers send no class and keep rain.
+  const winter = winterStart(radarNowcast, now.getTime());
+  const nowcastBanner = winter
+    ? {
+        headline: winter.words,
+        sub: winter.endAt
+          ? `Lasts ~${Math.max(1, Math.round((winter.endAt - winter.startAt) / 60_000))} min \u00B7 from radar`
+          : "From radar",
+      }
+    : rainBanner;
 
   const hourly = hourlyView(forecast, temperatureUnit, now.getTime());
   const precipTotal = precipitationNext24h(forecast, now.getTime());
