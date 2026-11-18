@@ -16,7 +16,7 @@ import type { MapStyle } from "../../types/weather";
 import { LAYER_SYMBOLS, liveLayerOptions, SATELLITE_OVERLAY, SEVERE_OPTIONS, WINTER_OPTIONS, replayLayerOptions } from "./radarLayers";
 import { useManifestQuery } from "../../hooks/useManifest";
 import { SEVERE_CREDIT } from "../../../../web/src/shared/severe";
-import { WINTER_EMPTY_HINT, winterSheetHint } from "../../../../web/src/shared/winterLayers";
+import { WINTER_EMPTY_HINT, winterPickerRows, winterRowChips, winterSheetHint } from "../../../../web/src/shared/winterLayers";
 
 const MAP_STYLES: { id: MapStyle; label: string; color: string }[] = [
   { id: "light", label: "Light", color: "#e8ece5" },
@@ -49,9 +49,12 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
     ? []
     : SEVERE_OPTIONS.filter((o) => (manifestLayers?.[o.id]?.frames?.length ?? manifestLayers?.[o.id]?.timestamps?.length ?? 0) > 0);
   const severeHint = severeOptions.find((o) => o.id === activeLayer)?.hint ?? "Hail, storm rotation and storm height";
-  const winterOptions = replaying
+  const winterAvailable = replaying
     ? []
     : WINTER_OPTIONS.filter((o) => (manifestLayers?.[o.id]?.frames?.length ?? manifestLayers?.[o.id]?.timestamps?.length ?? 0) > 0);
+  // Snow chance is one tile; its 1 / 4 / 8 in chips show under the grid while it is selected.
+  const winterOptions = winterPickerRows(winterAvailable, activeLayer);
+  const winterChips = winterRowChips(winterAvailable, activeLayer);
   const winterHint = winterOptions.length
     ? winterSheetHint(activeLayer)
     : WINTER_EMPTY_HINT;
@@ -132,6 +135,25 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
                         <Text style={[styles.layerName, active ? { color: theme.colors.accent } : null]} numberOfLines={1}>
                           {opt.name}
                         </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+              {winterChips.length > 1 && (
+                <View style={styles.chipRow} accessibilityRole="radiogroup">
+                  {winterChips.map((opt) => {
+                    const active = activeLayer === opt.id;
+                    return (
+                      <Pressable
+                        key={opt.id}
+                        accessibilityRole="radio"
+                        accessibilityLabel={`${opt.chip ?? opt.name}. ${opt.hint}`}
+                        accessibilityState={{ checked: active }}
+                        onPress={() => { selectionHaptic(); setActiveLayer(opt.id); }}
+                        style={({ pressed }) => [styles.chip, active ? styles.chipActive : null, pressed ? styles.pressed : null]}
+                      >
+                        <Text style={[styles.layerName, active ? { color: theme.colors.accent } : null]}>{opt.chip ?? opt.name}</Text>
                       </Pressable>
                     );
                   })}
@@ -276,6 +298,18 @@ function createStyles(theme: WeatherClearTheme) {
       paddingHorizontal: 4,
     },
     layerTileActive: { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSoft },
+    chipRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+    chip: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: 22,
+      borderWidth: 1.5,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surfaceStrong,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    chipActive: { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSoft },
     layerName: { color: theme.colors.text, fontFamily: theme.typography.uiMedium, fontSize: 13 },
     styleTile: { alignItems: "center", gap: 6, minHeight: 44 },
     swatch: {

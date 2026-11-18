@@ -129,6 +129,10 @@ export const LAYERS: LayerConfig[] = [
   { id: "snowfall-24h", label: "24h Snow", icon: "F", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
   // Our Nice Day score on the HRRR grid; on only where the server lists it in HRRR_ENABLED_LAYERS.
   { id: "nice-day", label: "Nice Day", icon: "N", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  // WPC chance of at least 1, 4 or 8 in of snow in 24 h: one picker row with a chip.
+  { id: "snow-chance-1", label: "Snow 1in", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
+  { id: "snow-chance-4", label: "Snow 4in", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
+  { id: "snow-chance-8", label: "Snow 8in", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
 ];
 
 /**

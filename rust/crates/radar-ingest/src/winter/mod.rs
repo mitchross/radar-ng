@@ -4,6 +4,9 @@
 //!   snow and flat-ice totals from the run start, one frame every 6 h out to +72 h.
 //! - `snow-depth` (schedule `ingest-snow-depth`): SNODAS snow on the ground, one frame a day.
 //! - `snowfall-24h` (schedule `ingest-snowfall-24h`): the NOHRSC 24 h snowfall analysis, newest only.
+//! - `snow-chance` (schedule `ingest-snow-chance`): `snow-chance-1`, `-4` and `-8`, the WPC chance of at
+//!   least 1, 4 or 8 in of snow in the 24 h ending at each frame, one frame every 6 h. Its hours come
+//!   from the cycle's file list, not a fixed table.
 //!
 //! Same steps as the global-model ingest: find the run, process its hours, publish the coherent prefix,
 //! mark processed, clean up. A product can render several layers; an hour counts only when all of them
@@ -15,6 +18,7 @@ pub mod activities;
 pub mod nohrsc;
 pub mod snodas;
 pub mod state;
+pub mod wpc;
 
 use radar_grib::nbm::NbmVar;
 
@@ -27,6 +31,8 @@ pub enum Field {
     SnodasDepth,
     /// NOHRSC 24 hour snowfall analysis, in inches.
     Nohrsc24h,
+    /// WPC chance of at least this many inches of snow in 24 h, in percent.
+    WpcChance(u32),
 }
 
 /// One rendered winter layer.
@@ -80,6 +86,31 @@ pub const SNOWFALL_24H_LAYERS: [WinterLayer; 1] = [WinterLayer {
     field: Field::Nohrsc24h,
 }];
 
+/// WPC snow chance layers, one per threshold.
+pub const SNOW_CHANCE_LAYERS: [WinterLayer; 3] = [
+    WinterLayer {
+        id: "snow-chance-1",
+        color_key: "snow_chance",
+        unit: "%",
+        title: "Chance of 1 in of snow in 24 h (NOAA WPC)",
+        field: Field::WpcChance(1),
+    },
+    WinterLayer {
+        id: "snow-chance-4",
+        color_key: "snow_chance",
+        unit: "%",
+        title: "Chance of 4 in of snow in 24 h (NOAA WPC)",
+        field: Field::WpcChance(4),
+    },
+    WinterLayer {
+        id: "snow-chance-8",
+        color_key: "snow_chance",
+        unit: "%",
+        title: "Chance of 8 in of snow in 24 h (NOAA WPC)",
+        field: Field::WpcChance(8),
+    },
+];
+
 /// One winter schedule. The workflow argument is [`Product::name`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Product {
@@ -89,11 +120,18 @@ pub enum Product {
     SnowDepth,
     /// NOHRSC 24 hour snowfall.
     Snowfall24h,
+    /// WPC snow chance.
+    SnowChance,
 }
 
 impl Product {
     /// Every product, in schedule order.
-    pub const ALL: [Product; 3] = [Product::NbmSnow, Product::SnowDepth, Product::Snowfall24h];
+    pub const ALL: [Product; 4] = [
+        Product::NbmSnow,
+        Product::SnowDepth,
+        Product::Snowfall24h,
+        Product::SnowChance,
+    ];
 
     /// Product for a workflow argument.
     pub fn from_name(name: &str) -> anyhow::Result<Self> {
@@ -109,6 +147,7 @@ impl Product {
             Product::NbmSnow => "nbm-snow",
             Product::SnowDepth => "snow-depth",
             Product::Snowfall24h => "snowfall-24h",
+            Product::SnowChance => "snow-chance",
         }
     }
 
@@ -118,6 +157,7 @@ impl Product {
             Product::NbmSnow => &NBM_SNOW_LAYERS,
             Product::SnowDepth => &SNOW_DEPTH_LAYERS,
             Product::Snowfall24h => &SNOWFALL_24H_LAYERS,
+            Product::SnowChance => &SNOW_CHANCE_LAYERS,
         }
     }
 
@@ -127,6 +167,7 @@ impl Product {
             Product::NbmSnow => "nbm",
             Product::SnowDepth => "snodas",
             Product::Snowfall24h => "nohrsc",
+            Product::SnowChance => "wpc",
         }
     }
 
@@ -136,20 +177,26 @@ impl Product {
             Product::NbmSnow => "ingest-nbm-snow.json",
             Product::SnowDepth => "ingest-snow-depth.json",
             Product::Snowfall24h => "ingest-snowfall-24h.json",
+            Product::SnowChance => "ingest-snow-chance.json",
         }
     }
 
     /// Hours a run keeps its tiles after a newer run replaces it.
     pub fn retention_hours(self) -> i64 {
         match self {
-            Product::NbmSnow => 12,
+            Product::NbmSnow | Product::SnowChance => 12,
             Product::SnowDepth | Product::Snowfall24h => 48,
         }
     }
 
     /// Whether the frames are observed analyses rather than a forecast.
     pub fn observed(self) -> bool {
-        !matches!(self, Product::NbmSnow)
+        !matches!(self, Product::NbmSnow | Product::SnowChance)
+    }
+
+    /// Whether the run's hours come from the source's file list rather than a fixed table.
+    pub fn listed_hours(self) -> bool {
+        matches!(self, Product::SnowChance)
     }
 
     /// `kind` written into each frame and the layer.
@@ -165,7 +212,7 @@ impl Product {
     pub fn resolution_km(self) -> f64 {
         match self {
             Product::SnowDepth => 1.0,
-            Product::NbmSnow | Product::Snowfall24h => SPATIAL_RESOLUTION_KM,
+            Product::NbmSnow | Product::Snowfall24h | Product::SnowChance => SPATIAL_RESOLUTION_KM,
         }
     }
 
@@ -175,7 +222,7 @@ impl Product {
             .iter()
             .filter_map(|l| match l.field {
                 Field::NbmTotal(v) => Some(v),
-                Field::SnodasDepth | Field::Nohrsc24h => None,
+                Field::SnodasDepth | Field::Nohrsc24h | Field::WpcChance(_) => None,
             })
             .collect()
     }
@@ -232,5 +279,14 @@ mod tests {
             (Product::Snowfall24h.kind(), Product::NbmSnow.kind()),
             ("observation", "model_guidance")
         );
+        let chance = Product::from_name("snow-chance").unwrap();
+        assert_eq!(chance.kind(), "model_guidance");
+        assert_eq!(chance.retention_hours(), 12);
+        assert!(chance.listed_hours() && !Product::NbmSnow.listed_hours());
+        assert_eq!(
+            chance.layers().iter().map(|l| l.field).collect::<Vec<_>>(),
+            wpc::THRESHOLDS.map(Field::WpcChance)
+        );
+        assert_eq!(layer("snow-chance-8").unwrap().unit, "%");
     }
 }

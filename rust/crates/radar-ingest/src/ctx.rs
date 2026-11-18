@@ -40,6 +40,8 @@ pub struct IngestCtx {
     pub snodas_http: S3Client,
     /// Plain HTTPS client for the NOHRSC snowfall analysis.
     pub nohrsc_http: S3Client,
+    /// Plain HTTPS client for the WPC Probabilistic Precipitation Portal.
+    pub wpc_http: S3Client,
     /// Nowcast kicker. `None` disables the kick regardless of `NOWCAST_KICK_ENABLED`.
     pub nowcast: Option<Arc<dyn NowcastKicker>>,
 }
@@ -55,6 +57,7 @@ impl IngestCtx {
             uv_http: S3Client::new(http.clone(), cfg.uv_base_url.clone()),
             snodas_http: S3Client::new(http.clone(), cfg.snodas_base_url.clone()),
             nohrsc_http: S3Client::new(http.clone(), cfg.nohrsc_base_url.clone()),
+            wpc_http: S3Client::new(http.clone(), cfg.wpc_base_url.clone()),
             nbm_s3: S3Client::new(http, cfg.nbm_base_url.clone()),
             cfg: Arc::new(cfg),
             nowcast,

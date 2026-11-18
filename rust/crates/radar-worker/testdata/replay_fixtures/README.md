@@ -11,6 +11,8 @@ the histories of the Python-era workflows, before the Python code
 was removed. `IngestGlobalModelWorkflow` and `IngestWinterWorkflow` have no Python version: their `src-<sha>` histories
 come from the Rust workflow with scripted fake activities on a local
 `temporal server start-dev`, exported with `temporal workflow show --output json`.
+`IngestWinterWorkflow/src-56c75ff` holds the same histories for the `snow-chance` product: the
+`src-f6d9878` files with the product and layer names in the payloads rewritten. Same commands.
 `IngestSkyWorkflow` has no Python version either. Its `src-81a482a` histories are the
 Tropical `v1.1.49` ones with the workflow type, activity name, `"iss"` input, one-attempt
 retry policy and result payload rewritten (`jq`); the command sequence is the same single

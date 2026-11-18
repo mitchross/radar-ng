@@ -52,7 +52,7 @@ import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast"
 import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition } from "./shared/conditions";
 import { describeNowcastSkill } from "./shared/nowcastSkill";
 import { SEVERE_CREDIT, SEVERE_LAYERS, formatSevereReading, severeLayer } from "./shared/severe";
-import { WINTER_EMPTY_HINT, WINTER_LAYERS, formatWinterReading, winterAsOf, winterLayer, winterSheetHint } from "./shared/winterLayers";
+import { WINTER_EMPTY_HINT, WINTER_LAYERS, formatWinterReading, winterAsOf, winterLayer, winterPickerRows, winterRowChips, winterSheetHint } from "./shared/winterLayers";
 import { NICE_DAY_LAYER, formatNiceDayReading, niceDayLegend } from "./shared/niceDayLayer";
 import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR, SNOW_START_IN_HR, winterStart } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
@@ -771,7 +771,9 @@ function renderSheet() {
   const composite = layerAvailable("radar-composite");
   const severe = SEVERE_LAYERS.filter((l) => layerAvailable(l.id));
   const severeHint = severeLayer(state.layer)?.hint ?? "Hail, storm rotation and storm height";
-  const winter = WINTER_LAYERS.filter((l) => layerAvailable(l.id));
+  const winterAll = WINTER_LAYERS.filter((l) => layerAvailable(l.id));
+  const winter = winterPickerRows(winterAll, state.layer);
+  const winterChips = winterRowChips(winterAll, state.layer);
   const toggles = [
     ...OVERLAYS.map((o) => ({ id: o.id, name: o.name, hint: o.hint, on: state.overlays.has(o.id) })),
     ...(layerAvailable("satellite") ? [{ id: "satellite", name: "Satellite clouds", hint: "GOES imagery under the radar, every 10 minutes", on: state.satellite }] : []),
@@ -788,6 +790,7 @@ function renderSheet() {
     </div>
     <div class="sheet-section"><div class="section-label">WINTER</div>
       ${winter.length ? seg("winter", winter.map((l) => [l.id, l.name, l.hint]), state.layer) : ""}
+      ${winterChips.length > 1 ? seg("winter", winterChips.map((l) => [l.id, l.chip ?? l.name, l.hint]), state.layer) : ""}
       <p class="hint">${winter.length ? escapeHtml(winterSheetHint(state.layer)) : WINTER_EMPTY_HINT}</p>
     </div>
     ${severe.length ? `<div class="sheet-section"><div class="section-label">SEVERE</div>

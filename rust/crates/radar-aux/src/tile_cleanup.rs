@@ -22,7 +22,7 @@ use tracing::info;
 /// Per-layer retention in minutes (`LAYER_RETENTION_MIN`, verbatim, plus `precip-24h` and the two
 /// global-model layers, whose run directories `global_model_cleanup` owns, plus the winter layers).
 /// `air-quality` and `ozone` are not here: `aqm_cleanup` owns them.
-pub const LAYER_RETENTION_MIN: [(&str, i64); 23] = [
+pub const LAYER_RETENTION_MIN: [(&str, i64); 26] = [
     ("radar", 240),
     ("radar-composite", 240),
     ("precip-24h", 240),
@@ -46,6 +46,9 @@ pub const LAYER_RETENTION_MIN: [(&str, i64); 23] = [
     ("ice-forecast", 720),
     ("snow-depth", 2880),
     ("snowfall-24h", 2880),
+    ("snow-chance-1", 720),
+    ("snow-chance-4", 720),
+    ("snow-chance-8", 720),
 ];
 
 /// Age after which an orphaned `.tmp-` staging directory is removed (by its mtime).
@@ -289,7 +292,7 @@ mod tests {
 
     #[test]
     fn retention_table_has_eighteen_layers_and_no_aqm() {
-        assert_eq!(LAYER_RETENTION_MIN.len(), 23);
+        assert_eq!(LAYER_RETENTION_MIN.len(), 26);
         assert!(
             LAYER_RETENTION_MIN
                 .iter()

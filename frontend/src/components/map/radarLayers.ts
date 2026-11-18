@@ -9,7 +9,7 @@ import { SEVERE_LAYERS, type SevereLayerId } from "../../../../web/src/shared/se
 import { WINTER_LAYERS, type WinterLayerId } from "../../../../web/src/shared/winterLayers";
 import { NICE_DAY_LAYER } from "../../../../web/src/shared/niceDayLayer";
 
-export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" | "sun" | "ozone" | "hail" | "rotation" | "tower" | "snow" | "ice" | "snowDepth" | "snowPast" | "niceDay";
+export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" | "sun" | "ozone" | "hail" | "rotation" | "tower" | "snow" | "ice" | "snowDepth" | "snowPast" | "snowChance" | "niceDay";
 
 export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] = [
   { id: "radar", name: "Radar", icon: "rain" },
@@ -48,12 +48,16 @@ const WINTER_ICONS: Record<WinterLayerId, LayerIcon> = {
   "ice-forecast": "ice",
   "snow-depth": "snowDepth",
   "snowfall-24h": "snowPast",
+  "snow-chance-1": "snowChance",
+  "snow-chance-4": "snowChance",
+  "snow-chance-8": "snowChance",
 };
-export const WINTER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon; hint: string }[] = WINTER_LAYERS.map((l) => ({
+export const WINTER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon; hint: string; chip?: string }[] = WINTER_LAYERS.map((l) => ({
   id: l.id,
   name: l.name,
   icon: WINTER_ICONS[l.id],
   hint: l.hint,
+  chip: l.chip,
 }));
 
 export const LAYER_SYMBOLS: Record<LayerIcon, SymbolViewProps["name"]> = {
@@ -73,6 +77,7 @@ export const LAYER_SYMBOLS: Record<LayerIcon, SymbolViewProps["name"]> = {
   snowDepth: { ios: "ruler.fill", android: "straighten" },
   snowPast: { ios: "clock.arrow.circlepath", android: "history" },
   niceDay: { ios: "sun.horizon.fill", android: "nature_people" },
+  snowChance: { ios: "percent", android: "percent" },
 };
 
 /** GOES satellite imagery: a switch drawn under any weather layer, not one of the layers above. */

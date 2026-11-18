@@ -215,7 +215,10 @@ export type LayerType =
   | "ice-forecast"
   | "snow-depth"
   | "snowfall-24h"
-  | "nice-day";
+  | "nice-day"
+  | "snow-chance-1"
+  | "snow-chance-4"
+  | "snow-chance-8";
 
 export interface LayerConfig {
   id: LayerType;

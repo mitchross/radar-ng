@@ -33,6 +33,9 @@ describe("LAYER_PALETTE_KEY", () => {
       "ice-forecast": "ice_accum",
       "snow-depth": "snow_depth",
       "snowfall-24h": "snowfall",
+      "snow-chance-1": "snow_chance",
+      "snow-chance-4": "snow_chance",
+      "snow-chance-8": "snow_chance",
     });
   });
 

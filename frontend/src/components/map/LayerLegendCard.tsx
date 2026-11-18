@@ -43,6 +43,9 @@ const LAYER_SOURCE: Record<LayerType, SourceTag> = {
   "snow-depth": "Now",
   "snowfall-24h": "Now",
   "nice-day": "Later",
+  "snow-chance-1": "Later",
+  "snow-chance-4": "Later",
+  "snow-chance-8": "Later",
   cloud: "Later",
   uv: "Later",
   "air-quality": "Now",
@@ -85,6 +88,16 @@ const RAIN_TOTAL_STOPS: LegendStop[] = [
   { label: "0.1", color: "#4696ff" },
   { label: "0", color: "#8cc8ff" },
 ];
+
+const SNOW_CHANCE_LEGEND: LegendSpec = {
+  title: "Snow Chance",
+  stops: [
+    { label: "90%", color: "#f0555a" },
+    { label: "50%", color: "#5541af" },
+    { label: "20%", color: "#69a5e1" },
+    { label: "5%", color: "#bedcf5" },
+  ],
+};
 
 const LEGENDS: Record<LayerType, LegendSpec> = {
   radar: {
@@ -224,6 +237,9 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
     title: NICE_DAY_LAYER.name,
     stops: niceDayLegend(null).map((s) => ({ label: s.word, color: s.color })),
   },
+  "snow-chance-1": SNOW_CHANCE_LEGEND,
+  "snow-chance-4": SNOW_CHANCE_LEGEND,
+  "snow-chance-8": SNOW_CHANCE_LEGEND,
   "echo-top": {
     title: "Echo Tops",
     stops: [
