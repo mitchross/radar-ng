@@ -2584,3 +2584,58 @@ async fn snow_spot_is_cached_per_cell_and_a_failed_upstream_is_no_store() {
     let (status, _, _) = get_json(&app, "/api/snow/95/0").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }
+
+#[tokio::test]
+async fn normals_answer_the_nearest_land_cell_and_say_when_not_ready() {
+    use radar_aux::static_data::normals::{GridSpec, MISSING, Var, write_store};
+    let env = Env::new();
+    let app = env.app(|_| {});
+    let (status, headers, body) = get_json(&app, "/api/normals/42.33/-83.05?date=2026-11-18").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(header_str(&headers, "cache-control"), "no-store");
+    assert_eq!(body["error"], "normals_not_ready");
+
+    // 1 degree cells over Michigan; the normal high is 5 C plus a tenth per day, the low 10 C less.
+    let grid = GridSpec {
+        rows: 4,
+        cols: 4,
+        lat0: 41.0,
+        lon0: -85.0,
+        step: 1.0,
+    };
+    write_store(&env.path("state"), grid, |var, day, r, c| {
+        if (r, c) == (3, 3) {
+            return MISSING;
+        }
+        let high = 50 + day as i16;
+        if var == Var::Tmax { high } else { high - 100 }
+    })
+    .unwrap();
+    let (status, headers, body) = get_json(&app, "/api/normals/42.33/-83.05?date=2026-11-18").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        header_str(&headers, "cache-control"),
+        "public, max-age=86400"
+    );
+    // Nov 18 is file day 322: 5 + 32.2 = 37.2 C high, 27.2 C low.
+    assert_eq!(body["high_c"], 37.2);
+    assert_eq!(body["low_c"], 27.2);
+    assert_eq!(body["high_f"], 99.0);
+    assert_eq!(body["date"], "2026-11-18");
+    assert_eq!(
+        body["source"],
+        "NOAA NCEI nClimGrid-Daily 1991-2020 normals"
+    );
+
+    // A missing cell borrows its neighbour; outside the grid is 404.
+    let (status, _, body) = get_json(&app, "/api/normals/44.0/-82.0?date=2026-01-01").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["high_c"], 5.0);
+    let (status, _, body) = get_json(&app, "/api/normals/21.3/-157.8").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"], "no_normal_here");
+
+    let (status, _, bad) = get_json(&app, "/api/normals/95/0?date=11-18").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(bad["detail"].as_array().unwrap().len(), 2);
+}

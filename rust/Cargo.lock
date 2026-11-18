@@ -2872,6 +2872,7 @@ dependencies = [
  "axum",
  "bytes",
  "chrono",
+ "radar-aux",
  "radar-core",
  "radar-geo",
  "radar-grib",

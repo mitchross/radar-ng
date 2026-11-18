@@ -5,11 +5,13 @@ use std::time::Duration;
 
 use radar_alerts::lightning::{LightningConfig, LightningError, lightning_consume_stream};
 use radar_aux::sky::{SkyConfig, SkyError, sky_fetch_and_publish};
+use radar_aux::static_data::{StaticDataConfig, StaticDataError, ensure_static_data};
 use radar_aux::tile_cleanup::{TileCleanupConfig, tile_cleanup_sweep};
 use radar_aux::tropical::{TropicalConfig, tropical_fetch_and_publish};
 use radar_types::payloads::cleanup::TileCleanupResult;
 use radar_types::payloads::lightning::LightningRunResult;
 use radar_types::payloads::sky::SkyResult;
+use radar_types::payloads::static_data::StaticDataResult;
 use radar_types::payloads::tropical::TropicalResult;
 use temporalio_macros::activities;
 use temporalio_sdk::activities::{ActivityContext, ActivityError};
@@ -17,20 +19,28 @@ use tokio_util::sync::CancellationToken;
 
 use crate::support::{json_heartbeat, non_retryable, with_cancel};
 
-/// Activity implementer for lightning, tropical, sky and tile-cleanup (`aux` role, and `legacy`/`all`).
+/// Activity implementer for lightning, tropical, sky, static data and tile-cleanup (`aux` role, and
+/// `legacy`/`all`).
 pub struct AuxActivities {
     http: reqwest::Client,
     tropical: TropicalConfig,
     sky: SkyConfig,
+    static_data: StaticDataConfig,
 }
 
 impl AuxActivities {
-    /// Build from the shared HTTP client and the tropical and sky configuration.
-    pub fn new(http: reqwest::Client, tropical: TropicalConfig, sky: SkyConfig) -> Self {
+    /// Build from the shared HTTP client and the tropical, sky and static-data configuration.
+    pub fn new(
+        http: reqwest::Client,
+        tropical: TropicalConfig,
+        sky: SkyConfig,
+        static_data: StaticDataConfig,
+    ) -> Self {
         Self {
             http,
             tropical,
             sky,
+            static_data,
         }
     }
 }
@@ -105,6 +115,26 @@ impl AuxActivities {
             sky_fetch_and_publish(&self.sky, &product)
                 .await
                 .map_err(|err: SkyError| non_retryable(err.to_string()))
+        };
+        with_cancel(&ctx, work).await
+    }
+
+    /// `static_data_ensure`: build one static-data product unless its marker exists. Heartbeats carry
+    /// the conversion progress. An unknown product is non-retryable; download errors retry.
+    #[activity(name = "static_data_ensure")]
+    pub async fn static_data_ensure(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        product: String,
+    ) -> Result<StaticDataResult, ActivityError> {
+        let beat = json_heartbeat(&ctx);
+        let work = async move {
+            ensure_static_data(&self.static_data, &self.http, &product, beat)
+                .await
+                .map_err(|err| match err {
+                    StaticDataError::UnknownProduct(_) => non_retryable(err.to_string()),
+                    other => anyhow::anyhow!(other).into(),
+                })
         };
         with_cancel(&ctx, work).await
     }

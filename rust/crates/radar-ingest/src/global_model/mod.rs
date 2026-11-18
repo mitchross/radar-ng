@@ -3,12 +3,14 @@
 //! - `radar-gfs`: GFS composite reflectivity. Clients play it after the last `radar-hrrr` frame, which
 //!   extends future radar from HRRR's 18 to 48 h out to 72 h.
 //! - `uv`: the NOAA/CPC UV Index forecast (TUV model on the 12z GFS).
+//! - `temp-anomaly`: the GFS daily high minus the 1991-2020 normal high, one frame a day ([`anomaly`]).
 //!
 //! `IngestGlobalModelWorkflow` runs one product per schedule: find run, process hours, publish the
 //! coherent prefix, mark processed, clean up. Same shape as HRRR, split into `state` (pure rules) and
 //! `activities`.
 
 pub mod activities;
+pub mod anomaly;
 pub mod state;
 
 use radar_grib::decode::MessageSelector;
@@ -20,11 +22,13 @@ pub enum Product {
     GfsRadar,
     /// NOAA/CPC UV Index (`uv`).
     Uv,
+    /// GFS daily high minus the normal high, degrees F (`temp-anomaly`).
+    TempAnomaly,
 }
 
 impl Product {
-    /// Both products, in schedule order.
-    pub const ALL: [Product; 2] = [Product::GfsRadar, Product::Uv];
+    /// Every product, in schedule order.
+    pub const ALL: [Product; 3] = [Product::GfsRadar, Product::Uv, Product::TempAnomaly];
 
     /// Product for a layer name.
     pub fn from_layer(layer: &str) -> anyhow::Result<Self> {
@@ -39,6 +43,7 @@ impl Product {
         match self {
             Product::GfsRadar => "radar-gfs",
             Product::Uv => "uv",
+            Product::TempAnomaly => "temp-anomaly",
         }
     }
 
@@ -47,6 +52,7 @@ impl Product {
         match self {
             Product::GfsRadar => "reflectivity",
             Product::Uv => "uv_index",
+            Product::TempAnomaly => "temp_anomaly",
         }
     }
 
@@ -55,6 +61,7 @@ impl Product {
         match self {
             Product::GfsRadar => "dBZ",
             Product::Uv => "UVI",
+            Product::TempAnomaly => "F",
         }
     }
 
@@ -63,6 +70,7 @@ impl Product {
         match self {
             Product::GfsRadar => "gfs",
             Product::Uv => "cpc-uvi",
+            Product::TempAnomaly => "gfs-nclimgrid-normals",
         }
     }
 
@@ -71,6 +79,7 @@ impl Product {
         match self {
             Product::GfsRadar => "GFS simulated reflectivity",
             Product::Uv => "UV Index (NOAA/CPC)",
+            Product::TempAnomaly => "Temperature vs normal",
         }
     }
 
@@ -79,6 +88,7 @@ impl Product {
         match self {
             Product::GfsRadar => "ingest-gfs-radar.json",
             Product::Uv => "ingest-uv.json",
+            Product::TempAnomaly => "ingest-temp-anomaly.json",
         }
     }
 
@@ -87,21 +97,24 @@ impl Product {
         match self {
             Product::GfsRadar => radar_grib::gfs::refc_selector(),
             Product::Uv => radar_grib::uvi::selector(),
+            Product::TempAnomaly => anomaly::tmax_selector(),
         }
     }
 
-    /// Hours a run keeps its tiles after a newer run replaces it. UV runs once a day.
+    /// Hours a run keeps its tiles after a newer run replaces it. UV runs once a day; temp-anomaly
+    /// frames are a day apart.
     pub fn retention_hours(self) -> i64 {
         match self {
             Product::GfsRadar => 12,
-            Product::Uv => 36,
+            Product::Uv | Product::TempAnomaly => 36,
         }
     }
 
-    /// Source value to layer value (`W/m2` erythemal irradiance to UV Index; dBZ unchanged).
+    /// Source value to layer value (`W/m2` erythemal irradiance to UV Index; dBZ unchanged). The
+    /// anomaly converts in [`anomaly::anomaly`].
     pub fn convert(self, v: f32) -> f32 {
         match self {
-            Product::GfsRadar => v,
+            Product::GfsRadar | Product::TempAnomaly => v,
             Product::Uv => v * radar_grib::uvi::UVI_PER_W_M2,
         }
     }

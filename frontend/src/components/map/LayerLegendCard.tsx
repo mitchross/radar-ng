@@ -16,6 +16,7 @@ import { useReplayManifestQuery } from "../../hooks/useReplay";
 import { SEVERE_CREDIT, isSevereLayer } from "../../../../web/src/shared/severe";
 import { winterAsOf, winterLayer } from "../../../../web/src/shared/winterLayers";
 import { NICE_DAY_LAYER, niceDayLegend } from "../../../../web/src/shared/niceDayLayer";
+import { TEMP_NORMAL_LAYER, tempAnomalyLegend } from "../../../../web/src/shared/tempNormal";
 import { STARGAZING_LAYER, stargazingLegend } from "../../../../web/src/shared/stargazingLayer";
 
 // Plain-English tag at the top of the legend telling the user whether
@@ -44,6 +45,7 @@ const LAYER_SOURCE: Record<LayerType, SourceTag> = {
   "snow-depth": "Now",
   "snowfall-24h": "Now",
   "nice-day": "Later",
+  "temp-anomaly": "Later",
   stargazing: "Later",
   "snow-chance-1": "Later",
   "snow-chance-4": "Later",
@@ -239,6 +241,11 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
     title: NICE_DAY_LAYER.name,
     stops: niceDayLegend(null).map((s) => ({ label: s.word, color: s.color })),
   },
+  // Degrees F above or below the normal high, warmest first.
+  "temp-anomaly": {
+    title: `${TEMP_NORMAL_LAYER.name} (\u00B0F)`,
+    stops: tempAnomalyLegend(null).reverse(),
+  },
   stargazing: {
     title: STARGAZING_LAYER.name,
     stops: stargazingLegend(null).map((s) => ({ label: s.word, color: s.color })),
@@ -311,9 +318,13 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   const manifestLayer = replaying ? (replayManifest?.layers[activeLayer] as typeof liveLayer) : liveLayer;
   const niceDay = activeLayer === NICE_DAY_LAYER.id;
   const niceDayRanges = (palettes?.[palette] ?? palettes?.classic)?.[NICE_DAY_LAYER.paletteKey]?.ranges;
+  const tempNormal = activeLayer === TEMP_NORMAL_LAYER.id;
+  const anomalyRanges = (palettes?.[palette] ?? palettes?.classic)?.[TEMP_NORMAL_LAYER.paletteKey]?.ranges;
   const stars = activeLayer === STARGAZING_LAYER.id;
   const starRanges = (palettes?.[palette] ?? palettes?.classic)?.[STARGAZING_LAYER.paletteKey]?.ranges;
-  const legend = niceDay
+  const legend = tempNormal
+    ? { title: `${TEMP_NORMAL_LAYER.name} (\u00B0F)`, stops: tempAnomalyLegend(anomalyRanges).reverse() }
+    : niceDay
     ? {
         title: NICE_DAY_LAYER.name,
         stops: niceDayLegend(niceDayRanges).map((s) => ({ label: s.word, color: s.color })),
@@ -380,6 +391,11 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
         {isSevereLayer(activeLayer) && (
           <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
             {SEVERE_CREDIT}
+          </Text>
+        )}
+        {tempNormal && (
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
+            {TEMP_NORMAL_LAYER.credit}
           </Text>
         )}
         {niceDay && (

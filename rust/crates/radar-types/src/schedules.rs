@@ -63,6 +63,10 @@ pub const SCHEDULE_INGEST_SNOW_DEPTH: &str = "ingest-snow-depth";
 pub const SCHEDULE_INGEST_SNOWFALL_24H: &str = "ingest-snowfall-24h";
 /// Schedule ID of the WPC snow chance schedule (`IngestWinterWorkflow`, `snow-chance`).
 pub const SCHEDULE_INGEST_SNOW_CHANCE: &str = "ingest-snow-chance";
+/// Schedule ID of the GFS temperature-vs-normal schedule (`IngestGlobalModelWorkflow`, `temp-anomaly`).
+pub const SCHEDULE_INGEST_TEMP_ANOMALY: &str = "ingest-temp-anomaly";
+/// Schedule ID of the static-data bootstrap (`EnsureStaticDataWorkflow`, `normals`).
+pub const SCHEDULE_ENSURE_STATIC_DATA: &str = "ensure-static-data";
 
 /// `GFS013_VARIABLES`, exact comma-joined list.
 pub const GFS013_VARIABLES: &str = "temperature_2m,relative_humidity_2m,precipitation,showers,snowfall_water_equivalent,frozen_precipitation_percent,cloud_cover,wind_u_component_10m,wind_v_component_10m,shortwave_radiation,uv_index";
@@ -396,6 +400,24 @@ pub fn all_schedules() -> Vec<ScheduleDef> {
             HRRR_TASK_QUEUE,
         )
         .with_args(vec![json!("snow-chance")]),
+        // GFS runs every 6 h; the daily highs need hours out to f186, so most polls find nothing new.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_TEMP_ANOMALY,
+            wire::WORKFLOW_INGEST_GLOBAL_MODEL,
+            60 * 60,
+            40 * 60,
+            HRRR_TASK_QUEUE,
+        )
+        .with_args(vec![json!("temp-anomaly")]),
+        // One 1.2 GB pair of downloads the first time; afterwards the marker makes it a no-op.
+        ScheduleDef::new(
+            SCHEDULE_ENSURE_STATIC_DATA,
+            wire::WORKFLOW_ENSURE_STATIC_DATA,
+            24 * 60 * 60,
+            6 * 60 * 60,
+            AUX_TASK_QUEUE,
+        )
+        .with_args(vec![json!("normals")]),
     ]
 }
 

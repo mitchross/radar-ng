@@ -23,6 +23,7 @@ mod health;
 mod level2;
 mod manifest;
 mod metrics;
+mod normals;
 mod nowcast;
 mod outlooks;
 mod palettes;
