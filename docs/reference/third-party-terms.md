@@ -155,6 +155,19 @@ The `snowfall-forecast` and `ice-forecast` layers come from NBM `ASNOW` and `FIC
 Credit NOAA, do not imply NOAA endorses the app, and say the data was modified: we sum the 6-hour
 amounts into running totals and convert them to inches. The worker reads byte ranges only; clients contact only our server.
 
+## NOAA SNODAS and NOHRSC (snow on the ground, past 24 h snow)
+
+The `snow-depth` layer comes from the daily SNODAS masked tar at
+[NSIDC G02158](https://nsidc.org/data/g02158/versions/1). Cite it as: National Operational Hydrologic
+Remote Sensing Center. 2004. Snow Data Assimilation System (SNODAS) Data Products at NSIDC, Version 1.
+Boulder, Colorado USA. NSIDC: National Snow and Ice Data Center. doi:10.7265/N5TB14TC. The data is free and keyless.
+
+The `snowfall-24h` layer comes from the NWS NOHRSC
+[National Snowfall Analysis](https://www.nohrsc.noaa.gov/snowfall/) (`sfav2_CONUS_24h_*_grid184.grb2`),
+a public-domain NWS product. We do not use the NOHRSC `collaborators` folder: it states no terms.
+For both, credit NOAA, do not imply NOAA endorses the app, and say we converted the values to inches.
+Clients contact only our server.
+
 ## SPC watches, discussions and outlooks
 
 Attribute these products to NOAA/NWS Storm Prediction Center. These federal weather products are free and keyless.
