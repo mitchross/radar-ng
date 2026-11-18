@@ -174,7 +174,7 @@ fn every_range_key_decodes_into_the_raw_band_except_the_listed_edges() {
             checked += 1;
         }
     }
-    assert_eq!(checked, 54, "18 range keys in 3 palettes");
+    assert_eq!(checked, 57, "19 range keys in 3 palettes");
 }
 
 #[test]
