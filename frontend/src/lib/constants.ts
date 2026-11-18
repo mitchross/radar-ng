@@ -127,6 +127,8 @@ export const LAYERS: LayerConfig[] = [
   { id: "ice-forecast", label: "Ice", icon: "I", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
   { id: "snow-depth", label: "Depth", icon: "D", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
   { id: "snowfall-24h", label: "24h Snow", icon: "F", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
+  // Our Nice Day score on the HRRR grid; on only where the server lists it in HRRR_ENABLED_LAYERS.
+  { id: "nice-day", label: "Nice Day", icon: "N", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
 ];
 
 /**

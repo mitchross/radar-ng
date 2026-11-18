@@ -15,6 +15,7 @@ import { useManifestQuery } from "../../hooks/useManifest";
 import { useReplayManifestQuery } from "../../hooks/useReplay";
 import { SEVERE_CREDIT, isSevereLayer } from "../../../../web/src/shared/severe";
 import { winterAsOf, winterLayer } from "../../../../web/src/shared/winterLayers";
+import { NICE_DAY_LAYER, niceDayLegend } from "../../../../web/src/shared/niceDayLayer";
 
 // Plain-English tag at the top of the legend telling the user whether
 // they're looking at "Now" (live radar), "Soon" (next hour, pysteps
@@ -41,6 +42,7 @@ const LAYER_SOURCE: Record<LayerType, SourceTag> = {
   "ice-forecast": "Later",
   "snow-depth": "Now",
   "snowfall-24h": "Now",
+  "nice-day": "Later",
   cloud: "Later",
   uv: "Later",
   "air-quality": "Now",
@@ -217,6 +219,11 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
       { label: "1", color: "#6baed6" },
     ],
   },
+  // Words, not numbers; the card builds this from the server palette when it has one.
+  "nice-day": {
+    title: NICE_DAY_LAYER.name,
+    stops: niceDayLegend(null).map((s) => ({ label: s.word, color: s.color })),
+  },
   "echo-top": {
     title: "Echo Tops",
     stops: [
@@ -280,8 +287,14 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   const liveLayer = useManifestQuery().data?.layers[activeLayer];
   const replayManifest = useReplayManifestQuery().data;
   const manifestLayer = replaying ? (replayManifest?.layers[activeLayer] as typeof liveLayer) : liveLayer;
-  const legend =
-    serverLegend(palettes, palette, activeLayer, 7, manifestLayer?.palette_key) ?? LEGENDS[activeLayer] ?? LEGENDS.radar;
+  const niceDay = activeLayer === NICE_DAY_LAYER.id;
+  const niceDayRanges = (palettes?.[palette] ?? palettes?.classic)?.[NICE_DAY_LAYER.paletteKey]?.ranges;
+  const legend = niceDay
+    ? {
+        title: NICE_DAY_LAYER.name,
+        stops: niceDayLegend(niceDayRanges).map((s) => ({ label: s.word, color: s.color })),
+      }
+    : (serverLegend(palettes, palette, activeLayer, 7, manifestLayer?.palette_key) ?? LEGENDS[activeLayer] ?? LEGENDS.radar);
   // The server colors observed radar by precipitation type when the layer says so.
   const typedLayer = manifestLayer?.precip_type === true;
   const typeRamps = typedLayer ? precipTypeRamps(palettes, palette) : null;
@@ -338,6 +351,11 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
         {isSevereLayer(activeLayer) && (
           <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
             {SEVERE_CREDIT}
+          </Text>
+        )}
+        {niceDay && (
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
+            {NICE_DAY_LAYER.credit}
           </Text>
         )}
         {winterLayer(activeLayer) && (

@@ -265,6 +265,21 @@ fn extract(bytes: &[u8], var: HrrrVar) -> Option<DecodedMessage> {
     }
 }
 
+/// [`extract`] for accumulations: the latest window (APCP's last hour, not the run total).
+fn extract_latest_window(bytes: &[u8], var: HrrrVar) -> Option<DecodedMessage> {
+    match radar_grib::decode::find_latest_window(bytes, &var.selector()) {
+        Ok(Some(mut msg)) => {
+            ensure_south_up(&mut msg.grid);
+            Some(msg)
+        }
+        Ok(None) => None,
+        Err(err) => {
+            tracing::warn!(err = %err, matched = var.key(), "extract_failed");
+            None
+        }
+    }
+}
+
 /// Owned grid from a message's values, with its geometry.
 fn grid_of(values: Vec<f32>, template: &Grid) -> Grid {
     Grid {
@@ -302,16 +317,16 @@ pub fn process_hour_sync(
     };
 
     // Fields used by more than one layer are decoded once, and only when a layer needs them.
-    let t2m_msg = (enabled("temperature") || enabled("feels-like"))
+    let t2m_msg = (enabled("temperature") || enabled("feels-like") || enabled("nice-day"))
         .then(|| extract(bytes, HrrrVar::T2m))
         .flatten();
-    let rh2m_msg = (enabled("humidity") || enabled("feels-like"))
+    let rh2m_msg = (enabled("humidity") || enabled("feels-like") || enabled("nice-day"))
         .then(|| extract(bytes, HrrrVar::Rh2m))
         .flatten();
-    let u10_msg = (enabled("feels-like") || enabled("wind"))
+    let u10_msg = (enabled("feels-like") || enabled("wind") || enabled("nice-day"))
         .then(|| extract(bytes, HrrrVar::U10))
         .flatten();
-    let v10_msg = (enabled("feels-like") || enabled("wind"))
+    let v10_msg = (enabled("feels-like") || enabled("wind") || enabled("nice-day"))
         .then(|| extract(bytes, HrrrVar::V10))
         .flatten();
 
@@ -515,6 +530,36 @@ pub fn process_hour_sync(
     {
         rendered.push("cloud".into());
         dump("cloud", &tcdc.grid.values, "%");
+    }
+    if enabled("nice-day")
+        && let (Some(t2m), Some(rh), Some(u), Some(v)) = (&t2m_msg, &rh2m_msg, &u10_msg, &v10_msg)
+    {
+        // A missing rain field scores dry rather than dropping the layer for the hour.
+        let rain = extract_latest_window(bytes, HrrrVar::Apcp);
+        let rain_in = |i: usize| {
+            rain.as_ref()
+                .and_then(|m| m.grid.values.get(i))
+                .map_or(0.0, |&mm| units::mm_to_inches(mm))
+        };
+        let vals: Vec<f32> = (0..t2m.grid.values.len())
+            .map(|i| {
+                let t = units::kelvin_to_f(t2m.grid.values[i]);
+                let h = rh.grid.values[i];
+                let wind = units::wind_speed_mph(
+                    units::ms_to_mph(u.grid.values[i]),
+                    units::ms_to_mph(v.grid.values[i]),
+                );
+                let feels = units::apparent_temperature_f(t, h, wind);
+                radar_grib::nice_day::nice_day_cell(t, feels, wind, rain_in(i), h)
+            })
+            .collect();
+        let g = grid_of(vals, &t2m.grid);
+        if render_layer(
+            cfg, "nice-day", run_id, valid, &g, palettes, "nice_day", false,
+        )? {
+            rendered.push("nice-day".into());
+            dump("nice-day", &g.values, "score");
+        }
     }
     if has_flags {
         let cat = units::precip_type_category(

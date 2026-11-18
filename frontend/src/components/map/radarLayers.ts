@@ -7,8 +7,9 @@ import type { SymbolViewProps } from "expo-symbols";
 import type { LayerType } from "../../types/weather";
 import { SEVERE_LAYERS, type SevereLayerId } from "../../../../web/src/shared/severe";
 import { WINTER_LAYERS, type WinterLayerId } from "../../../../web/src/shared/winterLayers";
+import { NICE_DAY_LAYER } from "../../../../web/src/shared/niceDayLayer";
 
-export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" | "sun" | "ozone" | "hail" | "rotation" | "tower" | "snow" | "ice" | "snowDepth" | "snowPast";
+export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" | "sun" | "ozone" | "hail" | "rotation" | "tower" | "snow" | "ice" | "snowDepth" | "snowPast" | "niceDay";
 
 export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] = [
   { id: "radar", name: "Radar", icon: "rain" },
@@ -19,6 +20,7 @@ export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] =
   { id: "precip-accum", name: "Rain Total", icon: "drop" },
   { id: "precip-24h", name: "Past 24 Hr Precip", icon: "drop" },
   { id: "cloud", name: "Clouds", icon: "cloud" },
+  { id: "nice-day", name: NICE_DAY_LAYER.name, icon: "niceDay" },
   { id: "uv", name: "UV Index", icon: "sun" },
   { id: "air-quality", name: "Air Quality", icon: "dust" },
   { id: "ozone", name: "Ozone", icon: "ozone" },
@@ -70,6 +72,7 @@ export const LAYER_SYMBOLS: Record<LayerIcon, SymbolViewProps["name"]> = {
   ice: { ios: "thermometer.snowflake", android: "severe_cold" },
   snowDepth: { ios: "ruler.fill", android: "straighten" },
   snowPast: { ios: "clock.arrow.circlepath", android: "history" },
+  niceDay: { ios: "sun.horizon.fill", android: "nature_people" },
 };
 
 /** GOES satellite imagery: a switch drawn under any weather layer, not one of the layers above. */
@@ -93,6 +96,16 @@ const REPLAY_LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] =
 ];
 
 /** The layers a replay case offers, in picker order; nothing the live manifest alone has. */
+/** Main layers the server may leave out (off unless HRRR_ENABLED_LAYERS lists them). */
+const MANIFEST_GATED: readonly LayerType[] = [NICE_DAY_LAYER.id];
+
+/** The main layer list, minus gated layers the live manifest has no frames for. */
+export function liveLayerOptions(manifestLayers?: Record<string, { frames?: unknown[]; timestamps?: unknown[] } | undefined>) {
+  return LAYER_OPTIONS.filter(
+    (o) => !MANIFEST_GATED.includes(o.id) || (manifestLayers?.[o.id]?.frames?.length ?? manifestLayers?.[o.id]?.timestamps?.length ?? 0) > 0,
+  );
+}
+
 export function replayLayerOptions(caseLayers: readonly string[]) {
   return REPLAY_LAYER_OPTIONS.filter((o) => caseLayers.includes(o.id));
 }
