@@ -2728,6 +2728,7 @@ dependencies = [
  "radar-alerts",
  "radar-aux",
  "radar-core",
+ "radar-grib",
  "radar-level2",
  "radar-replay",
  "radar-storms",

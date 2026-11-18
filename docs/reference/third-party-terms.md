@@ -284,3 +284,21 @@ SOFTWARE.
 ```
 
 The pass test is pinned to Heavens-Above times for Detroit (within one minute).
+
+## ECCC RDPS seeing and transparency (star map)
+
+The star map and the sky card can use Environment and Climate Change Canada's RDPS `SeeingIndex`
+and `SkyTransparencyIndex` (0-5, 10 km, North America; see the
+[astronomy readme](https://eccc-msc.github.io/open-data/msc-data/nwp_rdps/readme_astro-rdps-datamart-alpha_en/)).
+The [End-use licence](https://eccc-msc.github.io/open-data/licence/readme_en/) asks for the line
+"Data Source: Environment and Climate Change Canada", so both clients show it in the star map
+legend, in the inspector and on the sky card when the server has the fields.
+
+The aux `ingest-star-seeing` product builds each file name from the RDPS run time and asks the
+Datamart only for night hours it lacks: two files, about 1.8 MB, per hour. It never lists a directory, sends a
+clear User-Agent, follows no redirects and stops at the first 404. The
+[usage policy](https://eccc-msc.github.io/open-data/usage-policy/readme_en/) says systematic
+retrieval must use the AMQPS service, with `curl`-style HTTPS for ad hoc use only. We have no AMQPS
+client yet, so the fetch is off unless `ECCC_SEEING_ENABLED=true`. Without it the star map scores on
+cloud, darkness and the moon alone. The server decodes the files (pure Rust: our rotated-grid code
+plus the `grib` crate's JPEG 2000 backend), and clients contact only our server.

@@ -5,6 +5,7 @@
 //!
 //! When the `stargazing` layer is published, `stargazing` carries its point scores for the coming
 //! night and the best window (the top hour and its neighbours within ten points, at least Good).
+//! Hours with stored ECCC fields also carry `seeing` and `transparency` (0-5) and `seeing_source`.
 
 use std::path::Path;
 
@@ -68,6 +69,7 @@ pub async fn get_sky_tonight(
                     .filter(|v| v.is_finite())
             };
             body["stargazing"] = stargazing_tonight(&frames, now, sample);
+            add_seeing(&mut body["stargazing"], &dir, lat, lon);
         }
         body
     })
@@ -168,6 +170,31 @@ pub fn stargazing_tonight(
         .map(|(at, v)| json!({ "at": t(*at), "score": v }))
         .collect();
     json!({ "layer": STARGAZING_LAYER, "hours": list, "best": best })
+}
+
+/// Adds ECCC `seeing` and `transparency` (0-5) to each hour the aux worker has stored, and the
+/// credit when any hour has them. Hours without a file are left as they are.
+pub fn add_seeing(stargazing: &mut Value, state_dir: &Path, lat: f64, lon: f64) {
+    let Some(hours) = stargazing.get_mut("hours").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let mut any = false;
+    for hour in hours.iter_mut() {
+        let at = hour
+            .get("at")
+            .and_then(Value::as_str)
+            .and_then(parse_iso_as_utc);
+        if let Some((seeing, transparency)) =
+            at.and_then(|at| radar_aux::sky::eccc::read_point(state_dir, at, lat, lon))
+        {
+            hour["seeing"] = json!(seeing);
+            hour["transparency"] = json!(transparency);
+            any = true;
+        }
+    }
+    if any {
+        stargazing["seeing_source"] = json!(radar_aux::sky::eccc::CREDIT);
+    }
 }
 
 /// `(first, last, top score)` indexes of the best run of consecutive hours, or `None` when no hour
@@ -343,5 +370,51 @@ mod tests {
         assert_eq!(stargazing_frames(Some(&stamps)).len(), 1);
         assert!(stargazing_frames(Some(&json!({}))).is_empty());
         assert!(stargazing_frames(None).is_empty());
+    }
+
+    #[test]
+    fn stored_seeing_joins_its_hours_with_the_credit() {
+        let dir = tempfile::tempdir().unwrap();
+        let fixture = |n: &str| {
+            std::fs::read(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../radar-grib/testdata")
+                    .join(n),
+            )
+            .unwrap()
+        };
+        let s =
+            radar_grib::rotated::decode_rotated(&fixture("eccc_rdps_seeing_f006_greatlakes.grib2"))
+                .unwrap();
+        let t = radar_grib::rotated::decode_rotated(&fixture(
+            "eccc_rdps_transparency_f006_greatlakes.grib2",
+        ))
+        .unwrap();
+        let hour = radar_grib::seeing::SeeingHour::from_fields(&s, &t, 0).unwrap();
+        let sub = dir.path().join(radar_grib::seeing::SEEING_DIR);
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("20261118T06Z.bin"), hour.encode()).unwrap();
+        let now = Utc.with_ymd_and_hms(2026, 11, 18, 3, 0, 0).unwrap();
+        let mut out = stargazing_tonight(&night_frames(), now, score_at);
+        add_seeing(&mut out, dir.path(), 43.65, -79.38);
+        let six = out["hours"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|h| h["at"] == "2026-11-18T06:00:00Z")
+            .unwrap();
+        assert_eq!(
+            (six["seeing"].clone(), six["transparency"].clone()),
+            (json!(3), json!(3))
+        );
+        assert!(out["hours"][0].get("seeing").is_none());
+        assert_eq!(
+            out["seeing_source"],
+            "Data Source: Environment and Climate Change Canada"
+        );
+        // Outside the stored grid nothing is added.
+        let mut miami = stargazing_tonight(&night_frames(), now, score_at);
+        add_seeing(&mut miami, dir.path(), 25.76, -80.19);
+        assert!(miami.get("seeing_source").is_none());
     }
 }

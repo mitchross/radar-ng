@@ -209,14 +209,39 @@ pub async fn inspect_point(
         return respond::internal_error();
     };
     let dir = state.config.grid_dir.clone();
+    let state_dir = state.config.state_dir.clone();
     let body = tokio::task::spawn_blocking(move || {
         let mut body = sample_point(&dir, &layer, &timestamp, lat, lon, None);
         add_ice_class(&mut body, &dir, &layer, &timestamp, lat, lon);
+        add_star_seeing(&mut body, &state_dir, &layer, &timestamp, lat, lon);
         body
     })
     .await
     .unwrap_or_else(|_| json!({ "ok": false, "reason": "read_error" }));
     respond::json(StatusCode::OK, &body, None).into_response()
+}
+
+/// Stargazing only: ECCC `seeing` and `transparency` (0-5) and their credit, when the aux worker
+/// has stored the frame's hour.
+fn add_star_seeing(
+    body: &mut Value,
+    state_dir: &Path,
+    layer: &str,
+    timestamp: &str,
+    lat: f64,
+    lon: f64,
+) {
+    if layer != crate::sky::STARGAZING_LAYER {
+        return;
+    }
+    let Some(t) = radar_core::time::parse_iso_as_utc(timestamp) else {
+        return;
+    };
+    if let Some((seeing, transparency)) = radar_aux::sky::eccc::read_point(state_dir, t, lat, lon) {
+        body["seeing"] = json!(seeing);
+        body["transparency"] = json!(transparency);
+        body["seeing_source"] = json!(radar_aux::sky::eccc::CREDIT);
+    }
 }
 
 /// Observed radar only: `"precip_class": "ice"` where the frame has an echo and the HRRR
@@ -423,5 +448,58 @@ mod tests {
         std::fs::write(&bin, [0u8; 8]).expect("truncate");
         let v = sample_point(tmp.path(), "x", "s", 41.0, -85.0, None);
         assert_eq!(v["reason"], json!("read_error"));
+    }
+
+    #[test]
+    fn inspector_adds_stored_seeing_to_stargazing_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fixture = |n: &str| {
+            std::fs::read(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../radar-grib/testdata")
+                    .join(n),
+            )
+            .unwrap()
+        };
+        let s =
+            radar_grib::rotated::decode_rotated(&fixture("eccc_rdps_seeing_f006_greatlakes.grib2"))
+                .unwrap();
+        let t = radar_grib::rotated::decode_rotated(&fixture(
+            "eccc_rdps_transparency_f006_greatlakes.grib2",
+        ))
+        .unwrap();
+        let hour = radar_grib::seeing::SeeingHour::from_fields(&s, &t, 0).unwrap();
+        let sub = tmp.path().join(radar_grib::seeing::SEEING_DIR);
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("20261118T06Z.bin"), hour.encode()).unwrap();
+        let read = |layer: &str, ts: &str, lat: f64, lon: f64| {
+            let mut body = json!({"ok": true, "value": 62.0});
+            add_star_seeing(&mut body, tmp.path(), layer, ts, lat, lon);
+            body
+        };
+        let toronto = read("stargazing", "2026-11-18T06:00:00Z", 43.65, -79.38);
+        assert_eq!(
+            (toronto["seeing"].clone(), toronto["transparency"].clone()),
+            (json!(3), json!(3))
+        );
+        assert_eq!(
+            toronto["seeing_source"],
+            "Data Source: Environment and Climate Change Canada"
+        );
+        assert!(
+            read("cloud", "2026-11-18T06:00:00Z", 43.65, -79.38)
+                .get("seeing")
+                .is_none()
+        );
+        assert!(
+            read("stargazing", "2026-11-18T07:00:00Z", 43.65, -79.38)
+                .get("seeing")
+                .is_none()
+        );
+        assert!(
+            read("stargazing", "2026-11-18T06:00:00Z", 25.76, -80.19)
+                .get("seeing")
+                .is_none()
+        );
     }
 }

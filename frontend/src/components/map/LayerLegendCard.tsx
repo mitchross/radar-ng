@@ -405,7 +405,7 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
         )}
         {stars && (
           <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
-            Night hours only. {STARGAZING_LAYER.credit}
+            Night hours only. {STARGAZING_LAYER.credit} {STARGAZING_LAYER.seeingCredit}
           </Text>
         )}
         {winterLayer(activeLayer) && (

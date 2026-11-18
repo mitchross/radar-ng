@@ -26,4 +26,13 @@ describe("skyTonightCardHtml", () => {
     expect(skyTonightCardHtml({ ...base, nowMs: now, expanded: false })).toContain('id="sky-tonight-open"');
     expect(skyTonightCardHtml({ ...base, nowMs: now, expanded: true })).toContain("Planets");
   });
+  it("adds ECCC seeing and its credit when the server has them", () => {
+    const nowMs = Date.parse("2026-11-17T21:00:00Z");
+    const best = { start: "2026-11-18T03:00:00Z", end: "2026-11-18T07:00:00Z", score: 84 };
+    const report = parseSkyTonight({ status: "ok", passes: [], stargazing: { best, hours: [{ at: best.start, score: 84, seeing: 4, transparency: 3 }] } });
+    const html = skyTonightCardHtml({ ...base, report, nowMs, expanded: false });
+    expect(html).toContain("Seeing Good · Transparency Medium");
+    expect(html).toContain("Data Source: Environment and Climate Change Canada");
+    expect(skyTonightCardHtml({ ...base, nowMs, expanded: false })).not.toContain("Environment and Climate Change Canada");
+  });
 });

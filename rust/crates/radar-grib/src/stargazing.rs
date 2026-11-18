@@ -19,6 +19,18 @@ pub const MOON_MAX_PENALTY: f64 = 0.55;
 /// Score for one cell. NaN in daylight (sun above [`NIGHT_SUN_ALT_DEG`]) or with no cloud value.
 #[must_use]
 pub fn stargazing_cell(cloud_pct: f32, sun_alt_deg: f64, moon_alt_deg: f64, moon_lit: f64) -> f32 {
+    stargazing_cell_with(cloud_pct, sun_alt_deg, moon_alt_deg, moon_lit, 1.0)
+}
+
+/// [`stargazing_cell`] scaled by `factor` (0-1, from seeing and transparency).
+#[must_use]
+pub fn stargazing_cell_with(
+    cloud_pct: f32,
+    sun_alt_deg: f64,
+    moon_alt_deg: f64,
+    moon_lit: f64,
+    factor: f64,
+) -> f32 {
     if !cloud_pct.is_finite() || sun_alt_deg.is_nan() || sun_alt_deg > NIGHT_SUN_ALT_DEG {
         return f32::NAN;
     }
@@ -38,13 +50,25 @@ pub fn stargazing_cell(cloud_pct: f32, sun_alt_deg: f64, moon_alt_deg: f64, moon
         let height = (moon_alt_deg / MOON_FULL_EFFECT_ALT_DEG).min(1.0);
         1.0 - MOON_MAX_PENALTY * moon_lit.clamp(0.0, 1.0) * height
     };
-    (100.0 * clear * dark * moon).round().clamp(0.0, 100.0) as f32
+    (100.0 * clear * dark * moon * factor.clamp(0.0, 1.0))
+        .round()
+        .clamp(0.0, 100.0) as f32
 }
 
 /// Scores a cloud-cover grid (percent) valid at Unix time `unix_s`. Cells use their own latitude and
 /// longitude; the sun and moon are placed once for the hour.
 #[must_use]
 pub fn stargazing_grid(cloud: &Grid, unix_s: f64) -> Vec<f32> {
+    stargazing_grid_with(cloud, unix_s, |_, _| 1.0)
+}
+
+/// [`stargazing_grid`] with each night cell scaled by `factor(lat, lon)` (seeing and transparency).
+#[must_use]
+pub fn stargazing_grid_with(
+    cloud: &Grid,
+    unix_s: f64,
+    factor: impl Fn(f64, f64) -> f64,
+) -> Vec<f32> {
     let sky = Sky::at(unix_s);
     let w = cloud.width;
     let latlon = |i: usize| -> (f64, f64) {
@@ -65,7 +89,13 @@ pub fn stargazing_grid(cloud: &Grid, unix_s: f64) -> Vec<f32> {
             if sun.is_nan() || sun > NIGHT_SUN_ALT_DEG {
                 return f32::NAN;
             }
-            stargazing_cell(c, sun, sky.moon_altitude(lat, lon), sky.moon_illuminated)
+            stargazing_cell_with(
+                c,
+                sun,
+                sky.moon_altitude(lat, lon),
+                sky.moon_illuminated,
+                factor(lat, lon),
+            )
         })
         .collect()
 }
@@ -118,5 +148,30 @@ mod tests {
         // Detroit: sun -53°, a 56%-lit moon 23° up takes about 31 points.
         assert!((60.0..=75.0).contains(&out[0]), "{out:?}");
         assert!(out[1].is_nan(), "{out:?}");
+    }
+
+    #[test]
+    fn seeing_factor_scales_night_cells_only() {
+        assert_eq!(stargazing_cell_with(0.0, -40.0, -10.0, 0.0, 0.425), 43.0);
+        assert!(stargazing_cell_with(0.0, 10.0, -10.0, 0.0, 0.5).is_nan());
+        let unix_s = 1_794_970_800.0;
+        let grid = Grid {
+            width: 2,
+            height: 1,
+            values: vec![0.0, 0.0],
+            geo: GridGeo::Regular {
+                lats: vec![42.33],
+                lons: vec![-83.05, 151.21],
+            },
+        };
+        let plain = stargazing_grid(&grid, unix_s);
+        let same = stargazing_grid_with(&grid, unix_s, |_, _| 1.0);
+        assert_eq!(plain[0], same[0]);
+        let hazy = stargazing_grid_with(&grid, unix_s, |_, _| 0.5);
+        assert!(
+            (hazy[0] - plain[0] / 2.0).abs() <= 1.0,
+            "{hazy:?} {plain:?}"
+        );
+        assert!(hazy[1].is_nan());
     }
 }

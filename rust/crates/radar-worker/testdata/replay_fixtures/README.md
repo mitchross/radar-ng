@@ -19,6 +19,8 @@ retry policy and result payload rewritten (`jq`); the command sequence is the sa
 activity, so the replay gate checks it like any other history.
 `EnsureStaticDataWorkflow/src-d727262` is the same rewrite of the `IngestSkyWorkflow` histories:
 workflow type, activity name, `"normals"` input, timeouts and result payload. It is one activity too.
+`IngestSkyWorkflow/src-3c5edc6` holds the `src-81a482a` histories for the `star-seeing` product,
+with the input and result product rewritten.
 
 Every history is synthetic: real workflow code, fake activities, placeholder
 inputs (`synthetic-*` identifiers, a `synthetic-placeholder` token, 0.0

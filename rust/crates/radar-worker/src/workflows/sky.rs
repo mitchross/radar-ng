@@ -1,4 +1,5 @@
-//! `IngestSkyWorkflow` (design `weather-extras.md` section 7). Schedule `ingest-iss` passes `"iss"`.
+//! `IngestSkyWorkflow` (design `weather-extras.md` section 7). Schedule `ingest-iss` passes `"iss"`,
+//! `ingest-star-seeing` passes `"star-seeing"`.
 //!
 //! The argument is the product, so later sky products run on the same workflow type.
 

@@ -55,6 +55,8 @@ pub const SCHEDULE_INGEST_GFS_RADAR: &str = "ingest-gfs-radar";
 pub const SCHEDULE_INGEST_UV: &str = "ingest-uv";
 /// Schedule ID of the ISS elements schedule (`IngestSkyWorkflow`, product `iss`).
 pub const SCHEDULE_INGEST_ISS: &str = "ingest-iss";
+/// Schedule ID of the ECCC seeing and transparency schedule (`IngestSkyWorkflow`, product `star-seeing`).
+pub const SCHEDULE_INGEST_STAR_SEEING: &str = "ingest-star-seeing";
 /// Schedule ID of the NBM snow and ice totals schedule (`IngestWinterWorkflow`, `nbm-snow`).
 pub const SCHEDULE_INGEST_NBM_SNOW: &str = "ingest-nbm-snow";
 /// Schedule ID of the SNODAS snow depth schedule (`IngestWinterWorkflow`, `snow-depth`).
@@ -173,8 +175,10 @@ pub fn action_workflow_id(schedule_id: &str) -> String {
     format!("{SCHEDULE_ACTION_ID_PREFIX}{schedule_id}")
 }
 
-/// The 23 schedules: original seed order with `ingest-mrms-qpe-24h` after the reflectivity ones, then
-/// the two global-model ones, the three severe MRMS ones, `ingest-iss` and the winter ones. Seed-time queue routing is applied by [`schedule_action_queue`], not here.
+/// The 26 schedules: original seed order with `ingest-mrms-qpe-24h` after the reflectivity ones, then
+/// the two global-model ones, the three severe MRMS ones, `ingest-iss`, the winter ones, `ingest-temp-anomaly`,
+/// `ensure-static-data` and `ingest-star-seeing`. Seed-time queue routing is applied by
+/// [`schedule_action_queue`], not here.
 pub fn all_schedules() -> Vec<ScheduleDef> {
     vec![
         ScheduleDef::new(
@@ -418,6 +422,16 @@ pub fn all_schedules() -> Vec<ScheduleDef> {
             AUX_TASK_QUEUE,
         )
         .with_args(vec![json!("normals")]),
+        // RDPS runs every 6 h; hourly runs pick up each lead as ECCC posts it. Off unless
+        // `ECCC_SEEING_ENABLED` is set.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_STAR_SEEING,
+            wire::WORKFLOW_INGEST_SKY,
+            60 * 60,
+            5 * 60,
+            AUX_TASK_QUEUE,
+        )
+        .with_args(vec![json!("star-seeing")]),
     ]
 }
 
