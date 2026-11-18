@@ -67,6 +67,7 @@ mod tests {
                 "ice_accum",
                 "snow_depth",
                 "nice_day",
+                "stargazing",
                 "snow_chance",
             ] {
                 let ranges = table[key]["ranges"].as_array().unwrap();

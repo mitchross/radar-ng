@@ -153,9 +153,14 @@ pub fn layer_vars(layer: &str) -> Vec<HrrrVar> {
             HrrrVar::V10,
             HrrrVar::Apcp,
         ],
+        "stargazing" => vec![HrrrVar::Tcdc],
         _ => Vec::new(),
     }
 }
+
+/// Layers whose all-transparent hours are published as empty pyramids (the stargazing layer is
+/// transparent by day), so the resume check finds them complete.
+pub const KEEP_EMPTY_LAYERS: [&str; 1] = ["stargazing"];
 
 /// Palette color key of a layer (spec §6.1 `LAYER_COLOR_KEYS`).
 pub fn layer_color_key(layer: &str) -> Option<&'static str> {
@@ -170,6 +175,7 @@ pub fn layer_color_key(layer: &str) -> Option<&'static str> {
         "precip-accum" => "precip_accum",
         "cloud" => "cloud_cover",
         "nice-day" => "nice_day",
+        "stargazing" => "stargazing",
         _ => return None,
     })
 }

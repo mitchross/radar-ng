@@ -302,6 +302,16 @@
     ],
     "no_data_below": 0
   },
+  "stargazing": {
+    "unit": "score",
+    "ranges": [
+      { "min": 0, "max": 25, "rgba": [68, 1, 84, 140] },
+      { "min": 25, "max": 50, "rgba": [59, 82, 139, 130] },
+      { "min": 50, "max": 75, "rgba": [33, 145, 140, 130] },
+      { "min": 75, "max": 101, "rgba": [253, 231, 37, 140] }
+    ],
+    "no_data_below": 0
+  },
   "snow_chance": {
     "unit": "percent",
     "ranges": [

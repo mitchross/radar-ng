@@ -10,6 +10,7 @@ import { aqiCategory, usAqiFromPm25 } from "./airQuality";
 import { formatSevereReading } from "../../../web/src/shared/severe";
 import { formatWinterReading } from "../../../web/src/shared/winterLayers";
 import { NICE_DAY_LAYER, formatNiceDayReading } from "../../../web/src/shared/niceDayLayer";
+import { STARGAZING_LAYER, formatStargazingReading } from "../../../web/src/shared/stargazingLayer";
 import { precipClassNote } from "../../../web/src/shared/precipType";
 
 export interface InspectReading {
@@ -125,6 +126,7 @@ export function formatReading(layer: LayerType, r: InspectReading): string {
   const winter = formatWinterReading(layer, v);
   if (winter) return winter;
   if (layer === NICE_DAY_LAYER.id) return formatNiceDayReading(v) ?? "\u2014";
+  if (layer === STARGAZING_LAYER.id) return formatStargazingReading(v) ?? "\u2014";
   if (layer === "cloud") return `${Math.round(v)}%`;
   if (layer === "uv") return `UV ${Math.round(v)} · ${describeUV(v)}`;
   if (layer === "air-quality") return `${Math.round(v)} µg/m³ · ${aqiCategory(usAqiFromPm25(v)).label}`;

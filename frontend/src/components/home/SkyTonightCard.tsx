@@ -5,6 +5,7 @@
  */
 import React, { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { SectionLabel } from "../ui/WeatherClearUI";
 import { wallClock } from "../../lib/forecastTime";
 import { inSkyWindow, skyTonightCard, tonight } from "../../lib/skyTonight";
@@ -18,6 +19,8 @@ export function SkyTonightCard({ forecast, nowMs }: { forecast: OpenMeteoRespons
   const { theme } = useWeatherClearTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [expanded, setExpanded] = useState(false);
+  const router = useRouter();
+  const setActiveLayer = useWeatherStore((s) => s.setActiveLayer);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const { latitude: lat, longitude: lon } = forecast;
   const { data } = useSkyTonight(serverUrl, lat, lon);
@@ -41,11 +44,25 @@ export function SkyTonightCard({ forecast, nowMs }: { forecast: OpenMeteoRespons
   const card = skyTonightCard({ nowMs, night, lat, lon, report: data ?? null, hourly, clock });
   return (
     <>
-      <View style={styles.sectionWrap}>
+      <View style={[styles.sectionWrap, styles.linkRow]}>
         <SectionLabel>LOOK UP TONIGHT</SectionLabel>
+        {card.starMap ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open the stargazing map"
+            onPress={() => {
+              setActiveLayer("stargazing");
+              router.push("/radar");
+            }}
+            hitSlop={12}
+          >
+            <Text style={styles.link}>Star map ›</Text>
+          </Pressable>
+        ) : null}
       </View>
       <View style={styles.card} accessible accessibilityLabel={describe(card)}>
         {card.verdictText ? <Text style={styles.verdict}>{card.verdictText}</Text> : null}
+        {card.bestWindow ? <Text style={styles.best}>{card.bestWindow}</Text> : null}
         <Text style={styles.head}>ISS</Text>
         {card.passes.map((p) => (
           <Text key={p} style={styles.line}>{p}</Text>
@@ -66,7 +83,7 @@ export function SkyTonightCard({ forecast, nowMs }: { forecast: OpenMeteoRespons
 }
 
 function describe(card: ReturnType<typeof skyTonightCard>): string {
-  return [card.verdictText, ...card.passes.map((p) => `ISS ${p}`), card.issNote, ...card.planets, `Moon ${card.moon}`]
+  return [card.verdictText, card.bestWindow, ...card.passes.map((p) => `ISS ${p}`), card.issNote, ...card.planets, `Moon ${card.moon}`]
     .filter(Boolean)
     .join(". ");
 }
@@ -75,6 +92,7 @@ const createStyles = (theme: WeatherClearTheme) =>
   StyleSheet.create({
     sectionWrap: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 8 },
     linkRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    best: { color: theme.colors.text, fontSize: 15, marginBottom: 2, fontFamily: theme.typography.uiMedium },
     link: { color: theme.colors.accent, fontSize: 14, fontFamily: theme.typography.uiMedium },
     card: {
       marginHorizontal: 16,
