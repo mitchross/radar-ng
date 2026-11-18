@@ -53,7 +53,7 @@ import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition } from "./s
 import { describeNowcastSkill } from "./shared/nowcastSkill";
 import { SEVERE_CREDIT, SEVERE_LAYERS, formatSevereReading, severeLayer } from "./shared/severe";
 import { WINTER_EMPTY_HINT, WINTER_LAYERS, formatWinterReading, winterAsOf, winterLayer, winterSheetHint } from "./shared/winterLayers";
-import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR } from "./shared/rainAlerts";
+import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR, SNOW_START_IN_HR, winterStart } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
 import { BrowserStormNotice } from "./stormNotice";
@@ -1054,10 +1054,12 @@ async function renderNextHour() {
   if (!points.length || !document.body.contains(el)) return;
   const skill = describeNowcastSkill(nowcast?.skill);
   const minutes = interpolateNowcast(points);
-  const headline = nextHourHeadline(minutes);
+  // Snow, mix or ice starting this hour beats the rain headline.
+  const winter = winterStart(nowcast);
+  const headline = winter?.words ?? nextHourHeadline(minutes);
   const peak = Math.max(0.1, ...minutes);
   // Same call to action as the app's rain banner: rain within the hour and alerts not on yet.
-  const offerAlerts = !rainAlerts.enabled && rainAlerts.supported && minutes.some((v) => v > RAIN_START_IN_HR);
+  const offerAlerts = !rainAlerts.enabled && rainAlerts.supported && minutes.some((v) => v > (winter ? SNOW_START_IN_HR : RAIN_START_IN_HR));
   el.hidden = false;
   el.innerHTML =
     `<div class="section-label">NEXT HOUR</div>` +

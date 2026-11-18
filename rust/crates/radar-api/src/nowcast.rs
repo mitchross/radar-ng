@@ -4,7 +4,12 @@
 //! merges the current headline in, so the skill can change without invalidating the body. The
 //! skill summary is a single-entry snapshot. It is re-read only when the skill log file changes or
 //! when its oldest counted entry leaves the window, so it always equals a fresh summary.
+//!
+//! Each point may carry `precip_class` (rain, snow, mix or ice): the class of the echoes near the
+//! point in the observed frame the run holds still. Old clients ignore it.
 
+use std::fs::File;
+use std::os::unix::fs::FileExt;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -14,6 +19,9 @@ use axum::extract::{Path as AxPath, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
+use radar_core::grid_dump::NOWCAST_INPUT_LAYER;
+use radar_core::grid_read::{GridMeta, nearest_cell, nearest_grid_meta, read_meta};
+use radar_core::ice::{MAX_OBSERVED_TYPE_DELTA, nearest_observed_types};
 use radar_core::nowcast_skill::{self, Summary};
 use radar_core::pycompat::{float_repr, is_falsy, py_str};
 use radar_core::time::{parse_iso_as_utc, round_digits};
@@ -253,14 +261,20 @@ pub async fn nowcast_point(state: &AppState, lat: f64, lon: f64) -> Result<Point
         requests.push((py_str(ts), grid_key));
     }
     let dir = state.config.grid_dir.clone();
-    let samples: Vec<Value> = tokio::task::spawn_blocking(move || {
-        requests
-            .iter()
-            .map(|(ts, key)| grid::sample_point(&dir, "nowcast", ts, glat, glon, key.as_deref()))
-            .collect()
-    })
-    .await
-    .unwrap_or_default();
+    let anchor = parse_iso_as_utc(&run_id);
+    let (samples, class): (Vec<Value>, Option<&'static str>) =
+        tokio::task::spawn_blocking(move || {
+            let samples = requests
+                .iter()
+                .map(|(ts, key)| {
+                    grid::sample_point(&dir, "nowcast", ts, glat, glon, key.as_deref())
+                })
+                .collect();
+            let class = anchor.and_then(|t| point_class(&dir, &input_layer(), t, glat, glon));
+            (samples, class)
+        })
+        .await
+        .unwrap_or_default();
 
     let mut points: Vec<Value> = Vec::new();
     let mut missing = 0usize;
@@ -282,12 +296,16 @@ pub async fn nowcast_point(state: &AppState, lat: f64, lon: f64) -> Result<Point
             continue;
         }
         let dbz = sample.get("value").and_then(Value::as_f64);
-        points.push(json!({
+        let mut point = json!({
             "timestamp": py_str(obj.get("timestamp").unwrap_or(&Value::Null)),
             "lead_minutes": obj.get("lead_minutes").cloned().unwrap_or(Value::Null),
             "dbz": dbz,
             "precipitation_mm_h": dbz.map_or_default(dbz_to_rain_rate),
-        }));
+        });
+        if let Some(class) = class {
+            point["precip_class"] = json!(class);
+        }
+        points.push(point);
     }
 
     if points.is_empty() {
@@ -333,6 +351,123 @@ pub async fn nowcast_point(state: &AppState, lat: f64, lon: f64) -> Result<Point
         body: with_skill(body, state).await,
         max_age: 30,
     })
+}
+
+/// Search radius for the echoes that set a point's class: about how far an echo moves in the
+/// nowcast hour.
+pub const CLASS_RADIUS_KM: f64 = 30.0;
+/// Echoes weaker than this do not vote. It is near the clients' snow start threshold
+/// (`SNOW_START_IN_HR`) and skips virga, which PrecipFlag files as "no precipitation" (rain).
+pub const CLASS_ECHO_DBZ: f32 = 15.0;
+/// A winter class wins with at least 1 / this share of the votes. PrecipFlag files echoes that do
+/// not reach the ground as rain, and ahead of the 2025-01-06 Washington snow they outnumbered snow.
+pub const WINTER_SHARE_DEN: usize = 3;
+/// Class names by code, as the typed tiles use them (`radar_tiler::typed::TYPE_CLASSES`).
+pub const CLASS_NAMES: [&str; 4] = ["rain", "snow", "mix", "ice"];
+
+/// The grid layer the nowcast reads its observed dBZ from (as `radar_core::grid_dump::GridConfig`).
+fn input_layer() -> String {
+    radar_core::env::var("NOWCAST_GRID_INPUT_LAYER").unwrap_or_else(|| NOWCAST_INPUT_LAYER.into())
+}
+
+/// The class of the echoes within [`CLASS_RADIUS_KM`] of the point, in the observed class and dBZ
+/// dumps nearest the run `anchor`: the most voted winter class when it has a [`WINTER_SHARE_DEN`]
+/// share, else rain. `None` without both dumps or without an echo near the point.
+#[must_use]
+pub fn point_class(
+    grid_dir: &Path,
+    input_layer: &str,
+    anchor: DateTime<Utc>,
+    lat: f64,
+    lon: f64,
+) -> Option<&'static str> {
+    let types = Dump::open(&nearest_observed_types(grid_dir, anchor)?)?;
+    let echo = Dump::open(&nearest_grid_meta(
+        grid_dir,
+        input_layer,
+        anchor,
+        MAX_OBSERVED_TYPE_DELTA,
+    )?)?;
+    let m = &types.meta;
+    let (row, col) = nearest_cell(m, lat, lon)?;
+    let dlat = (m.lat_max - m.lat_min) / (m.height - 1) as f64;
+    let dlon = (m.lon_max - m.lon_min) / (m.width - 1) as f64;
+    let km_lat = 111.2;
+    let km_lon = km_lat * lat.to_radians().cos().max(0.01);
+    let reach_r = (CLASS_RADIUS_KM / (km_lat * dlat)).ceil() as usize;
+    let reach_c = (CLASS_RADIUS_KM / (km_lon * dlon)).ceil() as usize;
+    let (c0, c1) = (
+        col.saturating_sub(reach_c),
+        (col + reach_c).min(m.width - 1),
+    );
+    let mut votes = [0usize; 4];
+    for r in row.saturating_sub(reach_r)..=(row + reach_r).min(m.height - 1) {
+        let cell_lat = m.lat_max - r as f64 * dlat;
+        let classes = types.row_span(r, c0, c1)?;
+        for (c, class) in (c0..=c1).zip(classes) {
+            let cell_lon = m.lon_min + c as f64 * dlon;
+            let (dy, dx) = ((cell_lat - lat) * km_lat, (cell_lon - lon) * km_lon);
+            if dy.hypot(dx) > CLASS_RADIUS_KM || !(0.0..=3.0).contains(&class) {
+                continue;
+            }
+            let Some((er, ec)) = nearest_cell(&echo.meta, cell_lat, cell_lon) else {
+                continue;
+            };
+            if echo.value(er, ec).is_some_and(|dbz| dbz >= CLASS_ECHO_DBZ) {
+                votes[class.round() as usize] += 1;
+            }
+        }
+    }
+    let total: usize = votes.iter().sum();
+    // `max_by_key` keeps the last maximum, so walk backwards: a tie goes to the lower code.
+    let winter = (1..votes.len()).rev().max_by_key(|&i| votes[i])?;
+    let class = if votes[winter] > 0 && votes[winter] * WINTER_SHARE_DEN >= total {
+        winter
+    } else {
+        0
+    };
+    (total > 0).then_some(CLASS_NAMES[class])
+}
+
+/// A grid dump read a few cells at a time.
+struct Dump {
+    meta: GridMeta,
+    file: File,
+}
+
+impl Dump {
+    fn open(meta_path: &Path) -> Option<Self> {
+        let meta = read_meta(meta_path).ok()?;
+        if meta.height < 2 || meta.width < 2 {
+            return None;
+        }
+        let bin = meta_path.parent()?.join(&meta.data_file);
+        Some(Self {
+            meta,
+            file: File::open(bin).ok()?,
+        })
+    }
+
+    /// Cells `c0..=c1` of row `r`.
+    fn row_span(&self, r: usize, c0: usize, c1: usize) -> Option<Vec<f32>> {
+        let mut buf = vec![0u8; (c1 + 1 - c0) * 4];
+        let offset = ((r * self.meta.width + c0) * 4) as u64;
+        self.file.read_exact_at(&mut buf, offset).ok()?;
+        Some(
+            buf.as_chunks::<4>()
+                .0
+                .iter()
+                .map(|b| f32::from_le_bytes(*b))
+                .collect(),
+        )
+    }
+
+    fn value(&self, r: usize, c: usize) -> Option<f32> {
+        self.row_span(r, c, c)?
+            .first()
+            .copied()
+            .filter(|v| v.is_finite())
+    }
 }
 
 /// Append the current skill headline to a body as its last key.
@@ -393,6 +528,84 @@ mod tests {
         // Z = 1000, R = (1000/200)^(1/1.6)
         assert!((r - 5f64.powf(1.0 / 1.6)).abs() < 1e-12);
         assert_eq!(dbz_to_rain_rate(200.0), 300.0);
+    }
+
+    /// Write a north-first 15x15 grid over 38.5..39.2 N, 77.4..76.7 W (0.05 degree cells).
+    fn write(dir: &Path, layer: &str, ts: &str, f: impl Fn(f64, f64) -> f32) {
+        use radar_core::grid_dump::{GridConfig, GridInput, write_grid};
+        let lats: Vec<f64> = (0..15).map(|i| 39.2 - f64::from(i) * 0.05).collect();
+        let lons: Vec<f64> = (0..15).map(|i| -77.4 + f64::from(i) * 0.05).collect();
+        let data: Vec<f32> = lats
+            .iter()
+            .flat_map(|&la| lons.iter().map(move |&lo| (la, lo)))
+            .map(|(la, lo)| f(la, lo))
+            .collect();
+        let cfg = GridConfig::with_dir(dir);
+        write_grid(&cfg, layer, ts, &GridInput::new(&data, &lats, &lons, "x")).unwrap();
+    }
+
+    #[test]
+    fn point_class_is_the_class_most_nearby_echoes_have() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let anchor: DateTime<Utc> = "2025-01-06T05:20:00Z".parse().unwrap();
+        let (lat, lon) = (38.85, -77.03);
+        assert_eq!(point_class(dir, "in", anchor, lat, lon), None, "no dumps");
+        // Snow to the west, rain far to the east; the point itself is dry.
+        let ts = "2025-01-06T05:18:00+00:00";
+        write(dir, "radar-type", ts, |_, lo| {
+            f32::from(u8::from(lo < -77.1))
+        });
+        assert_eq!(point_class(dir, "in", anchor, lat, lon), None, "no dBZ");
+        write(dir, "in", ts, |_, lo| {
+            if lo < -77.1 {
+                20.0
+            } else if lo > -76.8 {
+                35.0
+            } else {
+                f32::NAN
+            }
+        });
+        assert_eq!(point_class(dir, "in", anchor, lat, lon), Some("snow"));
+        // Virga (a weak echo filed as rain) over the point does not vote.
+        write(dir, "in", ts, |_, lo| if lo < -77.1 { 20.0 } else { 10.0 });
+        assert_eq!(point_class(dir, "in", anchor, lat, lon), Some("snow"));
+        // Dumps older than the hold window are not used.
+        let late = anchor + chrono::Duration::minutes(45);
+        assert_eq!(point_class(dir, "in", late, lat, lon), None);
+        // No echo near the point: no class.
+        write(dir, "in", ts, |_, _| 3.0);
+        assert_eq!(point_class(dir, "in", anchor, lat, lon), None);
+    }
+
+    #[test]
+    fn point_class_needs_a_third_of_the_echoes_for_winter() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let ts = "2025-01-06T05:18:00+00:00";
+        let anchor: DateTime<Utc> = "2025-01-06T05:20:00Z".parse().unwrap();
+        let class = |types: fn(f64) -> f32| {
+            write(dir, "radar-type", ts, move |la, _| types(la));
+            point_class(dir, "in", anchor, 38.85, -77.05)
+        };
+        // Echo everywhere but the point's own row.
+        write(dir, "in", ts, |la, _| {
+            if (la - 38.85).abs() < 0.01 { 0.0 } else { 25.0 }
+        });
+        // Half mix: mix.
+        assert_eq!(class(|la| if la > 38.85 { 0.0 } else { 2.0 }), Some("mix"));
+        // One far row of mix: rain.
+        assert_eq!(
+            class(|la| if (la - 38.6).abs() < 0.01 { 2.0 } else { 0.0 }),
+            Some("rain")
+        );
+        // Snow and ice tie: the lower code, snow.
+        assert_eq!(class(|la| if la > 38.85 { 1.0 } else { 3.0 }), Some("snow"));
+    }
+
+    #[test]
+    fn class_names_match_the_tiles() {
+        assert_eq!(CLASS_NAMES, radar_tiler::typed::TYPE_CLASSES);
     }
 
     #[test]
