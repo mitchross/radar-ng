@@ -289,8 +289,9 @@ Layer `stargazing`, scored 0–100 on the server for each night hour in the HRRR
 Sun and moon positions use short low-precision formulas in Rust. Tests compare them with
 `astronomy-engine` values to within half a degree.
 
-ECCC source: `https://dd.weather.gc.ca/today/model_rdps/10km/{HH}/{hhh}/{run}_MSC_RDPS_SeeingIndex_EAtm_RLatLon0.09_PT{hhh}H.grib2`
-and `SkyTransparencyIndex`. Files are 0.5–1.1 MB. Terms:
+ECCC source: `https://dd.weather.gc.ca/{YYYYMMDD}/WXO-DD/model_rdps/10km/{HH}/{hhh}/{run}_MSC_RDPS_SeeingIndex_EAtm_RLatLon0.09_PT{hhh}H.grib2`
+and `SkyTransparencyIndex`. The dated path works for every run; `today/` misses yesterday's 18Z.
+Files are 0.5–1.1 MB. Terms:
 [ECCC end-use licence](https://eccc-msc.github.io/open-data/licence/readme_en/), credit "Data
 Source: Environment and Climate Change Canada". Build the file names from the run time. Never poll
 the directory listing ([usage policy](https://eccc-msc.github.io/open-data/usage-policy/readme_en/)).
@@ -298,6 +299,13 @@ the directory listing ([usage policy](https://eccc-msc.github.io/open-data/usage
 `star-seeing` is the risky slice. The files use a rotated lat/lon grid (template 3.1) and JPEG 2000
 packing (5.40). Our decoder supports neither today. If a pure-Rust path is not possible, the slice
 stops and reports. The star map still ships on cloud, darkness and moon.
+
+Built (#330): `radar-grib::rotated` maps the rotated grid in pure Rust, and the `grib` crate's
+hayro backend unpacks JPEG 2000. Values match GeoMet at five cities. The aux worker stores one
+byte per cell per night hour (`star-seeing/{valid}.bin`, about 1.2 MB). The score is multiplied by
+a transparency weight (0.5 to 1) times a smaller seeing weight (0.85 to 1); class 0 (ECCC cloud)
+leaves the score to HRRR cloud. The usage policy
+asks for AMQPS for systematic retrieval, so the fetch is off unless `ECCC_SEEING_ENABLED=true`.
 
 Left out, with reasons:
 

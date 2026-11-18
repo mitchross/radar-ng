@@ -28,6 +28,9 @@ export function skyTonightCardHtml(input: SkyCardInput): string {
   const best = card.bestWindow || card.starMap
     ? `<div class="sky-best">${card.bestWindow ? `<span>${escapeHtml(card.bestWindow)}</span>` : ""}${card.starMap ? `<button id="sky-star-map" class="sky-link">Star map ›</button>` : ""}</div>`
     : "";
+  const quality = card.skyQuality
+    ? `<p class="sky-line sky-quality">${escapeHtml(card.skyQuality)}</p>`
+    : "";
   const list = (items: string[]) => items.map((t) => `<li>${escapeHtml(t)}</li>`).join("");
   const iss = card.passes.length ? `<ul class="sky-list">${list(card.passes)}</ul>` : "";
   const note = card.issNote ? `<p class="sky-note">${escapeHtml(card.issNote)}</p>` : "";
@@ -36,10 +39,10 @@ export function skyTonightCardHtml(input: SkyCardInput): string {
     : `<p class="sky-note">No bright planets up after dark.</p>`;
   return `<div class="section-label">LOOK UP TONIGHT</div>
       <div class="sky-card">
-        ${verdict}${best}
+        ${verdict}${best}${quality}
         <b class="sky-head">ISS</b>${iss}${note}
         <b class="sky-head">Planets</b>${planets}
         <b class="sky-head">Moon</b><p class="sky-line">${escapeHtml(card.moon)}</p>
-        <small>${escapeHtml(card.credit)} · passes 10° up or higher after dusk</small>
+        <small>${escapeHtml(card.credit)} · passes 10° up or higher after dusk${card.seeingCredit ? ` · ${escapeHtml(card.seeingCredit)}` : ""}</small>
       </div>`;
 }

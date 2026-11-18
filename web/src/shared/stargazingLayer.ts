@@ -14,7 +14,45 @@ export const STARGAZING_LAYER = {
   paletteKey: "stargazing",
   hint: "Where the night sky is best: clouds, darkness and the moon",
   credit: "Our own index from NOAA HRRR clouds, the sun and the moon. No light-pollution data.",
+  /** Shown wherever ECCC seeing and transparency can trim the score. */
+  seeingCredit: "Seeing and transparency where covered. Data Source: Environment and Climate Change Canada",
 } as const;
+
+/** ECCC's required credit for its seeing and transparency fields. */
+export const ECCC_CREDIT = "Data Source: Environment and Climate Change Canada";
+
+/** ECCC's 0–5 seeing classes, named as its own legend does; transparency calls 3 "Medium". */
+export const SEEING_CLASS_WORDS = ["Cloudy", "Very bad", "Poor", "Average", "Good", "Excellent"] as const;
+
+export interface SkyQuality {
+  seeing: number;
+  transparency: number;
+}
+
+const skyClass = (v: unknown): number | null =>
+  typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 5 ? v : null;
+
+/** `seeing` and `transparency` (0–5) from a server body, or null when either is missing. */
+export function parseSkyQuality(raw: unknown): SkyQuality | null {
+  const r = raw as { seeing?: unknown; transparency?: unknown } | null | undefined;
+  const seeing = skyClass(r?.seeing);
+  const transparency = skyClass(r?.transparency);
+  return seeing == null || transparency == null ? null : { seeing, transparency };
+}
+
+/** "Seeing Average · Transparency Good", or null. Class 0 means ECCC sees cloud. */
+export function skyQualityLine(q: SkyQuality | null | undefined): string | null {
+  if (!q) return null;
+  if (q.seeing === 0 && q.transparency === 0) return "Seeing and transparency: cloudy";
+  const transparency = q.transparency === 3 ? "Medium" : SEEING_CLASS_WORDS[q.transparency];
+  return `Seeing ${SEEING_CLASS_WORDS[q.seeing]} · Transparency ${transparency}`;
+}
+
+/** Inspector note for a stargazing point (`/api/inspect`): the line and its credit, or null. */
+export function skyQualityNote(body: unknown): string | null {
+  const line = skyQualityLine(parseSkyQuality(body));
+  return line ? `${line} · ${ECCC_CREDIT}` : null;
+}
 
 export type StargazingWord = "Excellent" | "Good" | "Fair" | "Poor";
 
@@ -70,9 +108,28 @@ export interface StarWindow {
 /** `stargazing` from the sky body: whether the layer is published, and its best window. */
 export interface StargazingTonight {
   best: StarWindow | null;
+  /** ECCC seeing and transparency at the best window's start, else the first hour that has them. */
+  quality?: SkyQuality | null;
+}
+
+/** The hour whose seeing and transparency the card shows. */
+function pickQuality(hours: unknown, bestStart: number | null): SkyQuality | null {
+  if (!Array.isArray(hours)) return null;
+  const rows = hours
+    .map((h) => ({ at: Date.parse((h as { at?: unknown })?.at as string), q: parseSkyQuality(h) }))
+    .filter((r) => r.q != null);
+  const atBest = bestStart == null ? undefined : rows.find((r) => r.at === bestStart);
+  return (atBest ?? rows[0])?.q ?? null;
 }
 
 export function parseStargazing(raw: unknown): StargazingTonight | null {
+  const base = parseStargazingBest(raw);
+  if (!base) return null;
+  const quality = pickQuality((raw as { hours?: unknown }).hours, base.best?.start ?? null);
+  return quality ? { ...base, quality } : base;
+}
+
+function parseStargazingBest(raw: unknown): StargazingTonight | null {
   const s = raw as { best?: unknown } | null | undefined;
   if (!s || typeof s !== "object") return null;
   const b = s.best as Record<string, unknown> | null | undefined;

@@ -729,7 +729,7 @@ function renderLegend() {
       `<div class="legend-title">${STARGAZING_LAYER.name}</div>` +
       `<div class="legend-bar" style="background:linear-gradient(90deg,${stops.map((s, i) => `${s.color} ${i * 25}% ${(i + 1) * 25}%`).join(",")})"></div>` +
       `<div class="legend-labels">${stops.map((s) => `<span>${s.word}</span>`).join("")}</div>` +
-      `<div class="legend-note">Night hours only. ${STARGAZING_LAYER.credit}</div>`;
+      `<div class="legend-note">Night hours only. ${STARGAZING_LAYER.credit} ${STARGAZING_LAYER.seeingCredit}</div>`;
     return;
   }
   if (state.layer === NICE_DAY_LAYER.id) {
@@ -1599,7 +1599,7 @@ map.on("click", async (e) => {
     else if (state.layer === "wind") text = `${Math.round(value)} mph`;
     else if (state.layer === "cloud") text = `${Math.round(value)}%`;
     else if (state.layer === NICE_DAY_LAYER.id) text = formatNiceDayReading(value) ?? `${Math.round(value)}`;
-    else if (state.layer === STARGAZING_LAYER.id) text = formatStargazingReading(value) ?? `${Math.round(value)}`;
+    else if (state.layer === STARGAZING_LAYER.id) text = (formatStargazingReading(value) ?? `${Math.round(value)}`) + (detail.note ? `<small class="precip-note">${escapeHtml(detail.note)}</small>` : "");
     else if (state.layer === "precip-accum" || state.layer === "precip-24h") text = `${value.toFixed(2)} in`;
     else if (state.layer === "uv") text = `UV ${Math.round(value)} · ${uvCategory(value)}`;
     else if (severeLayer(state.layer)) text = formatSevereReading(state.layer, value) ?? `${value.toFixed(1)}`;

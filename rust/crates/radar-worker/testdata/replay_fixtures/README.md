@@ -16,7 +16,9 @@ come from the Rust workflow with scripted fake activities on a local
 `IngestSkyWorkflow` has no Python version either. Its `src-81a482a` histories are the
 Tropical `v1.1.49` ones with the workflow type, activity name, `"iss"` input, one-attempt
 retry policy and result payload rewritten (`jq`); the command sequence is the same single
-activity, so the replay gate checks it like any other history.
+activity, so the replay gate checks it like any other history. `IngestSkyWorkflow/src-3c5edc6`
+holds the same histories for the `star-seeing` product, with the input and result product
+rewritten.
 
 Every history is synthetic: real workflow code, fake activities, placeholder
 inputs (`synthetic-*` identifiers, a `synthetic-placeholder` token, 0.0

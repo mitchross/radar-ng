@@ -10,7 +10,7 @@ import { aqiCategory, usAqiFromPm25 } from "./airQuality";
 import { formatSevereReading } from "../../../web/src/shared/severe";
 import { formatWinterReading } from "../../../web/src/shared/winterLayers";
 import { NICE_DAY_LAYER, formatNiceDayReading } from "../../../web/src/shared/niceDayLayer";
-import { STARGAZING_LAYER, formatStargazingReading } from "../../../web/src/shared/stargazingLayer";
+import { STARGAZING_LAYER, formatStargazingReading, skyQualityNote } from "../../../web/src/shared/stargazingLayer";
 import { precipClassNote } from "../../../web/src/shared/precipType";
 
 export interface InspectReading {
@@ -19,7 +19,8 @@ export interface InspectReading {
   unit: string;
   source: "grid" | "unavailable";
   reason?: string;
-  /** Observed radar: "Ice: freezing rain or sleet, …" where the server draws the ice class. */
+  /** Observed radar: "Ice: freezing rain or sleet, …" where the server draws the ice class.
+   *  Stargazing: ECCC seeing and transparency with their credit. */
   note?: string | null;
 }
 
@@ -48,7 +49,8 @@ export async function inspectPoint(
           const json = await resp.json();
           if (json.ok && json.value != null) {
             span.setAttribute("inspector.value", json.value);
-            return { ok: true, value: json.value, unit: json.unit ?? "", source: "grid", note: precipClassNote(json) };
+            const note = opts.layer === STARGAZING_LAYER.id ? skyQualityNote(json) : precipClassNote(json);
+            return { ok: true, value: json.value, unit: json.unit ?? "", source: "grid", note };
           }
           return {
             ok: false,

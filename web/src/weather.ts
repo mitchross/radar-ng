@@ -6,6 +6,7 @@
 import { getCumulusCondition, type CumulusCondition } from "./shared/conditions";
 import { forecastTimeMs } from "./shared/forecastTime";
 import { precipClassNote } from "./shared/precipType";
+import { STARGAZING_LAYER, skyQualityNote } from "./shared/stargazingLayer";
 import type { AlertFeature } from "./shared/alertLevels";
 
 export interface Forecast {
@@ -122,7 +123,7 @@ export async function readPoint(
   timestamp: string,
   lat: number,
   lon: number,
-  /** Filled with the inspector note (ice) when the server gives one. */
+  /** Filled with the inspector note (ice, or ECCC seeing on the stargazing layer) when the server gives one. */
   detail?: { note?: string | null },
 ): Promise<number | null> {
   const la = round(lat, 3);
@@ -136,7 +137,7 @@ export async function readPoint(
   const body = await json<{ ok: boolean; value: number | null; precip_class?: string }>(
     `/api/inspect/${inspectLayer}/${encodeURIComponent(timestamp)}/${la}/${lo}`,
   );
-  if (detail) detail.note = precipClassNote(body);
+  if (detail) detail.note = layer === STARGAZING_LAYER.id ? skyQualityNote(body) : precipClassNote(body);
   return body.ok ? body.value : null;
 }
 

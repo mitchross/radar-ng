@@ -63,6 +63,7 @@ export function SkyTonightCard({ forecast, nowMs }: { forecast: OpenMeteoRespons
       <View style={styles.card} accessible accessibilityLabel={describe(card)}>
         {card.verdictText ? <Text style={styles.verdict}>{card.verdictText}</Text> : null}
         {card.bestWindow ? <Text style={styles.best}>{card.bestWindow}</Text> : null}
+        {card.skyQuality ? <Text style={styles.line}>{card.skyQuality}</Text> : null}
         <Text style={styles.head}>ISS</Text>
         {card.passes.map((p) => (
           <Text key={p} style={styles.line}>{p}</Text>
@@ -76,14 +77,16 @@ export function SkyTonightCard({ forecast, nowMs }: { forecast: OpenMeteoRespons
         )}
         <Text style={styles.head}>MOON</Text>
         <Text style={styles.line}>{card.moon}</Text>
-        <Text style={styles.credit}>{card.credit} · passes 10° up or higher after dusk</Text>
+        <Text style={styles.credit}>
+          {card.credit} · passes 10° up or higher after dusk{card.seeingCredit ? ` · ${card.seeingCredit}` : ""}
+        </Text>
       </View>
     </>
   );
 }
 
 function describe(card: ReturnType<typeof skyTonightCard>): string {
-  return [card.verdictText, card.bestWindow, ...card.passes.map((p) => `ISS ${p}`), card.issNote, ...card.planets, `Moon ${card.moon}`]
+  return [card.verdictText, card.bestWindow, card.skyQuality, ...card.passes.map((p) => `ISS ${p}`), card.issNote, ...card.planets, `Moon ${card.moon}`]
     .filter(Boolean)
     .join(". ");
 }

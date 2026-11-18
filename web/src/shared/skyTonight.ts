@@ -6,7 +6,7 @@
  */
 import { bodyAltitude, bodyRiseSet, clockLabel, moonPhase, sunTimes, twilight, type Planet } from "./astro";
 import { forecastTimeMs } from "./forecastTime";
-import { bestWindowLine, parseStargazing, type StargazingTonight } from "./stargazingLayer";
+import { ECCC_CREDIT, bestWindowLine, parseStargazing, skyQualityLine, type StargazingTonight } from "./stargazingLayer";
 
 export const SKY_CREDIT = "Orbital elements: CelesTrak";
 /** The card shows from this long before sunset until sunrise; the "Tonight" link works any time. */
@@ -223,6 +223,10 @@ export interface SkyTonightCard {
   moon: string;
   /** "Best 10 PM – 2 AM · Excellent" from the stargazing layer, when there is one. */
   bestWindow: string | null;
+  /** "Seeing Average · Transparency Good" from ECCC, when the server has it for tonight. */
+  skyQuality: string | null;
+  /** ECCC credit, set only when `skyQuality` is. */
+  seeingCredit: string | null;
   /** The server has the stargazing layer, so the card links to it. */
   starMap: boolean;
   credit: string;
@@ -264,6 +268,8 @@ export function skyTonightCard(input: {
     planets: planetsTonight(night, lat, lon).map((p) => planetLine(p, night, c)),
     moon: moonLine(night, lat, lon, c),
     bestWindow: bestWindowLine(report?.stargazing?.best, nowMs, c),
+    skyQuality: skyQualityLine(report?.stargazing?.quality),
+    seeingCredit: report?.stargazing?.quality ? ECCC_CREDIT : null,
     starMap: report?.stargazing != null,
     credit: SKY_CREDIT,
   };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { STARGAZING_LAYER, bestWindowLine, formatStargazingReading, parseStargazing, stargazingLegend, stargazingWord } from "./stargazingLayer";
+import { ECCC_CREDIT, STARGAZING_LAYER, bestWindowLine, formatStargazingReading, parseSkyQuality, parseStargazing, skyQualityLine, skyQualityNote, stargazingLegend, stargazingWord } from "./stargazingLayer";
 import { LAYER_PALETTE_KEY, type ColorRange } from "./serverPalettes";
 import { parseSkyTonight, skyTonightCard, tonight } from "./skyTonight";
 
@@ -88,5 +88,58 @@ describe("Look up tonight with the star map", () => {
     const card = skyTonightCard({ ...base, report });
     expect(card.bestWindow).toBeNull();
     expect(card.starMap).toBe(false);
+  });
+});
+
+describe("ECCC seeing and transparency", () => {
+  it("reads only whole 0-5 classes and names them as ECCC does", () => {
+    expect(parseSkyQuality({ seeing: 3, transparency: 4 })).toEqual({ seeing: 3, transparency: 4 });
+    expect(parseSkyQuality({ seeing: 3 })).toBeNull();
+    expect(parseSkyQuality({ seeing: 6, transparency: 4 })).toBeNull();
+    expect(parseSkyQuality({ seeing: 2.5, transparency: 4 })).toBeNull();
+    expect(parseSkyQuality(null)).toBeNull();
+    expect(skyQualityLine({ seeing: 3, transparency: 4 })).toBe("Seeing Average · Transparency Good");
+    expect(skyQualityLine({ seeing: 0, transparency: 0 })).toBe("Seeing and transparency: cloudy");
+    expect(skyQualityLine(null)).toBeNull();
+  });
+
+  it("credits ECCC in the inspector note and the legend", () => {
+    expect(skyQualityNote({ ok: true, value: 62, seeing: 5, transparency: 1 })).toBe(
+      "Seeing Excellent · Transparency Very bad · Data Source: Environment and Climate Change Canada",
+    );
+    expect(skyQualityNote({ ok: true, value: 62 })).toBeNull();
+    expect(ECCC_CREDIT).toBe("Data Source: Environment and Climate Change Canada");
+    expect(STARGAZING_LAYER.seeingCredit).toContain(ECCC_CREDIT);
+  });
+
+  it("takes the best window's hour, else the first hour that has values", () => {
+    const hours = [
+      { at: "2026-11-18T02:00:00Z", score: 40, seeing: 2, transparency: 2 },
+      { at: "2026-11-18T03:00:00Z", score: 84, seeing: 4, transparency: 5 },
+      { at: "2026-11-18T04:00:00Z", score: 80 },
+    ];
+    const best = { start: "2026-11-18T03:00:00Z", end: "2026-11-18T05:00:00Z", score: 84 };
+    expect(parseStargazing({ hours, best })?.quality).toEqual({ seeing: 4, transparency: 5 });
+    expect(parseStargazing({ hours, best: null })?.quality).toEqual({ seeing: 2, transparency: 2 });
+    expect(parseStargazing({ hours: [{ at: "2026-11-18T03:00:00Z", score: 84 }], best })).toEqual({ best: { start: at(best.start), end: at(best.end), score: 84 } });
+  });
+
+  it("shows the line and the credit on the card only when the server has them", () => {
+    const now = at("2026-11-17T23:00:00Z");
+    const night = tonight(now, "2026-11-17", 43.65, -79.38)!;
+    const base = { nowMs: now, night, lat: 43.65, lon: -79.38, hourly: null, clock };
+    const best = { start: "2026-11-18T03:00:00Z", end: "2026-11-18T07:00:00Z", score: 84 };
+    const withQ = parseSkyTonight({
+      status: "ok",
+      passes: [],
+      stargazing: { hours: [{ at: best.start, score: 84, seeing: 3, transparency: 4 }], best, seeing_source: ECCC_CREDIT },
+    });
+    const card = skyTonightCard({ ...base, report: withQ });
+    expect(card.skyQuality).toBe("Seeing Average · Transparency Good");
+    expect(card.seeingCredit).toBe(ECCC_CREDIT);
+    const plain = skyTonightCard({ ...base, report: parseSkyTonight({ status: "ok", passes: [], stargazing: { hours: [], best } }) });
+    expect(plain.skyQuality).toBeNull();
+    expect(plain.seeingCredit).toBeNull();
+    expect(plain.bestWindow).toBe("Best 10 PM – 2 AM · Excellent");
   });
 });
