@@ -93,10 +93,15 @@ pub struct IngestConfig {
     pub precip_type: bool,
     /// `PRECIP_FLAG_PREFIX` (default `CONUS/PrecipFlag_00.00`).
     pub precip_flag_prefix: String,
-    /// `WINTER_ENABLED` (default on): render the NBM `snowfall-forecast` and `ice-forecast` layers.
+    /// `WINTER_ENABLED` (default on): render the winter layers: NBM `snowfall-forecast` and
+    /// `ice-forecast`, SNODAS `snow-depth` and NOHRSC `snowfall-24h`.
     pub winter_enabled: bool,
     /// Base URL of the NBM bucket.
     pub nbm_base_url: String,
+    /// Base URL of the SNODAS masked tars.
+    pub snodas_base_url: String,
+    /// Base URL of the NOHRSC snowfall analysis.
+    pub nohrsc_base_url: String,
 }
 
 impl IngestConfig {
@@ -158,6 +163,8 @@ impl IngestConfig {
                 .unwrap_or_else(|| crate::precip_type::PRECIP_FLAG_PREFIX.into()),
             winter_enabled: env::bool_var("WINTER_ENABLED", true)?,
             nbm_base_url: radar_grib::nbm::BASE_URL.to_string(),
+            snodas_base_url: crate::winter::snodas::BASE_URL.to_string(),
+            nohrsc_base_url: crate::winter::nohrsc::BASE_URL.to_string(),
             paths,
         })
     }
@@ -197,6 +204,8 @@ impl IngestConfig {
             precip_flag_prefix: crate::precip_type::PRECIP_FLAG_PREFIX.into(),
             winter_enabled: true,
             nbm_base_url: radar_grib::nbm::BASE_URL.to_string(),
+            snodas_base_url: crate::winter::snodas::BASE_URL.to_string(),
+            nohrsc_base_url: crate::winter::nohrsc::BASE_URL.to_string(),
             paths,
         })
     }

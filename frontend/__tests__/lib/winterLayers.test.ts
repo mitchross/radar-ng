@@ -9,11 +9,12 @@ const palettes: ServerPalettes = { classic: table("classic"), muted: table("mute
 
 describe("Winter layers", () => {
   it("form their own group, separate from the main and severe lists", () => {
-    expect(WINTER_OPTIONS.map((o) => o.id)).toEqual(["snowfall-forecast", "ice-forecast"]);
+    expect(WINTER_OPTIONS.map((o) => o.id)).toEqual(["snowfall-forecast", "ice-forecast", "snow-depth", "snowfall-24h"]);
     for (const o of WINTER_OPTIONS) {
       expect(LAYER_OPTIONS.some((m) => m.id === o.id)).toBe(false);
       expect(SEVERE_OPTIONS.some((m) => m.id === o.id)).toBe(false);
       expect(o.hint.length).toBeGreaterThan(10);
+      expect(o.icon).toBeTruthy();
       expect(layerOption(o.id).id).toBe(o.id);
     }
   });
@@ -22,6 +23,9 @@ describe("Winter layers", () => {
     for (const palette of ["classic", "muted", "vivid"] as const) {
       expect(serverLegend(palettes, palette, "snowfall-forecast")).toMatchObject({ title: "Snow Total (in)" });
       expect(serverLegend(palettes, palette, "ice-forecast")?.stops.at(-1)?.label).toBe("0.01");
+      expect(serverLegend(palettes, palette, "snow-depth")).toMatchObject({ title: "Snow Depth (in)" });
+      expect(serverLegend(palettes, palette, "snow-depth")?.stops.at(-1)?.label).toBe("1");
+      expect(serverLegend(palettes, palette, "snowfall-24h")).toMatchObject({ title: "Past 24 Hr Snow (in)" });
     }
   });
 });

@@ -26,7 +26,7 @@ use radar_types::payloads::hrrr::{ForecastHourResult, HrrrCleanupResult};
 use radar_types::payloads::winter::WinterFindResult;
 
 use super::state;
-use super::{Field, PROCESSED_MAX, Product, WinterLayer, ZOOMS};
+use super::{Field, PROCESSED_MAX, Product, WinterLayer, ZOOMS, nohrsc, snodas};
 use crate::common::{self, child_dirs, elapsed_s, processed_set};
 use crate::config::IngestConfig;
 use crate::ctx::IngestCtx;
@@ -52,6 +52,8 @@ pub async fn find_latest_run(
     };
     let run = match product {
         Product::NbmSnow => nbm::find_latest_run(&ctx.nbm_s3, now, probe).await?,
+        Product::SnowDepth => snodas::find_latest_run(&ctx.snodas_http, now).await?,
+        Product::Snowfall24h => nohrsc::find_latest_run(&ctx.nohrsc_http, now).await?,
     };
     let Some(run) = run else {
         return Ok(WinterFindResult::default());
@@ -158,6 +160,21 @@ pub fn nbm_total(var: NbmVar, records: &[Bytes]) -> anyhow::Result<Grid> {
     total.ok_or_else(|| anyhow::anyhow!("no {} records", var.idx_name()))
 }
 
+/// The grid of an observed product's file, in inches. A SNODAS tar for another day is an error.
+pub fn observed_grid(product: Product, bytes: &[u8], valid: DateTime<Utc>) -> anyhow::Result<Grid> {
+    match product {
+        Product::SnowDepth => {
+            let (grid, at) = snodas::depth_grid(bytes)?;
+            if at != valid {
+                anyhow::bail!("SNODAS tar is valid {at}, expected {valid}");
+            }
+            Ok(grid)
+        }
+        Product::Snowfall24h => nohrsc::snowfall_grid(bytes),
+        Product::NbmSnow => anyhow::bail!("NBM is not an observed product"),
+    }
+}
+
 /// Render and dump every layer of one hour from its summed grids. Returns the layers rendered.
 pub fn render_hour_sync(
     cfg: &IngestConfig,
@@ -176,7 +193,10 @@ pub fn render_hour_sync(
         }
         if resampler.is_none() {
             let GridGeo::Projected { crs, x, y, .. } = &grid.geo else {
-                anyhow::bail!("NBM field has no projected geometry");
+                // Regular lat/lon (SNODAS): dump the grid as is, strided to the default cell cap.
+                common::dump_grid_logged(cfg, layer.id, valid, grid, layer.unit);
+                rendered.push(layer.id.to_string());
+                continue;
             };
             let crs: &Crs = crs;
             let (lats, lons) = target_axes(grid, cfg.hrrr_grid_dump_step_deg)?;
@@ -290,6 +310,29 @@ pub async fn process_hour(
 
     let details = serde_json::json!({"phase": "download", "product": product.name(), "fhr": fhr, "run_id": run_id});
     hb(details.clone());
+    if product.observed() {
+        let fetch = async {
+            match product {
+                Product::SnowDepth => snodas::fetch(&ctx.snodas_http, init).await,
+                _ => nohrsc::fetch(&ctx.nohrsc_http, init).await,
+            }
+        };
+        let Some(bytes) = heartbeat::during(HRRR_BEAT, hb, details, fetch).await? else {
+            tracing::info!(product = product.name(), run_id = %run_id, "observed_file_pending");
+            return Ok(result(Vec::new(), valid));
+        };
+        let details = serde_json::json!({"phase": "render", "product": product.name(), "fhr": fhr, "run_id": run_id});
+        let cfg = ctx.cfg.clone();
+        let (run, render_valid) = (run_id.to_string(), valid.clone());
+        let rendered = heartbeat::blocking(HRRR_BEAT, hb, details, move || {
+            let grids = vec![(&product.layers()[0], observed_grid(product, &bytes, init)?)];
+            render_hour_sync(&cfg, product, &run, &render_valid, &grids, &palettes)
+        })
+        .await?;
+        let out = result(rendered, valid);
+        tracing::info!(product = product.name(), run_id = %run_id, rendered = ?out.rendered_layers, duration_s = out.duration_s, "hour_done");
+        return Ok(out);
+    }
     let vars = product.nbm_vars();
     let hours = state::record_hours(fhr_u32);
     let fetch = records(ctx, run_id, init, &vars, &hours);
@@ -304,7 +347,9 @@ pub async fn process_hour(
     let rendered = heartbeat::blocking(HRRR_BEAT, hb, details, move || {
         let mut grids = Vec::new();
         for layer in product.layers() {
-            let Field::NbmTotal(var) = layer.field;
+            let Field::NbmTotal(var) = layer.field else {
+                anyhow::bail!("{} is not an NBM layer", layer.id);
+            };
             let i = vars.iter().position(|v| *v == var).unwrap_or_default();
             grids.push((layer, nbm_total(var, &records[i])?));
         }
@@ -343,7 +388,7 @@ pub fn publish_run_sync(
         }
         let metadata = serde_json::json!({
             "title": layer.title,
-            "kind": "model_guidance",
+            "kind": product.kind(),
             "palette_key": layer.color_key,
             "unit": layer.unit,
             "run_id": run_id,
@@ -445,8 +490,8 @@ mod tests {
         Bytes::from(std::fs::read(p).unwrap())
     }
 
-    /// Full live run against NBM, printing tile bytes per layer:
-    /// `cargo test --release -p radar-ingest --lib live_nbm_run -- --ignored --nocapture`.
+    /// Full live run of one product (`WINTER_LIVE_PRODUCT`, default `nbm-snow`), printing tile bytes
+    /// per layer: `cargo test --release -p radar-ingest --lib live_nbm_run -- --ignored --nocapture`.
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "network, renders a whole run"]
     async fn live_nbm_run() {
@@ -455,7 +500,8 @@ mod tests {
         let paths = Paths::new(root.join("state"), root.join("grids"), root.join("tiles"));
         let cfg = IngestConfig::with_roots(paths, root.join("tmp")).unwrap();
         let ctx = IngestCtx::new(cfg.clone(), None).unwrap();
-        let product = Product::NbmSnow;
+        let name = std::env::var("WINTER_LIVE_PRODUCT").unwrap_or_else(|_| "nbm-snow".into());
+        let product = Product::from_name(&name).unwrap();
         let find = find_latest_run(&ctx, product, Utc::now()).await.unwrap();
         let run = find.run_id.expect("a posted run");
         let hb = heartbeat::noop();
@@ -561,5 +607,60 @@ mod tests {
         for l in layers {
             assert_eq!(manifest.layers[l.id].frames.len(), 1, "{}", l.id);
         }
+    }
+
+    #[test]
+    fn observed_products_render_from_real_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let paths = Paths::new(root.join("state"), root.join("grids"), root.join("tiles"));
+        let cfg = IngestConfig::with_roots(paths, root.join("tmp")).unwrap();
+        let palettes = load_hrrr_palettes(&cfg.palettes);
+        let testdata = Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata");
+        let cases = [
+            (
+                Product::SnowDepth,
+                "snodas_20261117_wasatch.tar",
+                "20261117_06",
+            ),
+            (
+                Product::Snowfall24h,
+                "nohrsc_24h_2026111712_idaho.grib2",
+                "20261117_12",
+            ),
+        ];
+        for (product, file, run) in cases {
+            let bytes = std::fs::read(testdata.join(file)).unwrap();
+            let init = run_init(run).unwrap();
+            let valid = valid_time(init, 0);
+            let grid = observed_grid(product, &bytes, init).unwrap();
+            let layer = &product.layers()[0];
+            let rendered =
+                render_hour_sync(&cfg, product, run, &valid, &[(layer, grid)], &palettes).unwrap();
+            assert_eq!(rendered, [layer.id]);
+            assert!(already_rendered(
+                &cfg, product, layer, &palettes, run, &valid
+            ));
+            assert!(
+                cfg.grid.grid_dir.join(layer.id).is_dir(),
+                "{} dump",
+                layer.id
+            );
+            let results = [ForecastHourResult {
+                fhr: 0,
+                rendered_layers: rendered,
+                duration_s: 0.0,
+                valid_timestamp: valid.clone(),
+            }];
+            assert_eq!(publish_run_sync(&cfg, product, run, &results).unwrap(), 1);
+            let manifest = read_manifest(&cfg.paths.state_dir).unwrap();
+            let frames = &manifest.layers[layer.id].frames;
+            assert_eq!(frames.len(), 1);
+            assert_eq!(frames[0].timestamp, valid);
+        }
+        // A tar for another day is refused.
+        let tar = std::fs::read(testdata.join("snodas_20261117_wasatch.tar")).unwrap();
+        let other = run_init("20261118_06").unwrap();
+        assert!(observed_grid(Product::SnowDepth, &tar, other).is_err());
     }
 }

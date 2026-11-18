@@ -52,7 +52,7 @@ import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast"
 import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition } from "./shared/conditions";
 import { describeNowcastSkill } from "./shared/nowcastSkill";
 import { SEVERE_CREDIT, SEVERE_LAYERS, formatSevereReading, severeLayer } from "./shared/severe";
-import { WINTER_EMPTY_HINT, WINTER_LAYERS, formatWinterReading, winterLayer } from "./shared/winterLayers";
+import { WINTER_EMPTY_HINT, WINTER_LAYERS, formatWinterReading, winterAsOf, winterLayer, winterSheetHint } from "./shared/winterLayers";
 import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
@@ -686,7 +686,9 @@ function severeNote(layer: string): string {
   const info = severeLayer(layer);
   if (info) return `<div class="legend-note">${escapeHtml(info.hint)} · ${SEVERE_CREDIT}</div>`;
   const winter = winterLayer(layer);
-  return winter ? `<div class="legend-note">${escapeHtml(winter.hint)} · ${winter.credit}</div>` : "";
+  if (!winter) return "";
+  const asOf = winterAsOf(layer, currentFrame()?.timestamp);
+  return `<div class="legend-note">${asOf ? `${asOf} · ` : ""}${escapeHtml(winter.hint)} · ${winter.credit}</div>`;
 }
 
 function renderLegend() {
@@ -757,7 +759,6 @@ function renderSheet() {
   const severe = SEVERE_LAYERS.filter((l) => layerAvailable(l.id));
   const severeHint = severeLayer(state.layer)?.hint ?? "Hail, storm rotation and storm height";
   const winter = WINTER_LAYERS.filter((l) => layerAvailable(l.id));
-  const winterInfo = winterLayer(state.layer);
   const toggles = [
     ...OVERLAYS.map((o) => ({ id: o.id, name: o.name, hint: o.hint, on: state.overlays.has(o.id) })),
     ...(layerAvailable("satellite") ? [{ id: "satellite", name: "Satellite clouds", hint: "GOES imagery under the radar, every 10 minutes", on: state.satellite }] : []),
@@ -774,7 +775,7 @@ function renderSheet() {
     </div>
     <div class="sheet-section"><div class="section-label">WINTER</div>
       ${winter.length ? seg("winter", winter.map((l) => [l.id, l.name, l.hint]), state.layer) : ""}
-      <p class="hint">${winter.length ? `${escapeHtml(winterInfo?.hint ?? "Snow and ice forecast totals, out to 3 days")} · NOAA NBM` : WINTER_EMPTY_HINT}</p>
+      <p class="hint">${winter.length ? escapeHtml(winterSheetHint(state.layer)) : WINTER_EMPTY_HINT}</p>
     </div>
     ${severe.length ? `<div class="sheet-section"><div class="section-label">SEVERE</div>
       ${seg("severe", severe.map((l) => [l.id, l.name, l.hint]), state.layer)}

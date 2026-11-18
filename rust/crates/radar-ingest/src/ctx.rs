@@ -36,6 +36,10 @@ pub struct IngestCtx {
     pub uv_http: S3Client,
     /// Anonymous S3 client for NBM.
     pub nbm_s3: S3Client,
+    /// Plain HTTPS client for the SNODAS daily tars (NSIDC).
+    pub snodas_http: S3Client,
+    /// Plain HTTPS client for the NOHRSC snowfall analysis.
+    pub nohrsc_http: S3Client,
     /// Nowcast kicker. `None` disables the kick regardless of `NOWCAST_KICK_ENABLED`.
     pub nowcast: Option<Arc<dyn NowcastKicker>>,
 }
@@ -49,6 +53,8 @@ impl IngestCtx {
             hrrr_s3: S3Client::new(http.clone(), cfg.hrrr_base_url.clone()),
             gfs_s3: S3Client::new(http.clone(), cfg.gfs_base_url.clone()),
             uv_http: S3Client::new(http.clone(), cfg.uv_base_url.clone()),
+            snodas_http: S3Client::new(http.clone(), cfg.snodas_base_url.clone()),
+            nohrsc_http: S3Client::new(http.clone(), cfg.nohrsc_base_url.clone()),
             nbm_s3: S3Client::new(http, cfg.nbm_base_url.clone()),
             cfg: Arc::new(cfg),
             nowcast,

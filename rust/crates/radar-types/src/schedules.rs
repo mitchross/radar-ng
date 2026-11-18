@@ -55,6 +55,10 @@ pub const SCHEDULE_INGEST_GFS_RADAR: &str = "ingest-gfs-radar";
 pub const SCHEDULE_INGEST_UV: &str = "ingest-uv";
 /// Schedule ID of the NBM snow and ice totals schedule (`IngestWinterWorkflow`, `nbm-snow`).
 pub const SCHEDULE_INGEST_NBM_SNOW: &str = "ingest-nbm-snow";
+/// Schedule ID of the SNODAS snow depth schedule (`IngestWinterWorkflow`, `snow-depth`).
+pub const SCHEDULE_INGEST_SNOW_DEPTH: &str = "ingest-snow-depth";
+/// Schedule ID of the NOHRSC 24 h snowfall schedule (`IngestWinterWorkflow`, `snowfall-24h`).
+pub const SCHEDULE_INGEST_SNOWFALL_24H: &str = "ingest-snowfall-24h";
 
 /// `GFS013_VARIABLES`, exact comma-joined list.
 pub const GFS013_VARIABLES: &str = "temperature_2m,relative_humidity_2m,precipitation,showers,snowfall_water_equivalent,frozen_precipitation_percent,cloud_cover,wind_u_component_10m,wind_v_component_10m,shortwave_radiation,uv_index";
@@ -161,7 +165,7 @@ pub fn action_workflow_id(schedule_id: &str) -> String {
     format!("{SCHEDULE_ACTION_ID_PREFIX}{schedule_id}")
 }
 
-/// The 19 schedules: original seed order with `ingest-mrms-qpe-24h` after the reflectivity ones, then
+/// The 21 schedules: original seed order with `ingest-mrms-qpe-24h` after the reflectivity ones, then
 /// the two global-model ones, the three severe MRMS ones and the winter ones. Seed-time queue routing is applied by [`schedule_action_queue`], not here.
 pub fn all_schedules() -> Vec<ScheduleDef> {
     vec![
@@ -352,6 +356,24 @@ pub fn all_schedules() -> Vec<ScheduleDef> {
             HRRR_TASK_QUEUE,
         )
         .with_args(vec![json!("nbm-snow")]),
+        // SNODAS posts one tar a day at about 14Z; hourly polls find it within the hour.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_SNOW_DEPTH,
+            wire::WORKFLOW_INGEST_WINTER,
+            60 * 60,
+            40 * 60,
+            HRRR_TASK_QUEUE,
+        )
+        .with_args(vec![json!("snow-depth")]),
+        // NOHRSC posts the 24 h snowfall analysis for 00Z and 12Z, about 5 h late.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_SNOWFALL_24H,
+            wire::WORKFLOW_INGEST_WINTER,
+            60 * 60,
+            40 * 60,
+            HRRR_TASK_QUEUE,
+        )
+        .with_args(vec![json!("snowfall-24h")]),
     ]
 }
 

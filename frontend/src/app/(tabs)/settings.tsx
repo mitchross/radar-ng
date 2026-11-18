@@ -1101,6 +1101,8 @@ function buildStackActivity(
     "echo-top": "Echo-top layer published",
     "snowfall-forecast": "Snow-total forecast published",
     "ice-forecast": "Ice-total forecast published",
+    "snow-depth": "Snow-depth analysis published",
+    "snowfall-24h": "Past-24-hour snowfall published",
     "precip-type": "Precip-type layer published",
     cloud: "Cloud layer published",
     "air-quality": "Air-quality run published",

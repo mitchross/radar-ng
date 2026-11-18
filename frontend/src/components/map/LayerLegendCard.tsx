@@ -14,7 +14,7 @@ import { precipTypeRamps, serverLegend } from "../../lib/serverPalettes";
 import { useManifestQuery } from "../../hooks/useManifest";
 import { useReplayManifestQuery } from "../../hooks/useReplay";
 import { SEVERE_CREDIT, isSevereLayer } from "../../../../web/src/shared/severe";
-import { winterLayer } from "../../../../web/src/shared/winterLayers";
+import { winterAsOf, winterLayer } from "../../../../web/src/shared/winterLayers";
 
 // Plain-English tag at the top of the legend telling the user whether
 // they're looking at "Now" (live radar), "Soon" (next hour, pysteps
@@ -39,6 +39,8 @@ const LAYER_SOURCE: Record<LayerType, SourceTag> = {
   "echo-top": "Now",
   "snowfall-forecast": "Later",
   "ice-forecast": "Later",
+  "snow-depth": "Now",
+  "snowfall-24h": "Now",
   cloud: "Later",
   uv: "Later",
   "air-quality": "Now",
@@ -197,6 +199,24 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
       { label: "0.01", color: "#ffbedc" },
     ],
   },
+  "snow-depth": {
+    title: "Snow Depth",
+    stops: [
+      { label: "72+", color: "#ffffff" },
+      { label: "24", color: "#3c3c96" },
+      { label: "6", color: "#1e5aa5" },
+      { label: "1", color: "#c8e6eb" },
+    ],
+  },
+  "snowfall-24h": {
+    title: "Past 24 Hr Snow",
+    stops: [
+      { label: "24+", color: "#e6466e" },
+      { label: "12", color: "#be3caa" },
+      { label: "6", color: "#08269a" },
+      { label: "1", color: "#6baed6" },
+    ],
+  },
   "echo-top": {
     title: "Echo Tops",
     stops: [
@@ -269,6 +289,8 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   // Scalars, not the frame array: the card re-renders only when the tag can
   // change, not on every playback tick.
   const frameSource = useWeatherStore((s) => s.frames[s.currentFrameIndex]?.source ?? null);
+  const frameTime = useWeatherStore((s) => s.frames[s.currentFrameIndex]?.time ?? 0);
+  const asOf = winterAsOf(activeLayer, frameTime ? new Date(frameTime * 1000).toISOString() : undefined);
   const frameIsLater = useWeatherStore(
     (s) => (s.frames[s.currentFrameIndex]?.time ?? 0) > Math.floor(Date.now() / 1000) + 30 * 60,
   );
@@ -320,6 +342,7 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
         )}
         {winterLayer(activeLayer) && (
           <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
+            {asOf ? `${asOf} · ` : ""}
             {winterLayer(activeLayer)?.credit}
           </Text>
         )}
