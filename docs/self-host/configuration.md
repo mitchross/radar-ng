@@ -169,6 +169,7 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `FORECAST_CACHE_MAX_BYTES` | `67108864` (64 MiB) | Byte budget for cached forecast bodies (replaces `FORECAST_CACHE_MAX_ENTRIES`). |
 | `WIND_CACHE_MAX_BYTES` | `33554432` (32 MiB) | Byte budget for cached wind-field bodies (replaces `WIND_CACHE_MAX_ENTRIES`). |
 | `NOWCAST_POINT_CACHE_MAX_BYTES` | `16777216` (16 MiB) | Byte budget for cached nowcast point bodies. |
+| `SNOW_CACHE_MAX_BYTES` | `8388608` (8 MiB) | Byte budget for cached `/api/snow` bodies (15 min per 0.1° cell). |
 | `ALERTS_CACHE_MAX_BYTES` | `16777216` (16 MiB) | Byte budget for point-to-zone lookups and direct point alert bodies. |
 | `GEOCODE_CACHE_MAX_BYTES` | `8388608` (8 MiB) | Byte budget for each geocode cache (forward, reverse). |
 | `NWS_POINTS_URL` | `https://api.weather.gov/points` | NWS point-to-zone lookup used to match zone alerts. |

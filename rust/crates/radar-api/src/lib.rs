@@ -34,6 +34,7 @@ mod replays;
 mod respond;
 mod satellite;
 mod sky;
+mod snow;
 mod spc;
 mod state;
 mod upstream;

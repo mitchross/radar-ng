@@ -41,6 +41,7 @@ use crate::prefetch;
 use crate::replays;
 use crate::respond;
 use crate::sky;
+use crate::snow;
 use crate::state::AppState;
 use crate::wind;
 
@@ -79,6 +80,7 @@ pub const ROUTE_TEMPLATES: &[&str] = &[
     "/api/alerts/explain",
     "/api/climate/white-christmas",
     "/api/sky/tonight/{lat}/{lon}",
+    "/api/snow/{lat}/{lon}",
     "/v1/push-tokens",
     "/v1/push-tokens/{token}",
     "/v1/watches",
@@ -132,6 +134,7 @@ pub fn api_router() -> Router<AppState> {
             get(climate::get_white_christmas),
         )
         .route("/api/sky/tonight/{lat}/{lon}", get(sky::get_sky_tonight))
+        .route("/api/snow/{lat}/{lon}", get(snow::get_snow))
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {

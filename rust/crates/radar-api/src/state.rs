@@ -129,6 +129,8 @@ pub struct Inner {
     pub skill: Mutex<Option<crate::nowcast::SkillCache>>,
     /// Open-Meteo bodies by rounded cell.
     pub forecast_cache: AsyncCache<String, Bytes>,
+    /// `/api/snow` bodies by rounded cell (TTL 15 min, byte-capped).
+    pub snow_cache: AsyncCache<String, Bytes>,
     /// Wind-field responses by resolved timestamp (TTL 300 s).
     pub wind_cache: Cache<String, Bytes>,
     /// The newest timestamp present in both wind grids, one entry (TTL `MANIFEST_TTL`).
@@ -249,6 +251,11 @@ impl AppState {
                 .max_capacity(config.forecast_cache_max_bytes)
                 .weigher(|k: &String, v: &Bytes| weight(k.len() + v.len()))
                 .time_to_live(ttl(config.forecast_ttl_s))
+                .build(),
+            snow_cache: AsyncCache::builder()
+                .max_capacity(config.snow_cache_max_bytes)
+                .weigher(|k: &String, v: &Bytes| weight(k.len() + v.len()))
+                .time_to_live(ttl(crate::snow::TTL_S))
                 .build(),
             wind_cache: Cache::builder()
                 .max_capacity(config.wind_cache_max_bytes)

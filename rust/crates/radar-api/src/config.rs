@@ -45,6 +45,8 @@ pub struct Config {
     pub wind_cache_max_bytes: u64,
     /// `NOWCAST_POINT_CACHE_MAX_BYTES` (new; replaces `NOWCAST_POINT_CACHE_MAX_ENTRIES`). Default 16 MiB.
     pub nowcast_point_cache_max_bytes: u64,
+    /// `SNOW_CACHE_MAX_BYTES`. Byte budget for `/api/snow` bodies (15 min TTL). Default 8 MiB.
+    pub snow_cache_max_bytes: u64,
     /// `API_RATE_LIMIT_RPS`. Default 20.
     pub rate_limit_rps: f64,
     /// `API_RATE_LIMIT_BURST`. Default 60.
@@ -150,6 +152,7 @@ impl Config {
             forecast_cache_max_bytes: pos_u64("FORECAST_CACHE_MAX_BYTES", 64 * MIB)?,
             wind_cache_max_bytes: pos_u64("WIND_CACHE_MAX_BYTES", 32 * MIB)?,
             nowcast_point_cache_max_bytes: pos_u64("NOWCAST_POINT_CACHE_MAX_BYTES", 16 * MIB)?,
+            snow_cache_max_bytes: pos_u64("SNOW_CACHE_MAX_BYTES", 8 * MIB)?,
             rate_limit_rps: env::float_var("API_RATE_LIMIT_RPS", 20.0)?,
             rate_limit_burst: env::float_var("API_RATE_LIMIT_BURST", 60.0)?,
             workflow_routes_enabled: std::env::var("DISABLE_WORKFLOW_ROUTES").as_deref() != Ok("1"),
@@ -227,6 +230,7 @@ impl Config {
             forecast_cache_max_bytes: 64 << 20,
             wind_cache_max_bytes: 32 << 20,
             nowcast_point_cache_max_bytes: 16 << 20,
+            snow_cache_max_bytes: 8 << 20,
             rate_limit_rps: 20.0,
             rate_limit_burst: 60.0,
             workflow_routes_enabled: true,

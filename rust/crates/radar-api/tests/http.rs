@@ -2541,3 +2541,46 @@ async fn sky_tonight_without_elements_says_why_and_validates_the_path() {
     let (status, _, _) = get_json(&app, "/api/sky/tonight/95/0").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }
+
+#[tokio::test]
+async fn snow_spot_is_cached_per_cell_and_a_failed_upstream_is_no_store() {
+    let calls = counter();
+    let om_calls = calls.clone();
+    let open_meteo = Router::new().route(
+        "/v1/forecast",
+        get(move |Query(q): Query<HashMap<String, String>>| {
+            let calls = om_calls.clone();
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(q.get("hourly").map(String::as_str), Some("snowfall"));
+                Json(json!({
+                    "hourly_units": {"snowfall": "inch"},
+                    "hourly": {"time": ["2026-11-18T04:00", "2026-11-18T05:00"], "snowfall": [0.0, 0.4]},
+                }))
+            }
+        }),
+    );
+    let base = mock(open_meteo).await;
+    let env = Env::new();
+    let app = env.app(|c| c.open_meteo_base = format!("{base}/v1/forecast"));
+
+    let (status, headers, body) = get_json(&app, "/api/snow/42.96/-85.67").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(header_str(&headers, "cache-control"), "public, max-age=900");
+    assert_eq!(body["hourly"]["snowfall_in"], json!([0.0, 0.4]));
+    assert_eq!(body["start"], "2026-11-18T04:00:00Z");
+    assert_eq!(body["sources"], json!(["open-meteo"]));
+    let _ = get_json(&app, "/api/snow/42.99/-85.72").await;
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "same 0.1 degree cell");
+
+    // No Open-Meteo and no winter layers: still a valid answer, just not cached.
+    let down = env.app(|c| c.open_meteo_base = "http://127.0.0.1:9/v1/forecast".into());
+    let (status, headers, body) = get_json(&down, "/api/snow/42.96/-85.67").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(header_str(&headers, "cache-control"), "no-store");
+    assert_eq!(body["sources"], json!([]));
+    assert!(body.get("hourly").is_none());
+
+    let (status, _, _) = get_json(&app, "/api/snow/95/0").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+}
