@@ -215,3 +215,41 @@ Dec 25 `DLY-SNWD-PCTALL-GE001WI` value: the percent of years with at least 1 inc
 ground. The NCEI docs say "tenths of percent", but the values are whole percent. Detroit (34.7),
 Duluth (92.2) and Minneapolis (73.6) match NOAA's published odds. The server embeds the result, and
 clients contact only our server.
+
+## CelesTrak and sgp4 (ISS passes)
+
+The sky card lists visible ISS passes. The aux worker fetches the ISS orbital elements (OMM, CSV)
+from [CelesTrak](https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=CSV) once every 6
+hours. It follows the [usage policy](https://celestrak.org/usage-policy.php): one request per slot,
+a clear User-Agent, no redirects, no retry after a non-200, and only the `.org` host. CelesTrak
+states no formal licence, so we credit "Orbital elements: CelesTrak" and never re-serve the raw
+file. The server computes the passes, and clients contact only our server.
+
+Passes are computed with the [`sgp4`](https://github.com/neuromorphicsystems/sgp4) crate 2.4.0, pure
+Rust, MIT licensed:
+
+```
+MIT License
+
+Copyright (c) 2020 International Centre for Neuromorphic Systems
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+The pass test is pinned to Heavens-Above times for Detroit (within one minute).

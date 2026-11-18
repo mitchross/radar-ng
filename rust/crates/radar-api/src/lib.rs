@@ -33,6 +33,7 @@ mod ratelimit;
 mod replays;
 mod respond;
 mod satellite;
+mod sky;
 mod spc;
 mod state;
 mod upstream;

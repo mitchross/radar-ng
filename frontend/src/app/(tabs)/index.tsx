@@ -47,6 +47,7 @@ import { IncomingStormCard } from "../../components/home/IncomingStormCard";
 import { NiceDayCard } from "../../components/home/NiceDayCard";
 import { CountdownCard } from "../../components/home/CountdownCard";
 import { WhiteChristmasCard } from "../../components/home/WhiteChristmasCard";
+import { SkyTonightCard } from "../../components/home/SkyTonightCard";
 import { useBriefing } from "../../hooks/useBriefing";
 import { hourlyPrecipitation } from "../../lib/conditions";
 import { useAirQualityNow } from "../../hooks/useAirQualityNow";
@@ -517,6 +518,7 @@ export default function HomeScreen() {
           </View>
           <CountdownCard forecast={forecast} nowMs={now.getTime()} />
           <WhiteChristmasCard forecast={forecast} nowMs={now.getTime()} />
+          <SkyTonightCard forecast={forecast} nowMs={now.getTime()} />
 
           {/* Mini radar map */}
           <RadarMiniMap />

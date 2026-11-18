@@ -50,6 +50,7 @@ tracing-subscriber = { version = "0.3", features = ["json", "env-filter", "fmt"]
 # fs / os
 rustix = { version = "1", features = ["fs"] }
 tempfile = "3"
+sgp4 = "2.4"
 walkdir = "2"
 
 # numerics / images
