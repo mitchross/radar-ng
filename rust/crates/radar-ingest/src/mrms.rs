@@ -310,6 +310,7 @@ pub async fn process_frame(
         let grid_for_input = grid;
         let cfg_for_input = cfg.clone();
         let ts_for_input = timestamp.clone();
+        let types_for_input = types.clone();
         // Not guarded (D12): a failure here fails the frame activity. Retry converges.
         heartbeat::blocking(
             RENDER_BEAT,
@@ -317,6 +318,15 @@ pub async fn process_frame(
             serde_json::json!({"phase": "grid", "timestamp": timestamp}),
             move || -> anyhow::Result<()> {
                 let (lats, lons) = common::regular_axes(&grid_for_input)?;
+                if cfg_for_input.precip_type {
+                    crate::precip_type::dump_observed_types(
+                        &cfg_for_input.grid,
+                        &ts_for_input,
+                        types_for_input.as_ref(),
+                        (lats, lons),
+                        cfg_for_input.nowcast_science_grid_max_cells,
+                    );
+                }
                 let input = GridInput {
                     max_cells: Some(cfg_for_input.nowcast_science_grid_max_cells),
                     ..GridInput::new(&grid_for_input.values, lats, lons, "dBZ")

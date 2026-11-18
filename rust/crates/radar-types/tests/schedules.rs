@@ -211,6 +211,14 @@ fn expected_table() -> Vec<Row> {
             300,
             "radar-ng-aux",
             json!(["iss"]),
+            "ingest-nbm-snow",
+            "IngestWinterWorkflow",
+            1800,
+            None,
+            3600,
+            2400,
+            "radar-ng-hrrr",
+            json!(["nbm-snow"]),
         ),
     ]
 }
@@ -219,7 +227,7 @@ fn expected_table() -> Vec<Row> {
 fn all_schedules_matches_spec_table_in_order() {
     let defs = all_schedules();
     let expected = expected_table();
-    assert_eq!(defs.len(), 19);
+    assert_eq!(defs.len(), 20);
     assert_eq!(defs.len(), expected.len());
     for (def, row) in defs.iter().zip(expected.iter()) {
         let (id, wf, interval, jitter, catchup, timeout, queue, args) = row;

@@ -29,5 +29,6 @@ pub mod sky;
 pub mod smoke;
 pub mod tropical;
 pub mod watch_storm;
+pub mod winter;
 
 mod codec;

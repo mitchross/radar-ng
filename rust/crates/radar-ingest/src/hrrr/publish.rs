@@ -121,7 +121,7 @@ pub fn publish_run(
 /// The layer's `packed` object for these frames, or `None` (not packed, no buckets, or an error,
 /// which is logged: the frames then use their PNG tiles).
 fn packed_value(paths: &Paths, layer: &str, frames: &[FrameSpec]) -> Option<serde_json::Value> {
-    let layout = super::packed::layout(layer)?;
+    super::packed::layout(layer)?;
     let shown: Vec<(String, String)> = frames
         .iter()
         .filter_map(|f| {
@@ -129,8 +129,10 @@ fn packed_value(paths: &Paths, layer: &str, frames: &[FrameSpec]) -> Option<serd
             Some((f.timestamp.clone(), run.to_string()))
         })
         .collect();
-    match super::packed::run_buckets(paths, layer, &shown) {
-        Ok(buckets) => packed_metadata(&layout, buckets),
+    match super::packed::run_buckets_typed(paths, layer, &shown) {
+        Ok((typed, buckets)) => {
+            packed_metadata(&super::packed::layout_typed(layer, typed)?, buckets)
+        }
         Err(err) => {
             tracing::warn!(layer, err = %format!("{err:#}"), "packed_manifest_failed");
             None

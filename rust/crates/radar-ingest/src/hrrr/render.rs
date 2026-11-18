@@ -14,7 +14,9 @@ use radar_tiler::identity::{
     frame_model,
 };
 use radar_tiler::palettes::Palette;
-use radar_tiler::{ColorTable, FrameOptions, complete_pyramid_identity, render_frame_palettes};
+use radar_tiler::{
+    ColorTable, FrameOptions, TypePlane, complete_pyramid_identity, render_frame_palettes,
+};
 
 use super::dump::{Resampler, safe_dump, target_axes};
 use super::state::{RADAR_HRRR, layer_color_key};
@@ -77,6 +79,36 @@ pub fn render_layer(
     color_key: &str,
     categorical: bool,
 ) -> anyhow::Result<bool> {
+    render_layer_typed(
+        cfg,
+        layer,
+        run_id,
+        valid,
+        grid,
+        palettes,
+        color_key,
+        categorical,
+        None,
+    )
+}
+
+/// [`render_layer`] with a precipitation-type plane on `grid`'s cells: the PNGs use the rain,
+/// snow, mix and ice ramps, and the packed slot stores typed codes.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "render_layer plus the type plane"
+)]
+pub fn render_layer_typed(
+    cfg: &IngestConfig,
+    layer: &str,
+    run_id: &str,
+    valid: &str,
+    grid: &Grid,
+    palettes: &[Palette],
+    color_key: &str,
+    categorical: bool,
+    types: Option<TypePlane>,
+) -> anyhow::Result<bool> {
     let tables = tables_for_key(palettes, color_key);
     if tables.is_empty() {
         return Ok(false);
@@ -101,13 +133,16 @@ pub fn render_layer(
         source_id: format!("hrrr:{layer}:{rel}"),
         publication_lock_root: Some(tile_layer.clone()),
         overview: None,
+        types: types.clone(),
         ..FrameOptions::default()
     };
     let result = render_frame_palettes(grid, &kind, &tables, &dirs, &HRRR_ZOOMS, &options)?;
     let rendered = result.rendered_palettes().len() == tables.len();
+    let typed = super::packed::is_typed(layer, cfg.precip_type);
     if rendered
         && cfg.packed_tiles
-        && let Err(err) = super::packed::pack_hour(&cfg.paths, layer, run_id, valid, grid)
+        && let Err(err) =
+            super::packed::pack_hour_typed(&cfg.paths, layer, run_id, valid, grid, typed, types)
     {
         tracing::warn!(layer, run_id, valid, err = %format!("{err:#}"), "packed_failed");
     }
@@ -281,8 +316,36 @@ pub fn process_hour_sync(
         .flatten();
 
     let mut rendered = Vec::new();
+    // HRRR precip type: always decoded for the `precip-type` grid that colours MRMS ice, and for the
+    // classes of `radar-hrrr`; the standalone PNG layer only when enabled.
+    let flags: Vec<Option<DecodedMessage>> = [
+        HrrrVar::Crain,
+        HrrrVar::Csnow,
+        HrrrVar::Cfrzr,
+        HrrrVar::Cicep,
+    ]
+    .into_iter()
+    .map(|v| extract(bytes, v))
+    .collect();
+    let flag_slices: Vec<Option<&[f32]>> = flags
+        .iter()
+        .map(|f| f.as_ref().map(|m| m.grid.values.as_slice()))
+        .collect();
+    let has_flags = flag_slices.iter().any(Option::is_some);
+    let len = src_h * src_w;
+    let radar_types = (cfg.precip_type && has_flags)
+        .then(|| {
+            crate::precip_type::plane_unless_all_rain(crate::precip_type::model_classes(
+                flag_slices[0],
+                flag_slices[1],
+                flag_slices[2],
+                flag_slices[3],
+                len,
+            ))
+        })
+        .flatten();
     // radar-hrrr (always on).
-    if render_layer(
+    if render_layer_typed(
         cfg,
         RADAR_HRRR,
         run_id,
@@ -291,6 +354,7 @@ pub fn process_hour_sync(
         palettes,
         "reflectivity",
         false,
+        radar_types,
     )? {
         rendered.push(RADAR_HRRR.to_string());
         dump("radar-hrrr", &refc.grid.values, "dBZ");
@@ -452,24 +516,14 @@ pub fn process_hour_sync(
         rendered.push("cloud".into());
         dump("cloud", &tcdc.grid.values, "%");
     }
-    // HRRR precip type: always decoded for the `precip-type` grid that colours MRMS ice; the
-    // standalone PNG layer only when enabled.
-    let flags: Vec<Option<DecodedMessage>> = [
-        HrrrVar::Crain,
-        HrrrVar::Csnow,
-        HrrrVar::Cfrzr,
-        HrrrVar::Cicep,
-    ]
-    .into_iter()
-    .map(|v| extract(bytes, v))
-    .collect();
-    if flags.iter().any(|f| f.is_some()) {
-        let len = src_h * src_w;
-        let slices: Vec<Option<&[f32]>> = flags
-            .iter()
-            .map(|f| f.as_ref().map(|m| m.grid.values.as_slice()))
-            .collect();
-        let cat = units::precip_type_category(slices[0], slices[1], slices[2], slices[3], len);
+    if has_flags {
+        let cat = units::precip_type_category(
+            flag_slices[0],
+            flag_slices[1],
+            flag_slices[2],
+            flag_slices[3],
+            len,
+        );
         let vals: Vec<f32> = cat.iter().map(|&c| c as f32).collect();
         let nearest = resampler.resample_nearest(&vals);
         safe_dump(

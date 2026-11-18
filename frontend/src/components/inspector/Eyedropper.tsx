@@ -11,8 +11,10 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { cumulus } from "../../lib/cumulusTheme";
 import { formatReading, inspectFrame, inspectSourceFor, type InspectReading } from "../../lib/inspector";
+import { forecastTitle } from "../../lib/playbackSequence";
 import type { LayerType } from "../../types/weather";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
+import { useNow } from "../../hooks/useNow";
 import { PointOutlooks } from "../map/PointOutlooks";
 
 const LAYER_LABEL: Record<LayerType, string> = {
@@ -29,6 +31,8 @@ const LAYER_LABEL: Record<LayerType, string> = {
   "hail-size": "HAIL SIZE",
   "rotation-track": "ROTATION",
   "echo-top": "ECHO TOPS",
+  "snowfall-forecast": "SNOW TOTAL",
+  "ice-forecast": "ICE TOTAL",
   cloud: "CLOUD COVER",
   uv: "UV INDEX",
   cape: "CAPE",
@@ -65,6 +69,8 @@ export function useInspectReading(pinned: PinnedPoint | null): InspectResult {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const isPlaying = useWeatherStore((s) => s.isPlaying);
+  // Minute clock for the "future radar" vs model guidance title.
+  const now = useNow(60_000);
 
   // Each reading remembers the pin it belongs to, so a new or cleared pin
   // never shows a stale value, and no effect has to reset state.
@@ -122,7 +128,12 @@ export function useInspectReading(pinned: PinnedPoint | null): InspectResult {
     readout: loading ? "…" : reading ? formatReading(activeLayer, reading) : "\u2014",
     // "N/A" only once a fetch for this pin came back empty, not while waiting.
     sourceLabel: reading?.source === "grid" ? "Grid" : result?.pin === pinned && !loading ? "N/A" : "",
-    layerLabel: FRAME_LABEL[inspectSourceFor(activeLayer, frameSource)] ?? LAYER_LABEL[activeLayer],
+    layerLabel:
+      (frameSource && frameTimestamp
+        ? forecastTitle(frameSource, Math.floor(Date.parse(frameTimestamp) / 1000), Math.floor(now / 1000))
+        : null) ??
+      FRAME_LABEL[inspectSourceFor(activeLayer, frameSource)] ??
+      LAYER_LABEL[activeLayer],
     note: loading ? null : (reading?.note ?? null),
   };
 }

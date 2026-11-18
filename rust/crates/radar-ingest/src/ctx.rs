@@ -34,6 +34,8 @@ pub struct IngestCtx {
     pub gfs_s3: S3Client,
     /// Plain HTTPS client for the UV Index product (NOMADS, same GET/HEAD shape).
     pub uv_http: S3Client,
+    /// Anonymous S3 client for NBM.
+    pub nbm_s3: S3Client,
     /// Nowcast kicker. `None` disables the kick regardless of `NOWCAST_KICK_ENABLED`.
     pub nowcast: Option<Arc<dyn NowcastKicker>>,
 }
@@ -46,7 +48,8 @@ impl IngestCtx {
             mrms_s3: S3Client::new(http.clone(), cfg.mrms_base_url.clone()),
             hrrr_s3: S3Client::new(http.clone(), cfg.hrrr_base_url.clone()),
             gfs_s3: S3Client::new(http.clone(), cfg.gfs_base_url.clone()),
-            uv_http: S3Client::new(http, cfg.uv_base_url.clone()),
+            uv_http: S3Client::new(http.clone(), cfg.uv_base_url.clone()),
+            nbm_s3: S3Client::new(http, cfg.nbm_base_url.clone()),
             cfg: Arc::new(cfg),
             nowcast,
         })

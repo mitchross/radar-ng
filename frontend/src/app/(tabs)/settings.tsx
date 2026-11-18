@@ -1119,6 +1119,8 @@ function buildStackActivity(
     "hail-size": "Hail-size layer published",
     "rotation-track": "Rotation-track layer published",
     "echo-top": "Echo-top layer published",
+    "snowfall-forecast": "Snow-total forecast published",
+    "ice-forecast": "Ice-total forecast published",
     "precip-type": "Precip-type layer published",
     cloud: "Cloud layer published",
     "air-quality": "Air-quality run published",

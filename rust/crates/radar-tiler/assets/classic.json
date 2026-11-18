@@ -249,5 +249,35 @@
       { "min": 10.5, "max": 25, "rgba": [107, 73, 200, 180] }
     ],
     "no_data_below": 0.5
+  },
+  "snowfall": {
+    "_comment": "NBM snowfall total in inches; NWS-style blues to purples, white past 3 ft.",
+    "unit": "in",
+    "ranges": [
+      { "min": 0.1, "max": 1, "rgba": [189, 215, 231, 150] },
+      { "min": 1, "max": 2, "rgba": [107, 174, 214, 170] },
+      { "min": 2, "max": 4, "rgba": [49, 130, 189, 185] },
+      { "min": 4, "max": 6, "rgba": [8, 81, 156, 200] },
+      { "min": 6, "max": 8, "rgba": [8, 38, 148, 210] },
+      { "min": 8, "max": 12, "rgba": [130, 60, 190, 220] },
+      { "min": 12, "max": 18, "rgba": [190, 60, 170, 230] },
+      { "min": 18, "max": 24, "rgba": [230, 70, 110, 235] },
+      { "min": 24, "max": 36, "rgba": [150, 20, 40, 240] },
+      { "min": 36, "max": 100, "rgba": [255, 255, 255, 245] }
+    ],
+    "no_data_below": 0.1
+  },
+  "ice_accum": {
+    "_comment": "NBM flat ice accretion in inches; 0.25 in brings down limbs, 0.5 in power lines.",
+    "unit": "in",
+    "ranges": [
+      { "min": 0.01, "max": 0.1, "rgba": [255, 190, 220, 160] },
+      { "min": 0.1, "max": 0.25, "rgba": [245, 120, 190, 185] },
+      { "min": 0.25, "max": 0.5, "rgba": [210, 60, 160, 205] },
+      { "min": 0.5, "max": 0.75, "rgba": [150, 30, 130, 220] },
+      { "min": 0.75, "max": 1, "rgba": [100, 20, 110, 230] },
+      { "min": 1, "max": 10, "rgba": [60, 10, 80, 240] }
+    ],
+    "no_data_below": 0.01
   }
 }

@@ -238,8 +238,12 @@ fn decode_submessage<R: Grib2Read>(
         }
         GridDefinitionTemplate::_3_30(t) => {
             let (ni, nj) = (t.ni as usize, t.nj as usize);
-            let latlons = lambert_latlons(&sub, ni * nj)?;
-            let values = decode_values(bytes, sub, ni * nj)?;
+            let mut latlons = lambert_latlons(&sub, ni * nj)?;
+            let mut values = decode_values(bytes, sub, ni * nj)?;
+            if t.scanning_mode.scans_alternating_rows() {
+                unflip_alternate_rows(&mut values, ni);
+                unflip_alternate_rows(&mut latlons, ni);
+            }
             lambert_grid(t, ni, nj, values, &latlons)?
         }
         _ => {
@@ -250,6 +254,13 @@ fn decode_submessage<R: Grib2Read>(
         }
     };
     Ok(DecodedMessage { grid, info })
+}
+
+/// Reverses every second row in place. Scanning flag 0x10 (NBM, NDFD) stores odd rows backwards.
+fn unflip_alternate_rows<T>(points: &mut [T], width: usize) {
+    for row in points.chunks_exact_mut(width).skip(1).step_by(2) {
+        row.reverse();
+    }
 }
 
 /// Decodes the data values of a submessage (bitmap applied; missing = NaN).
@@ -370,9 +381,9 @@ fn regular_axes(
         g.basic_angle_subdivisions,
     );
     let scan = t.lat_lon.scanning_mode.0;
-    if scan & 0x80 != 0 || scan & 0x20 != 0 {
+    if scan & 0x80 != 0 || scan & 0x20 != 0 || scan & 0x10 != 0 {
         return Err(GribError::Unsupported(format!(
-            "regular_ll scanning mode {scan:#04x} (i negative or j consecutive)"
+            "regular_ll scanning mode {scan:#04x} (i negative, j consecutive or alternating rows)"
         )));
     }
     let (ni, nj) = (g.ni as usize, g.nj as usize);

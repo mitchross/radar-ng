@@ -98,6 +98,12 @@ Both products are global 0.25 degree regular grids (GFS `REFC` by `.idx` range, 
 NOMADS), cropped to `CONUS_BBOX` before rendering. A frame with no tiles (UV at night) is published as a
 complete empty pyramid. Tests: `src/global_model/state.rs` and `tests/global_model.rs` (synthetic GRIB2).
 
+`winter` activities (`IngestWinterWorkflow`; `Product` is `nbm-snow`, one schedule per product) have the
+same five shapes, named `winter_*`. `nbm-snow` renders `snowfall-forecast` and `ice-forecast` from NBM
+`ASNOW`/`FICEAC` 6-hour records (00/06/12/18z runs), summed into running totals to +72 h. Each record is
+cached under `HRRR_TMP_ROOT/nbm/<run>`, so a retried hour refetches nothing. Gated by `WINTER_ENABLED`.
+Tests: `src/winter/` (real NBM records cut to Utah, `radar-grib/testdata/nbm_*`).
+
 Payload types come from `radar-types`. Each activity returns `anyhow::Result`.
 
 ## Behavior notes

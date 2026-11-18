@@ -20,6 +20,7 @@ pub mod sky;
 pub mod tile_cleanup;
 pub mod tropical;
 pub mod watch_storm;
+pub mod winter;
 
 use std::future::Future;
 use std::pin::Pin;

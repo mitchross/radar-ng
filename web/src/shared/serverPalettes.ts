@@ -4,6 +4,8 @@
  * and one table, so both clients share it.
  */
 
+import { WINTER_PALETTE_KEYS } from "./winterLayers";
+
 export type ServerPaletteId = "classic" | "muted" | "vivid";
 
 export interface ColorRange {
@@ -41,6 +43,7 @@ export const LAYER_PALETTE_KEY: Readonly<Record<string, string>> = {
   "hail-size": "hail_size",
   "rotation-track": "rotation_track",
   "echo-top": "echo_top",
+  ...WINTER_PALETTE_KEYS,
 };
 
 /** The palette key of a layer: the server's manifest `palette_key` when it sends one, else the local map. */

@@ -14,6 +14,7 @@ pub mod mrms_qpe;
 pub mod packed;
 pub mod precip_type;
 pub mod scratch;
+pub mod winter;
 
 pub use config::IngestConfig;
 pub use ctx::{IngestCtx, NowcastKicker};

@@ -136,6 +136,15 @@ const REQUIRED_SCENARIOS: &[(&str, Scenarios)] = &[
             ("continue-as-new", &[CONTINUED]),
         ],
     ),
+    (
+        "IngestWinterWorkflow",
+        &[
+            ("success", &[COMPLETED, Activity("winter_mark_processed")]),
+            ("partial", &[COMPLETED, Activity("winter_publish_run")]),
+            ("hour-activity-error", &[ACTIVITY_FAILED, COMPLETED]),
+            ("find-activity-error", &[ACTIVITY_FAILED, FAILED]),
+        ],
+    ),
     ("IngestLightningWorkflow", SINGLE_ACTIVITY),
     ("IngestTropicalWorkflow", SINGLE_ACTIVITY),
     ("IngestSkyWorkflow", SINGLE_ACTIVITY),
