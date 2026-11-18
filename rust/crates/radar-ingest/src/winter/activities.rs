@@ -26,7 +26,7 @@ use radar_types::payloads::hrrr::{ForecastHourResult, HrrrCleanupResult};
 use radar_types::payloads::winter::WinterFindResult;
 
 use super::state;
-use super::{Field, PROCESSED_MAX, Product, WinterLayer, ZOOMS, nohrsc, snodas};
+use super::{Field, PROCESSED_MAX, Product, WinterLayer, ZOOMS, nohrsc, snodas, wpc};
 use crate::common::{self, child_dirs, elapsed_s, processed_set};
 use crate::config::IngestConfig;
 use crate::ctx::IngestCtx;
@@ -46,16 +46,26 @@ pub async fn find_latest_run(
     product: Product,
     now: DateTime<Utc>,
 ) -> anyhow::Result<WinterFindResult> {
-    let hours = state::forecast_hours(product);
-    let (true, Some(&probe)) = (state::enabled(product, &ctx.cfg), hours.last()) else {
+    if !state::enabled(product, &ctx.cfg) {
         return Ok(WinterFindResult::default());
+    }
+    let found = if product.listed_hours() {
+        wpc::find_latest_run(&ctx.wpc_http).await?
+    } else {
+        let hours = state::forecast_hours(product);
+        let Some(&probe) = hours.last() else {
+            return Ok(WinterFindResult::default());
+        };
+        let run = match product {
+            Product::NbmSnow => nbm::find_latest_run(&ctx.nbm_s3, now, probe).await?,
+            Product::SnowDepth => snodas::find_latest_run(&ctx.snodas_http, now).await?,
+            Product::Snowfall24h => nohrsc::find_latest_run(&ctx.nohrsc_http, now).await?,
+            Product::SnowChance => None,
+        };
+        run.map(|r| (r, hours))
     };
-    let run = match product {
-        Product::NbmSnow => nbm::find_latest_run(&ctx.nbm_s3, now, probe).await?,
-        Product::SnowDepth => snodas::find_latest_run(&ctx.snodas_http, now).await?,
-        Product::Snowfall24h => nohrsc::find_latest_run(&ctx.nohrsc_http, now).await?,
-    };
-    let Some(run) = run else {
+    // No cycle posted: nothing to do, and the last published frames stay until they age out.
+    let Some((run, hours)) = found else {
         return Ok(WinterFindResult::default());
     };
     let cfg = ctx.cfg.clone();
@@ -171,8 +181,44 @@ pub fn observed_grid(product: Product, bytes: &[u8], valid: DateTime<Utc>) -> an
             Ok(grid)
         }
         Product::Snowfall24h => nohrsc::snowfall_grid(bytes),
-        Product::NbmSnow => anyhow::bail!("NBM is not an observed product"),
+        Product::NbmSnow | Product::SnowChance => {
+            anyhow::bail!("{} is not an observed product", product.name())
+        }
     }
+}
+
+/// The snow chance grids of one window, one per threshold layer, from its files in layer order.
+pub fn chance_grids(files: &[Bytes]) -> anyhow::Result<Vec<(&'static WinterLayer, Grid)>> {
+    let layers = Product::SnowChance.layers();
+    if files.len() != layers.len() {
+        anyhow::bail!("{} WPC files for {} layers", files.len(), layers.len());
+    }
+    layers
+        .iter()
+        .zip(files)
+        .map(|(layer, bytes)| {
+            let Field::WpcChance(inches) = layer.field else {
+                anyhow::bail!("{} is not a WPC layer", layer.id);
+            };
+            Ok((layer, wpc::chance_grid(bytes, inches)?))
+        })
+        .collect()
+}
+
+/// The three threshold files of the window ending at `fhr`, or `None` while any is not posted.
+async fn wpc_files(
+    ctx: &IngestCtx,
+    init: DateTime<Utc>,
+    fhr: u32,
+) -> anyhow::Result<Option<Vec<Bytes>>> {
+    let mut files = Vec::with_capacity(wpc::THRESHOLDS.len());
+    for inches in wpc::THRESHOLDS {
+        let Some(bytes) = wpc::fetch(&ctx.wpc_http, init, inches, fhr).await? else {
+            return Ok(None);
+        };
+        files.push(bytes);
+    }
+    Ok(Some(files))
 }
 
 /// Render and dump every layer of one hour from its summed grids. Returns the layers rendered.
@@ -310,6 +356,24 @@ pub async fn process_hour(
 
     let details = serde_json::json!({"phase": "download", "product": product.name(), "fhr": fhr, "run_id": run_id});
     hb(details.clone());
+    if product == Product::SnowChance {
+        let fetch = wpc_files(ctx, init, fhr_u32);
+        let Some(files) = heartbeat::during(HRRR_BEAT, hb, details, fetch).await? else {
+            tracing::info!(product = product.name(), run_id = %run_id, fhr, "hour_pending");
+            return Ok(result(Vec::new(), valid));
+        };
+        let details = serde_json::json!({"phase": "render", "product": product.name(), "fhr": fhr, "run_id": run_id});
+        let cfg = ctx.cfg.clone();
+        let (run, render_valid) = (run_id.to_string(), valid.clone());
+        let rendered = heartbeat::blocking(HRRR_BEAT, hb, details, move || {
+            let grids = chance_grids(&files)?;
+            render_hour_sync(&cfg, product, &run, &render_valid, &grids, &palettes)
+        })
+        .await?;
+        let out = result(rendered, valid);
+        tracing::info!(product = product.name(), run_id = %run_id, fhr, rendered = ?out.rendered_layers, duration_s = out.duration_s, "hour_done");
+        return Ok(out);
+    }
     if product.observed() {
         let fetch = async {
             match product {
@@ -368,7 +432,7 @@ pub fn publish_run_sync(
     run_id: &str,
     results: &[ForecastHourResult],
 ) -> anyhow::Result<i64> {
-    let hours = state::forecast_hours(product);
+    let hours = state::planned_hours(product, results);
     let prefix = state::publishable_prefix(results, &hours, product);
     if prefix.is_empty() {
         return Ok(0);
@@ -658,6 +722,37 @@ mod tests {
             assert_eq!(frames.len(), 1);
             assert_eq!(frames[0].timestamp, valid);
         }
+        // WPC: the real 1 in window, reused for the 4 and 8 in layers, is refused there (wrong threshold).
+        let one = Bytes::from(
+            std::fs::read(testdata.join("wpc_pw24ige1p00_2026111801f035_sierra.grib2")).unwrap(),
+        );
+        assert!(chance_grids(&[one.clone(), one.clone(), one.clone()]).is_err());
+        assert!(chance_grids(std::slice::from_ref(&one)).is_err());
+        let grid = wpc::chance_grid(&one, 1).unwrap();
+        let (run, product) = ("20261118_01", Product::SnowChance);
+        let valid = valid_time(run_init(run).unwrap(), 35);
+        let grids: Vec<(&WinterLayer, Grid)> =
+            product.layers().iter().map(|l| (l, grid.clone())).collect();
+        let rendered = render_hour_sync(&cfg, product, run, &valid, &grids, &palettes).unwrap();
+        assert_eq!(
+            rendered,
+            ["snow-chance-1", "snow-chance-4", "snow-chance-8"]
+        );
+        let results = [ForecastHourResult {
+            fhr: 35,
+            rendered_layers: rendered,
+            duration_s: 0.0,
+            valid_timestamp: valid.clone(),
+        }];
+        assert_eq!(publish_run_sync(&cfg, product, run, &results).unwrap(), 1);
+        let manifest = read_manifest(&cfg.paths.state_dir).unwrap();
+        for l in product.layers() {
+            let layer = &manifest.layers[l.id];
+            assert_eq!(layer.frames.len(), 1, "{}", l.id);
+            assert_eq!(layer.frames[0].timestamp, "2026-11-19T12:00:00+00:00");
+            assert!(cfg.grid.grid_dir.join(l.id).is_dir(), "{} dump", l.id);
+        }
+
         // A tar for another day is refused.
         let tar = std::fs::read(testdata.join("snodas_20261117_wasatch.tar")).unwrap();
         let other = run_init("20261118_06").unwrap();

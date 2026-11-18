@@ -19,13 +19,32 @@ pub fn forecast_hours(product: Product) -> Vec<u32> {
             .collect(),
         // One grid at its valid time.
         Product::SnowDepth | Product::Snowfall24h => vec![0],
+        // Listed per cycle by the find step (`wpc::listed_hours`).
+        Product::SnowChance => Vec::new(),
     }
+}
+
+/// Hours a run planned: the fixed table, or for a listed product the hours of its results (the
+/// workflow passes one result per hour the find step returned, failed ones included).
+pub fn planned_hours(product: Product, results: &[ForecastHourResult]) -> Vec<u32> {
+    if !product.listed_hours() {
+        return forecast_hours(product);
+    }
+    let mut hours: Vec<u32> = results
+        .iter()
+        .filter_map(|r| u32::try_from(r.fhr).ok())
+        .collect();
+    hours.sort_unstable();
+    hours.dedup();
+    hours
 }
 
 /// Whether the product is switched on.
 pub fn enabled(product: Product, cfg: &IngestConfig) -> bool {
     match product {
-        Product::NbmSnow | Product::SnowDepth | Product::Snowfall24h => cfg.winter_enabled,
+        Product::NbmSnow | Product::SnowDepth | Product::Snowfall24h | Product::SnowChance => {
+            cfg.winter_enabled
+        }
     }
 }
 
@@ -161,6 +180,26 @@ mod tests {
         );
         assert_eq!(f[0].extra["lead_minutes"], 360);
         assert_eq!(f[0].extra["source"], "nbm");
+    }
+
+    #[test]
+    fn snow_chance_plans_the_listed_hours_and_frames_end_the_window() {
+        let three = ["snow-chance-1", "snow-chance-4", "snow-chance-8"];
+        assert!(forecast_hours(Product::SnowChance).is_empty());
+        let results = vec![hour(29, &three), hour(23, &three), hour(35, &three[..2])];
+        let hours = planned_hours(Product::SnowChance, &results);
+        assert_eq!(hours, [23, 29, 35]);
+        let p = publishable_prefix(&results, &hours, Product::SnowChance);
+        assert_eq!(p.iter().map(|r| r.fhr).collect::<Vec<_>>(), [23, 29]);
+        assert_eq!(planned_hours(Product::NbmSnow, &[]).len(), 12);
+
+        let init = radar_grib::hrrr::parse_run_id("20261118_01").unwrap();
+        let f = frames(Product::SnowChance, "20261118_01", init, &p);
+        // f023 of the 01Z cycle is the 24 h ending 00Z the next day.
+        assert_eq!(f[0].timestamp, "2026-11-19T00:00:00+00:00");
+        assert_eq!(f[1].extra["lead_minutes"], 29 * 60);
+        assert_eq!(f[0].extra["source"], "wpc");
+        assert_eq!(f[0].extra["kind"], "model_guidance");
     }
 
     #[test]

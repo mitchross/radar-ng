@@ -296,5 +296,22 @@
       { "min": 72, "max": 1000, "rgba": [255, 255, 255, 245] }
     ],
     "no_data_below": 1
+  },
+  "snow_chance": {
+    "_comment": "WPC chance of at least 1, 4 or 8 in of snow in 24 h, percent; pale blue through purple to red.",
+    "unit": "percent",
+    "ranges": [
+      { "min": 5, "max": 10, "rgba": [190, 220, 245, 120] },
+      { "min": 10, "max": 20, "rgba": [150, 195, 235, 145] },
+      { "min": 20, "max": 30, "rgba": [105, 165, 225, 165] },
+      { "min": 30, "max": 40, "rgba": [65, 130, 210, 180] },
+      { "min": 40, "max": 50, "rgba": [45, 95, 190, 190] },
+      { "min": 50, "max": 60, "rgba": [85, 65, 175, 200] },
+      { "min": 60, "max": 70, "rgba": [130, 50, 170, 210] },
+      { "min": 70, "max": 80, "rgba": [180, 45, 160, 220] },
+      { "min": 80, "max": 90, "rgba": [220, 55, 125, 230] },
+      { "min": 90, "max": 101, "rgba": [240, 85, 90, 240] }
+    ],
+    "no_data_below": 5
   }
 }

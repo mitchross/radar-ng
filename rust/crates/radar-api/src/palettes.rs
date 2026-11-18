@@ -66,6 +66,7 @@ mod tests {
                 "snowfall",
                 "ice_accum",
                 "snow_depth",
+                "snow_chance",
             ] {
                 let ranges = table[key]["ranges"].as_array().unwrap();
                 assert!(!ranges.is_empty(), "{name}.{key}");
