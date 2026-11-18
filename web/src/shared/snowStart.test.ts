@@ -77,6 +77,10 @@ describe("snow start on the 2025-01-06 Washington snow", () => {
     expect(winterStart(replay(now, "mix"), now)!.words).toMatch(/^Wintry mix starts in ~\d+ min$/);
     // Ice keeps the rain threshold, so these weak echoes do not count.
     expect(winterStart(replay(now, "ice"), now)).toBeNull();
+    const strong = replay(now, "ice");
+    strong.points = strong.points.map((p) => ({ ...p, precipitation_mm_h: p.lead_minutes! >= 20 ? 3 : 0 }));
+    expect(winterStart(strong, now)!.words).toMatch(/^Freezing rain or sleet starts in ~\d+ min$/);
+    expect(planRainAlert(strong, "Washington", prefs, now)!.body).toContain("freezing rain or sleet reaching");
   });
 
   it("says nothing once it is snowing", () => {
