@@ -628,6 +628,43 @@ mod tests {
     }
 
     #[test]
+    fn vector_layers_match_geometry_type() {
+        // Protomaps mixes lines and points into polygon layers; a fill closes each line into a wedge (#350).
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/basemap/styles");
+        let has = |l: &serde_json::Value, geom: &str| {
+            l["filter"]
+                .to_string()
+                .contains(&format!(r#"["==","$type","{geom}"]"#))
+        };
+        for name in ["positron.json", "dark-matter.json"] {
+            let style: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(dir.join(name)).expect("read"))
+                    .expect("json");
+            let layers = style["layers"].as_array().expect("layers");
+            for l in layers.iter().filter(|l| l["type"] == "fill") {
+                assert!(
+                    has(l, "Polygon"),
+                    "{name}: fill {} needs a Polygon filter",
+                    l["id"]
+                );
+            }
+            for l in layers
+                .iter()
+                .filter(|l| l["type"] == "line" && l["source-layer"] == "water")
+            {
+                assert!(
+                    has(l, "LineString"),
+                    "{name}: line {} needs a LineString filter",
+                    l["id"]
+                );
+            }
+            let ids: Vec<_> = layers.iter().filter_map(|l| l["id"].as_str()).collect();
+            assert!(ids.contains(&"water_river"), "{name}: river lines missing");
+        }
+    }
+
+    #[test]
     fn upstream_cache_headers_are_dropped() {
         let mut up = HeaderMap::new();
         up.insert(header::CACHE_CONTROL, HeaderValue::from_static("max-age=5"));
