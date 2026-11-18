@@ -1,4 +1,5 @@
-//! `IngestWinterWorkflow`. Schedule `ingest-nbm-snow` (`nbm-snow`: `snowfall-forecast`, `ice-forecast`).
+//! `IngestWinterWorkflow`. Schedules `ingest-nbm-snow` (`nbm-snow`: `snowfall-forecast`, `ice-forecast`),
+//! `ingest-snow-depth` (`snow-depth`) and `ingest-snowfall-24h` (`snowfall-24h`).
 //!
 //! Same steps and activity options as `IngestGlobalModelWorkflow`: find the run, process its hours with
 //! bounded concurrency, publish the coherent prefix, mark the run processed only when complete, clean up.

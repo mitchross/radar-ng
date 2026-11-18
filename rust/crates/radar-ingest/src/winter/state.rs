@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use radar_core::manifest::FrameSpec;
 use radar_types::payloads::hrrr::ForecastHourResult;
 
-use super::{MAX_ZOOM, Product, SPATIAL_RESOLUTION_KM};
+use super::{MAX_ZOOM, Product};
 use crate::config::IngestConfig;
 
 /// Last NBM forecast hour summed into the totals.
@@ -17,13 +17,15 @@ pub fn forecast_hours(product: Product) -> Vec<u32> {
         Product::NbmSnow => (1..=NBM_LAST_HOUR / radar_grib::nbm::STEP_HOURS)
             .map(|k| k * radar_grib::nbm::STEP_HOURS)
             .collect(),
+        // One grid at its valid time.
+        Product::SnowDepth | Product::Snowfall24h => vec![0],
     }
 }
 
 /// Whether the product is switched on.
 pub fn enabled(product: Product, cfg: &IngestConfig) -> bool {
     match product {
-        Product::NbmSnow => cfg.winter_enabled,
+        Product::NbmSnow | Product::SnowDepth | Product::Snowfall24h => cfg.winter_enabled,
     }
 }
 
@@ -85,13 +87,13 @@ pub fn frames(
             let valid = crate::hrrr::valid_time(init, r.fhr as u32);
             let mut extra = serde_json::Map::new();
             extra.insert("source".into(), product.source().into());
-            extra.insert("kind".into(), "model_guidance".into());
+            extra.insert("kind".into(), product.kind().into());
             extra.insert("issued_at".into(), issued_at.clone().into());
             extra.insert("run_id".into(), run_id.into());
             extra.insert("lead_minutes".into(), serde_json::json!(r.fhr * 60));
             extra.insert(
                 "spatial_resolution_km".into(),
-                serde_json::json!(SPATIAL_RESOLUTION_KM),
+                serde_json::json!(product.resolution_km()),
             );
             extra.insert("max_zoom".into(), serde_json::json!(MAX_ZOOM));
             FrameSpec {
@@ -159,5 +161,24 @@ mod tests {
         );
         assert_eq!(f[0].extra["lead_minutes"], 360);
         assert_eq!(f[0].extra["source"], "nbm");
+    }
+
+    #[test]
+    fn observed_products_are_one_frame_at_their_valid_time() {
+        for p in [Product::SnowDepth, Product::Snowfall24h] {
+            assert_eq!(forecast_hours(p), [0]);
+        }
+        let init = radar_grib::hrrr::parse_run_id("20261117_06").unwrap();
+        let results = [hour(0, &["snow-depth"])];
+        let refs: Vec<&ForecastHourResult> = results.iter().collect();
+        assert_eq!(
+            publishable_prefix(&results, &[0], Product::SnowDepth).len(),
+            1
+        );
+        let f = frames(Product::SnowDepth, "20261117_06", init, &refs);
+        assert_eq!(f[0].timestamp, "2026-11-17T06:00:00+00:00");
+        assert_eq!(f[0].extra["kind"], "observation");
+        assert_eq!(f[0].extra["spatial_resolution_km"], 1.0);
+        assert_eq!(f[0].extra["lead_minutes"], 0);
     }
 }

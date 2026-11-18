@@ -16,7 +16,7 @@ import type { MapStyle } from "../../types/weather";
 import { LAYER_OPTIONS, LAYER_SYMBOLS, SATELLITE_OVERLAY, SEVERE_OPTIONS, WINTER_OPTIONS, replayLayerOptions } from "./radarLayers";
 import { useManifestQuery } from "../../hooks/useManifest";
 import { SEVERE_CREDIT } from "../../../../web/src/shared/severe";
-import { WINTER_EMPTY_HINT } from "../../../../web/src/shared/winterLayers";
+import { WINTER_EMPTY_HINT, winterSheetHint } from "../../../../web/src/shared/winterLayers";
 
 const MAP_STYLES: { id: MapStyle; label: string; color: string }[] = [
   { id: "light", label: "Light", color: "#e8ece5" },
@@ -53,7 +53,7 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
     ? []
     : WINTER_OPTIONS.filter((o) => (manifestLayers?.[o.id]?.frames?.length ?? manifestLayers?.[o.id]?.timestamps?.length ?? 0) > 0);
   const winterHint = winterOptions.length
-    ? `${winterOptions.find((o) => o.id === activeLayer)?.hint ?? "Snow and ice forecast totals, out to 3 days"} · NOAA NBM`
+    ? winterSheetHint(activeLayer)
     : WINTER_EMPTY_HINT;
   // Match phone sheet insets and keep the iPad form sheet compact.
   const contentWidth = Math.min(500, width - 32);

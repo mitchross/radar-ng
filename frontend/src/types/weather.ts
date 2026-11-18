@@ -212,7 +212,9 @@ export type LayerType =
   | "rotation-track"
   | "echo-top"
   | "snowfall-forecast"
-  | "ice-forecast";
+  | "ice-forecast"
+  | "snow-depth"
+  | "snowfall-24h";
 
 export interface LayerConfig {
   id: LayerType;

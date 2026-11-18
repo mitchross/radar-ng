@@ -20,6 +20,8 @@ const LAYER_TABLES: Partial<Record<LayerType, { title: string; unit: string; who
   "echo-top": { title: "Echo Tops", unit: "kft" },
   "snowfall-forecast": { title: "Snow Total", unit: "in" },
   "ice-forecast": { title: "Ice Total", unit: "in" },
+  "snow-depth": { title: "Snow Depth", unit: "in" },
+  "snowfall-24h": { title: "Past 24 Hr Snow", unit: "in" },
   // Band edges sit halfway between whole index values (0.5, 2.5, ...); label the whole values.
   uv: { title: "UV Index", unit: "WHO", whole: true },
 };

@@ -83,6 +83,8 @@ const WEATHER_LAYERS: readonly LayerType[] = [
   "echo-top",
   "snowfall-forecast",
   "ice-forecast",
+  "snow-depth",
+  "snowfall-24h",
 ];
 /** Layers with a fixed opacity; the rest follow the radar opacity setting. */
 const FIXED_LAYER_OPACITY: Partial<Record<LayerType, number>> = {

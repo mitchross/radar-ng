@@ -74,6 +74,7 @@ impl Quantizer {
             "uv_index" => (0.5, 0.5, 0.5),
             "snowfall" => (0.25, 0.0, 0.1),
             "ice_accum" => (0.01, 0.0, 0.01),
+            "snow_depth" => (1.0, 0.0, 1.0),
             _ => return None,
         };
         Some(Quantizer {
