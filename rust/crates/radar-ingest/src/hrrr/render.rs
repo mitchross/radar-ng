@@ -579,7 +579,16 @@ pub fn process_hour_sync(
         && let Some(tcdc) = &tcdc_msg
         && let Ok(at) = chrono::DateTime::parse_from_rfc3339(valid)
     {
-        let vals = radar_grib::stargazing::stargazing_grid(&tcdc.grid, at.timestamp() as f64);
+        // ECCC seeing and transparency trim the score where the aux worker has stored them.
+        let seeing = radar_grib::seeing::SeeingHour::load(&cfg.paths.state_dir, at.to_utc());
+        let vals = match &seeing {
+            Some(s) => radar_grib::stargazing::stargazing_grid_with(
+                &tcdc.grid,
+                at.timestamp() as f64,
+                |lat, lon| s.factor_at(lat, lon),
+            ),
+            None => radar_grib::stargazing::stargazing_grid(&tcdc.grid, at.timestamp() as f64),
+        };
         let g = grid_of(vals, &tcdc.grid);
         if render_layer(
             cfg,

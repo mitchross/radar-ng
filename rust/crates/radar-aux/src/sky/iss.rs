@@ -176,7 +176,7 @@ pub async fn ingest(
 }
 
 /// Temp file in `dir`, fsynced, 0644 so the API can read it, renamed over `path`, directory fsynced.
-fn write_public_atomic(dir: &Path, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(super) fn write_public_atomic(dir: &Path, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let mut tmp = tempfile::Builder::new()
         .prefix(".sky.")

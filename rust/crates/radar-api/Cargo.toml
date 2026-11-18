@@ -54,3 +54,4 @@ http-body-util = "0.1"
 object_store = { version = "0.12" }
 chrono.workspace = true
 radar-tiler.workspace = true
+radar-grib.workspace = true
