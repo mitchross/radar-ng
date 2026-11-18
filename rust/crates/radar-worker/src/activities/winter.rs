@@ -1,4 +1,4 @@
-//! Winter ingest activities (`nbm-snow`, `snow-depth`, `snowfall-24h`). Every call names its product first.
+//! Winter ingest activities (`nbm-snow`, `snow-depth`, `snowfall-24h`, `snow-chance`). Every call names its product first.
 
 use std::sync::Arc;
 
