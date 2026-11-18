@@ -279,5 +279,22 @@
       { "min": 1, "max": 10, "rgba": [60, 10, 80, 240] }
     ],
     "no_data_below": 0.01
+  },
+  "snow_depth": {
+    "_comment": "SNODAS snow depth in inches; pale cyan through purple, white past 6 ft.",
+    "unit": "in",
+    "ranges": [
+      { "min": 1, "max": 2, "rgba": [200, 230, 235, 140] },
+      { "min": 2, "max": 4, "rgba": [150, 205, 220, 160] },
+      { "min": 4, "max": 6, "rgba": [90, 170, 205, 175] },
+      { "min": 6, "max": 12, "rgba": [50, 130, 185, 190] },
+      { "min": 12, "max": 18, "rgba": [30, 90, 165, 200] },
+      { "min": 18, "max": 24, "rgba": [60, 60, 150, 210] },
+      { "min": 24, "max": 36, "rgba": [110, 50, 160, 220] },
+      { "min": 36, "max": 48, "rgba": [160, 60, 170, 230] },
+      { "min": 48, "max": 72, "rgba": [200, 90, 190, 235] },
+      { "min": 72, "max": 1000, "rgba": [255, 255, 255, 245] }
+    ],
+    "no_data_below": 1
   }
 }

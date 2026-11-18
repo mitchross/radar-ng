@@ -8,7 +8,7 @@ import type { LayerType } from "../../types/weather";
 import { SEVERE_LAYERS, type SevereLayerId } from "../../../../web/src/shared/severe";
 import { WINTER_LAYERS, type WinterLayerId } from "../../../../web/src/shared/winterLayers";
 
-export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" | "sun" | "ozone" | "hail" | "rotation" | "tower" | "snow" | "ice";
+export type LayerIcon = "rain" | "thermo" | "dust" | "wind" | "drop" | "cloud" | "sun" | "ozone" | "hail" | "rotation" | "tower" | "snow" | "ice" | "snowDepth" | "snowPast";
 
 export const LAYER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon }[] = [
   { id: "radar", name: "Radar", icon: "rain" },
@@ -40,10 +40,12 @@ export const SEVERE_OPTIONS: { id: LayerType; name: string; icon: LayerIcon; hin
   hint: l.hint,
 }));
 
-/** The "Winter" group (NOAA NBM snow and ice totals), from the shared list the web radar uses. */
+/** The "Winter" group (NOAA snow and ice totals, snow depth, past 24 h snow), from the shared list the web radar uses. */
 const WINTER_ICONS: Record<WinterLayerId, LayerIcon> = {
   "snowfall-forecast": "snow",
   "ice-forecast": "ice",
+  "snow-depth": "snowDepth",
+  "snowfall-24h": "snowPast",
 };
 export const WINTER_OPTIONS: { id: LayerType; name: string; icon: LayerIcon; hint: string }[] = WINTER_LAYERS.map((l) => ({
   id: l.id,
@@ -66,6 +68,8 @@ export const LAYER_SYMBOLS: Record<LayerIcon, SymbolViewProps["name"]> = {
   tower: { ios: "arrow.up.to.line", android: "vertical_align_top" },
   snow: { ios: "snowflake", android: "ac_unit" },
   ice: { ios: "thermometer.snowflake", android: "severe_cold" },
+  snowDepth: { ios: "ruler.fill", android: "straighten" },
+  snowPast: { ios: "clock.arrow.circlepath", android: "history" },
 };
 
 /** GOES satellite imagery: a switch drawn under any weather layer, not one of the layers above. */

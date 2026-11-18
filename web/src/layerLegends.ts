@@ -20,6 +20,8 @@ const LAYER_TABLES: Record<string, { title: string; unit: string; whole?: boolea
   uv: { title: "UV index", unit: "WHO", whole: true },
   "snowfall-forecast": { title: "Snow total", unit: "in" },
   "ice-forecast": { title: "Ice total", unit: "in" },
+  "snow-depth": { title: "Snow depth", unit: "in" },
+  "snowfall-24h": { title: "Snow, past 24 h", unit: "in" },
 };
 
 export interface LayerLegend {

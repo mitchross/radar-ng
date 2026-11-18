@@ -52,6 +52,8 @@ const LAYER_TITLE: Record<LayerType, string> = {
   "echo-top": "Echo Tops",
   "snowfall-forecast": "Snow Total",
   "ice-forecast": "Ice Total",
+  "snow-depth": "Snow Depth",
+  "snowfall-24h": "Past 24 Hr Snow",
   cloud: "Clouds",
   uv: "UV Index",
   cape: "Storm Energy",

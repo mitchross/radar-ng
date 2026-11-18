@@ -483,8 +483,13 @@ pub fn prune_grid_layer(cfg: &GridConfig, layer: &str, keep: Option<u64>) -> usi
 }
 
 /// Layers written less often than `GRID_MAX_AGE_S` keep their grids at least this long (seconds). The
-/// UV Index runs once a day, so a 12 h sweep would empty it every morning.
-pub const LAYER_MIN_AGE_S: [(&str, u64); 1] = [("uv", 36 * 3600)];
+/// UV Index runs once a day, so a 12 h sweep would empty it every morning; SNODAS snow depth is daily and
+/// the NOHRSC snowfall analysis twice a day, and both keep their last grid through a missed file.
+pub const LAYER_MIN_AGE_S: [(&str, u64); 3] = [
+    ("uv", 36 * 3600),
+    ("snow-depth", 48 * 3600),
+    ("snowfall-24h", 48 * 3600),
+];
 
 /// The age sweep's cutoff for `layer`: `GRID_MAX_AGE_S`, raised by [`LAYER_MIN_AGE_S`].
 pub fn max_age_for(cfg: &GridConfig, layer: &str) -> u64 {

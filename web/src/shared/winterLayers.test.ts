@@ -1,15 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { LAYER_PALETTE_KEY } from "./serverPalettes";
-import { WINTER_LAYERS, formatWinterReading, isWinterLayer, winterLayer } from "./winterLayers";
+import { WINTER_LAYERS, formatWinterReading, isWinterLayer, winterAsOf, winterLayer, winterSheetHint } from "./winterLayers";
 
 const classic = JSON.parse(
   readFileSync(new URL("../../../rust/crates/radar-tiler/assets/classic.json", import.meta.url), "utf8"),
 ) as Record<string, unknown>;
 
 describe("winter layers", () => {
-  it("lists snow and ice totals, each with a hint and a server palette", () => {
-    expect(WINTER_LAYERS.map((l) => l.id)).toEqual(["snowfall-forecast", "ice-forecast"]);
+  it("lists snow and ice totals, snow depth and 24 h snowfall, each with a hint and a server palette", () => {
+    expect(WINTER_LAYERS.map((l) => l.id)).toEqual(["snowfall-forecast", "ice-forecast", "snow-depth", "snowfall-24h"]);
     for (const l of WINTER_LAYERS) {
       expect(l.hint.length).toBeGreaterThan(10);
       expect(LAYER_PALETTE_KEY[l.id]).toBe(l.paletteKey);
@@ -25,15 +25,32 @@ describe("winter layers", () => {
 
   it("recognises only winter layers", () => {
     expect(isWinterLayer("ice-forecast")).toBe(true);
+    expect(isWinterLayer("snow-depth")).toBe(true);
     expect(isWinterLayer("hail-size")).toBe(false);
     expect(winterLayer("snowfall-forecast")?.unit).toBe("in");
   });
 
-  it("formats readouts, ice to 0.01 in", () => {
+  it("formats readouts, ice to 0.01 in, depth to whole inches", () => {
     expect(formatWinterReading("snowfall-forecast", 6.24)).toBe("6.2 in");
     expect(formatWinterReading("snowfall-forecast", 0.04)).toBe("No snow");
     expect(formatWinterReading("ice-forecast", 0.256)).toBe("0.26 in");
     expect(formatWinterReading("ice-forecast", 0.004)).toBe("No ice");
+    expect(formatWinterReading("snow-depth", 14.49)).toBe("14 in");
+    expect(formatWinterReading("snow-depth", 0.6)).toBe("No snow on the ground");
+    expect(formatWinterReading("snowfall-24h", 3.06)).toBe("3.1 in");
     expect(formatWinterReading("radar", 5)).toBeNull();
+  });
+
+  it("dates observed frames and leaves forecasts alone", () => {
+    expect(winterAsOf("snow-depth", "2026-11-17T06:00:00+00:00", "America/Detroit")).toBe("As of Nov 17");
+    expect(winterAsOf("snowfall-24h", "2026-11-17T00:00:00+00:00", "America/Detroit")).toBe("As of Nov 16");
+    expect(winterAsOf("snowfall-forecast", "2026-11-17T06:00:00+00:00")).toBeNull();
+    expect(winterAsOf("snow-depth", undefined)).toBeNull();
+    expect(winterAsOf("snow-depth", "nope")).toBeNull();
+  });
+
+  it("builds the sheet hint from the selected layer", () => {
+    expect(winterSheetHint("snow-depth")).toBe("Snow on the ground, updated once a day · NOAA NOHRSC SNODAS");
+    expect(winterSheetHint("radar")).toContain("· NOAA");
   });
 });

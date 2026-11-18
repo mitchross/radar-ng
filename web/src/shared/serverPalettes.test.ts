@@ -30,6 +30,8 @@ describe("LAYER_PALETTE_KEY", () => {
       "echo-top": "echo_top",
       "snowfall-forecast": "snowfall",
       "ice-forecast": "ice_accum",
+      "snow-depth": "snow_depth",
+      "snowfall-24h": "snowfall",
     });
   });
 
