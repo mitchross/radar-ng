@@ -3,7 +3,11 @@ export interface RadarNowcastPoint {
   lead_minutes: number | null;
   dbz: number | null;
   precipitation_mm_h: number;
+  /** Class of the echoes near the point (newer servers only); missing means rain. */
+  precip_class?: PrecipClass;
 }
+
+export type PrecipClass = "rain" | "snow" | "mix" | "ice";
 
 /**
  * How the nowcast has actually done over the server's rolling window, scored

@@ -1,5 +1,5 @@
 //! Schedule parity with the original Python seed list (spec-temporal section 6.2 and section 11, items 1 to 6 and 18),
-//! plus the two Rust-only global-model schedules.
+//! plus the two Rust-only global-model schedules and the Rust-only `ingest-iss`.
 
 use radar_types::schedules::{
     GFS013_VARIABLES, GFS025_SURFACE_VARIABLES, HRRR_VARIABLES, OverlapPolicy, ScheduleDef,
@@ -202,6 +202,86 @@ fn expected_table() -> Vec<Row> {
             "radar-ng-mrms",
             json!([{"mrms_prefix": "CONUS/EchoTop_18_00.50", "layer_name": "echo-top"}]),
         ),
+        (
+            "ingest-iss",
+            "IngestSkyWorkflow",
+            21600,
+            None,
+            3600,
+            300,
+            "radar-ng-aux",
+            json!(["iss"]),
+        ),
+        (
+            "ingest-nbm-snow",
+            "IngestWinterWorkflow",
+            1800,
+            None,
+            3600,
+            2400,
+            "radar-ng-hrrr",
+            json!(["nbm-snow"]),
+        ),
+        (
+            "ingest-snow-depth",
+            "IngestWinterWorkflow",
+            3600,
+            None,
+            3600,
+            2400,
+            "radar-ng-hrrr",
+            json!(["snow-depth"]),
+        ),
+        (
+            "ingest-snowfall-24h",
+            "IngestWinterWorkflow",
+            3600,
+            None,
+            3600,
+            2400,
+            "radar-ng-hrrr",
+            json!(["snowfall-24h"]),
+        ),
+        (
+            "ingest-snow-chance",
+            "IngestWinterWorkflow",
+            3600,
+            None,
+            3600,
+            2400,
+            "radar-ng-hrrr",
+            json!(["snow-chance"]),
+        ),
+        (
+            "ingest-temp-anomaly",
+            "IngestGlobalModelWorkflow",
+            3600,
+            None,
+            3600,
+            2400,
+            "radar-ng-hrrr",
+            json!(["temp-anomaly"]),
+        ),
+        (
+            "ensure-static-data",
+            "EnsureStaticDataWorkflow",
+            86400,
+            None,
+            3600,
+            21600,
+            "radar-ng-aux",
+            json!(["normals"]),
+        ),
+        (
+            "ingest-star-seeing",
+            "IngestSkyWorkflow",
+            3600,
+            None,
+            3600,
+            300,
+            "radar-ng-aux",
+            json!(["star-seeing"]),
+        ),
     ]
 }
 
@@ -209,7 +289,7 @@ fn expected_table() -> Vec<Row> {
 fn all_schedules_matches_spec_table_in_order() {
     let defs = all_schedules();
     let expected = expected_table();
-    assert_eq!(defs.len(), 18);
+    assert_eq!(defs.len(), 26);
     assert_eq!(defs.len(), expected.len());
     for (def, row) in defs.iter().zip(expected.iter()) {
         let (id, wf, interval, jitter, catchup, timeout, queue, args) = row;

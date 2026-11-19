@@ -23,8 +23,10 @@ chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+sgp4.workspace = true
 
 [dev-dependencies]
 axum.workspace = true
 tempfile.workspace = true
+url.workspace = true
 tokio.workspace = true

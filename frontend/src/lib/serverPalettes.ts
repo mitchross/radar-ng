@@ -18,6 +18,13 @@ const LAYER_TABLES: Partial<Record<LayerType, { title: string; unit: string; who
   "hail-size": { title: "Hail Size", unit: "in" },
   "rotation-track": { title: "Rotation", unit: "1/s" },
   "echo-top": { title: "Echo Tops", unit: "kft" },
+  "snowfall-forecast": { title: "Snow Total", unit: "in" },
+  "ice-forecast": { title: "Ice Total", unit: "in" },
+  "snow-depth": { title: "Snow Depth", unit: "in" },
+  "snowfall-24h": { title: "Past 24 Hr Snow", unit: "in" },
+  "snow-chance-1": { title: "Chance of 1 in Snow", unit: "%" },
+  "snow-chance-4": { title: "Chance of 4 in Snow", unit: "%" },
+  "snow-chance-8": { title: "Chance of 8 in Snow", unit: "%" },
   // Band edges sit halfway between whole index values (0.5, 2.5, ...); label the whole values.
   uv: { title: "UV Index", unit: "WHO", whole: true },
 };
@@ -34,22 +41,24 @@ const hex = ([r, g, b]: ColorRange["rgba"]) =>
 const fmt = (v: number) => String(Number(Math.abs(v) > 0 && Math.abs(v) < 0.1 ? v.toPrecision(2) : v.toFixed(2)));
 
 export interface PrecipTypeRamp {
-  label: "Rain" | "Snow" | "Mix";
+  label: "Rain" | "Snow" | "Mix" | "Ice";
   /** Weak to strong. */
   colors: string[];
 }
 
-/** Rain, snow and mix ramps of the radar palette, for frames the server colors by precipitation type. */
+/** Rain, snow, mix and (when the server has it) ice ramps of the radar palette, for typed frames. */
 export function precipTypeRamps(palettes: ServerPalettes | null | undefined, palette: Palette): PrecipTypeRamp[] | null {
   const table = (palettes?.[palette] ?? palettes?.classic)?.reflectivity;
   const snow = table?.types?.snow?.ranges;
   const mix = table?.types?.mix?.ranges;
+  const ice = table?.types?.ice?.ranges;
   if (!table?.ranges?.length || !snow?.length || !mix?.length) return null;
   const colors = (ranges: ColorRange[]) => ranges.map((r) => hex(r.rgba));
   return [
     { label: "Rain", colors: colors(table.ranges) },
     { label: "Snow", colors: colors(snow) },
     { label: "Mix", colors: colors(mix) },
+    ...(ice?.length ? [{ label: "Ice" as const, colors: colors(ice) }] : []),
   ];
 }
 

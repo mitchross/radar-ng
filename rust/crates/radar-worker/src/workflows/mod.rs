@@ -16,9 +16,12 @@ pub mod nowcast;
 pub mod open_meteo_sync;
 pub mod poll_alerts;
 pub mod push_tokens;
+pub mod sky;
+pub mod static_data;
 pub mod tile_cleanup;
 pub mod tropical;
 pub mod watch_storm;
+pub mod winter;
 
 use std::future::Future;
 use std::pin::Pin;

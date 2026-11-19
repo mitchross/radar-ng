@@ -13,9 +13,11 @@ import { selectionHaptic } from "../../lib/haptics";
 import { useWeatherClearTheme } from "../../theme/WeatherClearThemeProvider";
 import type { WeatherClearTheme } from "../../theme/weatherClearTheme";
 import type { MapStyle } from "../../types/weather";
-import { LAYER_OPTIONS, LAYER_SYMBOLS, SATELLITE_OVERLAY, SEVERE_OPTIONS, replayLayerOptions } from "./radarLayers";
+import { LAYER_SYMBOLS, liveLayerOptions, SATELLITE_OVERLAY, SEVERE_OPTIONS, WINTER_OPTIONS, replayLayerOptions } from "./radarLayers";
 import { useManifestQuery } from "../../hooks/useManifest";
+import { useSnowCardVisible } from "../../hooks/useSnowSpot";
 import { SEVERE_CREDIT } from "../../../../web/src/shared/severe";
+import { WINTER_EMPTY_HINT, winterPickerRows, winterRowChips, winterSheetHint } from "../../../../web/src/shared/winterLayers";
 
 const MAP_STYLES: { id: MapStyle; label: string; color: string }[] = [
   { id: "light", label: "Light", color: "#e8ece5" },
@@ -41,16 +43,85 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
   const replayCase = useWeatherStore((s) => s.replayCase);
   // Replay offers only the case's layers; live overlays have no historical data.
   const replaying = useWeatherStore((s) => s.source.kind === "replay");
-  const layerOptions = replaying ? replayLayerOptions(replayCase?.layers ?? []) : LAYER_OPTIONS;
   // The Severe group lists only layers the server has frames for.
   const manifestLayers = useManifestQuery().data?.layers;
+  const layerOptions = replaying ? replayLayerOptions(replayCase?.layers ?? []) : liveLayerOptions(manifestLayers);
   const severeOptions = replaying
     ? []
     : SEVERE_OPTIONS.filter((o) => (manifestLayers?.[o.id]?.frames?.length ?? manifestLayers?.[o.id]?.timestamps?.length ?? 0) > 0);
   const severeHint = severeOptions.find((o) => o.id === activeLayer)?.hint ?? "Hail, storm rotation and storm height";
+  const winterAvailable = replaying
+    ? []
+    : WINTER_OPTIONS.filter((o) => (manifestLayers?.[o.id]?.frames?.length ?? manifestLayers?.[o.id]?.timestamps?.length ?? 0) > 0);
+  // Snow chance is one tile; its 1 / 4 / 8 in chips show under the grid while it is selected.
+  const winterOptions = winterPickerRows(winterAvailable, activeLayer);
+  const winterChips = winterRowChips(winterAvailable, activeLayer);
+  const winterHint = winterOptions.length
+    ? winterSheetHint(activeLayer)
+    : WINTER_EMPTY_HINT;
   // Match phone sheet insets and keep the iPad form sheet compact.
   const contentWidth = Math.min(500, width - 32);
   const tileWidth = (contentWidth - 2 * 10) / 3;
+
+  // While the Home snow card shows, the Winter group opens first.
+  const snowFirst = useSnowCardVisible((s) => s.visible);
+  const winterSection = replaying ? null : (
+    <>
+      <Text style={styles.section}>WINTER</Text>
+      {winterOptions.length > 0 && (
+        <View style={styles.grid}>
+          {winterOptions.map((opt) => {
+            const active = activeLayer === opt.id;
+            return (
+              <Pressable
+                key={opt.id}
+                accessibilityRole="radio"
+                accessibilityLabel={`${opt.name} layer. ${opt.hint}`}
+                accessibilityState={{ checked: active }}
+                onPress={() => { selectionHaptic(); setActiveLayer(opt.id); onClose(); }}
+                style={({ pressed }) => [
+                  styles.layerTile,
+                  { width: tileWidth },
+                  active ? styles.layerTileActive : null,
+                  pressed ? styles.pressed : null,
+                ]}
+              >
+                <SymbolView
+                  name={LAYER_SYMBOLS[opt.icon]}
+                  size={24}
+                  tintColor={active ? theme.colors.accent : theme.colors.text}
+                  type="hierarchical"
+                />
+                <Text style={[styles.layerName, active ? { color: theme.colors.accent } : null]} numberOfLines={1}>
+                  {opt.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+      {winterChips.length > 1 && (
+        <View style={styles.chipRow} accessibilityRole="radiogroup">
+          {winterChips.map((opt) => {
+            const active = activeLayer === opt.id;
+            return (
+              <Pressable
+                key={opt.id}
+                accessibilityRole="radio"
+                accessibilityLabel={`${opt.chip ?? opt.name}. ${opt.hint}`}
+                accessibilityState={{ checked: active }}
+                onPress={() => { selectionHaptic(); setActiveLayer(opt.id); }}
+                style={({ pressed }) => [styles.chip, active ? styles.chipActive : null, pressed ? styles.pressed : null]}
+              >
+                <Text style={[styles.layerName, active ? { color: theme.colors.accent } : null]}>{opt.chip ?? opt.name}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+      <Text style={styles.tip}>{winterHint}</Text>
+    </>
+  );
 
   return (
     <BottomSheet isPresented={visible} onDismiss={onClose} containerColor={theme.colors.surface}>
@@ -62,6 +133,8 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
               <Text style={styles.doneText}>Done</Text>
             </Pressable>
           </View>
+
+          {snowFirst ? winterSection : null}
 
           <Text style={styles.section}>WEATHER LAYER</Text>
           <View style={styles.grid}>
@@ -94,6 +167,8 @@ export function MapOptionsSheet({ visible, onClose }: { visible: boolean; onClos
               );
             })}
           </View>
+
+          {snowFirst ? null : winterSection}
 
           {severeOptions.length > 0 && (
             <>
@@ -230,6 +305,18 @@ function createStyles(theme: WeatherClearTheme) {
       paddingHorizontal: 4,
     },
     layerTileActive: { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSoft },
+    chipRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+    chip: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: 22,
+      borderWidth: 1.5,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surfaceStrong,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    chipActive: { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSoft },
     layerName: { color: theme.colors.text, fontFamily: theme.typography.uiMedium, fontSize: 13 },
     styleTile: { alignItems: "center", gap: 6, minHeight: 44 },
     swatch: {

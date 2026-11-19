@@ -149,24 +149,33 @@ pub async fn process_frame(
     .await?;
     gmrms::ensure_south_up(&mut grid);
     let timestamp = ts_fetch;
-    let (grid, types) = match flag {
-        Some((flag_key, flag_gz)) => {
-            heartbeat::blocking(
-                DOWNLOAD_BEAT,
-                hb,
-                serde_json::json!({"phase": "precip_type", "key": flag_key}),
-                move || {
-                    let types = crate::precip_type::type_plane(&flag_gz, &grid)
+    // PrecipFlag gives rain / snow / mix; the HRRR `precip-type` grid adds ice when one is close.
+    let ice_time = cfg
+        .precip_type
+        .then(|| gmrms::key_time(&key).ok())
+        .flatten();
+    let (grid, types) = if flag.is_some() || ice_time.is_some() {
+        let grid_dir = cfg.grid.grid_dir.clone();
+        heartbeat::blocking(
+            DOWNLOAD_BEAT,
+            hb,
+            serde_json::json!({"phase": "precip_type", "key": key}),
+            move || {
+                let flags = flag.and_then(|(flag_key, flag_gz)| {
+                    crate::precip_type::type_plane(&flag_gz, &grid)
                         .inspect_err(|err| {
                             tracing::warn!(flag_key = %flag_key, err = %format!("{err:#}"), "precip_flag_failed");
                         })
-                        .ok();
-                    (grid, types)
-                },
-            )
-            .await
-        }
-        None => (grid, None),
+                        .ok()
+                });
+                let hrrr = ice_time.and_then(|t| crate::precip_type::load_type_grid(&grid_dir, t));
+                let types = crate::precip_type::frame_types(flags, &grid, hrrr.as_ref());
+                (grid, types)
+            },
+        )
+        .await
+    } else {
+        (grid, None)
     };
 
     hb(
@@ -301,6 +310,7 @@ pub async fn process_frame(
         let grid_for_input = grid;
         let cfg_for_input = cfg.clone();
         let ts_for_input = timestamp.clone();
+        let types_for_input = types.clone();
         // Not guarded (D12): a failure here fails the frame activity. Retry converges.
         heartbeat::blocking(
             RENDER_BEAT,
@@ -308,6 +318,15 @@ pub async fn process_frame(
             serde_json::json!({"phase": "grid", "timestamp": timestamp}),
             move || -> anyhow::Result<()> {
                 let (lats, lons) = common::regular_axes(&grid_for_input)?;
+                if cfg_for_input.precip_type {
+                    crate::precip_type::dump_observed_types(
+                        &cfg_for_input.grid,
+                        &ts_for_input,
+                        types_for_input.as_ref(),
+                        (lats, lons),
+                        cfg_for_input.nowcast_science_grid_max_cells,
+                    );
+                }
                 let input = GridInput {
                     max_cells: Some(cfg_for_input.nowcast_science_grid_max_cells),
                     ..GridInput::new(&grid_for_input.values, lats, lons, "dBZ")

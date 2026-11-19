@@ -20,6 +20,7 @@
 
 use crate::env::{self, EnvError};
 use crate::fsutil::{self, DirSync, FlockGuard};
+use crate::ice::{OBSERVED_TYPE_GRID, OBSERVED_TYPE_KEEP};
 use crate::pycompat::{self, Json, Style};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -91,6 +92,7 @@ impl GridConfig {
             env::var("NOWCAST_GRID_INPUT_LAYER").unwrap_or_else(|| NOWCAST_INPUT_LAYER.to_string());
         let mut keep_last = BTreeMap::new();
         keep_last.insert(layer, keep_for_nowcast_inputs(frames, step));
+        keep_last.insert(OBSERVED_TYPE_GRID.to_string(), OBSERVED_TYPE_KEEP);
         Ok(Self {
             grid_dir: env::path_var("GRID_DIR", "/data/grids"),
             max_age_s: env::int_var_clamped("GRID_MAX_AGE_S", 43200, 0, i64::MAX)? as u64,
@@ -112,6 +114,7 @@ impl GridConfig {
             NOWCAST_INPUT_LAYER.to_string(),
             keep_for_nowcast_inputs(4, 5.0),
         );
+        keep_last.insert(OBSERVED_TYPE_GRID.to_string(), OBSERVED_TYPE_KEEP);
         Self {
             grid_dir: grid_dir.into(),
             max_age_s: 43200,
@@ -480,8 +483,13 @@ pub fn prune_grid_layer(cfg: &GridConfig, layer: &str, keep: Option<u64>) -> usi
 }
 
 /// Layers written less often than `GRID_MAX_AGE_S` keep their grids at least this long (seconds). The
-/// UV Index runs once a day, so a 12 h sweep would empty it every morning.
-pub const LAYER_MIN_AGE_S: [(&str, u64); 1] = [("uv", 36 * 3600)];
+/// UV Index runs once a day, so a 12 h sweep would empty it every morning; SNODAS snow depth is daily and
+/// the NOHRSC snowfall analysis twice a day, and both keep their last grid through a missed file.
+pub const LAYER_MIN_AGE_S: [(&str, u64); 3] = [
+    ("uv", 36 * 3600),
+    ("snow-depth", 48 * 3600),
+    ("snowfall-24h", 48 * 3600),
+];
 
 /// The age sweep's cutoff for `layer`: `GRID_MAX_AGE_S`, raised by [`LAYER_MIN_AGE_S`].
 pub fn max_age_for(cfg: &GridConfig, layer: &str) -> u64 {

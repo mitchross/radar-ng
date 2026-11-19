@@ -7,7 +7,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabled, track } from "./analytics";
-import { buildFrames, isForecastSource, longZoomLabel, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
+import { buildFrames, forecastLine, forecastTitle, isForecastSource, longZoomLabel, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
 import { escapeHtml } from "./html";
 import { bannerHtml, fetchReplayCatalogue, fetchReplayManifest, fetchReplayWarnings, pickerHtml } from "./replay";
 import type { ReplayCase } from "./shared/replayApi";
@@ -41,13 +41,24 @@ import {
 import { WindLayer } from "./wind";
 import { SatelliteLayer } from "./satellite";
 import { forecastTimeMs, isNightAt } from "./shared/forecastTime";
+import { wallClock } from "./shared/forecastTime";
+import { niceDayCardHtml } from "./niceDayCard";
+import { snowSpotCardHtml, snowSpotSkeletonHtml } from "./snowSpotCard";
+import { ByteCappedCache, parseSnowSpot, snowCardShows, snowLikely, snowSpotPath, type SnowSpot } from "./shared/snowSpot";
+import { whiteChristmasCardHtml } from "./whiteChristmasCard";
+import type { FeatureCollection } from "geojson";
+import { inWhiteChristmasSeason, parseNearestStation, WHITE_CHRISTMAS_STATIONS_PATH, whiteChristmasPath, type WhiteChristmasStation } from "./shared/whiteChristmas";
 import { satelliteFrames } from "./shared/satellite";
 import { PackedRadarLayer, type PackedFrameRef } from "./packed/layer";
 import { interpolateNowcast, nextHourHeadline, nowcastVerdict } from "./nowcast";
 import { CONDITION_HEADLINES, conditionGradient, getCumulusCondition } from "./shared/conditions";
 import { describeNowcastSkill } from "./shared/nowcastSkill";
 import { SEVERE_CREDIT, SEVERE_LAYERS, formatSevereReading, severeLayer } from "./shared/severe";
-import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR } from "./shared/rainAlerts";
+import { WINTER_EMPTY_HINT, WINTER_LAYERS, formatWinterReading, winterAsOf, winterLayer, winterPickerRows, winterRowChips, winterSheetHint } from "./shared/winterLayers";
+import { NICE_DAY_LAYER, formatNiceDayReading, niceDayLegend } from "./shared/niceDayLayer";
+import { TEMP_NORMAL_LAYER, formatAnomalyReading, inLower48, normalsLine, normalsPath, parseNormals, tempAnomalyLegend, type DayNormals } from "./shared/tempNormal";
+import { STARGAZING_LAYER, formatStargazingReading, stargazingLegend } from "./shared/stargazingLayer";
+import { RAIN_ALERT_LEAD_OPTIONS, RAIN_START_IN_HR, SNOW_START_IN_HR, winterStart } from "./shared/rainAlerts";
 import type { RadarNowcastResponse } from "./shared/nowcastTypes";
 import { BrowserRainAlerts } from "./rainAlerts";
 import { BrowserStormNotice } from "./stormNotice";
@@ -97,6 +108,9 @@ const LAYERS: { id: string; name: string; needs: string }[] = [
   { id: "precip-accum", name: "Rain total", needs: "precip-accum" },
   { id: "precip-24h", name: "Past 24 hr precip", needs: "precip-24h" },
   { id: "cloud", name: "Clouds", needs: "cloud" },
+  { id: NICE_DAY_LAYER.id, name: NICE_DAY_LAYER.name, needs: NICE_DAY_LAYER.id },
+  { id: TEMP_NORMAL_LAYER.id, name: TEMP_NORMAL_LAYER.name, needs: TEMP_NORMAL_LAYER.id },
+  { id: STARGAZING_LAYER.id, name: STARGAZING_LAYER.name, needs: STARGAZING_LAYER.id },
   { id: "uv", name: "UV index", needs: "uv" },
   { id: "air-quality", name: "Air quality", needs: "air-quality" },
   { id: "ozone", name: "Ozone", needs: "ozone" },
@@ -499,7 +513,7 @@ async function refreshManifest() {
     satellite.setFrames(satelliteFrames(state.manifest));
     // renderChips also rebuilds the open settings sheet, so skip it unless availability changed.
     if (!hadManifest || availabilityKey() !== chipsBefore) renderChips();
-    if (!LAYERS.some((l) => l.id === state.layer && layerAvailable(l.needs)) && !(severeLayer(state.layer) && layerAvailable(state.layer))) state.layer = "radar";
+    if (!LAYERS.some((l) => l.id === state.layer && layerAvailable(l.needs)) && !((severeLayer(state.layer) || winterLayer(state.layer)) && layerAvailable(state.layer))) state.layer = "radar";
     const now = nowSec();
     const { frames, seq } = liveTimeline(state.manifest, now);
     if (hadManifest && sameFrames(state.frames, frames) && seq.length === state.seq.length && seq.every((v, i) => v === state.seq[i])) {
@@ -553,7 +567,7 @@ function renderRadarStatus() {
 
 /** The layers and products the chips and sheet offer. */
 function availabilityKey(): string {
-  return [...LAYERS.map((l) => l.needs), ...SEVERE_LAYERS.map((l) => l.id), "radar-composite", "satellite"].filter(layerAvailable).join();
+  return [...LAYERS.map((l) => l.needs), ...SEVERE_LAYERS.map((l) => l.id), ...WINTER_LAYERS.map((l) => l.id), "radar-composite", "satellite"].filter(layerAvailable).join();
 }
 
 function layerAvailable(key: string) {
@@ -629,10 +643,10 @@ function renderTimeline() {
   }
   const label = offsetLabel(frame.time, nowSec());
   const mode = label === "Now" ? "Now" : `${frame.time > nowSec() ? "Forecast" : "Past"} ${label}`;
-  const source = SOURCE_SUFFIX[frame.source] ?? "";
-  const layerName = LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? "Radar";
+  const source = forecastLine(frame.source, frame.time, nowSec()) ?? "";
+  const layerName = LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? winterLayer(state.layer)?.name ?? "Radar";
   $("frame-title").textContent = `${layerName} · ${mode}`;
-  $("frame-time").textContent = `${TIME_FMT.format(new Date(frame.time * 1000))}${source}`;
+  $("frame-time").textContent = `${TIME_FMT.format(new Date(frame.time * 1000))}${source ? ` · ${source}` : SOURCE_SUFFIX[frame.source] ?? ""}`;
   slider.setAttribute("aria-valuetext", `${mode}, ${TIME_FMT.format(new Date(frame.time * 1000))}`);
 }
 
@@ -678,7 +692,11 @@ function renderAxis() {
 /** The one-line hint and source credit under a severe layer's legend; empty for other layers. */
 function severeNote(layer: string): string {
   const info = severeLayer(layer);
-  return info ? `<div class="legend-note">${escapeHtml(info.hint)} · ${SEVERE_CREDIT}</div>` : "";
+  if (info) return `<div class="legend-note">${escapeHtml(info.hint)} · ${SEVERE_CREDIT}</div>`;
+  const winter = winterLayer(layer);
+  if (!winter) return "";
+  const asOf = winterAsOf(layer, currentFrame()?.timestamp);
+  return `<div class="legend-note">${asOf ? `${asOf} · ` : ""}${escapeHtml(winter.hint)} · ${winter.credit}</div>`;
 }
 
 function renderLegend() {
@@ -703,6 +721,39 @@ function renderLegend() {
           .join("") +
         `</div>`;
     }
+    return;
+  }
+  if (state.layer === STARGAZING_LAYER.id) {
+    const ranges = (serverPalettes?.[state.palette] ?? serverPalettes?.classic)?.[STARGAZING_LAYER.paletteKey]?.ranges;
+    const stops = stargazingLegend(ranges).reverse();
+    el.hidden = false;
+    el.innerHTML =
+      `<div class="legend-title">${STARGAZING_LAYER.name}</div>` +
+      `<div class="legend-bar" style="background:linear-gradient(90deg,${stops.map((s, i) => `${s.color} ${i * 25}% ${(i + 1) * 25}%`).join(",")})"></div>` +
+      `<div class="legend-labels">${stops.map((s) => `<span>${s.word}</span>`).join("")}</div>` +
+      `<div class="legend-note">Night hours only. ${STARGAZING_LAYER.credit} ${STARGAZING_LAYER.seeingCredit}</div>`;
+    return;
+  }
+  if (state.layer === NICE_DAY_LAYER.id) {
+    const ranges = (serverPalettes?.[state.palette] ?? serverPalettes?.classic)?.[NICE_DAY_LAYER.paletteKey]?.ranges;
+    const stops = niceDayLegend(ranges).reverse();
+    el.hidden = false;
+    el.innerHTML =
+      `<div class="legend-title">${NICE_DAY_LAYER.name}</div>` +
+      `<div class="legend-bar" style="background:linear-gradient(90deg,${stops.map((s, i) => `${s.color} ${i * 20}% ${(i + 1) * 20}%`).join(",")})"></div>` +
+      `<div class="legend-labels">${stops.map((s) => `<span>${s.word}</span>`).join("")}</div>` +
+      `<div class="legend-note">${NICE_DAY_LAYER.credit}</div>`;
+    return;
+  }
+  if (state.layer === TEMP_NORMAL_LAYER.id) {
+    const ranges = (serverPalettes?.[state.palette] ?? serverPalettes?.classic)?.[TEMP_NORMAL_LAYER.paletteKey]?.ranges;
+    const stops = tempAnomalyLegend(ranges);
+    el.hidden = false;
+    el.innerHTML =
+      `<div class="legend-title">${TEMP_NORMAL_LAYER.name} (\u00B0F)</div>` +
+      `<div class="legend-bar" style="background:linear-gradient(90deg,${stops.map((s, i) => `${s.color} ${i * 20}% ${(i + 1) * 20}%`).join(",")})"></div>` +
+      `<div class="legend-labels">${stops.map((s) => `<span>${s.label}</span>`).join("")}</div>` +
+      `<div class="legend-note">Daily high above or below normal \u00B7 ${TEMP_NORMAL_LAYER.credit}</div>`;
     return;
   }
   const table = layerLegend(serverPalettes, replaying() ? REPLAY_PALETTE : state.palette, state.layer, activeManifest()?.layers[state.layer]?.palette_key);
@@ -748,13 +799,23 @@ function renderSheet() {
   const composite = layerAvailable("radar-composite");
   const severe = SEVERE_LAYERS.filter((l) => layerAvailable(l.id));
   const severeHint = severeLayer(state.layer)?.hint ?? "Hail, storm rotation and storm height";
+  const winterAll = WINTER_LAYERS.filter((l) => layerAvailable(l.id));
+  const winter = winterPickerRows(winterAll, state.layer);
+  const winterChips = winterRowChips(winterAll, state.layer);
   const toggles = [
     ...OVERLAYS.map((o) => ({ id: o.id, name: o.name, hint: o.hint, on: state.overlays.has(o.id) })),
     ...(layerAvailable("satellite") ? [{ id: "satellite", name: "Satellite clouds", hint: "GOES imagery under the radar, every 10 minutes", on: state.satellite }] : []),
     { id: "wind", name: "Wind flow", hint: "Animated HRRR surface wind", on: state.wind },
     { id: "ai", name: "AI narration", hint: "Local-LLM summaries; hides itself if the model is down", on: state.ai },
   ];
+  // While the snow card shows, the Winter group opens first.
+  const winterSection = `<div class="sheet-section"><div class="section-label">WINTER</div>
+      ${winter.length ? seg("winter", winter.map((l) => [l.id, l.name, l.hint]), state.layer) : ""}
+      ${winterChips.length > 1 ? seg("winter", winterChips.map((l) => [l.id, l.chip ?? l.name, l.hint]), state.layer) : ""}
+      <p class="hint">${winter.length ? escapeHtml(winterSheetHint(state.layer)) : WINTER_EMPTY_HINT}</p>
+    </div>`;
   $("sheet-body").innerHTML = `
+    ${snowCardVisible ? winterSection : ""}
     <div class="sheet-section"><div class="section-label">RADAR</div>
       ${composite ? seg("product", (Object.keys(PRODUCTS) as ProductId[]).map((id) => [id, PRODUCTS[id].name, PRODUCTS[id].hint]), state.product) : ""}
       <p class="hint">${PRODUCTS[state.product].hint}</p>
@@ -762,6 +823,7 @@ function renderSheet() {
       <p class="hint">Muted is the colorblind-safe palette (viridis). Warning outlines are also labelled TOR, SVR or FFW.</p>
       <label class="range-row"><span>Opacity</span><input id="opacity" type="range" min="0.3" max="1" step="0.05" value="${state.opacity}" aria-label="Radar opacity" /></label>
     </div>
+    ${snowCardVisible ? "" : winterSection}
     ${severe.length ? `<div class="sheet-section"><div class="section-label">SEVERE</div>
       ${seg("severe", severe.map((l) => [l.id, l.name, l.hint]), state.layer)}
       <p class="hint">${escapeHtml(severeHint)} · ${SEVERE_CREDIT}</p>
@@ -800,6 +862,11 @@ function hourIndex(times: string[], utcOffsetSeconds?: number): number {
   return Math.max(0, i);
 }
 
+/** Countdown card, lazy-loaded so astronomy-engine stays out of the first bundle. */
+let countdownModule: typeof import("./countdownCard") | undefined;
+const countdownFor = (fc: Forecast, lat: number, lon: number) =>
+  countdownModule?.countdownCardHtml(wallClock(Date.now(), fc.utc_offset_seconds).dateKey, { lat, lon, timeZone: fc.timezone, utcOffsetSeconds: fc.utc_offset_seconds }) ?? "";
+
 /** `refresh` re-renders in place: it keeps the scroll position, the briefing, and the old data if the fetch fails. */
 async function renderForecast(refresh = false) {
   const body = $("panel-body");
@@ -825,6 +892,11 @@ async function renderForecast(refresh = false) {
   const rainTotal = rain.reduce((a, b) => a + b, 0);
   const peak = Math.max(0.05, ...rain);
   const days = fc.daily.time.slice(0, 7);
+  const countdownHtml = countdownFor(fc, lat, lon);
+  const wxmasHtml = whiteChristmasFor(fc, lat, lon);
+  const skyHtml = skyTonightFor(fc, lat, lon);
+  const snowHtml = snowSpotFor(fc, lat, lon);
+  const normalsHtml = normalsFor(fc, lat, lon);
   const lows = fc.daily.temperature_2m_min.slice(0, 7).filter((v): v is number => v != null);
   const highs = fc.daily.temperature_2m_max.slice(0, 7).filter((v): v is number => v != null);
   const wLo = Math.min(...lows);
@@ -848,14 +920,17 @@ async function renderForecast(refresh = false) {
       ${iconSvg(cond, 84)}
     </div>
     <div class="now-meta">Feels ${deg(c.apparent_temperature)} · H ${deg(fc.daily.temperature_2m_max[0])} L ${deg(fc.daily.temperature_2m_min[0])}</div>
+    <div id="normals-line" class="now-meta"${normalsHtml ? "" : " hidden"}>${normalsHtml}</div>
     <div id="briefing" class="briefing" hidden></div>
     <div id="threat" class="threat" hidden></div>
     <div id="alerts" class="section" hidden></div>
+    <div id="snow-spot" class="section snow-spot"${snowHtml ? "" : " hidden"}>${snowHtml}</div>
     <div id="nexthour" class="section" hidden></div>
     <div class="section">
       <div class="section-label">HOURLY</div>
       <div class="hourly">${hours.map((i, k) => `<div class="hour ${k === 0 ? "now-hour" : ""}"><b>${fmtHour(fc.hourly.time[i], k)}</b>${iconSvg(conditionOf(fc.hourly.weather_code[i]), 22)}<div class="t">${deg(fc.hourly.temperature_2m[i])}</div></div>`).join("")}</div>
     </div>
+    ${niceDayCardHtml(fc.hourly, start, wallClock(Date.now(), fc.utc_offset_seconds).dateKey)}
     <div class="section">
       <div class="section-label" style="display:flex;justify-content:space-between"><span>RAIN · NEXT 24H</span><span>${rainTotal.toFixed(2)}″</span></div>
       <div class="rainbars">${rain.map((v) => `<i class="${v ? "" : "dry"}" style="height:${v ? Math.max(8, (v / peak) * 100) : 6}%"></i>`).join("")}</div>
@@ -870,6 +945,9 @@ async function renderForecast(refresh = false) {
         return `<div class="day"><b>${dayName(d, i)}</b>${iconSvg(conditionOf(fc.daily.weather_code[i]), 22)}<span class="lo">${deg(lo)}</span><div class="bar"><span style="left:${left}%;width:${width}%"></span></div><span class="hi">${deg(hi)}</span></div>`;
       }).join("")}
     </div>
+    <div id="countdown" class="section countdown"${countdownHtml ? "" : " hidden"}>${countdownHtml}</div>
+    <div id="white-christmas" class="section white-christmas"${wxmasHtml ? "" : " hidden"}>${wxmasHtml}</div>
+    <div id="sky-tonight" class="section sky-tonight"${skyHtml ? "" : " hidden"}>${skyHtml}</div>
     <div class="section">
       <div class="section-label">CONDITIONS</div>
       <div class="tiles">
@@ -893,6 +971,174 @@ async function renderForecast(refresh = false) {
     $("briefing").innerHTML = briefing.innerHTML;
   } else void renderBriefing();
   void renderNextHour();
+  if (!countdownHtml) void renderCountdown(fc, lat, lon);
+  void renderWhiteChristmas(fc, lat, lon);
+  void renderSkyTonight(fc, lat, lon);
+  void renderSnowSpot(fc, lat, lon);
+  void renderNormals(fc, lat, lon);
+}
+
+/** Normal high and low per point and local date; they never change, so they are kept for the session. */
+const normalsCache = new Map<string, DayNormals | null>();
+function normalsKey(fc: Forecast, lat: number, lon: number): string | null {
+  const date = fc.daily.time[0];
+  return date && inLower48(lat, lon) ? normalsPath(lat, lon, date) : null;
+}
+function normalsFor(fc: Forecast, lat: number, lon: number): string {
+  const key = normalsKey(fc, lat, lon);
+  const n = key ? normalsCache.get(key) : undefined;
+  return escapeHtml(normalsLine(fc.daily.temperature_2m_max[0], n ?? null) ?? "");
+}
+
+async function renderNormals(fc: Forecast, lat: number, lon: number) {
+  const key = normalsKey(fc, lat, lon);
+  if (!key || normalsCache.has(key)) return;
+  // 503 (not built yet) and errors are not cached; 404 (no normal here) is.
+  try {
+    const res = await fetch(key);
+    if (res.ok) normalsCache.set(key, parseNormals(await res.json()));
+    else if (res.status === 404) normalsCache.set(key, null);
+  } catch {
+    return;
+  }
+  const el = document.getElementById("normals-line");
+  if (!el || state.forecast !== fc) return;
+  el.textContent = normalsLine(fc.daily.temperature_2m_max[0], normalsCache.get(key) ?? null) ?? "";
+  el.hidden = !el.textContent;
+}
+
+/** Snow answers per 0.1° cell, kept 15 min like the server and capped by size. */
+const snowSpots = new ByteCappedCache<SnowSpot | null>(256 * 1024, 15 * 60_000);
+let snowCardVisible = false;
+const setSnowCardVisible = (on: boolean) => {
+  if (on === snowCardVisible) return;
+  snowCardVisible = on;
+  renderSheet();
+};
+/** Card from a cached answer, a fixed-height skeleton while a snowy forecast loads, else nothing. */
+function snowSpotFor(fc: Forecast, lat: number, lon: number): string {
+  const spot = snowSpots.get(snowSpotPath(lat, lon));
+  const clock = { timeZone: fc.timezone, utcOffsetSeconds: fc.utc_offset_seconds };
+  if (spot !== undefined) return spot && snowCardShows(spot, Date.now()) ? snowSpotCardHtml(spot, Date.now(), clock) : "";
+  return snowLikely(fc.hourly, Date.now(), fc.utc_offset_seconds) ? snowSpotSkeletonHtml() : "";
+}
+
+async function renderSnowSpot(fc: Forecast, lat: number, lon: number) {
+  const path = snowSpotPath(lat, lon);
+  let spot = snowSpots.get(path);
+  if (spot === undefined) {
+    // A failed call is not cached: the next forecast refresh tries again.
+    try {
+      const res = await fetch(path);
+      const text = res.ok ? await res.text() : "";
+      spot = text ? parseSnowSpot(JSON.parse(text)) : null;
+      if (res.ok) snowSpots.set(path, spot, Math.max(64, text.length));
+    } catch {
+      spot = null;
+    }
+  }
+  const el = document.getElementById("snow-spot");
+  if (!el || state.forecast !== fc) return;
+  const shows = snowCardShows(spot, Date.now());
+  setSnowCardVisible(shows);
+  el.innerHTML = spot && shows ? snowSpotCardHtml(spot, Date.now(), { timeZone: fc.timezone, utcOffsetSeconds: fc.utc_offset_seconds }) : "";
+  el.hidden = !el.innerHTML;
+}
+
+/** Nearest White Christmas station per rounded point; the table never changes, so it is kept for the session. */
+const wxmasNearest = new Map<string, WhiteChristmasStation | null>();
+const whiteChristmasFor = (fc: Forecast, lat: number, lon: number) =>
+  whiteChristmasCardHtml(wallClock(Date.now(), fc.utc_offset_seconds).dateKey, wxmasNearest.get(whiteChristmasPath(lat, lon)) ?? null, overlays.whiteChristmasOn);
+
+async function renderWhiteChristmas(fc: Forecast, lat: number, lon: number) {
+  const path = whiteChristmasPath(lat, lon);
+  if (!inWhiteChristmasSeason(wallClock(Date.now(), fc.utc_offset_seconds).dateKey) || wxmasNearest.has(path)) return;
+  try {
+    const res = await fetch(path);
+    if (!res.ok) return;
+    wxmasNearest.set(path, parseNearestStation(await res.json()));
+  } catch {
+    return;
+  }
+  const el = document.getElementById("white-christmas");
+  if (!el || state.forecast !== fc) return;
+  el.innerHTML = whiteChristmasFor(fc, lat, lon);
+  el.hidden = !el.innerHTML;
+}
+
+/** The card's link: fetch every station once and toggle the dots. No interpolation, just the stations. */
+let wxmasStations: FeatureCollection | null = null;
+async function toggleWhiteChristmasDots() {
+  if (overlays.whiteChristmasOn) overlays.setWhiteChristmas(null);
+  else {
+    try {
+      if (!wxmasStations) {
+        const res = await fetch(WHITE_CHRISTMAS_STATIONS_PATH);
+        if (!res.ok) throw new Error(String(res.status));
+        wxmasStations = (await res.json()) as FeatureCollection;
+      }
+    } catch {
+      toast("Can't load the White Christmas stations");
+      return;
+    }
+    overlays.setWhiteChristmas(wxmasStations);
+    map.easeTo({ center: [state.place.longitude, state.place.latitude], zoom: Math.min(Math.max(map.getZoom(), 5), 7), duration: 700 });
+  }
+  const fc = state.forecast;
+  const el = document.getElementById("white-christmas");
+  if (fc && el) el.innerHTML = whiteChristmasFor(fc, state.place.latitude, state.place.longitude);
+}
+
+async function renderCountdown(fc: Forecast, lat: number, lon: number) {
+  try {
+    countdownModule ??= await import("./countdownCard");
+  } catch {
+    return;
+  }
+  const el = document.getElementById("countdown");
+  if (!el || state.forecast !== fc) return;
+  el.innerHTML = countdownFor(fc, lat, lon);
+  el.hidden = !el.innerHTML;
+}
+
+/** Sky card, lazy-loaded like the countdown. Passes are fetched once per rounded point and hour. */
+let skyModule: typeof import("./skyTonightCard") | undefined;
+let skyShared: typeof import("./shared/skyTonight") | undefined;
+const skyReports = new Map<string, import("./shared/skyTonight").IssReport | null>();
+let skyExpanded = false;
+const skyKey = (lat: number, lon: number) => `${skyShared?.skyTonightPath(lat, lon)}@${Math.floor(Date.now() / 3_600_000)}`;
+const skyTonightFor = (fc: Forecast, lat: number, lon: number) =>
+  skyModule?.skyTonightCardHtml({
+    nowMs: Date.now(),
+    dateKey: wallClock(Date.now(), fc.utc_offset_seconds).dateKey,
+    lat,
+    lon,
+    report: skyReports.get(skyKey(lat, lon)) ?? null,
+    hourly: fc.hourly,
+    clock: { timeZone: fc.timezone, utcOffsetSeconds: fc.utc_offset_seconds },
+    expanded: skyExpanded,
+  }) ?? "";
+
+async function renderSkyTonight(fc: Forecast, lat: number, lon: number) {
+  try {
+    skyModule ??= await import("./skyTonightCard");
+    skyShared ??= await import("./shared/skyTonight");
+  } catch {
+    return;
+  }
+  const key = skyKey(lat, lon);
+  if (!skyReports.has(key)) {
+    try {
+      const res = await fetch(skyShared.skyTonightPath(lat, lon));
+      skyReports.set(key, res.ok ? skyShared.parseSkyTonight(await res.json()) : null);
+    } catch {
+      skyReports.set(key, null);
+    }
+  }
+  const el = document.getElementById("sky-tonight");
+  if (!el || state.forecast !== fc) return;
+  el.innerHTML = skyTonightFor(fc, lat, lon);
+  el.hidden = !el.innerHTML;
 }
 
 /** NWS alerts for the place, polled on their own cadence; a failed poll keeps the last result. */
@@ -928,10 +1174,12 @@ async function renderNextHour() {
   if (!points.length || !document.body.contains(el)) return;
   const skill = describeNowcastSkill(nowcast?.skill);
   const minutes = interpolateNowcast(points);
-  const headline = nextHourHeadline(minutes);
+  // Snow, mix or ice starting this hour beats the rain headline.
+  const winter = winterStart(nowcast);
+  const headline = winter?.words ?? nextHourHeadline(minutes);
   const peak = Math.max(0.1, ...minutes);
   // Same call to action as the app's rain banner: rain within the hour and alerts not on yet.
-  const offerAlerts = !rainAlerts.enabled && rainAlerts.supported && minutes.some((v) => v > RAIN_START_IN_HR);
+  const offerAlerts = !rainAlerts.enabled && rainAlerts.supported && minutes.some((v) => v > (winter ? SNOW_START_IN_HR : RAIN_START_IN_HR));
   el.hidden = false;
   el.innerHTML =
     `<div class="section-label">NEXT HOUR</div>` +
@@ -1104,6 +1352,12 @@ $("panel-body").addEventListener("click", (e) => {
   const t = e.target as HTMLElement;
   if (t.closest("#forecast-retry")) void renderForecast();
   else if (t.closest("#notify-me")) void enableRainAlerts();
+  else if (t.closest("#wxmas-map")) void toggleWhiteChristmasDots();
+  else if (t.closest("#sky-star-map")) showLayer(STARGAZING_LAYER.id);
+  else if (t.closest("#sky-tonight-open") && state.forecast) {
+    skyExpanded = true;
+    void renderSkyTonight(state.forecast, state.place.latitude, state.place.longitude);
+  }
 });
 
 /** The sheet toggle and the next-hour button share one path, so the hint and card stay in step. */
@@ -1131,6 +1385,17 @@ $("layers").addEventListener("click", (e) => {
   renderChips();
   rebuildFrames();
 });
+
+/** Switch the map to a layer from outside the layer row (the sky card's star map link). */
+function showLayer(id: string) {
+  if (replaying() || state.layer === id || !layerAvailable(id)) return;
+  state.layer = id;
+  store("rng.layer", state.layer);
+  track("layer_changed", { layer: state.layer });
+  clearFrames();
+  renderChips();
+  rebuildFrames();
+}
 
 $("styles").addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-style]");
@@ -1187,7 +1452,7 @@ $("sheet-body").addEventListener("click", (e) => {
     if (!replaying()) store("rng.product", value);
     track("radar_product_changed", { product: value });
     rebuildFrames(currentFrame()?.time);
-  } else if (group === "severe" && value !== state.layer) {
+  } else if ((group === "severe" || group === "winter") && value !== state.layer) {
     state.layer = value;
     if (!replaying()) store("rng.layer", state.layer);
     track("layer_changed", { layer: state.layer });
@@ -1365,21 +1630,26 @@ map.on("click", async (e) => {
   }
   const { lat, lng } = e.lngLat;
   popup.setLngLat(e.lngLat).setHTML('<div class="readout"><small>Reading…</small></div>').addTo(map);
-  const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng).catch(() => null);
+  const detail: { note?: string | null } = {};
+  const value = await readPoint(state.layer, frame.source, frame.timestamp, lat, lng, detail).catch(() => null);
   if (click !== clickSeq) return; // a newer click owns the popup now
   track("point_inspected", { layer: state.layer, source: frame.source, has_value: value != null });
-  const title = SOURCE_TITLE[frame.source] ?? (LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? "").toUpperCase();
+  const title = forecastTitle(frame.source, frame.time, nowSec()) ?? SOURCE_TITLE[frame.source] ?? (LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? winterLayer(state.layer)?.name ?? "").toUpperCase();
   let text = "No data here";
   if (value != null) {
-    if (state.layer === "radar") text = `${describeDbz(value)} <small>${Math.round(value)} dBZ</small>`;
+    if (state.layer === "radar") text = `${describeDbz(value)} <small>${Math.round(value)} dBZ</small>` + (detail.note ? `<small class="precip-note">${detail.note}</small>` : "");
     else if (state.layer === "air-quality") text = `AQI ${usAqiFromPm25(value)} · ${aqiLabel(usAqiFromPm25(value))} <small>${Math.round(value)} µg/m³</small>`;
     else if (state.layer === "ozone") text = `${Math.round(value)} ppb`;
     else if (["temperature", "feels-like", "dewpoint"].includes(state.layer)) text = `${Math.round(value)}°F`;
     else if (state.layer === "wind") text = `${Math.round(value)} mph`;
     else if (state.layer === "cloud") text = `${Math.round(value)}%`;
+    else if (state.layer === NICE_DAY_LAYER.id) text = formatNiceDayReading(value) ?? `${Math.round(value)}`;
+    else if (state.layer === STARGAZING_LAYER.id) text = (formatStargazingReading(value) ?? `${Math.round(value)}`) + (detail.note ? `<small class="precip-note">${escapeHtml(detail.note)}</small>` : "");
+    else if (state.layer === TEMP_NORMAL_LAYER.id) text = formatAnomalyReading(value) ?? `${Math.round(value)}°F`;
     else if (state.layer === "precip-accum" || state.layer === "precip-24h") text = `${value.toFixed(2)} in`;
     else if (state.layer === "uv") text = `UV ${Math.round(value)} · ${uvCategory(value)}`;
     else if (severeLayer(state.layer)) text = formatSevereReading(state.layer, value) ?? `${value.toFixed(1)}`;
+    else if (winterLayer(state.layer)) text = formatWinterReading(state.layer, value) ?? `${value.toFixed(2)}`;
     else text = `${value.toFixed(1)}`;
   }
   popup.setHTML(`<div class="readout"><b>${title}</b><div class="v">${text}</div><small>${lat.toFixed(3)}, ${lng.toFixed(3)}</small></div><div class="outlook-slot">Loading SPC outlook…</div>`);
@@ -1452,7 +1722,7 @@ const replayZone = () => state.replay?.case.timezone ?? "UTC";
 
 /** Absolute historical date, time and zone; never "Now". */
 function renderReplayTimeline(frame: Frame | undefined, slider: HTMLInputElement) {
-  const layerName = LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? "Radar";
+  const layerName = LAYERS.find((l) => l.id === state.layer)?.name ?? severeLayer(state.layer)?.name ?? winterLayer(state.layer)?.name ?? "Radar";
   if (!frame) {
     $("frame-title").textContent = state.replay?.error ? "Replay unavailable" : "Loading replay…";
     $("frame-time").innerHTML = "&nbsp;";

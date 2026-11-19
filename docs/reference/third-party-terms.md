@@ -148,6 +148,60 @@ Nominatim is no longer called at all. See `docs/app/privacy.md` §3. The usage-p
   be updated together.
 - `docs/self-host/configuration.md` documents the `EXPO_PUBLIC_BASEMAP_*` overrides.
 
+## Weather data: processed by radar-ng, not an official NWS product
+
+Every weather layer, card and notice below is processed by radar-ng from public NOAA, NWS and ECCC
+data. None of it is an official NWS product, and neither NOAA nor ECCC endorses the app.
+
+## NOAA MRMS, HRRR and GFS (winter radar, Nice Day and star maps)
+
+Observed radar and its rain, snow and mix classes come from NOAA
+[MRMS](https://registry.opendata.aws/noaa-mrms-pds/) on NOAA Open Data Dissemination. The ice class,
+the winter colours on future frames, and the `nice-day` and `stargazing` layers use NOAA
+[HRRR](https://registry.opendata.aws/noaa-hrrr-pds/) fields (CRAIN, CSNOW, CFRZR, CICEP, cloud
+cover, temperature, wind, humidity, rain). Frames past HRRR use NOAA
+[GFS](https://registry.opendata.aws/noaa-gfs-bdp-pds/). All are free and keyless. Credit NOAA, do
+not imply NOAA endorses the app, and say the data was modified: we recolour, score and re-grid it.
+Clients contact only our server.
+
+## NOAA National Blend of Models (snow and ice totals)
+
+The `snowfall-forecast` and `ice-forecast` layers come from NBM `ASNOW` and `FICEAC` in the
+[NOAA NBM bucket](https://registry.opendata.aws/noaa-nbm/) (NOAA Open Data Dissemination). The data is free and keyless.
+Credit NOAA, do not imply NOAA endorses the app, and say the data was modified: we sum the 6-hour
+amounts into running totals and convert them to inches. The worker reads byte ranges only; clients contact only our server.
+
+## NOAA SNODAS and NOHRSC (snow on the ground, past 24 h snow)
+
+The `snow-depth` layer comes from the daily SNODAS masked tar at
+[NSIDC G02158](https://nsidc.org/data/g02158/versions/1). Cite it as: National Operational Hydrologic
+Remote Sensing Center. 2004. Snow Data Assimilation System (SNODAS) Data Products at NSIDC, Version 1.
+Boulder, Colorado USA. NSIDC: National Snow and Ice Data Center. doi:10.7265/N5TB14TC. The data is free and keyless.
+
+The `snowfall-24h` layer comes from the NWS NOHRSC
+[National Snowfall Analysis](https://www.nohrsc.noaa.gov/snowfall/) (`sfav2_CONUS_24h_*_grid184.grb2`),
+a public-domain NWS product. We do not use the NOHRSC `collaborators` folder: it states no terms.
+For both, credit NOAA, do not imply NOAA endorses the app, and say we converted the values to inches.
+Clients contact only our server.
+
+## NOAA WPC Probabilistic Precipitation Portal (snow chance)
+
+The `snow-chance-1`, `snow-chance-4` and `snow-chance-8` layers come from the NWS Weather Prediction
+Center [Probabilistic Precipitation Portal](https://www.wpc.ncep.noaa.gov/pwpf/about_ppp_products.php)
+files on `ftp-wpc.ncep.noaa.gov` (`prob_precip_portal/co/`, `ndfd_co_pw24ige{1,4,8}p00_*.grib2`). They
+are public-domain NWS products, free and keyless. We do not use the legacy `pwpf` files, which end on
+or about 2026-11-30. Credit NOAA WPC, do not imply NOAA endorses the app, and say we converted the
+stored fractions to percent. Clients contact only our server.
+
+## NOAA NCEI nClimGrid-Daily normals (temp vs normal)
+
+The `temp-anomaly` layer and `GET /api/normals` use the NCEI nClimGrid-Daily 1991-2020 daily normals
+([archive](https://www.ncei.noaa.gov/data/oceans/archive/arc0207/0259962/1.1/data/0-data/),
+`tmax-` and `tmin-1991_2020-daily-normals-v1.0.nc`). The file headers say "no restrictions". The aux
+worker downloads them once into `STATE_DIR/static/normals/` and converts them to int16 tenths of a
+degree. The forecast high is the NOAA GFS `TMAX` record. Credit NOAA NCEI, do not imply NOAA endorses
+the app, and say the normals are converted. Clients contact only our server.
+
 ## SPC watches, discussions and outlooks
 
 Attribute these products to NOAA/NWS Storm Prediction Center. These federal weather products are free and keyless.
@@ -164,3 +218,103 @@ was also checked; its empty state uses a `NoArea` placeholder. Clients contact o
 `/api/spc/watches` and `/api/spc/discussions` refresh on demand every 60 seconds, without worker schedules.
 Both retain last-good data on failure and remove expired products on every response. `stale` marks fallback data.
 Responses use `no-store` so downstream caches cannot serve expired polygons.
+
+## astronomy-engine (sun, moon and planet times)
+
+Both clients bundle [`astronomy-engine`](https://github.com/cosinekitty/astronomy) 2.1.19 by Donald
+Cross for sunrise, sunset, twilight, moon phase and planet rise and set. It is MIT licensed, pure
+JavaScript with no dependencies, and runs on the device with no network call. The MIT licence asks
+that the notice ships with the code. The package keeps it in its source header, and this page
+repeats it:
+
+```
+MIT License
+
+Copyright (c) 2019-2023 Don Cross <cosinekitty@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+The holiday countdown uses it for the sunset on each date. Sunset tests are pinned to US Naval
+Observatory values ([`rstt/oneday`](https://aa.usno.navy.mil/data/api)).
+
+## NCEI climate normals (White Christmas chance)
+
+The White Christmas card uses the NOAA NCEI
+[U.S. Climate Normals 1991-2020](https://www.ncei.noaa.gov/products/land-based-station/us-climate-normals),
+daily, by station. It is a U.S. Government work in the public domain; credit NOAA NCEI.
+`rust/scripts/build-white-christmas.py` reads the
+[station archive](https://www.ncei.noaa.gov/data/normals-daily/1991-2020/archive/) once and keeps the
+Dec 25 `DLY-SNWD-PCTALL-GE001WI` value: the percent of years with at least 1 inch of snow on the
+ground. The NCEI docs say "tenths of percent", but the values are whole percent. Detroit (34.7),
+Duluth (92.2) and Minneapolis (73.6) match NOAA's published odds. The server embeds the result, and
+clients contact only our server.
+
+## CelesTrak and sgp4 (ISS passes)
+
+The sky card lists visible ISS passes. The aux worker fetches the ISS orbital elements (OMM, CSV)
+from [CelesTrak](https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=CSV) once every 6
+hours. It follows the [usage policy](https://celestrak.org/usage-policy.php): one request per slot,
+a clear User-Agent, no redirects, no retry after a non-200, and only the `.org` host. CelesTrak
+states no formal licence, so we credit "Orbital elements: CelesTrak" and never re-serve the raw
+file. The server computes the passes, and clients contact only our server.
+
+Passes are computed with the [`sgp4`](https://github.com/neuromorphicsystems/sgp4) crate 2.4.0, pure
+Rust, MIT licensed:
+
+```
+MIT License
+
+Copyright (c) 2020 International Centre for Neuromorphic Systems
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+The pass test is pinned to Heavens-Above times for Detroit (within one minute).
+
+## ECCC RDPS seeing and transparency (star map)
+
+The star map and the sky card can use Environment and Climate Change Canada's RDPS `SeeingIndex`
+and `SkyTransparencyIndex` (0-5, 10 km, North America; see the
+[astronomy readme](https://eccc-msc.github.io/open-data/msc-data/nwp_rdps/readme_astro-rdps-datamart-alpha_en/)).
+The [End-use licence](https://eccc-msc.github.io/open-data/licence/readme_en/) asks for the line
+"Data Source: Environment and Climate Change Canada", so both clients show it in the star map
+legend, in the inspector and on the sky card when the server has the fields.
+
+The aux `ingest-star-seeing` product builds each file name from the RDPS run time and asks the
+Datamart only for night hours it lacks: two files, about 1.8 MB, per hour. It never lists a directory, sends a
+clear User-Agent, follows no redirects and stops at the first 404. The
+[usage policy](https://eccc-msc.github.io/open-data/usage-policy/readme_en/) says systematic
+retrieval must use the AMQPS service, with `curl`-style HTTPS for ad hoc use only. We have no AMQPS
+client yet, so the fetch is off unless `ECCC_SEEING_ENABLED=true`. Without it the star map scores on
+cloud, darkness and the moon alone. The server decodes the files (pure Rust: our rotated-grid code
+plus the `grib` crate's JPEG 2000 backend), and clients contact only our server.

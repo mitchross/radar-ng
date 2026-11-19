@@ -124,7 +124,14 @@ pub fn needed_vars(enabled: &[String]) -> Vec<HrrrVar> {
 /// The variables a layer reads (spec §12.2 `LAYER_VARS`).
 pub fn layer_vars(layer: &str) -> Vec<HrrrVar> {
     match layer {
-        "radar-hrrr" => vec![HrrrVar::Refc],
+        // The type flags feed the `precip-type` grid (MRMS ice), whatever layers are enabled.
+        "radar-hrrr" => vec![
+            HrrrVar::Refc,
+            HrrrVar::Crain,
+            HrrrVar::Csnow,
+            HrrrVar::Cfrzr,
+            HrrrVar::Cicep,
+        ],
         "temperature" => vec![HrrrVar::T2m],
         "feels-like" => vec![HrrrVar::T2m, HrrrVar::Rh2m, HrrrVar::U10, HrrrVar::V10],
         "dewpoint" => vec![HrrrVar::Dpt2m],
@@ -139,9 +146,21 @@ pub fn layer_vars(layer: &str) -> Vec<HrrrVar> {
         ],
         "precip-accum" => vec![HrrrVar::Apcp],
         "cloud" => vec![HrrrVar::Tcdc],
+        "nice-day" => vec![
+            HrrrVar::T2m,
+            HrrrVar::Rh2m,
+            HrrrVar::U10,
+            HrrrVar::V10,
+            HrrrVar::Apcp,
+        ],
+        "stargazing" => vec![HrrrVar::Tcdc],
         _ => Vec::new(),
     }
 }
+
+/// Layers whose all-transparent hours are published as empty pyramids (the stargazing layer is
+/// transparent by day), so the resume check finds them complete.
+pub const KEEP_EMPTY_LAYERS: [&str; 1] = ["stargazing"];
 
 /// Palette color key of a layer (spec §6.1 `LAYER_COLOR_KEYS`).
 pub fn layer_color_key(layer: &str) -> Option<&'static str> {
@@ -155,6 +174,8 @@ pub fn layer_color_key(layer: &str) -> Option<&'static str> {
         "precip-type" => "precip_type",
         "precip-accum" => "precip_accum",
         "cloud" => "cloud_cover",
+        "nice-day" => "nice_day",
+        "stargazing" => "stargazing",
         _ => return None,
     })
 }

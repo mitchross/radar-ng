@@ -4,6 +4,7 @@ import {
   parseRainAlertLead,
   planRainAlert,
   shouldNotify,
+  winterStart,
 } from "../../src/lib/rainAlerts";
 import type { RadarNowcastResponse } from "../../src/types/weather";
 
@@ -117,5 +118,25 @@ describe("persisted prefs", () => {
     expect(parseRainAlertLead("15")).toBe(15);
     expect(parseRainAlertLead("7")).toBe(10);
     expect(parseRainAlertLead("")).toBe(10);
+  });
+});
+
+describe("snow start", () => {
+  // 0.4 mm/h is about 16 dBZ: under the rain start, over the snow start.
+  const light = { ...dry, 25: 0.4, 30: 0.4, 35: 0.4 };
+  const classed = (cls: "snow" | "rain"): RadarNowcastResponse => {
+    const body = nowcast(light);
+    return { ...body, points: body.points.map((p) => ({ ...p, precip_class: cls })) };
+  };
+  it("notifies light snow the rain rule would skip, counting from the notification", () => {
+    const plan = planRainAlert(classed("snow"), "Detroit", { leadMinutes: 10 }, NOW)!;
+    expect(plan.precipClass).toBe("snow");
+    expect(plan.title).toBe("Snow starts in ~10 min");
+    expect(winterStart(classed("snow"), NOW)?.words).toMatch(/^Snow starts in ~\d+ min$/);
+  });
+  it("keeps rain unchanged without a class or with rain", () => {
+    expect(planRainAlert(nowcast(light), "Detroit", { leadMinutes: 10 }, NOW)).toBeNull();
+    expect(planRainAlert(classed("rain"), "Detroit", { leadMinutes: 10 }, NOW)).toBeNull();
+    expect(winterStart(classed("rain"), NOW)).toBeNull();
   });
 });

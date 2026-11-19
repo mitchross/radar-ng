@@ -31,6 +31,11 @@ describe("formatReading", () => {
     expect(formatReading("hail-size", reading(1.75))).toBe("1.75 in hail");
     expect(formatReading("rotation-track", reading(0.012))).toBe("0.012 /s");
     expect(formatReading("echo-top", reading(41.6))).toBe("42 kft");
+    expect(formatReading("snowfall-forecast", reading(8.04))).toBe("8.0 in");
+    expect(formatReading("ice-forecast", reading(0.004))).toBe("No ice");
+    expect(formatReading("snow-depth", reading(14.4))).toBe("14 in");
+    expect(formatReading("snowfall-24h", reading(0.02))).toBe("No new snow");
+    expect(formatReading("snow-chance-4", reading(61.7))).toBe("62%");
   });
   it("names PM2.5 with the same rule as the home Air Quality tile", () => {
     const at = (value: number) => formatReading("air-quality", { ok: true, value, unit: "µg/m³", source: "grid" });

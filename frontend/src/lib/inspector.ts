@@ -8,6 +8,11 @@ import { recordSpanError, trace } from "./telemetry";
 import { fetchRadarNowcast, fetchWithTimeout } from "./api";
 import { aqiCategory, usAqiFromPm25 } from "./airQuality";
 import { formatSevereReading } from "../../../web/src/shared/severe";
+import { formatWinterReading } from "../../../web/src/shared/winterLayers";
+import { NICE_DAY_LAYER, formatNiceDayReading } from "../../../web/src/shared/niceDayLayer";
+import { TEMP_NORMAL_LAYER, formatAnomalyReading } from "../../../web/src/shared/tempNormal";
+import { STARGAZING_LAYER, formatStargazingReading, skyQualityNote } from "../../../web/src/shared/stargazingLayer";
+import { precipClassNote } from "../../../web/src/shared/precipType";
 
 export interface InspectReading {
   ok: boolean;
@@ -15,6 +20,9 @@ export interface InspectReading {
   unit: string;
   source: "grid" | "unavailable";
   reason?: string;
+  /** Observed radar: "Ice: freezing rain or sleet, …" where the server draws the ice class.
+   *  Stargazing: ECCC seeing and transparency with their credit. */
+  note?: string | null;
 }
 
 interface InspectOptions {
@@ -42,7 +50,8 @@ export async function inspectPoint(
           const json = await resp.json();
           if (json.ok && json.value != null) {
             span.setAttribute("inspector.value", json.value);
-            return { ok: true, value: json.value, unit: json.unit ?? "", source: "grid" };
+            const note = opts.layer === STARGAZING_LAYER.id ? skyQualityNote(json) : precipClassNote(json);
+            return { ok: true, value: json.value, unit: json.unit ?? "", source: "grid", note };
           }
           return {
             ok: false,
@@ -117,6 +126,11 @@ export function formatReading(layer: LayerType, r: InspectReading): string {
   if (layer === "precip-accum" || layer === "precip-24h") return v < 0.01 ? "—" : `${v.toFixed(2)} in`;
   const severe = formatSevereReading(layer, v);
   if (severe) return severe;
+  const winter = formatWinterReading(layer, v);
+  if (winter) return winter;
+  if (layer === NICE_DAY_LAYER.id) return formatNiceDayReading(v) ?? "\u2014";
+  if (layer === TEMP_NORMAL_LAYER.id) return formatAnomalyReading(v) ?? "\u2014";
+  if (layer === STARGAZING_LAYER.id) return formatStargazingReading(v) ?? "\u2014";
   if (layer === "cloud") return `${Math.round(v)}%`;
   if (layer === "uv") return `UV ${Math.round(v)} · ${describeUV(v)}`;
   if (layer === "air-quality") return `${Math.round(v)} µg/m³ · ${aqiCategory(usAqiFromPm25(v)).label}`;

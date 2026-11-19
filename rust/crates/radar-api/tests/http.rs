@@ -2499,3 +2499,143 @@ async fn spc_http_filters_expired_products_on_fresh_fetch() {
         assert!(body["features"].as_array().unwrap().is_empty());
     }
 }
+
+#[tokio::test]
+async fn white_christmas_lists_stations_and_answers_the_nearest() {
+    let env = Env::new();
+    let app = env.app(|_| {});
+    let (status, headers, all) = get_json(&app, "/api/climate/white-christmas").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        header_str(&headers, "cache-control"),
+        "public, max-age=86400"
+    );
+    assert_eq!(all["type"], "FeatureCollection");
+    assert!(all["features"].as_array().unwrap().len() > 4500);
+
+    let (status, _, near) = get_json(
+        &app,
+        "/api/climate/white-christmas?lat=42.3314&lon=-83.0458",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let s = &near["station"];
+    assert!(s["name"].as_str().unwrap().contains("MI US"), "{s}");
+    assert!(s["distance_mi"].as_f64().unwrap() < 30.0, "{s}");
+
+    let (status, _, bad) = get_json(&app, "/api/climate/white-christmas?lat=95").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(bad["detail"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn sky_tonight_without_elements_says_why_and_validates_the_path() {
+    let env = Env::new();
+    let app = env.app(|_| {});
+    let (status, headers, body) = get_json(&app, "/api/sky/tonight/42.3314/-83.0458").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(header_str(&headers, "cache-control"), "no-store");
+    assert_eq!(body["status"], "no_data");
+    assert_eq!(body["source"], "Orbital elements: CelesTrak");
+
+    let (status, _, _) = get_json(&app, "/api/sky/tonight/95/0").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn snow_spot_is_cached_per_cell_and_a_failed_upstream_is_no_store() {
+    let calls = counter();
+    let om_calls = calls.clone();
+    let open_meteo = Router::new().route(
+        "/v1/forecast",
+        get(move |Query(q): Query<HashMap<String, String>>| {
+            let calls = om_calls.clone();
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(q.get("hourly").map(String::as_str), Some("snowfall"));
+                Json(json!({
+                    "hourly_units": {"snowfall": "inch"},
+                    "hourly": {"time": ["2026-11-18T04:00", "2026-11-18T05:00"], "snowfall": [0.0, 0.4]},
+                }))
+            }
+        }),
+    );
+    let base = mock(open_meteo).await;
+    let env = Env::new();
+    let app = env.app(|c| c.open_meteo_base = format!("{base}/v1/forecast"));
+
+    let (status, headers, body) = get_json(&app, "/api/snow/42.96/-85.67").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(header_str(&headers, "cache-control"), "public, max-age=900");
+    assert_eq!(body["hourly"]["snowfall_in"], json!([0.0, 0.4]));
+    assert_eq!(body["start"], "2026-11-18T04:00:00Z");
+    assert_eq!(body["sources"], json!(["open-meteo"]));
+    let _ = get_json(&app, "/api/snow/42.99/-85.72").await;
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "same 0.1 degree cell");
+
+    // No Open-Meteo and no winter layers: still a valid answer, just not cached.
+    let down = env.app(|c| c.open_meteo_base = "http://127.0.0.1:9/v1/forecast".into());
+    let (status, headers, body) = get_json(&down, "/api/snow/42.96/-85.67").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(header_str(&headers, "cache-control"), "no-store");
+    assert_eq!(body["sources"], json!([]));
+    assert!(body.get("hourly").is_none());
+
+    let (status, _, _) = get_json(&app, "/api/snow/95/0").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn normals_answer_the_nearest_land_cell_and_say_when_not_ready() {
+    use radar_aux::static_data::normals::{GridSpec, MISSING, Var, write_store};
+    let env = Env::new();
+    let app = env.app(|_| {});
+    let (status, headers, body) = get_json(&app, "/api/normals/42.33/-83.05?date=2026-11-18").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(header_str(&headers, "cache-control"), "no-store");
+    assert_eq!(body["error"], "normals_not_ready");
+
+    // 1 degree cells over Michigan; the normal high is 5 C plus a tenth per day, the low 10 C less.
+    let grid = GridSpec {
+        rows: 4,
+        cols: 4,
+        lat0: 41.0,
+        lon0: -85.0,
+        step: 1.0,
+    };
+    write_store(&env.path("state"), grid, |var, day, r, c| {
+        if (r, c) == (3, 3) {
+            return MISSING;
+        }
+        let high = 50 + day as i16;
+        if var == Var::Tmax { high } else { high - 100 }
+    })
+    .unwrap();
+    let (status, headers, body) = get_json(&app, "/api/normals/42.33/-83.05?date=2026-11-18").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        header_str(&headers, "cache-control"),
+        "public, max-age=86400"
+    );
+    // Nov 18 is file day 322: 5 + 32.2 = 37.2 C high, 27.2 C low.
+    assert_eq!(body["high_c"], 37.2);
+    assert_eq!(body["low_c"], 27.2);
+    assert_eq!(body["high_f"], 99.0);
+    assert_eq!(body["date"], "2026-11-18");
+    assert_eq!(
+        body["source"],
+        "NOAA NCEI nClimGrid-Daily 1991-2020 normals"
+    );
+
+    // A missing cell borrows its neighbour; outside the grid is 404.
+    let (status, _, body) = get_json(&app, "/api/normals/44.0/-82.0?date=2026-01-01").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["high_c"], 5.0);
+    let (status, _, body) = get_json(&app, "/api/normals/21.3/-157.8").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"], "no_normal_here");
+
+    let (status, _, bad) = get_json(&app, "/api/normals/95/0?date=11-18").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(bad["detail"].as_array().unwrap().len(), 2);
+}

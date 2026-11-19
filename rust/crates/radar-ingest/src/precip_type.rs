@@ -1,15 +1,25 @@
 //! Precipitation type for MRMS reflectivity frames, from MRMS `PrecipFlag_00.00` (2-minute cadence,
 //! the same 0.01 degree CONUS grid as the reflectivity products).
 //!
-//! Best effort: any failure gives `None`, and the frame renders with the rain ramp only.
+//! PrecipFlag has no freezing-rain or sleet code, so the ice class comes from the HRRR
+//! `precip-type` grid valid nearest the frame (at most [`MAX_ICE_GRID_DELTA`] away).
+//!
+//! Best effort: any failure gives `None`, and the frame renders with the rain ramp only. A missing
+//! or stale HRRR grid leaves the PrecipFlag classes exactly as they are.
+
+use std::path::Path;
 
 use chrono::{DateTime, Duration, Utc};
+use radar_core::grid_dump::{self, GridConfig, GridInput};
+use radar_core::grid_read::{GridDump, read_grid};
+pub use radar_core::ice::{ICE_ECHO_DBZ, MAX_ICE_GRID_DELTA, nearest_type_grid};
+use radar_core::ice::{OBSERVED_TYPE_GRID, is_ice_category};
 use radar_geo::{Grid, GridGeo};
 use radar_grib::http::MRMS_GET_TIMEOUT;
 use radar_grib::mrms as gmrms;
 use radar_grib::s3::S3Client;
 use radar_tiler::TypePlane;
-use radar_tiler::typed::{TYPE_MIX, TYPE_RAIN, TYPE_SNOW};
+use radar_tiler::typed::{TYPE_ICE, TYPE_MIX, TYPE_RAIN, TYPE_SNOW};
 use rayon::prelude::*;
 
 /// Default `PRECIP_FLAG_PREFIX`.
@@ -66,6 +76,156 @@ pub fn type_plane(gz: &[u8], grid: &Grid) -> anyhow::Result<TypePlane> {
         flags.width,
         MIX_RADIUS_CELLS,
     ))?)
+}
+
+/// The frame's type plane: PrecipFlag classes (`flags`, already decoded), with HRRR ice on top
+/// when `hrrr` is given. Without PrecipFlag the base is all rain, and the plane exists only when
+/// some cell is ice. Without `hrrr` this is `flags` unchanged.
+pub fn frame_types(
+    flags: Option<TypePlane>,
+    grid: &Grid,
+    hrrr: Option<&GridDump>,
+) -> Option<TypePlane> {
+    let Some(hrrr) = hrrr else {
+        return flags;
+    };
+    let mut classes = match &flags {
+        Some(p) => p.classes().to_vec(),
+        None => vec![TYPE_RAIN; grid.values.len()],
+    };
+    if apply_hrrr_ice(&mut classes, grid, hrrr) == 0 {
+        return flags;
+    }
+    TypePlane::new(classes).ok()
+}
+
+/// Read the nearest `precip-type` grid, or `None` (with a warning when one exists but is bad).
+pub fn load_type_grid(grid_dir: &Path, valid_time: DateTime<Utc>) -> Option<GridDump> {
+    let path = nearest_type_grid(grid_dir, valid_time)?;
+    read_grid(&path)
+        .inspect_err(|err| tracing::warn!(path = %path.display(), err = %err, "type_grid_failed"))
+        .ok()
+}
+
+/// Set `classes` to ice where `grid` has an echo (at or above [`ICE_ECHO_DBZ`]) and
+/// the nearest `hrrr` cell is freezing rain or ice pellets. Returns the number of ice cells.
+pub fn apply_hrrr_ice(classes: &mut [u8], grid: &Grid, hrrr: &GridDump) -> usize {
+    let values = &grid.values;
+    let GridGeo::Regular { lats, lons } = &grid.geo else {
+        return 0;
+    };
+    let m = &hrrr.meta;
+    if m.height < 2
+        || m.width < 2
+        || classes.len() != values.len()
+        || values.len() != lats.len() * lons.len()
+    {
+        return 0;
+    }
+    let dlat = (m.lat_max - m.lat_min) / (m.height - 1) as f64;
+    let dlon = (m.lon_max - m.lon_min) / (m.width - 1) as f64;
+    let index = |v: f64, n: usize| {
+        let i = v.round();
+        (i >= 0.0 && i < n as f64).then_some(i as usize)
+    };
+    let rows: Vec<Option<usize>> = lats
+        .iter()
+        .map(|&lat| index((m.lat_max - lat) / dlat, m.height))
+        .collect();
+    let cols: Vec<Option<usize>> = lons
+        .iter()
+        .map(|&lon| {
+            let lon = if lon > 180.0 { lon - 360.0 } else { lon };
+            index((lon - m.lon_min) / dlon, m.width)
+        })
+        .collect();
+    let w = lons.len();
+    classes
+        .par_chunks_mut(w)
+        .zip(values.par_chunks(w))
+        .zip(rows.par_iter())
+        .map(|((out, vals), row)| {
+            let Some(row) = *row else {
+                return 0;
+            };
+            let src = &hrrr.values[row * m.width..(row + 1) * m.width];
+            let mut n = 0;
+            for ((class, &v), col) in out.iter_mut().zip(vals).zip(&cols) {
+                if v >= ICE_ECHO_DBZ
+                    && let Some(col) = *col
+                    && is_ice_category(src[col])
+                {
+                    *class = TYPE_ICE;
+                    n += 1;
+                }
+            }
+            n
+        })
+        .sum()
+}
+
+/// Display classes from a model's categorical flags (HRRR or GFS CRAIN / CSNOW / CFRZR / CICEP,
+/// 1 where the type falls). Freezing rain or ice pellets is ice, snow with rain is mix, then snow,
+/// else rain. Missing flags (`None`) count as 0.
+pub fn model_classes(
+    crain: Option<&[f32]>,
+    csnow: Option<&[f32]>,
+    cfrzr: Option<&[f32]>,
+    cicep: Option<&[f32]>,
+    len: usize,
+) -> Vec<u8> {
+    let on = |flag: Option<&[f32]>, i: usize| flag.and_then(|f| f.get(i)).is_some_and(|&v| v > 0.0);
+    (0..len)
+        .into_par_iter()
+        .map(|i| {
+            if on(cfrzr, i) || on(cicep, i) {
+                TYPE_ICE
+            } else if on(csnow, i) && on(crain, i) {
+                TYPE_MIX
+            } else if on(csnow, i) {
+                TYPE_SNOW
+            } else {
+                TYPE_RAIN
+            }
+        })
+        .collect()
+}
+
+/// A plane of `classes`, or `None` when every cell is rain (the plain ramp draws the same).
+pub fn plane_unless_all_rain(classes: Vec<u8>) -> Option<TypePlane> {
+    if classes.iter().all(|&c| c == TYPE_RAIN) {
+        return None;
+    }
+    TypePlane::new(classes).ok()
+}
+
+/// Cell cap of the observed class dump. Classes are resampled by nearest cell, so a coarser dump
+/// than the dBZ input is enough and keeps it near 8 MB.
+pub const OBSERVED_TYPE_MAX_CELLS: usize = 2_000_000;
+
+/// Dump an observed frame's classes as the `radar-type` grid; `None` is all rain, so the nowcast
+/// never holds an older frame's snow. Best effort: a failure is logged.
+pub fn dump_observed_types(
+    cfg: &GridConfig,
+    timestamp: &str,
+    types: Option<&TypePlane>,
+    (lats, lons): (&[f64], &[f64]),
+    max_cells: usize,
+) {
+    let values: Vec<f32> = match types {
+        Some(t) => t.classes().iter().map(|&c| f32::from(c)).collect(),
+        None => vec![f32::from(TYPE_RAIN); lats.len() * lons.len()],
+    };
+    let input = GridInput {
+        max_cells: Some(max_cells.min(OBSERVED_TYPE_MAX_CELLS)),
+        ..GridInput::new(&values, lats, lons, "class")
+    };
+    match grid_dump::write_grid(cfg, OBSERVED_TYPE_GRID, timestamp, &input) {
+        Ok(_) => {
+            grid_dump::prune_grid_layer(cfg, OBSERVED_TYPE_GRID, None);
+        }
+        Err(err) => tracing::warn!(timestamp, err = %err, "observed_types_dump_failed"),
+    }
 }
 
 /// Same shape and the same first and last coordinates on both axes.

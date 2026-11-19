@@ -2726,7 +2726,9 @@ dependencies = [
  "pmtiles",
  "png",
  "radar-alerts",
+ "radar-aux",
  "radar-core",
+ "radar-grib",
  "radar-level2",
  "radar-replay",
  "radar-storms",
@@ -2763,10 +2765,12 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sgp4",
  "tempfile",
  "thiserror",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -2867,7 +2871,9 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "bytes",
  "chrono",
+ "radar-aux",
  "radar-core",
  "radar-geo",
  "radar-grib",
@@ -3506,6 +3512,17 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "sgp4"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9467b9a7be8485ed8be0f336d399c8f32c0fcd60686e7dd2ed3dab75c9a73eb3"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

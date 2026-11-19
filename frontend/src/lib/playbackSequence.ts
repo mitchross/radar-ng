@@ -84,3 +84,4 @@ export function positionOf(seq: readonly number[], frames: readonly TimedFrame[]
 
 /** "-4h", "+45m", "+17h": a frame's offset from now for axis labels; "Now" within 5 minutes, like the web. */
 export { offsetLabel } from "../../../web/src/shared/offsetLabel";
+export { forecastLine, forecastTitle, forecastWords } from "../../../web/src/shared/frameWords";

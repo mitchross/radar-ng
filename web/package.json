@@ -11,6 +11,7 @@
     "e2e": "playwright test -c e2e"
   },
   "dependencies": {
+    "astronomy-engine": "2.1.19",
     "maplibre-gl": "^6.11.2",
     "posthog-js": "^1.434.15"
   },

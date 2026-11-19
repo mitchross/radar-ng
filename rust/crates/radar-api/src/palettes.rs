@@ -63,6 +63,13 @@ mod tests {
                 "pm25",
                 "ozone",
                 "uv_index",
+                "snowfall",
+                "ice_accum",
+                "snow_depth",
+                "nice_day",
+                "stargazing",
+                "snow_chance",
+                "temp_anomaly",
             ] {
                 let ranges = table[key]["ranges"].as_array().unwrap();
                 assert!(!ranges.is_empty(), "{name}.{key}");

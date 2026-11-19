@@ -14,11 +14,13 @@ use radar_tiler::identity::{
     frame_model,
 };
 use radar_tiler::palettes::Palette;
-use radar_tiler::{ColorTable, FrameOptions, complete_pyramid_identity, render_frame_palettes};
+use radar_tiler::{
+    ColorTable, FrameOptions, TypePlane, complete_pyramid_identity, render_frame_palettes,
+};
 
 use super::dump::{Resampler, safe_dump, target_axes};
 use super::state::{RADAR_HRRR, layer_color_key};
-use super::{HRRR_BEAT, HRRR_ZOOMS, PRECIP_TYPE_CATEGORIES};
+use super::{HRRR_BEAT, HRRR_ZOOMS, PRECIP_TYPE_CATEGORIES, PRECIP_TYPE_GRID};
 use crate::config::IngestConfig;
 
 /// Category id to name map for the precip-type layer.
@@ -77,6 +79,36 @@ pub fn render_layer(
     color_key: &str,
     categorical: bool,
 ) -> anyhow::Result<bool> {
+    render_layer_typed(
+        cfg,
+        layer,
+        run_id,
+        valid,
+        grid,
+        palettes,
+        color_key,
+        categorical,
+        None,
+    )
+}
+
+/// [`render_layer`] with a precipitation-type plane on `grid`'s cells: the PNGs use the rain,
+/// snow, mix and ice ramps, and the packed slot stores typed codes.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "render_layer plus the type plane"
+)]
+pub fn render_layer_typed(
+    cfg: &IngestConfig,
+    layer: &str,
+    run_id: &str,
+    valid: &str,
+    grid: &Grid,
+    palettes: &[Palette],
+    color_key: &str,
+    categorical: bool,
+    types: Option<TypePlane>,
+) -> anyhow::Result<bool> {
     let tables = tables_for_key(palettes, color_key);
     if tables.is_empty() {
         return Ok(false);
@@ -101,13 +133,27 @@ pub fn render_layer(
         source_id: format!("hrrr:{layer}:{rel}"),
         publication_lock_root: Some(tile_layer.clone()),
         overview: None,
+        types: types.clone(),
+        // An all-day stargazing hour has no tiles; publish it empty so the hour resumes.
+        keep_empty: super::state::KEEP_EMPTY_LAYERS.contains(&layer),
         ..FrameOptions::default()
     };
+    let keep_empty = options.keep_empty;
     let result = render_frame_palettes(grid, &kind, &tables, &dirs, &HRRR_ZOOMS, &options)?;
-    let rendered = result.rendered_palettes().len() == tables.len();
+    let rendered = if keep_empty {
+        result.outcomes.len() == tables.len()
+            && result
+                .outcomes
+                .iter()
+                .all(|(_, o)| o.status != radar_tiler::PublishStatus::Empty)
+    } else {
+        result.rendered_palettes().len() == tables.len()
+    };
+    let typed = super::packed::is_typed(layer, cfg.precip_type);
     if rendered
         && cfg.packed_tiles
-        && let Err(err) = super::packed::pack_hour(&cfg.paths, layer, run_id, valid, grid)
+        && let Err(err) =
+            super::packed::pack_hour_typed(&cfg.paths, layer, run_id, valid, grid, typed, types)
     {
         tracing::warn!(layer, run_id, valid, err = %format!("{err:#}"), "packed_failed");
     }
@@ -230,6 +276,21 @@ fn extract(bytes: &[u8], var: HrrrVar) -> Option<DecodedMessage> {
     }
 }
 
+/// [`extract`] for accumulations: the latest window (APCP's last hour, not the run total).
+fn extract_latest_window(bytes: &[u8], var: HrrrVar) -> Option<DecodedMessage> {
+    match radar_grib::decode::find_latest_window(bytes, &var.selector()) {
+        Ok(Some(mut msg)) => {
+            ensure_south_up(&mut msg.grid);
+            Some(msg)
+        }
+        Ok(None) => None,
+        Err(err) => {
+            tracing::warn!(err = %err, matched = var.key(), "extract_failed");
+            None
+        }
+    }
+}
+
 /// Owned grid from a message's values, with its geometry.
 fn grid_of(values: Vec<f32>, template: &Grid) -> Grid {
     Grid {
@@ -267,22 +328,50 @@ pub fn process_hour_sync(
     };
 
     // Fields used by more than one layer are decoded once, and only when a layer needs them.
-    let t2m_msg = (enabled("temperature") || enabled("feels-like"))
+    let t2m_msg = (enabled("temperature") || enabled("feels-like") || enabled("nice-day"))
         .then(|| extract(bytes, HrrrVar::T2m))
         .flatten();
-    let rh2m_msg = (enabled("humidity") || enabled("feels-like"))
+    let rh2m_msg = (enabled("humidity") || enabled("feels-like") || enabled("nice-day"))
         .then(|| extract(bytes, HrrrVar::Rh2m))
         .flatten();
-    let u10_msg = (enabled("feels-like") || enabled("wind"))
+    let u10_msg = (enabled("feels-like") || enabled("wind") || enabled("nice-day"))
         .then(|| extract(bytes, HrrrVar::U10))
         .flatten();
-    let v10_msg = (enabled("feels-like") || enabled("wind"))
+    let v10_msg = (enabled("feels-like") || enabled("wind") || enabled("nice-day"))
         .then(|| extract(bytes, HrrrVar::V10))
         .flatten();
 
     let mut rendered = Vec::new();
+    // HRRR precip type: always decoded for the `precip-type` grid that colours MRMS ice, and for the
+    // classes of `radar-hrrr`; the standalone PNG layer only when enabled.
+    let flags: Vec<Option<DecodedMessage>> = [
+        HrrrVar::Crain,
+        HrrrVar::Csnow,
+        HrrrVar::Cfrzr,
+        HrrrVar::Cicep,
+    ]
+    .into_iter()
+    .map(|v| extract(bytes, v))
+    .collect();
+    let flag_slices: Vec<Option<&[f32]>> = flags
+        .iter()
+        .map(|f| f.as_ref().map(|m| m.grid.values.as_slice()))
+        .collect();
+    let has_flags = flag_slices.iter().any(Option::is_some);
+    let len = src_h * src_w;
+    let radar_types = (cfg.precip_type && has_flags)
+        .then(|| {
+            crate::precip_type::plane_unless_all_rain(crate::precip_type::model_classes(
+                flag_slices[0],
+                flag_slices[1],
+                flag_slices[2],
+                flag_slices[3],
+                len,
+            ))
+        })
+        .flatten();
     // radar-hrrr (always on).
-    if render_layer(
+    if render_layer_typed(
         cfg,
         RADAR_HRRR,
         run_id,
@@ -291,6 +380,7 @@ pub fn process_hour_sync(
         palettes,
         "reflectivity",
         false,
+        radar_types,
     )? {
         rendered.push(RADAR_HRRR.to_string());
         dump("radar-hrrr", &refc.grid.values, "dBZ");
@@ -436,8 +526,11 @@ pub fn process_hour_sync(
             dump("precip-accum", &g.values, "in");
         }
     }
+    let tcdc_msg = (enabled("cloud") || enabled("stargazing"))
+        .then(|| extract(bytes, HrrrVar::Tcdc))
+        .flatten();
     if enabled("cloud")
-        && let Some(tcdc) = extract(bytes, HrrrVar::Tcdc)
+        && let Some(tcdc) = &tcdc_msg
         && render_layer(
             cfg,
             "cloud",
@@ -452,26 +545,90 @@ pub fn process_hour_sync(
         rendered.push("cloud".into());
         dump("cloud", &tcdc.grid.values, "%");
     }
-    if enabled("precip-type") {
-        let flags: Vec<Option<DecodedMessage>> = [
-            HrrrVar::Crain,
-            HrrrVar::Csnow,
-            HrrrVar::Cfrzr,
-            HrrrVar::Cicep,
-        ]
-        .into_iter()
-        .map(|v| extract(bytes, v))
-        .collect();
-        if flags.iter().any(|f| f.is_some()) {
-            let len = src_h * src_w;
-            let slices: Vec<Option<&[f32]>> = flags
-                .iter()
-                .map(|f| f.as_ref().map(|m| m.grid.values.as_slice()))
-                .collect();
-            let cat = units::precip_type_category(slices[0], slices[1], slices[2], slices[3], len);
-            let vals: Vec<f32> = cat.iter().map(|&c| c as f32).collect();
-            let g = grid_of(vals, &refc.grid);
-            if render_layer(
+    if enabled("nice-day")
+        && let (Some(t2m), Some(rh), Some(u), Some(v)) = (&t2m_msg, &rh2m_msg, &u10_msg, &v10_msg)
+    {
+        // A missing rain field scores dry rather than dropping the layer for the hour.
+        let rain = extract_latest_window(bytes, HrrrVar::Apcp);
+        let rain_in = |i: usize| {
+            rain.as_ref()
+                .and_then(|m| m.grid.values.get(i))
+                .map_or(0.0, |&mm| units::mm_to_inches(mm))
+        };
+        let vals: Vec<f32> = (0..t2m.grid.values.len())
+            .map(|i| {
+                let t = units::kelvin_to_f(t2m.grid.values[i]);
+                let h = rh.grid.values[i];
+                let wind = units::wind_speed_mph(
+                    units::ms_to_mph(u.grid.values[i]),
+                    units::ms_to_mph(v.grid.values[i]),
+                );
+                let feels = units::apparent_temperature_f(t, h, wind);
+                radar_grib::nice_day::nice_day_cell(t, feels, wind, rain_in(i), h)
+            })
+            .collect();
+        let g = grid_of(vals, &t2m.grid);
+        if render_layer(
+            cfg, "nice-day", run_id, valid, &g, palettes, "nice_day", false,
+        )? {
+            rendered.push("nice-day".into());
+            dump("nice-day", &g.values, "score");
+        }
+    }
+    if enabled("stargazing")
+        && let Some(tcdc) = &tcdc_msg
+        && let Ok(at) = chrono::DateTime::parse_from_rfc3339(valid)
+    {
+        // ECCC seeing and transparency trim the score where the aux worker has stored them.
+        let seeing = radar_grib::seeing::SeeingHour::load(&cfg.paths.state_dir, at.to_utc());
+        let vals = match &seeing {
+            Some(s) => radar_grib::stargazing::stargazing_grid_with(
+                &tcdc.grid,
+                at.timestamp() as f64,
+                |lat, lon| s.factor_at(lat, lon),
+            ),
+            None => radar_grib::stargazing::stargazing_grid(&tcdc.grid, at.timestamp() as f64),
+        };
+        let g = grid_of(vals, &tcdc.grid);
+        if render_layer(
+            cfg,
+            "stargazing",
+            run_id,
+            valid,
+            &g,
+            palettes,
+            "stargazing",
+            false,
+        )? {
+            rendered.push("stargazing".into());
+            // A daytime hour has no values to read back.
+            if g.values.iter().any(|v| v.is_finite()) {
+                dump("stargazing", &g.values, "score");
+            }
+        }
+    }
+    if has_flags {
+        let cat = units::precip_type_category(
+            flag_slices[0],
+            flag_slices[1],
+            flag_slices[2],
+            flag_slices[3],
+            len,
+        );
+        let vals: Vec<f32> = cat.iter().map(|&c| c as f32).collect();
+        let nearest = resampler.resample_nearest(&vals);
+        safe_dump(
+            cfg,
+            PRECIP_TYPE_GRID,
+            valid,
+            &nearest,
+            &lats_t,
+            &lons_t,
+            "category",
+        );
+        let g = grid_of(vals, &refc.grid);
+        if enabled("precip-type")
+            && render_layer(
                 cfg,
                 "precip-type",
                 run_id,
@@ -480,9 +637,9 @@ pub fn process_hour_sync(
                 palettes,
                 "precip_type",
                 true,
-            )? {
-                rendered.push("precip-type".into());
-            }
+            )?
+        {
+            rendered.push("precip-type".into());
         }
     }
     Ok(rendered)

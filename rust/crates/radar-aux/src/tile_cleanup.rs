@@ -20,9 +20,10 @@ use radar_types::payloads::cleanup::TileCleanupResult;
 use tracing::info;
 
 /// Per-layer retention in minutes (`LAYER_RETENTION_MIN`, verbatim, plus `precip-24h` and the two
-/// global-model layers, whose run directories `global_model_cleanup` owns). `air-quality` and `ozone`
-/// are not here: `aqm_cleanup` owns them.
-pub const LAYER_RETENTION_MIN: [(&str, i64); 18] = [
+/// global-model layers (`temp-anomaly` too), whose run directories `global_model_cleanup` owns, plus the
+/// winter layers).
+/// `air-quality` and `ozone` are not here: `aqm_cleanup` owns them.
+pub const LAYER_RETENTION_MIN: [(&str, i64); 28] = [
     ("radar", 240),
     ("radar-composite", 240),
     ("precip-24h", 240),
@@ -39,8 +40,18 @@ pub const LAYER_RETENTION_MIN: [(&str, i64); 18] = [
     ("precip-type", 720),
     ("precip-accum", 720),
     ("cloud", 720),
+    ("nice-day", 720),
+    ("stargazing", 720),
     ("radar-gfs", 720),
     ("uv", 2160),
+    ("temp-anomaly", 2160),
+    ("snowfall-forecast", 720),
+    ("ice-forecast", 720),
+    ("snow-depth", 2880),
+    ("snowfall-24h", 2880),
+    ("snow-chance-1", 720),
+    ("snow-chance-4", 720),
+    ("snow-chance-8", 720),
 ];
 
 /// Age after which an orphaned `.tmp-` staging directory is removed (by its mtime).
@@ -284,7 +295,7 @@ mod tests {
 
     #[test]
     fn retention_table_has_eighteen_layers_and_no_aqm() {
-        assert_eq!(LAYER_RETENTION_MIN.len(), 18);
+        assert_eq!(LAYER_RETENTION_MIN.len(), 28);
         assert!(
             LAYER_RETENTION_MIN
                 .iter()

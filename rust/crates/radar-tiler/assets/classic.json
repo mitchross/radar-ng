@@ -40,6 +40,17 @@
           { "min": 30, "max": 35, "rgba": [180, 30, 145, 230] },
           { "min": 35, "max": 75, "rgba": [140, 10, 120, 240] }
         ]
+      },
+      "ice": {
+        "ranges": [
+          { "min": 5, "max": 10, "rgba": [215, 190, 255, 140] },
+          { "min": 10, "max": 15, "rgba": [190, 155, 250, 170] },
+          { "min": 15, "max": 20, "rgba": [165, 120, 240, 195] },
+          { "min": 20, "max": 25, "rgba": [140, 85, 225, 210] },
+          { "min": 25, "max": 30, "rgba": [120, 55, 205, 220] },
+          { "min": 30, "max": 35, "rgba": [100, 30, 180, 230] },
+          { "min": 35, "max": 75, "rgba": [75, 10, 145, 240] }
+        ]
       }
     }
   },
@@ -238,5 +249,110 @@
       { "min": 10.5, "max": 25, "rgba": [107, 73, 200, 180] }
     ],
     "no_data_below": 0.5
+  },
+  "snowfall": {
+    "_comment": "NBM snowfall total in inches; NWS-style blues to purples, white past 3 ft.",
+    "unit": "in",
+    "ranges": [
+      { "min": 0.1, "max": 1, "rgba": [189, 215, 231, 150] },
+      { "min": 1, "max": 2, "rgba": [107, 174, 214, 170] },
+      { "min": 2, "max": 4, "rgba": [49, 130, 189, 185] },
+      { "min": 4, "max": 6, "rgba": [8, 81, 156, 200] },
+      { "min": 6, "max": 8, "rgba": [8, 38, 148, 210] },
+      { "min": 8, "max": 12, "rgba": [130, 60, 190, 220] },
+      { "min": 12, "max": 18, "rgba": [190, 60, 170, 230] },
+      { "min": 18, "max": 24, "rgba": [230, 70, 110, 235] },
+      { "min": 24, "max": 36, "rgba": [150, 20, 40, 240] },
+      { "min": 36, "max": 100, "rgba": [255, 255, 255, 245] }
+    ],
+    "no_data_below": 0.1
+  },
+  "ice_accum": {
+    "_comment": "NBM flat ice accretion in inches; 0.25 in brings down limbs, 0.5 in power lines.",
+    "unit": "in",
+    "ranges": [
+      { "min": 0.01, "max": 0.1, "rgba": [255, 190, 220, 160] },
+      { "min": 0.1, "max": 0.25, "rgba": [245, 120, 190, 185] },
+      { "min": 0.25, "max": 0.5, "rgba": [210, 60, 160, 205] },
+      { "min": 0.5, "max": 0.75, "rgba": [150, 30, 130, 220] },
+      { "min": 0.75, "max": 1, "rgba": [100, 20, 110, 230] },
+      { "min": 1, "max": 10, "rgba": [60, 10, 80, 240] }
+    ],
+    "no_data_below": 0.01
+  },
+  "snow_depth": {
+    "_comment": "SNODAS snow depth in inches; pale cyan through purple, white past 6 ft.",
+    "unit": "in",
+    "ranges": [
+      { "min": 1, "max": 2, "rgba": [200, 230, 235, 140] },
+      { "min": 2, "max": 4, "rgba": [150, 205, 220, 160] },
+      { "min": 4, "max": 6, "rgba": [90, 170, 205, 175] },
+      { "min": 6, "max": 12, "rgba": [50, 130, 185, 190] },
+      { "min": 12, "max": 18, "rgba": [30, 90, 165, 200] },
+      { "min": 18, "max": 24, "rgba": [60, 60, 150, 210] },
+      { "min": 24, "max": 36, "rgba": [110, 50, 160, 220] },
+      { "min": 36, "max": 48, "rgba": [160, 60, 170, 230] },
+      { "min": 48, "max": 72, "rgba": [200, 90, 190, 235] },
+      { "min": 72, "max": 1000, "rgba": [255, 255, 255, 245] }
+    ],
+    "no_data_below": 1
+  },
+  "nice_day": {
+    "_comment": "Nice Day score 0-100, our own index: Do Not, Poor, Fair, Good, Great in steps of 20.",
+    "unit": "score",
+    "ranges": [
+      { "min": 0, "max": 20, "rgba": [200, 60, 60, 150] },
+      { "min": 20, "max": 40, "rgba": [235, 140, 60, 140] },
+      { "min": 40, "max": 60, "rgba": [235, 205, 80, 130] },
+      { "min": 60, "max": 80, "rgba": [140, 200, 90, 135] },
+      { "min": 80, "max": 101, "rgba": [50, 170, 90, 150] }
+    ],
+    "no_data_below": 0
+  },
+  "temp_anomaly": {
+    "_comment": "Forecast daily high minus the 1991-2020 normal high, degrees F. Blue below, red above; within 2 F is a faint grey.",
+    "unit": "F",
+    "ranges": [
+      { "min": -60, "max": -20, "rgba": [49, 54, 149, 190] },
+      { "min": -20, "max": -15, "rgba": [69, 117, 180, 180] },
+      { "min": -15, "max": -10, "rgba": [116, 173, 209, 170] },
+      { "min": -10, "max": -5, "rgba": [171, 217, 233, 160] },
+      { "min": -5, "max": -2, "rgba": [224, 243, 248, 130] },
+      { "min": -2, "max": 2, "rgba": [245, 245, 245, 60] },
+      { "min": 2, "max": 5, "rgba": [254, 224, 144, 130] },
+      { "min": 5, "max": 10, "rgba": [253, 174, 97, 160] },
+      { "min": 10, "max": 15, "rgba": [244, 109, 67, 170] },
+      { "min": 15, "max": 20, "rgba": [215, 48, 39, 180] },
+      { "min": 20, "max": 60, "rgba": [165, 0, 38, 190] }
+    ],
+    "no_data_below": -999
+  },
+  "stargazing": {
+    "_comment": "Stargazing score 0-100, our own index from cloud, darkness and the moon: Poor, Fair, Good, Excellent in steps of 25. Day is transparent.",
+    "unit": "score",
+    "ranges": [
+      { "min": 0, "max": 25, "rgba": [110, 70, 70, 150] },
+      { "min": 25, "max": 50, "rgba": [95, 95, 150, 140] },
+      { "min": 50, "max": 75, "rgba": [60, 120, 190, 145] },
+      { "min": 75, "max": 101, "rgba": [150, 110, 230, 160] }
+    ],
+    "no_data_below": 0
+  },
+  "snow_chance": {
+    "_comment": "WPC chance of at least 1, 4 or 8 in of snow in 24 h, percent; pale blue through purple to red.",
+    "unit": "percent",
+    "ranges": [
+      { "min": 5, "max": 10, "rgba": [190, 220, 245, 120] },
+      { "min": 10, "max": 20, "rgba": [150, 195, 235, 145] },
+      { "min": 20, "max": 30, "rgba": [105, 165, 225, 165] },
+      { "min": 30, "max": 40, "rgba": [65, 130, 210, 180] },
+      { "min": 40, "max": 50, "rgba": [45, 95, 190, 190] },
+      { "min": 50, "max": 60, "rgba": [85, 65, 175, 200] },
+      { "min": 60, "max": 70, "rgba": [130, 50, 170, 210] },
+      { "min": 70, "max": 80, "rgba": [180, 45, 160, 220] },
+      { "min": 80, "max": 90, "rgba": [220, 55, 125, 230] },
+      { "min": 90, "max": 101, "rgba": [240, 85, 90, 240] }
+    ],
+    "no_data_below": 5
   }
 }

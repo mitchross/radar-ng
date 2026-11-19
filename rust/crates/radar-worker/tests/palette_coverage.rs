@@ -20,6 +20,8 @@ fn every_published_layer_has_a_muted_table() {
         "precip-type",
         "precip-accum",
         "cloud",
+        "nice-day",
+        "stargazing",
     ] {
         let key = layer_color_key(layer).unwrap_or_else(|| panic!("no color key for {layer}"));
         keys.push((layer.to_string(), key));

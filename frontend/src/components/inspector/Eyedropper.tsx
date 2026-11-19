@@ -11,8 +11,10 @@ import { useWeatherStore } from "../../stores/useWeatherStore";
 import { DEFAULTS, MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { cumulus } from "../../lib/cumulusTheme";
 import { formatReading, inspectFrame, inspectSourceFor, type InspectReading } from "../../lib/inspector";
+import { forecastTitle } from "../../lib/playbackSequence";
 import type { LayerType } from "../../types/weather";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
+import { useNow } from "../../hooks/useNow";
 import { PointOutlooks } from "../map/PointOutlooks";
 
 const LAYER_LABEL: Record<LayerType, string> = {
@@ -29,6 +31,16 @@ const LAYER_LABEL: Record<LayerType, string> = {
   "hail-size": "HAIL SIZE",
   "rotation-track": "ROTATION",
   "echo-top": "ECHO TOPS",
+  "snowfall-forecast": "SNOW TOTAL",
+  "ice-forecast": "ICE TOTAL",
+  "snow-depth": "SNOW DEPTH",
+  "snowfall-24h": "SNOW 24 HR",
+  "nice-day": "NICE DAY",
+  "temp-anomaly": "VS NORMAL",
+  stargazing: "STARGAZING",
+  "snow-chance-1": "SNOW CHANCE 1 IN",
+  "snow-chance-4": "SNOW CHANCE 4 IN",
+  "snow-chance-8": "SNOW CHANCE 8 IN",
   cloud: "CLOUD COVER",
   uv: "UV INDEX",
   cape: "CAPE",
@@ -56,6 +68,8 @@ export interface InspectResult {
   readout: string;
   sourceLabel: string;
   layerLabel: string;
+  /** Extra line under the value (the ice class note), or null. */
+  note?: string | null;
 }
 
 /** The active layer's value at `pinned`, refetched when playback pauses on a new frame. */
@@ -63,6 +77,8 @@ export function useInspectReading(pinned: PinnedPoint | null): InspectResult {
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const serverUrl = useWeatherStore((s) => s.serverUrl);
   const isPlaying = useWeatherStore((s) => s.isPlaying);
+  // Minute clock for the "future radar" vs model guidance title.
+  const now = useNow(60_000);
 
   // Each reading remembers the pin it belongs to, so a new or cleared pin
   // never shows a stale value, and no effect has to reset state.
@@ -120,7 +136,13 @@ export function useInspectReading(pinned: PinnedPoint | null): InspectResult {
     readout: loading ? "…" : reading ? formatReading(activeLayer, reading) : "\u2014",
     // "N/A" only once a fetch for this pin came back empty, not while waiting.
     sourceLabel: reading?.source === "grid" ? "Grid" : result?.pin === pinned && !loading ? "N/A" : "",
-    layerLabel: FRAME_LABEL[inspectSourceFor(activeLayer, frameSource)] ?? LAYER_LABEL[activeLayer],
+    layerLabel:
+      (frameSource && frameTimestamp
+        ? forecastTitle(frameSource, Math.floor(Date.parse(frameTimestamp) / 1000), Math.floor(now / 1000))
+        : null) ??
+      FRAME_LABEL[inspectSourceFor(activeLayer, frameSource)] ??
+      LAYER_LABEL[activeLayer],
+    note: loading ? null : (reading?.note ?? null),
   };
 }
 
@@ -182,6 +204,11 @@ export function InspectorPanel({
         </Pressable>
       </View>
       <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelValue}>{inspect.readout}</Text>
+      {inspect.note ? (
+        <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelNote}>
+          {inspect.note}
+        </Text>
+      ) : null}
       <View style={styles.panelMeta}>
         <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.panelMetaText}>
           {pinned.lat.toFixed(4)}, {pinned.lon.toFixed(4)}
@@ -287,6 +314,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 6,
+  },
+  panelNote: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 11,
+    marginTop: 2,
   },
   panelMetaText: {
     color: "rgba(255,255,255,0.65)",

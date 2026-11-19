@@ -8,7 +8,7 @@ use radar_core::grid_dump::GridConfig;
 use radar_storms::StormConfig;
 
 /// `HRRR_ENABLED_LAYERS` names that the pipeline knows. `radar-hrrr` is always enabled.
-pub const HRRR_LAYERS: [&str; 10] = [
+pub const HRRR_LAYERS: [&str; 12] = [
     "radar-hrrr",
     "temperature",
     "feels-like",
@@ -19,10 +19,12 @@ pub const HRRR_LAYERS: [&str; 10] = [
     "precip-type",
     "precip-accum",
     "cloud",
+    "nice-day",
+    "stargazing",
 ];
 
 /// Layers whose tile trees are swept by `hrrr_cleanup` (spec §12.2 `HRRR_TILE_LAYERS`).
-pub const HRRR_TILE_LAYERS: [&str; 10] = HRRR_LAYERS;
+pub const HRRR_TILE_LAYERS: [&str; 12] = HRRR_LAYERS;
 
 /// Default MRMS base URL.
 pub const MRMS_BASE_URL: &str = "https://noaa-mrms-pds.s3.amazonaws.com";
@@ -84,6 +86,8 @@ pub struct IngestConfig {
     pub uv_last_hour: u32,
     /// Base URL of the UV Index product.
     pub uv_base_url: String,
+    /// `TEMP_ANOMALY_ENABLED` (default on): render `temp-anomaly` once the normals store exists.
+    pub temp_anomaly_enabled: bool,
     /// `MRMS_QPE_24H_ENABLED` (default off): render the `precip-24h` layer from MRMS 24-hour QPE.
     pub mrms_qpe_24h: bool,
     /// `MRMS_SEVERE_ENABLED` (default off): render the `hail-size`, `rotation-track` and `echo-top`
@@ -93,6 +97,17 @@ pub struct IngestConfig {
     pub precip_type: bool,
     /// `PRECIP_FLAG_PREFIX` (default `CONUS/PrecipFlag_00.00`).
     pub precip_flag_prefix: String,
+    /// `WINTER_ENABLED` (default on): render the winter layers: NBM `snowfall-forecast` and
+    /// `ice-forecast`, SNODAS `snow-depth`, NOHRSC `snowfall-24h` and WPC `snow-chance-1/4/8`.
+    pub winter_enabled: bool,
+    /// Base URL of the NBM bucket.
+    pub nbm_base_url: String,
+    /// Base URL of the SNODAS masked tars.
+    pub snodas_base_url: String,
+    /// Base URL of the NOHRSC snowfall analysis.
+    pub nohrsc_base_url: String,
+    /// Base URL of the WPC Probabilistic Precipitation Portal (CONUS).
+    pub wpc_base_url: String,
 }
 
 impl IngestConfig {
@@ -147,11 +162,17 @@ impl IngestConfig {
             uv_enabled: env::bool_var("UV_ENABLED", true)?,
             uv_last_hour: env::int_var_clamped("UV_LAST_HOUR", 96, 1, 120)? as u32,
             uv_base_url: radar_grib::uvi::BASE_URL.to_string(),
+            temp_anomaly_enabled: env::bool_var("TEMP_ANOMALY_ENABLED", true)?,
             mrms_qpe_24h: env::bool_var("MRMS_QPE_24H_ENABLED", false)?,
             mrms_severe: env::bool_var("MRMS_SEVERE_ENABLED", false)?,
             precip_type: env::bool_var("PRECIP_TYPE", true)?,
             precip_flag_prefix: env::var("PRECIP_FLAG_PREFIX")
                 .unwrap_or_else(|| crate::precip_type::PRECIP_FLAG_PREFIX.into()),
+            winter_enabled: env::bool_var("WINTER_ENABLED", true)?,
+            nbm_base_url: radar_grib::nbm::BASE_URL.to_string(),
+            snodas_base_url: crate::winter::snodas::BASE_URL.to_string(),
+            nohrsc_base_url: crate::winter::nohrsc::BASE_URL.to_string(),
+            wpc_base_url: crate::winter::wpc::BASE_URL.to_string(),
             paths,
         })
     }
@@ -185,10 +206,16 @@ impl IngestConfig {
             uv_enabled: true,
             uv_last_hour: 96,
             uv_base_url: radar_grib::uvi::BASE_URL.to_string(),
+            temp_anomaly_enabled: true,
             mrms_qpe_24h: false,
             mrms_severe: false,
             precip_type: false,
             precip_flag_prefix: crate::precip_type::PRECIP_FLAG_PREFIX.into(),
+            winter_enabled: true,
+            nbm_base_url: radar_grib::nbm::BASE_URL.to_string(),
+            snodas_base_url: crate::winter::snodas::BASE_URL.to_string(),
+            nohrsc_base_url: crate::winter::nohrsc::BASE_URL.to_string(),
+            wpc_base_url: crate::winter::wpc::BASE_URL.to_string(),
             paths,
         })
     }

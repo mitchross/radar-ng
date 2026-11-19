@@ -5,11 +5,15 @@
 
 import { getCumulusCondition, type CumulusCondition } from "./shared/conditions";
 import { forecastTimeMs } from "./shared/forecastTime";
+import { precipClassNote } from "./shared/precipType";
+import { STARGAZING_LAYER, skyQualityNote } from "./shared/stargazingLayer";
 import type { AlertFeature } from "./shared/alertLevels";
 
 export interface Forecast {
   /** Seconds east of UTC at the location; `hourly.time` etc. are wall times there with no offset. */
   utc_offset_seconds?: number;
+  /** IANA zone at the location ("America/Detroit"); the server asks Open-Meteo for `timezone=auto`. */
+  timezone?: string;
   current: {
     temperature_2m: number | null;
     apparent_temperature: number | null;
@@ -21,7 +25,7 @@ export interface Forecast {
     wind_gusts_10m: number | null;
     wind_direction_10m: number | null;
   };
-  hourly: { time: string[]; temperature_2m: (number | null)[]; precipitation: (number | null)[]; weather_code: (number | null)[] };
+  hourly: { time: string[]; temperature_2m: (number | null)[]; precipitation: (number | null)[]; weather_code: (number | null)[]; cloud_cover?: (number | null)[] };
   daily: {
     time: string[];
     temperature_2m_max: (number | null)[];
@@ -119,6 +123,8 @@ export async function readPoint(
   timestamp: string,
   lat: number,
   lon: number,
+  /** Filled with the inspector note (ice, or ECCC seeing on the stargazing layer) when the server gives one. */
+  detail?: { note?: string | null },
 ): Promise<number | null> {
   const la = round(lat, 3);
   const lo = round(lon, 3);
@@ -128,9 +134,10 @@ export async function readPoint(
     return body.points.find((p) => Date.parse(p.timestamp) === at)?.dbz ?? null;
   }
   const inspectLayer = layer === "radar" ? source : layer;
-  const body = await json<{ ok: boolean; value: number | null }>(
+  const body = await json<{ ok: boolean; value: number | null; precip_class?: string }>(
     `/api/inspect/${inspectLayer}/${encodeURIComponent(timestamp)}/${la}/${lo}`,
   );
+  if (detail) detail.note = layer === STARGAZING_LAYER.id ? skyQualityNote(body) : precipClassNote(body);
   return body.ok ? body.value : null;
 }
 

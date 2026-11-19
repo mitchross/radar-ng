@@ -8,9 +8,19 @@ current workflows still replay every retained release.
 
 Python worker releases (v1.1.26, v1.1.27, v1.1.49, and `src-e8c8659`) recorded
 the histories of the Python-era workflows, before the Python code
-was removed. `IngestGlobalModelWorkflow` has no Python version: its `src-<sha>` histories
+was removed. `IngestGlobalModelWorkflow` and `IngestWinterWorkflow` have no Python version: their `src-<sha>` histories
 come from the Rust workflow with scripted fake activities on a local
 `temporal server start-dev`, exported with `temporal workflow show --output json`.
+`IngestWinterWorkflow/src-56c75ff` holds the same histories for the `snow-chance` product: the
+`src-f6d9878` files with the product and layer names in the payloads rewritten. Same commands.
+`IngestSkyWorkflow` has no Python version either. Its `src-81a482a` histories are the
+Tropical `v1.1.49` ones with the workflow type, activity name, `"iss"` input, one-attempt
+retry policy and result payload rewritten (`jq`); the command sequence is the same single
+activity, so the replay gate checks it like any other history.
+`EnsureStaticDataWorkflow/src-d727262` is the same rewrite of the `IngestSkyWorkflow` histories:
+workflow type, activity name, `"normals"` input, timeouts and result payload. It is one activity too.
+`IngestSkyWorkflow/src-3c5edc6` holds the `src-81a482a` histories for the `star-seeing` product,
+with the input and result product rewritten.
 
 Every history is synthetic: real workflow code, fake activities, placeholder
 inputs (`synthetic-*` identifiers, a `synthetic-placeholder` token, 0.0
@@ -25,10 +35,11 @@ tokens, coordinates and alert geometry.
 | IngestMrmsWorkflow | success, empty-backlog, partial (a frame reports unrendered), frame-activity-error (caught, run continues), list-activity-error (run fails) |
 | IngestHrrrWorkflow | success, no-run, already-processed, partial (last hour pending), hour-activity-error (caught), publish-incoherent, find-activity-error |
 | IngestGlobalModelWorkflow | success, no-run, already-processed, partial (last hour unrendered), hour-activity-error (caught), find-activity-error |
+| IngestWinterWorkflow | success, no-run, already-processed, partial (last hour lacks a layer), hour-activity-error (caught), find-activity-error |
 | IngestAirQualityWorkflow | success, no-run, already-processed, partial (ozone unrendered), chunk-activity-error (PM2.5 lost, not marked), find-activity-error |
 | PollAlertsWorkflow | geometry-fanout, zoneless-alerts, no-new-alerts, signal-activity-error (one alert isolated), fetch-activity-error |
 | WatchStormWorkflow | signal-unpin, timer-poll, push-change, push-activity-error (watch survives), alert-signal-push, compare-activity-error, continue-as-new (1000 polls) |
-| Lightning, Tropical, Nowcast, TileCleanup, RegisterPushToken, DeletePushToken, OpenMeteoSync | success, activity-error |
+| Lightning, Tropical, Sky, EnsureStaticData, Nowcast, TileCleanup, RegisterPushToken, DeletePushToken, OpenMeteoSync | success, activity-error |
 
 `REQUIRED_SCENARIOS` in `tests/replay.rs` is the subset every workflow must
 keep, each with the event or activity that proves it took the named path.

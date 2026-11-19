@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useWeatherStore } from "../../stores/useWeatherStore";
 import { cumulus } from "../../lib/cumulusTheme";
 import { findClosestIdx } from "../../lib/frameIndex";
-import { longZoomLabel, offsetLabel, playbackSequence, positionOf, type TimelineZoom } from "../../lib/playbackSequence";
+import { forecastLine, longZoomLabel, offsetLabel, playbackSequence, positionOf, type TimelineZoom } from "../../lib/playbackSequence";
 import { createThrottle } from "../../lib/throttle";
 import { fullCaseSequence, isReplaySource } from "../../lib/replaySource";
 import { replayAxisLabels, replayTimelineHeader } from "../../lib/replayTimeline";
@@ -50,6 +50,16 @@ const LAYER_TITLE: Record<LayerType, string> = {
   "hail-size": "Hail Size",
   "rotation-track": "Rotation Tracks",
   "echo-top": "Echo Tops",
+  "snowfall-forecast": "Snow Total",
+  "ice-forecast": "Ice Total",
+  "snow-depth": "Snow Depth",
+  "snowfall-24h": "Past 24 Hr Snow",
+  "nice-day": "Nice Day",
+  "temp-anomaly": "Temp vs Normal",
+  stargazing: "Stargazing",
+  "snow-chance-1": "Snow Chance 1 in",
+  "snow-chance-4": "Snow Chance 4 in",
+  "snow-chance-8": "Snow Chance 8 in",
   cloud: "Clouds",
   uv: "UV Index",
   cape: "Storm Energy",
@@ -176,7 +186,8 @@ export function TimelineBar() {
   const layerTitle = LAYER_TITLE[activeLayer] ?? "Radar";
   const frameDate = new Date((currentFrame?.time ?? nowSec) * 1000);
   const replayHeader = replaying ? replayTimelineHeader(currentFrame, layerTitle, timeZone) : closeUp && currentFrame ? closeUpHeader(currentFrame, timeZone) : null;
-  const dateLabel = replayHeader ? replayHeader.dateLabel : FRAME_DATE_FORMAT.format(frameDate);
+  const forecast = currentFrame?.source && !replayHeader ? forecastLine(currentFrame.source, currentFrame.time, nowSec) : null;
+  const dateLabel = replayHeader ? replayHeader.dateLabel : `${FRAME_DATE_FORMAT.format(frameDate)}${forecast ? ` · ${forecast}` : ""}`;
 
   // MRMS lands a few minutes late; the latest scan within 5 min reads as "Now".
   const mode = Math.abs(offsetMin) <= 5 ? "Now" : `${offsetMin > 0 ? "Forecast" : "Past"} ${offsetLabel(currentFrame?.time ?? nowSec, nowSec)}`;

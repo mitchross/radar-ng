@@ -14,6 +14,10 @@ import { precipTypeRamps, serverLegend } from "../../lib/serverPalettes";
 import { useManifestQuery } from "../../hooks/useManifest";
 import { useReplayManifestQuery } from "../../hooks/useReplay";
 import { SEVERE_CREDIT, isSevereLayer } from "../../../../web/src/shared/severe";
+import { winterAsOf, winterLayer } from "../../../../web/src/shared/winterLayers";
+import { NICE_DAY_LAYER, niceDayLegend } from "../../../../web/src/shared/niceDayLayer";
+import { TEMP_NORMAL_LAYER, tempAnomalyLegend } from "../../../../web/src/shared/tempNormal";
+import { STARGAZING_LAYER, stargazingLegend } from "../../../../web/src/shared/stargazingLayer";
 
 // Plain-English tag at the top of the legend telling the user whether
 // they're looking at "Now" (live radar), "Soon" (next hour, pysteps
@@ -36,6 +40,16 @@ const LAYER_SOURCE: Record<LayerType, SourceTag> = {
   "hail-size": "Now",
   "rotation-track": "Now",
   "echo-top": "Now",
+  "snowfall-forecast": "Later",
+  "ice-forecast": "Later",
+  "snow-depth": "Now",
+  "snowfall-24h": "Now",
+  "nice-day": "Later",
+  "temp-anomaly": "Later",
+  stargazing: "Later",
+  "snow-chance-1": "Later",
+  "snow-chance-4": "Later",
+  "snow-chance-8": "Later",
   cloud: "Later",
   uv: "Later",
   "air-quality": "Now",
@@ -78,6 +92,16 @@ const RAIN_TOTAL_STOPS: LegendStop[] = [
   { label: "0.1", color: "#4696ff" },
   { label: "0", color: "#8cc8ff" },
 ];
+
+const SNOW_CHANCE_LEGEND: LegendSpec = {
+  title: "Snow Chance",
+  stops: [
+    { label: "90%", color: "#f0555a" },
+    { label: "50%", color: "#5541af" },
+    { label: "20%", color: "#69a5e1" },
+    { label: "5%", color: "#bedcf5" },
+  ],
+};
 
 const LEGENDS: Record<LayerType, LegendSpec> = {
   radar: {
@@ -135,7 +159,7 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
     ],
   },
   "precip-type": {
-    title: "Rain or Snow",
+    title: "Rain, Snow or Ice",
     stops: [
       { label: "Heavy", color: "#ffb04a" },
       { label: "Light", color: "#4fb8ff" },
@@ -176,6 +200,59 @@ const LEGENDS: Record<LayerType, LegendSpec> = {
       { label: "0.005", color: "#ffc846" },
     ],
   },
+  "snowfall-forecast": {
+    title: "Snow Total",
+    stops: [
+      { label: "24+", color: "#e6466e" },
+      { label: "12", color: "#be3caa" },
+      { label: "6", color: "#08269a" },
+      { label: "1", color: "#6baed6" },
+    ],
+  },
+  "ice-forecast": {
+    title: "Ice Total",
+    stops: [
+      { label: "1+", color: "#3c0a50" },
+      { label: "0.5", color: "#962882" },
+      { label: "0.25", color: "#d23ca0" },
+      { label: "0.01", color: "#ffbedc" },
+    ],
+  },
+  "snow-depth": {
+    title: "Snow Depth",
+    stops: [
+      { label: "72+", color: "#ffffff" },
+      { label: "24", color: "#3c3c96" },
+      { label: "6", color: "#1e5aa5" },
+      { label: "1", color: "#c8e6eb" },
+    ],
+  },
+  "snowfall-24h": {
+    title: "Past 24 Hr Snow",
+    stops: [
+      { label: "24+", color: "#e6466e" },
+      { label: "12", color: "#be3caa" },
+      { label: "6", color: "#08269a" },
+      { label: "1", color: "#6baed6" },
+    ],
+  },
+  // Words, not numbers; the card builds this from the server palette when it has one.
+  "nice-day": {
+    title: NICE_DAY_LAYER.name,
+    stops: niceDayLegend(null).map((s) => ({ label: s.word, color: s.color })),
+  },
+  // Degrees F above or below the normal high, warmest first.
+  "temp-anomaly": {
+    title: `${TEMP_NORMAL_LAYER.name} (\u00B0F)`,
+    stops: tempAnomalyLegend(null).reverse(),
+  },
+  stargazing: {
+    title: STARGAZING_LAYER.name,
+    stops: stargazingLegend(null).map((s) => ({ label: s.word, color: s.color })),
+  },
+  "snow-chance-1": SNOW_CHANCE_LEGEND,
+  "snow-chance-4": SNOW_CHANCE_LEGEND,
+  "snow-chance-8": SNOW_CHANCE_LEGEND,
   "echo-top": {
     title: "Echo Tops",
     stops: [
@@ -239,8 +316,25 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   const liveLayer = useManifestQuery().data?.layers[activeLayer];
   const replayManifest = useReplayManifestQuery().data;
   const manifestLayer = replaying ? (replayManifest?.layers[activeLayer] as typeof liveLayer) : liveLayer;
-  const legend =
-    serverLegend(palettes, palette, activeLayer, 7, manifestLayer?.palette_key) ?? LEGENDS[activeLayer] ?? LEGENDS.radar;
+  const niceDay = activeLayer === NICE_DAY_LAYER.id;
+  const niceDayRanges = (palettes?.[palette] ?? palettes?.classic)?.[NICE_DAY_LAYER.paletteKey]?.ranges;
+  const tempNormal = activeLayer === TEMP_NORMAL_LAYER.id;
+  const anomalyRanges = (palettes?.[palette] ?? palettes?.classic)?.[TEMP_NORMAL_LAYER.paletteKey]?.ranges;
+  const stars = activeLayer === STARGAZING_LAYER.id;
+  const starRanges = (palettes?.[palette] ?? palettes?.classic)?.[STARGAZING_LAYER.paletteKey]?.ranges;
+  const legend = tempNormal
+    ? { title: `${TEMP_NORMAL_LAYER.name} (\u00B0F)`, stops: tempAnomalyLegend(anomalyRanges).reverse() }
+    : niceDay
+    ? {
+        title: NICE_DAY_LAYER.name,
+        stops: niceDayLegend(niceDayRanges).map((s) => ({ label: s.word, color: s.color })),
+      }
+    : stars
+    ? {
+        title: STARGAZING_LAYER.name,
+        stops: stargazingLegend(starRanges).map((s) => ({ label: s.word, color: s.color })),
+      }
+    : (serverLegend(palettes, palette, activeLayer, 7, manifestLayer?.palette_key) ?? LEGENDS[activeLayer] ?? LEGENDS.radar);
   // The server colors observed radar by precipitation type when the layer says so.
   const typedLayer = manifestLayer?.precip_type === true;
   const typeRamps = typedLayer ? precipTypeRamps(palettes, palette) : null;
@@ -248,6 +342,8 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   // Scalars, not the frame array: the card re-renders only when the tag can
   // change, not on every playback tick.
   const frameSource = useWeatherStore((s) => s.frames[s.currentFrameIndex]?.source ?? null);
+  const frameTime = useWeatherStore((s) => s.frames[s.currentFrameIndex]?.time ?? 0);
+  const asOf = winterAsOf(activeLayer, frameTime ? new Date(frameTime * 1000).toISOString() : undefined);
   const frameIsLater = useWeatherStore(
     (s) => (s.frames[s.currentFrameIndex]?.time ?? 0) > Math.floor(Date.now() / 1000) + 30 * 60,
   );
@@ -295,6 +391,27 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
         {isSevereLayer(activeLayer) && (
           <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
             {SEVERE_CREDIT}
+          </Text>
+        )}
+        {tempNormal && (
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
+            {TEMP_NORMAL_LAYER.credit}
+          </Text>
+        )}
+        {niceDay && (
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
+            {NICE_DAY_LAYER.credit}
+          </Text>
+        )}
+        {stars && (
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
+            Night hours only. {STARGAZING_LAYER.credit} {STARGAZING_LAYER.seeingCredit}
+          </Text>
+        )}
+        {winterLayer(activeLayer) && (
+          <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.credit}>
+            {asOf ? `${asOf} · ` : ""}
+            {winterLayer(activeLayer)?.credit}
           </Text>
         )}
         {typeRamps && (

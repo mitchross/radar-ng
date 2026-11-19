@@ -44,6 +44,10 @@ back to PNG rasters otherwise.
 | `pm25` (air-quality) | 1 | 0.5 | 0 µg/m³ | 1.5 to 255.5 µg/m³ | 9.1, 20, 45, 90, 175, 500, 20000 |
 | `ozone` (ozone) | 1 | 0 | 0 ppb | 1 to 255 ppb | 600 |
 | `uv_index` (uv; not packed yet, `radar-gfs` and `uv` are raster only) | 0.5 | 0.5 | 0.5 | 1 to 128 | none |
+| `snowfall` (snowfall-forecast; not packed yet, raster only) | 0.25 | 0 | 0.1 in | 0.25 to 63.75 in | 100 |
+| `ice_accum` (ice-forecast; not packed yet, raster only) | 0.01 | 0 | 0.01 in | 0.01 to 2.55 in | 10 |
+| `snow_depth` (snow-depth; not packed yet, raster only) | 1 | 0 | 1 in | 1 to 255 in | 1000 |
+| `snow_chance` (snow-chance-1/4/8; not packed yet, raster only) | 1 | 0 | 5 % | 1 to 255 % | none |
 
 NaN or a value below `floor` stores 0. Otherwise `q = clamp(floor((value - offset) / scale), 1, 255)`.
 The client decodes `value = offset + q * scale`, the bottom of the code's bin. A floor below
@@ -76,11 +80,13 @@ server-only.
 
 ## Typed codes (v2)
 
-The MRMS layers color reflectivity by precipitation type when `PRECIP_TYPE` is on (default). Their
+The MRMS layers color reflectivity by precipitation type when `PRECIP_TYPE` is on (default). So do
+the forecast layers: `nowcast` holds the newest observed classes still on every lead, and
+`radar-hrrr` and `radar-gfs` take theirs from the model's CRAIN/CSNOW/CFRZR/CICEP flags. Their
 slots then hold typed codes, and the manifest says `"version": 2` with a `types` object:
 
 ```json
-"types": {"stride": 32, "classes": ["rain", "snow", "mix"]}
+"types": {"stride": 32, "classes": ["rain", "snow", "mix", "ice"]}
 ```
 
 - `code = class * stride + min(q, stride - 1)`, where `q` is the reflectivity code above. Code 0 is
@@ -92,7 +98,10 @@ slots then hold typed codes, and the manifest says `"version": 2` with a `types`
 - One bucket holds one code space. Its `.packed-bucket-v1.json` has `"types": 32` when it is typed.
   A frame whose encoding differs from its bucket's is not packed (raster path). When a layer's layout
   changes, the manifest drops the buckets of the old layout.
-- A frame without a PrecipFlag file is packed as all rain.
+- A frame without a PrecipFlag file is packed as all rain, plus ice where HRRR says so (below).
+- Ice is class 3. The largest code is `3 * 32 + 31 = 127`, so the byte and the version stay the
+  same. A three-class client draws ice with the palette's `types.ice` ramp from `/api/palettes`,
+  or with the rain ramp on its offline fallback table (`web/src/shared/oldClientIce.test.ts`).
 
 ### Precipitation type source
 
@@ -110,7 +119,19 @@ minute, so a fresh frame often takes the previous file. Flags (NSSL `UserTable_M
 
 PrecipFlag has no freezing-rain or sleet code, so mix is the rain-snow transition zone, not observed
 ice. The rasters sample the class with the nearest cell at native zooms and the largest class of the
-pixel's footprint at overview zooms (mix > snow > rain), the same as the packed slots.
+pixel's footprint at overview zooms (ice > mix > snow > rain), the same as the packed slots.
+
+### Ice from HRRR
+
+Ice (class 3) is model guidance. The HRRR worker always reads `CRAIN`, `CSNOW`, `CFRZR` and `CICEP`
+for `radar-hrrr` and dumps a `precip-type` category grid per valid hour under `GRID_DIR`
+(0.03 degree, nearest neighbour; 0 none, 1 rain, 2 snow, 3 freezing rain, 4 ice pellets). The MRMS
+worker takes the grid valid nearest the frame, at most 90 minutes away. Where the frame has an echo
+(5 dBZ or more) and that grid says freezing rain or ice pellets, the class is ice. With no grid that
+close, the frame keeps its PrecipFlag classes. Radar never waits for HRRR.
+
+`/api/inspect/radar…` applies the same rule and adds `"precip_class": "ice"`. The clients show
+"Ice: freezing rain or sleet, from HRRR model guidance".
 
 ## Buckets
 

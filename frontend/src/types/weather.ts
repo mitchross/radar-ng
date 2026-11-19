@@ -46,6 +46,8 @@ export interface OpenMeteoResponse {
   longitude: number;
   /** Seconds east of UTC at the location; every time string below is wall time in that zone with no offset. */
   utc_offset_seconds?: number;
+  /** IANA zone at the location ("America/Detroit"); the server asks Open-Meteo for `timezone=auto`. */
+  timezone?: string;
   current: {
     time: string;
     temperature_2m: Maybe;
@@ -66,6 +68,7 @@ export interface OpenMeteoResponse {
     weather_code: Maybe[];
     wind_speed_10m: Maybe[];
     visibility?: Maybe[];
+    cloud_cover?: Maybe[];
   };
   daily: {
     time: string[];
@@ -207,7 +210,17 @@ export type LayerType =
   | "ozone"
   | "hail-size"
   | "rotation-track"
-  | "echo-top";
+  | "echo-top"
+  | "snowfall-forecast"
+  | "ice-forecast"
+  | "snow-depth"
+  | "snowfall-24h"
+  | "nice-day"
+  | "temp-anomaly"
+  | "stargazing"
+  | "snow-chance-1"
+  | "snow-chance-4"
+  | "snow-chance-8";
 
 export interface LayerConfig {
   id: LayerType;

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { LAYER_PALETTE_KEY, layerPaletteKey } from "./serverPalettes";
+import { isWinterLayer } from "./winterLayers";
 
 const rust = (path: string) => readFileSync(new URL(`../../../rust/crates/${path}`, import.meta.url), "utf8");
 
@@ -27,6 +28,16 @@ describe("LAYER_PALETTE_KEY", () => {
       "hail-size": "hail_size",
       "rotation-track": "rotation_track",
       "echo-top": "echo_top",
+      "nice-day": "nice_day",
+      "temp-anomaly": "temp_anomaly",
+      stargazing: "stargazing",
+      "snowfall-forecast": "snowfall",
+      "ice-forecast": "ice_accum",
+      "snow-depth": "snow_depth",
+      "snowfall-24h": "snowfall",
+      "snow-chance-1": "snow_chance",
+      "snow-chance-4": "snow_chance",
+      "snow-chance-8": "snow_chance",
     });
   });
 
@@ -44,9 +55,9 @@ describe("LAYER_PALETTE_KEY", () => {
     for (const [, layers, key] of fn.slice(0, fn.indexOf("\n}\n")).matchAll(/((?:"[\w-]+"\s*\|?\s*)+)=>\s*"(\w+)"/g)) {
       for (const [, layer] of layers.matchAll(/"([\w-]+)"/g)) server[layer] = key;
     }
-    // uv, precip-24h and the severe layers are MRMS/forecast layers, not HRRR ones.
+    // uv, temp-anomaly, precip-24h, the severe and the winter layers are not HRRR layers.
     for (const [layer, key] of Object.entries(LAYER_PALETTE_KEY)) {
-      if (layer in server || !["uv", "precip-24h", "hail-size", "rotation-track", "echo-top"].includes(layer)) expect(server[layer], layer).toBe(key);
+      if (layer in server || !["uv", "temp-anomaly", "precip-24h", "hail-size", "rotation-track", "echo-top"].includes(layer) && !isWinterLayer(layer)) expect(server[layer], layer).toBe(key);
     }
   });
 });

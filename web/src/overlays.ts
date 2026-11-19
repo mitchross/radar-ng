@@ -8,6 +8,7 @@ import type { GeoJSONSource, Map as MLMap, MapGeoJSONFeature } from "maplibre-gl
 import { escapeHtml as esc } from "./html";
 import { activeSpc, SPC_OVERLAYS, spcColorExpression, spcTagExpression, spcProduct, spcStyle } from "./shared/spc";
 import { warningTagExpression } from "./shared/warningTags";
+import { stationLabel, whiteChristmasColorExpression } from "./shared/whiteChristmas";
 import {
   advance,
   distanceKm,
@@ -158,6 +159,8 @@ export class Overlays {
   onStorms: () => void = () => {};
   /** Replay shows only its own warnings; every live feed stops. */
   private replay = false;
+  /** White Christmas station dots, shown from the forecast card's link (not a sheet overlay). */
+  private wxmas: FC | null = null;
 
   constructor(private map: MLMap, public enabled: Set<OverlayId>) {}
 
@@ -204,7 +207,28 @@ export class Overlays {
     const ageColor = ["step", ["get", "age_s"], "#ffffff", 120, "#ffe14d", 300, "#ff9f1c", 600, "#ff4d4d"];
     m.addLayer({ id: "ov-lightning-pulse", type: "circle", source: "ov-lightning", filter: ["<", ["get", "age_s"], 90], layout: { visibility: vis("lightning") }, paint: { "circle-radius": 10, "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5, "circle-stroke-opacity": 0.8 } });
     m.addLayer({ id: "ov-lightning", type: "circle", source: "ov-lightning", layout: { visibility: vis("lightning") }, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 1.8, 9, 4], "circle-color": ageColor as never, "circle-stroke-color": "#111827", "circle-stroke-width": 0.8, "circle-opacity": ["interpolate", ["linear"], ["get", "age_s"], 0, 1, 900, 0.35] } });
+    this.installWhiteChristmas();
     this.applyStormFade();
+  }
+
+  private installWhiteChristmas() {
+    const m = this.map;
+    const visibility = this.wxmas && !this.replay ? "visible" : "none";
+    m.addSource("wxmas", { type: "geojson", data: this.wxmas ?? EMPTY });
+    m.addLayer({ id: "wxmas-dots", type: "circle", source: "wxmas", layout: { visibility }, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 2.5, 8, 6], "circle-color": whiteChristmasColorExpression() as never, "circle-stroke-color": "#111827", "circle-stroke-width": 1 } });
+    m.addLayer({ id: "wxmas-labels", type: "symbol", source: "wxmas", minzoom: 6.5, layout: { visibility, "text-field": ["concat", ["to-string", ["round", ["get", "pct"]]], "%"] as never, "text-font": FONT, "text-size": 11, "text-offset": [0, -1.2] }, paint: { "text-color": "#ffffff", "text-halo-color": "#111827", "text-halo-width": 1.4 } });
+  }
+
+  /** Show the White Christmas station dots (a station FeatureCollection), or hide them with null. */
+  setWhiteChristmas(fc: FC | null) {
+    this.wxmas = fc;
+    (this.map.getSource("wxmas") as GeoJSONSource | undefined)?.setData(fc ?? EMPTY);
+    const show = fc && !this.replay ? "visible" : "none";
+    for (const id of ["wxmas-dots", "wxmas-labels"]) if (this.map.getLayer(id)) this.map.setLayoutProperty(id, "visibility", show);
+  }
+
+  get whiteChristmasOn(): boolean {
+    return this.wxmas != null;
   }
 
   /** Layer ids a click should hit, most specific first. */
@@ -215,6 +239,7 @@ export class Overlays {
     if (this.enabled.has("storms")) ids.push("ov-storm-cells");
     if (this.enabled.has("warnings")) ids.push("ov-warnings-fill");
     for (const { id } of SPC_OVERLAYS) if (this.enabled.has(id)) ids.push(`ov-${id}-hit`);
+    if (this.wxmas) ids.push("wxmas-dots");
     return ids.filter((id) => this.map.getLayer(id));
   }
 
@@ -227,6 +252,7 @@ export class Overlays {
     this.cells = [];
     this.trackSec = null;
     for (const o of OVERLAYS) this.applyVisibility(o.id);
+    this.setWhiteChristmas(on ? null : this.wxmas);
     this.onStorms();
     if (!on) this.start(false);
   }
@@ -369,6 +395,9 @@ export function describeFeature(f: MapGeoJSONFeature, cells: StormCell[]): strin
     const cat = p.category ? `Category ${esc(p.category)} hurricane` : esc(p.classification);
     const move = p.movement_mph ? ` · moving ${compass(Number(p.movement_dir_deg))} at ${Math.round(p.movement_mph)} mph` : "";
     return `<div class="readout"><b>${esc(p.name).toUpperCase()}</b><div class="v">${cat}</div><small>${esc(p.wind_mph ?? "—")} mph winds · ${p.pressure_mb ? `${Math.round(p.pressure_mb)} mb` : ""}${move}</small></div>`;
+  }
+  if (f.layer.id === "wxmas-dots") {
+    return `<div class="readout"><b>WHITE CHRISTMAS</b><div class="v">${Math.round(Number(p.pct))}% of years</div><small>${esc(stationLabel(String(p.name ?? "")))} · 1 inch or more on the ground on Dec 25 · NOAA NCEI 1991–2020</small></div>`;
   }
   if (f.layer.id === "ov-tropical-points") {
     return `<div class="readout"><b>${esc(p.name).toUpperCase()} · +${Math.round(Number(p.tau_h ?? 0))}h</b><div class="v">${esc(p.wind_mph ?? "—")} mph</div><small>${esc(p.label)}</small></div>`;

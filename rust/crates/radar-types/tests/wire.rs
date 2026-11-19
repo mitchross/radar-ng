@@ -6,10 +6,10 @@ use std::str::FromStr;
 use radar_types::wire::*;
 
 #[test]
-fn workflow_types_are_fourteen_unique_exact_names() {
-    assert_eq!(ALL_WORKFLOW_TYPES.len(), 14);
+fn workflow_types_are_seventeen_unique_exact_names() {
+    assert_eq!(ALL_WORKFLOW_TYPES.len(), 17);
     let unique: HashSet<&str> = ALL_WORKFLOW_TYPES.iter().copied().collect();
-    assert_eq!(unique.len(), 14);
+    assert_eq!(unique.len(), 17);
     for name in [
         "RadarDeploymentSmokeWorkflow",
         "IngestMrmsWorkflow",
@@ -25,21 +25,26 @@ fn workflow_types_are_fourteen_unique_exact_names() {
         "RegisterPushTokenWorkflow",
         "DeletePushTokenWorkflow",
         "IngestGlobalModelWorkflow",
+        "IngestSkyWorkflow",
+        "IngestWinterWorkflow",
+        "EnsureStaticDataWorkflow",
     ] {
         assert!(ALL_WORKFLOW_TYPES.contains(&name), "missing {name}");
     }
 }
 
 #[test]
-fn activity_names_are_thirty_five_unique_exact_names() {
-    assert_eq!(ALL_ACTIVITY_NAMES.len(), 35);
+fn activity_names_are_forty_two_unique_exact_names() {
+    assert_eq!(ALL_ACTIVITY_NAMES.len(), 42);
     let unique: HashSet<&str> = ALL_ACTIVITY_NAMES.iter().copied().collect();
-    assert_eq!(unique.len(), 35);
+    assert_eq!(unique.len(), 42);
     assert_eq!(
         ACTIVITY_GLOBAL_MODEL_PROCESS_HOUR,
         "global_model_process_hour"
     );
+    assert_eq!(ACTIVITY_WINTER_PROCESS_HOUR, "winter_process_hour");
     assert_eq!(ACTIVITY_OPEN_METEO_SYNC, "open_meteo_sync");
+    assert_eq!(ACTIVITY_STATIC_DATA_ENSURE, "static_data_ensure");
     assert_eq!(ACTIVITY_RADAR_DEPLOYMENT_SMOKE, "radar_deployment_smoke");
     assert_eq!(ACTIVITY_SEND_PUSH_NOTIFICATION, "send_push_notification");
     assert_eq!(ACTIVITY_AQM_RENDER_CHUNK, "aqm_render_chunk");

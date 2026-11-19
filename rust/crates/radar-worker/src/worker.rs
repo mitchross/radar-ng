@@ -10,6 +10,8 @@ use radar_alerts::alerts::AlertsConfig;
 use radar_alerts::push::{PushConfig, PushSender};
 use radar_aux::aqm::AqmConfig;
 use radar_aux::open_meteo::OpenMeteoConfig;
+use radar_aux::sky::SkyConfig;
+use radar_aux::static_data::StaticDataConfig;
 use radar_aux::tropical::TropicalConfig;
 use radar_core::env::Paths;
 use radar_core::push_tokens::PushTokenStore;
@@ -43,6 +45,7 @@ use crate::activities::mrms::MrmsActivities;
 use crate::activities::nowcast::NowcastActivities;
 use crate::activities::open_meteo::OpenMeteoActivities;
 use crate::activities::smoke::SmokeActivities;
+use crate::activities::winter::WinterActivities;
 use crate::config::WorkerConfig;
 use crate::health::health_file_loop;
 use crate::seed::{
@@ -61,9 +64,12 @@ use crate::workflows::nowcast::NowcastWorkflow;
 use crate::workflows::open_meteo_sync::OpenMeteoSyncWorkflow;
 use crate::workflows::poll_alerts::PollAlertsWorkflow;
 use crate::workflows::push_tokens::{DeletePushTokenWorkflow, RegisterPushTokenWorkflow};
+use crate::workflows::sky::IngestSkyWorkflow;
+use crate::workflows::static_data::EnsureStaticDataWorkflow;
 use crate::workflows::tile_cleanup::TileCleanupWorkflow;
 use crate::workflows::tropical::IngestTropicalWorkflow;
 use crate::workflows::watch_storm::WatchStormWorkflow;
+use crate::workflows::winter::IngestWinterWorkflow;
 
 /// How long the worker runs alone before background work starts. The SDK exposes no running-state check, so
 /// this delay replaces a running-state poll (spec 3.4). A worker that fails within this window starts
@@ -104,10 +110,13 @@ pub fn registration(role: WorkerRole) -> Registration {
         WorkerRole::Hrrr => vec![
             wire::WORKFLOW_INGEST_HRRR,
             wire::WORKFLOW_INGEST_GLOBAL_MODEL,
+            wire::WORKFLOW_INGEST_WINTER,
         ],
         WorkerRole::Aux => vec![
             wire::WORKFLOW_INGEST_LIGHTNING,
             wire::WORKFLOW_INGEST_TROPICAL,
+            wire::WORKFLOW_INGEST_SKY,
+            wire::WORKFLOW_ENSURE_STATIC_DATA,
             wire::WORKFLOW_INGEST_AIRQUALITY,
             wire::WORKFLOW_TILE_CLEANUP,
             wire::WORKFLOW_OPEN_METEO_SYNC,
@@ -146,10 +155,17 @@ pub fn registration(role: WorkerRole) -> Registration {
             wire::ACTIVITY_GLOBAL_MODEL_PUBLISH_RUN,
             wire::ACTIVITY_GLOBAL_MODEL_MARK_PROCESSED,
             wire::ACTIVITY_GLOBAL_MODEL_CLEANUP,
+            wire::ACTIVITY_WINTER_FIND_LATEST_RUN,
+            wire::ACTIVITY_WINTER_PROCESS_HOUR,
+            wire::ACTIVITY_WINTER_PUBLISH_RUN,
+            wire::ACTIVITY_WINTER_MARK_PROCESSED,
+            wire::ACTIVITY_WINTER_CLEANUP,
         ],
         WorkerRole::Aux => vec![
             wire::ACTIVITY_LIGHTNING_CONSUME_STREAM,
             wire::ACTIVITY_TROPICAL_FETCH_AND_PUBLISH,
+            wire::ACTIVITY_SKY_FETCH_AND_PUBLISH,
+            wire::ACTIVITY_STATIC_DATA_ENSURE,
             wire::ACTIVITY_AQM_FIND_LATEST_RUN,
             wire::ACTIVITY_AQM_RENDER_CHUNK,
             wire::ACTIVITY_AQM_PUBLISH_RUN,
@@ -249,7 +265,12 @@ impl Deps {
             None
         };
         let aux = if needs(role, WorkerRole::Aux) {
-            Some(AuxActivities::new(http.clone(), TropicalConfig::from_env()))
+            Some(AuxActivities::new(
+                http.clone(),
+                TropicalConfig::from_env(),
+                SkyConfig::from_env(),
+                StaticDataConfig::from_env(),
+            ))
         } else {
             None
         };
@@ -339,6 +360,8 @@ pub fn register_workflows<T: WorkflowTarget>(
             wire::WORKFLOW_INGEST_AIRQUALITY => target.add::<IngestAirQualityWorkflow>()?,
             wire::WORKFLOW_INGEST_LIGHTNING => target.add::<IngestLightningWorkflow>()?,
             wire::WORKFLOW_INGEST_TROPICAL => target.add::<IngestTropicalWorkflow>()?,
+            wire::WORKFLOW_INGEST_SKY => target.add::<IngestSkyWorkflow>()?,
+            wire::WORKFLOW_ENSURE_STATIC_DATA => target.add::<EnsureStaticDataWorkflow>()?,
             wire::WORKFLOW_NOWCAST => target.add::<NowcastWorkflow>()?,
             wire::WORKFLOW_TILE_CLEANUP => target.add::<TileCleanupWorkflow>()?,
             wire::WORKFLOW_OPEN_METEO_SYNC => target.add::<OpenMeteoSyncWorkflow>()?,
@@ -348,6 +371,7 @@ pub fn register_workflows<T: WorkflowTarget>(
             wire::WORKFLOW_DELETE_PUSH_TOKEN => target.add::<DeletePushTokenWorkflow>()?,
             wire::WORKFLOW_DEPLOYMENT_SMOKE => target.add::<RadarDeploymentSmokeWorkflow>()?,
             wire::WORKFLOW_INGEST_GLOBAL_MODEL => target.add::<IngestGlobalModelWorkflow>()?,
+            wire::WORKFLOW_INGEST_WINTER => target.add::<IngestWinterWorkflow>()?,
             wire::WORKFLOW_LEVEL2_POOL => target.add::<Level2PoolWorkflow>()?,
             other => anyhow::bail!("no workflow implementation for {other}"),
         }
@@ -367,6 +391,7 @@ fn add_activities(
         }
         if needs(role, WorkerRole::Hrrr) {
             builder = builder.register_activities(GlobalModelActivities::new(ctx.clone()));
+            builder = builder.register_activities(WinterActivities::new(ctx.clone()));
             builder = builder.register_activities(HrrrActivities::new(ctx));
         }
     }
@@ -656,13 +681,13 @@ mod tests {
     fn legacy_and_all_register_the_full_registry_minus_open_meteo() {
         for role in [WorkerRole::Legacy, WorkerRole::All] {
             let reg = registration(role);
-            assert_eq!(reg.workflows.len(), 14, "{role:?} workflow count");
+            assert_eq!(reg.workflows.len(), 17, "{role:?} workflow count");
             assert_eq!(
                 set(&reg.workflows),
                 set(&wire::ALL_WORKFLOW_TYPES),
                 "{role:?} workflows"
             );
-            assert_eq!(reg.activities.len(), 34, "{role:?} activity count");
+            assert_eq!(reg.activities.len(), 41, "{role:?} activity count");
             assert_eq!(
                 set(&reg.activities),
                 all_but_open_meteo(),
@@ -788,10 +813,11 @@ mod tests {
             set(&[
                 wire::WORKFLOW_INGEST_HRRR,
                 wire::WORKFLOW_INGEST_GLOBAL_MODEL,
+                wire::WORKFLOW_INGEST_WINTER,
                 smoke_wf
             ])
         );
-        assert_eq!(hrrr.activities.len(), 12);
+        assert_eq!(hrrr.activities.len(), 17);
 
         let aux = registration(WorkerRole::Aux);
         assert_eq!(
@@ -799,13 +825,15 @@ mod tests {
             set(&[
                 wire::WORKFLOW_INGEST_LIGHTNING,
                 wire::WORKFLOW_INGEST_TROPICAL,
+                wire::WORKFLOW_INGEST_SKY,
+                wire::WORKFLOW_ENSURE_STATIC_DATA,
                 wire::WORKFLOW_INGEST_AIRQUALITY,
                 wire::WORKFLOW_TILE_CLEANUP,
                 wire::WORKFLOW_OPEN_METEO_SYNC,
                 smoke_wf,
             ])
         );
-        assert_eq!(aux.activities.len(), 9);
+        assert_eq!(aux.activities.len(), 11);
         assert!(!aux.activities.contains(&wire::ACTIVITY_OPEN_METEO_SYNC));
 
         let alerts = registration(WorkerRole::Alerts);

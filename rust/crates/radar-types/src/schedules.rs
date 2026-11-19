@@ -53,6 +53,22 @@ pub const SCHEDULE_OPEN_METEO_SYNC_HRRR: &str = "open-meteo-sync-hrrr";
 pub const SCHEDULE_INGEST_GFS_RADAR: &str = "ingest-gfs-radar";
 /// Schedule ID of the UV Index schedule (`uv`).
 pub const SCHEDULE_INGEST_UV: &str = "ingest-uv";
+/// Schedule ID of the ISS elements schedule (`IngestSkyWorkflow`, product `iss`).
+pub const SCHEDULE_INGEST_ISS: &str = "ingest-iss";
+/// Schedule ID of the ECCC seeing and transparency schedule (`IngestSkyWorkflow`, product `star-seeing`).
+pub const SCHEDULE_INGEST_STAR_SEEING: &str = "ingest-star-seeing";
+/// Schedule ID of the NBM snow and ice totals schedule (`IngestWinterWorkflow`, `nbm-snow`).
+pub const SCHEDULE_INGEST_NBM_SNOW: &str = "ingest-nbm-snow";
+/// Schedule ID of the SNODAS snow depth schedule (`IngestWinterWorkflow`, `snow-depth`).
+pub const SCHEDULE_INGEST_SNOW_DEPTH: &str = "ingest-snow-depth";
+/// Schedule ID of the NOHRSC 24 h snowfall schedule (`IngestWinterWorkflow`, `snowfall-24h`).
+pub const SCHEDULE_INGEST_SNOWFALL_24H: &str = "ingest-snowfall-24h";
+/// Schedule ID of the WPC snow chance schedule (`IngestWinterWorkflow`, `snow-chance`).
+pub const SCHEDULE_INGEST_SNOW_CHANCE: &str = "ingest-snow-chance";
+/// Schedule ID of the GFS temperature-vs-normal schedule (`IngestGlobalModelWorkflow`, `temp-anomaly`).
+pub const SCHEDULE_INGEST_TEMP_ANOMALY: &str = "ingest-temp-anomaly";
+/// Schedule ID of the static-data bootstrap (`EnsureStaticDataWorkflow`, `normals`).
+pub const SCHEDULE_ENSURE_STATIC_DATA: &str = "ensure-static-data";
 
 /// `GFS013_VARIABLES`, exact comma-joined list.
 pub const GFS013_VARIABLES: &str = "temperature_2m,relative_humidity_2m,precipitation,showers,snowfall_water_equivalent,frozen_precipitation_percent,cloud_cover,wind_u_component_10m,wind_v_component_10m,shortwave_radiation,uv_index";
@@ -159,8 +175,10 @@ pub fn action_workflow_id(schedule_id: &str) -> String {
     format!("{SCHEDULE_ACTION_ID_PREFIX}{schedule_id}")
 }
 
-/// The 18 schedules: original seed order with `ingest-mrms-qpe-24h` after the reflectivity ones, then
-/// the two global-model ones and the three severe MRMS ones. Seed-time queue routing is applied by [`schedule_action_queue`], not here.
+/// The 26 schedules: original seed order with `ingest-mrms-qpe-24h` after the reflectivity ones, then
+/// the two global-model ones, the three severe MRMS ones, `ingest-iss`, the winter ones, `ingest-temp-anomaly`,
+/// `ensure-static-data` and `ingest-star-seeing`. Seed-time queue routing is applied by
+/// [`schedule_action_queue`], not here.
 pub fn all_schedules() -> Vec<ScheduleDef> {
     vec![
         ScheduleDef::new(
@@ -341,6 +359,79 @@ pub fn all_schedules() -> Vec<ScheduleDef> {
             "mrms_prefix": "CONUS/EchoTop_18_00.50",
             "layer_name": "echo-top",
         })]),
+        // CelesTrak asks for few requests: one per 6 h slot, never retried.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_ISS,
+            wire::WORKFLOW_INGEST_SKY,
+            6 * 60 * 60,
+            5 * 60,
+            AUX_TASK_QUEUE,
+        )
+        .with_args(vec![json!("iss")]),
+        // NBM posts its 6 hour snow and ice sums with the 00/06/12/18z runs; most polls find nothing new.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_NBM_SNOW,
+            wire::WORKFLOW_INGEST_WINTER,
+            30 * 60,
+            40 * 60,
+            HRRR_TASK_QUEUE,
+        )
+        .with_args(vec![json!("nbm-snow")]),
+        // SNODAS posts one tar a day at about 14Z; hourly polls find it within the hour.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_SNOW_DEPTH,
+            wire::WORKFLOW_INGEST_WINTER,
+            60 * 60,
+            40 * 60,
+            HRRR_TASK_QUEUE,
+        )
+        .with_args(vec![json!("snow-depth")]),
+        // NOHRSC posts the 24 h snowfall analysis for 00Z and 12Z, about 5 h late.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_SNOWFALL_24H,
+            wire::WORKFLOW_INGEST_WINTER,
+            60 * 60,
+            40 * 60,
+            HRRR_TASK_QUEUE,
+        )
+        .with_args(vec![json!("snowfall-24h")]),
+        // WPC posts a PPP cycle every hour, done by about 10 minutes past.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_SNOW_CHANCE,
+            wire::WORKFLOW_INGEST_WINTER,
+            60 * 60,
+            40 * 60,
+            HRRR_TASK_QUEUE,
+        )
+        .with_args(vec![json!("snow-chance")]),
+        // GFS runs every 6 h; the daily highs need hours out to f186, so most polls find nothing new.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_TEMP_ANOMALY,
+            wire::WORKFLOW_INGEST_GLOBAL_MODEL,
+            60 * 60,
+            40 * 60,
+            HRRR_TASK_QUEUE,
+        )
+        .with_args(vec![json!("temp-anomaly")]),
+        // One 1.2 GB pair of downloads the first time; afterwards the marker makes it a no-op.
+        ScheduleDef::new(
+            SCHEDULE_ENSURE_STATIC_DATA,
+            wire::WORKFLOW_ENSURE_STATIC_DATA,
+            24 * 60 * 60,
+            6 * 60 * 60,
+            AUX_TASK_QUEUE,
+        )
+        .with_args(vec![json!("normals")]),
+        // RDPS runs every 6 h; hourly runs pick up each lead as ECCC posts it. Off unless
+        // `ECCC_SEEING_ENABLED` is set.
+        ScheduleDef::new(
+            SCHEDULE_INGEST_STAR_SEEING,
+            wire::WORKFLOW_INGEST_SKY,
+            60 * 60,
+            5 * 60,
+            AUX_TASK_QUEUE,
+        )
+        .with_args(vec![json!("star-seeing")]),
     ]
 }
 

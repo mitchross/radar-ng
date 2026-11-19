@@ -122,6 +122,21 @@ export const LAYERS: LayerConfig[] = [
   { id: "hail-size", label: "Hail", icon: "L", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 7 },
   { id: "rotation-track", label: "Rotation", icon: "N", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 7 },
   { id: "echo-top", label: "Echo Top", icon: "E", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 7 },
+  // Winter (z3-z6, raster only): NBM snow and ice totals out to 72 h, SNODAS depth, NOHRSC 24 h snowfall.
+  { id: "snowfall-forecast", label: "Snow", icon: "W", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
+  { id: "ice-forecast", label: "Ice", icon: "I", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
+  { id: "snow-depth", label: "Depth", icon: "D", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
+  { id: "snowfall-24h", label: "24h Snow", icon: "F", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
+  // Our Nice Day score on the HRRR grid; on only where the server lists it in HRRR_ENABLED_LAYERS.
+  { id: "nice-day", label: "Nice Day", icon: "N", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  // GFS daily high minus the 1991-2020 normal high, one frame a day; lower 48 only.
+  { id: "temp-anomaly", label: "vs Normal", icon: "A", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
+  // Our stargazing score on the HRRR grid, night hours only; gated like Nice Day.
+  { id: "stargazing", label: "Stars", icon: "S", isFillLayer: true, defaultVisible: false, minZoom: 4, maxZoom: 9 },
+  // WPC chance of at least 1, 4 or 8 in of snow in 24 h: one picker row with a chip.
+  { id: "snow-chance-1", label: "Snow 1in", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
+  { id: "snow-chance-4", label: "Snow 4in", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
+  { id: "snow-chance-8", label: "Snow 8in", icon: "C", isFillLayer: true, defaultVisible: false, minZoom: 3, maxZoom: 6 },
 ];
 
 /**

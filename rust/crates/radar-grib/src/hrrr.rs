@@ -105,20 +105,21 @@ impl HrrrVar {
             HrrrVar::Cape => (MessageSelector::parameter(0, 7, 6), (SURFACE_GROUND, 0.0)),
             HrrrVar::U10 => (MessageSelector::parameter(0, 2, 2), h10),
             HrrrVar::V10 => (MessageSelector::parameter(0, 2, 3), h10),
+            // NCEP local numbers (GFS, checked against its `.idx` order) or the WMO ones (HRRR).
             HrrrVar::Crain => (
                 MessageSelector::parameter(0, 1, 192).or_number(33),
                 (SURFACE_GROUND, 0.0),
             ),
             HrrrVar::Csnow => (
-                MessageSelector::parameter(0, 1, 193).or_number(36),
+                MessageSelector::parameter(0, 1, 195).or_number(36),
                 (SURFACE_GROUND, 0.0),
             ),
             HrrrVar::Cfrzr => (
-                MessageSelector::parameter(0, 1, 194).or_number(34),
+                MessageSelector::parameter(0, 1, 193).or_number(34),
                 (SURFACE_GROUND, 0.0),
             ),
             HrrrVar::Cicep => (
-                MessageSelector::parameter(0, 1, 195).or_number(35),
+                MessageSelector::parameter(0, 1, 194).or_number(35),
                 (SURFACE_GROUND, 0.0),
             ),
             HrrrVar::Rh2m => (MessageSelector::parameter(0, 1, 1), h2),

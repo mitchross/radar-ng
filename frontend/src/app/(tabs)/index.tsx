@@ -28,6 +28,7 @@ import {
   weekRange,
 } from "../../lib/forecastView";
 import { getForecastScreenState } from "../../lib/weatherPresentation";
+import { winterStart } from "../../lib/rainAlerts";
 import {
   ScreenState,
   SectionLabel,
@@ -43,6 +44,13 @@ import { requestDeviceLocation } from "../../hooks/useLocation";
 import { ConditionTiles } from "../../components/home/ConditionTiles";
 import { AiBriefingCard } from "../../components/home/AiBriefingCard";
 import { IncomingStormCard } from "../../components/home/IncomingStormCard";
+import { NiceDayCard } from "../../components/home/NiceDayCard";
+import { CountdownCard } from "../../components/home/CountdownCard";
+import { WhiteChristmasCard } from "../../components/home/WhiteChristmasCard";
+import { SkyTonightCard } from "../../components/home/SkyTonightCard";
+import { SnowSpotCard } from "../../components/home/SnowSpotCard";
+import { useNormals } from "../../hooks/useNormals";
+import { normalsLine } from "../../lib/tempNormal";
 import { useBriefing } from "../../hooks/useBriefing";
 import { hourlyPrecipitation } from "../../lib/conditions";
 import { useAirQualityNow } from "../../hooks/useAirQualityNow";
@@ -70,6 +78,9 @@ export default function HomeScreen() {
   const { data: alertData, alertStatus } = useAlerts();
   const briefing = useBriefing(location.name);
   const { data: radarNowcast } = useRadarNowcast();
+  const serverUrl = useWeatherStore((s) => s.serverUrl);
+  // Lower 48 only; hidden until the server has built the normals.
+  const { data: normals } = useNormals(serverUrl, forecast?.latitude ?? 0, forecast?.longitude ?? 0, forecast?.daily.time[0]);
   const firstAlert = alertData?.features[0];
   const firstAlertEndAt = firstAlert ? getAlertEndTime(firstAlert) : null;
   const queryClient = useQueryClient();
@@ -151,12 +162,23 @@ export default function HomeScreen() {
   const feels = temperature(forecast.current.apparent_temperature);
   const hi = temperature(forecast.daily.temperature_2m_max[0]);
   const lo = temperature(forecast.daily.temperature_2m_min[0]);
+  const vsNormal = normalsLine(forecast.daily.temperature_2m_max[0], normals ?? null, temperatureUnit === "celsius");
 
   const conditionLabel = CONDITION_HEADLINES[condition];
   const locationLabel = location.label;
   const locationName = location.name;
 
-  const nowcastBanner = nextHourBanner(radarNowcast, forecast.minutely_15, now.getTime(), forecast.utc_offset_seconds);
+  const rainBanner = nextHourBanner(radarNowcast, forecast.minutely_15, now.getTime(), forecast.utc_offset_seconds);
+  // Snow, mix or ice starting this hour takes the banner; old servers send no class and keep rain.
+  const winter = winterStart(radarNowcast, now.getTime());
+  const nowcastBanner = winter
+    ? {
+        headline: winter.words,
+        sub: winter.endAt
+          ? `Lasts ~${Math.max(1, Math.round((winter.endAt - winter.startAt) / 60_000))} min \u00B7 from radar`
+          : "From radar",
+      }
+    : rainBanner;
 
   const hourly = hourlyView(forecast, temperatureUnit, now.getTime());
   const precipTotal = precipitationNext24h(forecast, now.getTime());
@@ -299,6 +321,11 @@ export default function HomeScreen() {
             <Text style={styles.heroMeta}>
               Feels {formatDegrees(feels)}   {"\u00B7"}   H {formatDegrees(hi)}   L {formatDegrees(lo)}
             </Text>
+            {vsNormal ? (
+              <Text testID="normals-line" style={styles.heroMeta}>
+                {vsNormal}
+              </Text>
+            ) : null}
           </View>
 
           <AiBriefingCard briefing={briefing} />
@@ -378,6 +405,8 @@ export default function HomeScreen() {
             </Pressable>
           ) : null}
 
+          <SnowSpotCard forecast={forecast} nowMs={now.getTime()} />
+
           {/* Hourly strip */}
           <View style={styles.sectionWrap}>
             <SectionLabel>HOURLY</SectionLabel>
@@ -406,6 +435,7 @@ export default function HomeScreen() {
               </View>
             ))}
           </ScrollView>
+          <NiceDayCard forecast={forecast} nowMs={now.getTime()} />
 
           {/* 24h precip chart */}
           <View style={styles.sectionWrap}>
@@ -500,6 +530,9 @@ export default function HomeScreen() {
               );
             })}
           </View>
+          <CountdownCard forecast={forecast} nowMs={now.getTime()} />
+          <WhiteChristmasCard forecast={forecast} nowMs={now.getTime()} />
+          <SkyTonightCard forecast={forecast} nowMs={now.getTime()} />
 
           {/* Mini radar map */}
           <RadarMiniMap />

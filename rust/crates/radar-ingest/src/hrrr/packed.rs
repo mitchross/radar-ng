@@ -15,17 +15,20 @@ use chrono::DateTime;
 use radar_core::env::Paths;
 use radar_core::manifest::canonical_timestamp;
 use radar_core::manifest::packed::{
-    PACKED_DIR, PackedBucket, PackedLayout, run_bucket_id, run_layer_buckets, run_of_bucket,
+    PACKED_DIR, PackedBucket, PackedLayout, PackedTypes, run_bucket_id, run_layer_buckets,
+    run_of_bucket,
 };
 use radar_core::time::parse_iso_as_utc;
 use radar_geo::Grid;
 use radar_grib::hrrr::parse_run_id;
+use radar_tiler::TypePlane;
 use radar_tiler::packed::{
     PACKED_COLS, PACKED_MAX_SLOTS, PACKED_TILE_SIZE, PackFrame, PackOutcome, Quantizer,
     ValueSampler, list_buckets, pack_frames, read_bucket,
 };
+use radar_tiler::typed::{TYPE_CLASSES, TYPE_CODE_STRIDE};
 
-use super::state::layer_color_key;
+use super::state::{RADAR_HRRR, layer_color_key};
 use super::{run_init, valid_time};
 
 /// 512-px zooms packed for HRRR: the 256-px pyramid's 4 to 6.
@@ -84,13 +87,46 @@ pub fn pack_hour(
     valid: &str,
     grid: &Grid,
 ) -> anyhow::Result<()> {
+    pack_hour_typed(paths, layer, run_id, valid, grid, false, None)
+}
+
+/// Whether `layer` stores typed codes: `radar-hrrr` while `PRECIP_TYPE` is on.
+pub fn is_typed(layer: &str, precip_type: bool) -> bool {
+    precip_type && layer == RADAR_HRRR
+}
+
+/// The manifest `packed` object of `layer`, with the typed code space when `typed`.
+pub fn layout_typed(layer: &str, typed: bool) -> Option<PackedLayout> {
+    let mut layout = layout(layer)?;
+    if typed {
+        layout.types = Some(PackedTypes {
+            stride: u32::from(TYPE_CODE_STRIDE),
+            classes: TYPE_CLASSES.iter().map(|c| c.to_string()).collect(),
+        });
+    }
+    Some(layout)
+}
+
+/// [`pack_hour`] with typed codes when `typed`. `types` are the classes of `grid`'s cells; without
+/// them a typed slot is all rain.
+pub fn pack_hour_typed(
+    paths: &Paths,
+    layer: &str,
+    run_id: &str,
+    valid: &str,
+    grid: &Grid,
+    typed: bool,
+    types: Option<TypePlane>,
+) -> anyhow::Result<()> {
     let Some(quant) = quantizer(layer) else {
         return Ok(());
     };
+    let quant = if typed { quant.with_types() } else { quant };
     let started = Instant::now();
     let id = bucket_id(run_id, forecast_hour(run_id, valid)?);
     let slot = canonical_timestamp(valid)?;
-    let sampler = ValueSampler::new(grid, None, &PACKED_ZOOMS, PACKED_TILE_SIZE, None)?;
+    let sampler = ValueSampler::new(grid, None, &PACKED_ZOOMS, PACKED_TILE_SIZE, None)?
+        .with_types(if typed { types } else { None })?;
     let frames = [PackFrame {
         timestamp: &slot,
         sampler: &sampler,
@@ -133,19 +169,40 @@ pub fn run_buckets(
     layer: &str,
     frames: &[(String, String)],
 ) -> anyhow::Result<Vec<PackedBucket>> {
+    run_buckets_typed(paths, layer, frames).map(|(_, buckets)| buckets)
+}
+
+/// [`run_buckets`] in one code space: the newest run's (typed or not), returned first. Buckets in
+/// the other space (packed before a `PRECIP_TYPE` switch) are left out; their frames use rasters.
+pub fn run_buckets_typed(
+    paths: &Paths,
+    layer: &str,
+    frames: &[(String, String)],
+) -> anyhow::Result<(bool, Vec<PackedBucket>)> {
     let runs: BTreeSet<&str> = frames.iter().map(|(_, run)| run.as_str()).collect();
-    let buckets = list_buckets(&packed_layer_dir(paths, layer))?
+    let mut listed: Vec<_> = list_buckets(&packed_layer_dir(paths, layer))?
         .into_iter()
         .filter(|(id, _)| runs.contains(run_of_bucket(id)))
+        .collect();
+    let typed = listed
+        .iter()
+        .max_by(|a, b| run_of_bucket(&a.0).cmp(run_of_bucket(&b.0)))
+        .is_some_and(|(_, state)| state.typed);
+    listed.retain(|(_, state)| state.typed == typed);
+    let buckets = listed
+        .into_iter()
         .map(|(id, state)| PackedBucket {
             id,
             v: state.v,
             slots: state.slots,
         })
         .collect();
-    Ok(run_layer_buckets(
-        buckets,
-        frames.iter().map(|(t, r)| (t.as_str(), r.as_str())),
+    Ok((
+        typed,
+        run_layer_buckets(
+            buckets,
+            frames.iter().map(|(t, r)| (t.as_str(), r.as_str())),
+        ),
     ))
 }
 
@@ -263,5 +320,40 @@ mod tests {
         let left = list_buckets(&packed_layer_dir(&paths, "temperature")).unwrap();
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].0, newer);
+    }
+
+    #[test]
+    fn radar_hrrr_packs_typed_codes_and_lists_one_code_space() {
+        assert!(is_typed(RADAR_HRRR, true));
+        assert!(!is_typed(RADAR_HRRR, false));
+        assert!(!is_typed("temperature", true));
+        let layout = layout_typed(RADAR_HRRR, true).unwrap();
+        let types = layout.types.unwrap();
+        assert_eq!((types.stride, types.classes.len()), (32, 4));
+        assert!(layout_typed(RADAR_HRRR, false).unwrap().types.is_none());
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths(dir.path());
+        let (old, new) = ("20261015_12", "20261015_13");
+        let g = grid(40.0);
+        let snow = TypePlane::new(vec![1; g.values.len()]).unwrap();
+        // The older run was packed before the switch; the newer one holds typed codes.
+        let t1 = valid_time(run_init(old).unwrap(), 1);
+        pack_hour(&paths, RADAR_HRRR, old, &t1, &g).unwrap();
+        let t2 = valid_time(run_init(new).unwrap(), 1);
+        pack_hour_typed(&paths, RADAR_HRRR, new, &t2, &g, true, Some(snow)).unwrap();
+        let on_disk = read_bucket(&packed_layer_dir(&paths, RADAR_HRRR).join(new))
+            .unwrap()
+            .unwrap();
+        assert!(on_disk.typed);
+        // One bucket keeps one code space: an untyped hour cannot join the typed bucket.
+        let t3 = valid_time(run_init(new).unwrap(), 2);
+        assert!(pack_hour(&paths, RADAR_HRRR, new, &t3, &g).is_err());
+
+        let frames = vec![(t1, old.to_string()), (t2, new.to_string())];
+        let (typed, listed) = run_buckets_typed(&paths, RADAR_HRRR, &frames).unwrap();
+        assert!(typed);
+        let ids: Vec<&str> = listed.iter().map(|b| b.id.as_str()).collect();
+        assert_eq!(ids, [new], "the untyped bucket is left out");
     }
 }

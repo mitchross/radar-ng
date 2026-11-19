@@ -41,9 +41,15 @@ pub const WORKFLOW_REGISTER_PUSH_TOKEN: &str = "RegisterPushTokenWorkflow";
 pub const WORKFLOW_DELETE_PUSH_TOKEN: &str = "DeletePushTokenWorkflow";
 /// `IngestGlobalModelWorkflow` (Rust-only): GFS long-range radar and the UV Index, one layer per run.
 pub const WORKFLOW_INGEST_GLOBAL_MODEL: &str = "IngestGlobalModelWorkflow";
+/// `IngestSkyWorkflow` (Rust-only): sky products (ISS elements), one product per run.
+pub const WORKFLOW_INGEST_SKY: &str = "IngestSkyWorkflow";
+/// `IngestWinterWorkflow` (Rust-only): snow and ice layers, one product per run.
+pub const WORKFLOW_INGEST_WINTER: &str = "IngestWinterWorkflow";
+/// `EnsureStaticDataWorkflow` (Rust-only): build static reference data (the temperature normals) once.
+pub const WORKFLOW_ENSURE_STATIC_DATA: &str = "EnsureStaticDataWorkflow";
 
-/// All 14 registered workflow type names.
-pub const ALL_WORKFLOW_TYPES: [&str; 14] = [
+/// All 17 registered workflow type names.
+pub const ALL_WORKFLOW_TYPES: [&str; 17] = [
     WORKFLOW_DEPLOYMENT_SMOKE,
     WORKFLOW_INGEST_MRMS,
     WORKFLOW_INGEST_HRRR,
@@ -58,6 +64,9 @@ pub const ALL_WORKFLOW_TYPES: [&str; 14] = [
     WORKFLOW_REGISTER_PUSH_TOKEN,
     WORKFLOW_DELETE_PUSH_TOKEN,
     WORKFLOW_INGEST_GLOBAL_MODEL,
+    WORKFLOW_INGEST_SKY,
+    WORKFLOW_INGEST_WINTER,
+    WORKFLOW_ENSURE_STATIC_DATA,
 ];
 
 // ---------------------------------------------------------------------------
@@ -100,6 +109,17 @@ pub const ACTIVITY_GLOBAL_MODEL_MARK_PROCESSED: &str = "global_model_mark_proces
 /// `global_model_cleanup`.
 pub const ACTIVITY_GLOBAL_MODEL_CLEANUP: &str = "global_model_cleanup";
 
+/// `winter_find_latest_run`.
+pub const ACTIVITY_WINTER_FIND_LATEST_RUN: &str = "winter_find_latest_run";
+/// `winter_process_hour`.
+pub const ACTIVITY_WINTER_PROCESS_HOUR: &str = "winter_process_hour";
+/// `winter_publish_run`.
+pub const ACTIVITY_WINTER_PUBLISH_RUN: &str = "winter_publish_run";
+/// `winter_mark_processed`.
+pub const ACTIVITY_WINTER_MARK_PROCESSED: &str = "winter_mark_processed";
+/// `winter_cleanup`.
+pub const ACTIVITY_WINTER_CLEANUP: &str = "winter_cleanup";
+
 /// `aqm_find_latest_run`.
 pub const ACTIVITY_AQM_FIND_LATEST_RUN: &str = "aqm_find_latest_run";
 /// `aqm_render_chunk`.
@@ -115,6 +135,10 @@ pub const ACTIVITY_AQM_CLEANUP: &str = "aqm_cleanup";
 pub const ACTIVITY_LIGHTNING_CONSUME_STREAM: &str = "lightning_consume_stream";
 /// `tropical_fetch_and_publish`.
 pub const ACTIVITY_TROPICAL_FETCH_AND_PUBLISH: &str = "tropical_fetch_and_publish";
+/// `sky_fetch_and_publish` (Rust-only): one sky product, at most one upstream request.
+pub const ACTIVITY_SKY_FETCH_AND_PUBLISH: &str = "sky_fetch_and_publish";
+/// `static_data_ensure` (Rust-only): build one static-data product if its marker is missing.
+pub const ACTIVITY_STATIC_DATA_ENSURE: &str = "static_data_ensure";
 /// `nowcast_run`.
 pub const ACTIVITY_NOWCAST_RUN: &str = "nowcast_run";
 /// `tile_cleanup_sweep`.
@@ -142,10 +166,10 @@ pub const ACTIVITY_SIGNAL_MATCHING_STORM_WATCHES: &str = "signal_matching_storm_
 /// name stays reserved for compatibility (spec-temporal section 8.1).
 pub const ACTIVITY_SEND_PUSH_NOTIFICATION: &str = "send_push_notification";
 
-/// All 35 activity names: the 30 the original Python registered (including the reserved
-/// `send_push_notification`) and the five Rust-only `global_model_*` ones. The legacy pool serves all
-/// of them except `open_meteo_sync`.
-pub const ALL_ACTIVITY_NAMES: [&str; 35] = [
+/// All 42 activity names: the 30 the original Python registered (including the reserved
+/// `send_push_notification`) and the Rust-only `global_model_*`, `winter_*`, `sky_fetch_and_publish`
+/// and `static_data_ensure` ones. The legacy pool serves all of them except `open_meteo_sync`.
+pub const ALL_ACTIVITY_NAMES: [&str; 42] = [
     ACTIVITY_RADAR_DEPLOYMENT_SMOKE,
     ACTIVITY_MRMS_LIST_UNPROCESSED_KEYS,
     ACTIVITY_MRMS_PROCESS_FRAME,
@@ -169,6 +193,7 @@ pub const ALL_ACTIVITY_NAMES: [&str; 35] = [
     ACTIVITY_AQM_CLEANUP,
     ACTIVITY_LIGHTNING_CONSUME_STREAM,
     ACTIVITY_TROPICAL_FETCH_AND_PUBLISH,
+    ACTIVITY_SKY_FETCH_AND_PUBLISH,
     ACTIVITY_NOWCAST_RUN,
     ACTIVITY_TILE_CLEANUP_SWEEP,
     ACTIVITY_OPEN_METEO_SYNC,
@@ -181,6 +206,12 @@ pub const ALL_ACTIVITY_NAMES: [&str; 35] = [
     ACTIVITY_MARK_ALERTS_SEEN,
     ACTIVITY_SIGNAL_MATCHING_STORM_WATCHES,
     ACTIVITY_SEND_PUSH_NOTIFICATION,
+    ACTIVITY_WINTER_FIND_LATEST_RUN,
+    ACTIVITY_WINTER_PROCESS_HOUR,
+    ACTIVITY_WINTER_PUBLISH_RUN,
+    ACTIVITY_WINTER_MARK_PROCESSED,
+    ACTIVITY_WINTER_CLEANUP,
+    ACTIVITY_STATIC_DATA_ENSURE,
 ];
 
 // ---------------------------------------------------------------------------

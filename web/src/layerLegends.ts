@@ -18,6 +18,13 @@ const LAYER_TABLES: Record<string, { title: string; unit: string; whole?: boolea
   "echo-top": { title: "Echo tops", unit: "kft" },
   // Band edges sit halfway between whole index values (0.5, 2.5, ...); label the whole values.
   uv: { title: "UV index", unit: "WHO", whole: true },
+  "snowfall-forecast": { title: "Snow total", unit: "in" },
+  "ice-forecast": { title: "Ice total", unit: "in" },
+  "snow-depth": { title: "Snow depth", unit: "in" },
+  "snowfall-24h": { title: "Snow, past 24 h", unit: "in" },
+  "snow-chance-1": { title: "Chance of 1 in of snow", unit: "%" },
+  "snow-chance-4": { title: "Chance of 4 in of snow", unit: "%" },
+  "snow-chance-8": { title: "Chance of 8 in of snow", unit: "%" },
 };
 
 export interface LayerLegend {

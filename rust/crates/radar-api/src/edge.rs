@@ -27,11 +27,13 @@ use axum::routing::get;
 use crate::alerts;
 use crate::briefing;
 use crate::client_ip;
+use crate::climate;
 use crate::files;
 use crate::forecast;
 use crate::grid;
 use crate::health;
 use crate::manifest;
+use crate::normals;
 use crate::nowcast;
 use crate::outlooks;
 use crate::palettes;
@@ -39,6 +41,8 @@ use crate::places;
 use crate::prefetch;
 use crate::replays;
 use crate::respond;
+use crate::sky;
+use crate::snow;
 use crate::state::AppState;
 use crate::wind;
 
@@ -75,6 +79,10 @@ pub const ROUTE_TEMPLATES: &[&str] = &[
     "/api/reverse-geocode",
     "/api/briefing",
     "/api/alerts/explain",
+    "/api/climate/white-christmas",
+    "/api/sky/tonight/{lat}/{lon}",
+    "/api/snow/{lat}/{lon}",
+    "/api/normals/{lat}/{lon}",
     "/v1/push-tokens",
     "/v1/push-tokens/{token}",
     "/v1/watches",
@@ -123,6 +131,13 @@ pub fn api_router() -> Router<AppState> {
         .route("/api/geocode", get(places::get_geocode))
         .route("/api/reverse-geocode", get(places::get_reverse_geocode))
         .route("/api/briefing", get(briefing::get_briefing))
+        .route(
+            "/api/climate/white-christmas",
+            get(climate::get_white_christmas),
+        )
+        .route("/api/sky/tonight/{lat}/{lon}", get(sky::get_sky_tonight))
+        .route("/api/snow/{lat}/{lon}", get(snow::get_snow))
+        .route("/api/normals/{lat}/{lon}", get(normals::get_normals))
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
