@@ -1,6 +1,6 @@
 name: ghcr · web
 
-# The web radar (radar.vanillax.me): static build served by nginx.
+# The web radar (radar.vanillax.me): static build served by static-web-server.
 # Runs on push to master, or manually with an explicit version.
 # PostHog: set the repository variable POSTHOG_PROJECT_KEY to the project's
 # public phc_ key (gh variable set POSTHOG_PROJECT_KEY); unset builds ship
@@ -53,18 +53,25 @@ jobs:
           tags: radar-ng-web:smoke
           cache-from: type=gha,scope=ghcr-web
 
-      - name: Smoke test (status and Content-Type)
+      - name: Smoke test (status, Content-Type, headers)
         run: |
           set -euo pipefail
-          docker run -d --name web -p 127.0.0.1:18090:8080 radar-ng-web:smoke
-          for _ in $(seq 1 20); do curl -sf http://127.0.0.1:18090/healthz >/dev/null && break; sleep 1; done
+          # Same constraints as the cluster: uid 101 and a read-only root filesystem.
+          docker run -d --name web --read-only --user 101:101 -p 127.0.0.1:18090:8080 radar-ng-web:smoke
+          for _ in $(seq 1 20); do curl -sf http://127.0.0.1:18090/health >/dev/null && break; sleep 1; done
           ct() { curl -s -o /dev/null -w '%{http_code} %{content_type}' "http://127.0.0.1:18090$1"; }
           check() { got=$(ct "$1"); echo "$1 -> $got"; case "$got" in "200 $2"*) ;; *) echo "::error::$1 served '$got', want 200 $2"; exit 1;; esac; }
+          hdr() { h=$(curl -s -o /dev/null -D - "http://127.0.0.1:18090$1" | tr -d '\r'); grep -qi "^$2" <<<"$h" || { echo "::error::$1 is missing '$2'"; exit 1; }; }
+          check /health text/plain
           check / text/html
           check /some/deep/link text/html
           check /manifest.webmanifest application/manifest+json
           js=$(curl -s http://127.0.0.1:18090/ | grep -o '/assets/[^"]*\.js' | head -1)
-          check "$js" application/javascript
+          check "$js" text/javascript
+          hdr / 'cache-control: no-cache'
+          hdr /some/deep/link 'content-security-policy: default-src'
+          hdr "$js" 'cache-control: public, max-age=31536000, immutable'
+          hdr "$js" 'x-content-type-options: nosniff'
           docker rm -f web
 
   build:
@@ -121,18 +128,25 @@ jobs:
           tags: radar-ng-web:smoke
           cache-from: type=gha,scope=ghcr-web
 
-      - name: Smoke test (status and Content-Type)
+      - name: Smoke test (status, Content-Type, headers)
         run: |
           set -euo pipefail
-          docker run -d --name web -p 127.0.0.1:18090:8080 radar-ng-web:smoke
-          for _ in $(seq 1 20); do curl -sf http://127.0.0.1:18090/healthz >/dev/null && break; sleep 1; done
+          # Same constraints as the cluster: uid 101 and a read-only root filesystem.
+          docker run -d --name web --read-only --user 101:101 -p 127.0.0.1:18090:8080 radar-ng-web:smoke
+          for _ in $(seq 1 20); do curl -sf http://127.0.0.1:18090/health >/dev/null && break; sleep 1; done
           ct() { curl -s -o /dev/null -w '%{http_code} %{content_type}' "http://127.0.0.1:18090$1"; }
           check() { got=$(ct "$1"); echo "$1 -> $got"; case "$got" in "200 $2"*) ;; *) echo "::error::$1 served '$got', want 200 $2"; exit 1;; esac; }
+          hdr() { h=$(curl -s -o /dev/null -D - "http://127.0.0.1:18090$1" | tr -d '\r'); grep -qi "^$2" <<<"$h" || { echo "::error::$1 is missing '$2'"; exit 1; }; }
+          check /health text/plain
           check / text/html
           check /some/deep/link text/html
           check /manifest.webmanifest application/manifest+json
           js=$(curl -s http://127.0.0.1:18090/ | grep -o '/assets/[^"]*\.js' | head -1)
-          check "$js" application/javascript
+          check "$js" text/javascript
+          hdr / 'cache-control: no-cache'
+          hdr /some/deep/link 'content-security-policy: default-src'
+          hdr "$js" 'cache-control: public, max-age=31536000, immutable'
+          hdr "$js" 'x-content-type-options: nosniff'
           docker rm -f web
 
       - name: Build and push

@@ -23,7 +23,7 @@ uses the upstream project's public server.
 ## Host it for real
 
 The web radar is a folder of static files (`bun run build` writes them to `web/dist/`), or the
-`ghcr.io/<owner>/radar-ng-web` image (nginx on port 8080, health check `/healthz`).
+`ghcr.io/<owner>/radar-ng-web` image (static-web-server on port 8080, health check `/health`).
 
 **It must live on the same address as your server.** The server doesn't send CORS headers, so the
 browser only loads data from the site's own host. Put a reverse proxy or ingress in front that
@@ -40,7 +40,7 @@ proxy that routes by path works: Caddy, Traefik, nginx, an Ingress.
 ## Analytics
 
 Off unless you build with `VITE_POSTHOG_KEY` (and optionally `VITE_POSTHOG_HOST`). If you turn
-them on with your own PostHog host, add that host to the CSP in `web/security-headers.conf`.
+them on with your own PostHog host, add that host to the CSP in `web/sws.toml`.
 
 ## What it shows
 

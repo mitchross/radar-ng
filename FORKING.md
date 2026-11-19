@@ -80,5 +80,5 @@ The web radar (`web/`) is served from the same host as the API, so there's no de
 - Local dev proxies to `RADAR_API` (defaults to the upstream API). Set it to your server:
   `RADAR_API=https://your-api.example.com bun run dev`.
 - **Analytics are off** unless you build with `VITE_POSTHOG_KEY`. `VITE_POSTHOG_HOST` sets your
-  PostHog host. `web/security-headers.conf` allows upstream's PostHog host in its CSP; change that
+  PostHog host. `web/sws.toml` allows upstream's PostHog host in its CSP; change that
   line if you turn analytics on with your own host.

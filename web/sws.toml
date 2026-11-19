@@ -1,0 +1,27 @@
+# static-web-server config for the web radar. Options: https://static-web-server.net/configuration/config-file/
+[general]
+host = "::"
+port = 8080
+root = "/public"
+log-level = "warn"
+health = true
+compression = true
+directory-listing = false
+cache-control-headers = false
+page-fallback = "/public/index.html"
+
+[advanced]
+# Every response, the fallback page included. Later rules override Cache-Control.
+# PostHog is the only third-party origin; basemap tiles and the API are same-origin via the HTTPRoute.
+[[advanced.headers]]
+source = "**"
+[advanced.headers.headers]
+Cache-Control = "no-cache"
+X-Content-Type-Options = "nosniff"
+Referrer-Policy = "strict-origin-when-cross-origin"
+Content-Security-Policy = "default-src 'self'; script-src 'self' https://ingest-posthog.vanillax.me; connect-src 'self' https://ingest-posthog.vanillax.me; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+
+# Content-hashed bundles never change.
+[[advanced.headers]]
+source = "/assets/**"
+headers = { Cache-Control = "public, max-age=31536000, immutable" }

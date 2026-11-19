@@ -83,7 +83,7 @@ Read this first if you're an engineer or an LLM picking up radar-ng after the Py
   use it, so clippy sees the same lints everywhere.
 - **Fixture generators.** The golden-fixture generator scripts (`rust/crates/*/testdata/gen_*.py`) ran the
   Python code. To regenerate a fixture, check out `5b3cb39`.
-- **Web nginx MIME map.** A server-level `types {}` block replaces nginx's whole MIME map; include
+- **Web nginx MIME map** (nginx has since been replaced by static-web-server). A server-level `types {}` block replaces nginx's whole MIME map; include
   `mime.types` first. When that was missed, radar.vanillax.me downloaded as a `.dms` file. `ghcr-web.yml` now
   smoke-tests `Content-Type` before publishing.
 
