@@ -12,6 +12,12 @@ struct PresentationChecks {
         precondition(WatchForecastPresentation.shortHour("2026-09-08T00:00") == "12a")
         precondition(WatchForecastPresentation.shortHour("2026-09-08T19:00") == "7p")
         precondition(WatchForecastPresentation.shortHour("bad") == "—")
+        // A dry tile (204 now, 404 before) is clear; a broken server must never read as dry.
+        precondition(RadarTileStatus.of(200) == .image)
+        precondition(RadarTileStatus.of(204) == .clear)
+        precondition(RadarTileStatus.of(404) == .clear)
+        precondition(RadarTileStatus.of(500) == .failure)
+        precondition(RadarTileStatus.of(nil) == .failure)
         func watchFrame(path: String, maxZoom: Int?) -> WatchRadarFrame {
             WatchRadarFrame(frame: RadarFrame(timestamp: "2026-09-08T23:30:00Z", path: path, palettes: nil, maxZoom: maxZoom),
                             palette: "classic")

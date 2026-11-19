@@ -46,6 +46,10 @@ struct RouteProgressChecks {
         precondition(!RadarRouteProgress.accepts(fix(age: 30, accuracy: 10), now: now))
         precondition(!RadarRouteProgress.accepts(fix(age: 1, accuracy: -1), now: now))
         precondition(!RadarRouteProgress.accepts(fix(age: 1, accuracy: 100), now: now))
+        // Coarse or stale fixes still center the browsing map; an invalid one does not.
+        precondition(RadarRouteProgress.isValidFix(fix(age: 30, accuracy: 100)))
+        precondition(!RadarRouteProgress.isValidFix(fix(age: 1, accuracy: -1)))
+        precondition(RadarTileStatus.of(204) == .clear && RadarTileStatus.of(503) == .failure)
         let valid = RadarFrame(timestamp: ISO8601DateFormatter().string(from: now),
                                path: "2026-09-21T04:04:06+00:00", palettes: ["classic"], maxZoom: 7)
         precondition(valid.isValid)

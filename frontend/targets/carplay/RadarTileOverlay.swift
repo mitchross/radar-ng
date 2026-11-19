@@ -44,8 +44,8 @@ final class RadarTileOverlay: MKTileOverlay {
         request.timeoutInterval = 8
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            let notFound = error == nil && (response as? HTTPURLResponse)?.statusCode == 404
-            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200,
+            let status = error == nil ? RadarTileStatus.of((response as? HTTPURLResponse)?.statusCode) : .failure
+            if status == .image,
                let data, let image = UIImage(data: data)?.cgImage {
                 if path.z == requested.z {
                     DispatchQueue.main.async { self?.onTileLoaded?(requested, data) }
@@ -66,11 +66,8 @@ final class RadarTileOverlay: MKTileOverlay {
                     return
                 }
             }
-            // The tiler writes no file for a tile without precipitation, and a
-            // frame is listed only after every zoom is published, so 404 means
-            // clear. Overzoom is cropped from the top published zoom (loadTile).
-            // Any other failure still reports rather than silently turning clear.
-            if notFound {
+            // 204/404 is a dry tile (RadarTileStatus); anything else reports, never silently clear.
+            if status == .clear {
                 result(nil, nil)  // clear: nothing to draw
             } else {
                 DispatchQueue.main.async { self?.onFailure?() }

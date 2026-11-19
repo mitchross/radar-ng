@@ -115,7 +115,9 @@ final class RadarMapController: UIViewController {
                     edgePadding: UIEdgeInsets(top: 90, left: 90, bottom: 100, right: 70), animated: true)
             }
         }
-        if followsLocation, let location = driving.location, driving.hasUsableLocation {
+        // Follow only fixes navigation accepts, but center once on the first fix of any quality.
+        let fix = driving.hasUsableLocation ? driving.location : (hasCentered ? nil : driving.displayLocation)
+        if followsLocation, let location = fix {
             if driving.phase == .navigating && !wasNavigating {
                 mapView.setRegion(MKCoordinateRegion(center: location.coordinate,
                     latitudinalMeters: 2400, longitudinalMeters: 2400), animated: true)
@@ -134,7 +136,7 @@ final class RadarMapController: UIViewController {
 
     func recenter() {
         followsLocation = true
-        if let location = driving.location {
+        if let location = driving.location ?? driving.displayLocation {
             mapView.setCenter(location.coordinate, animated: true)
         }
     }

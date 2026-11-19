@@ -48,17 +48,17 @@ enum RadarSnapshot {
         return data
     }
 
-    /// The tiler writes no file for a tile without precipitation, so a 404 for a
-    /// frame the manifest advertises means "clear here" (nil). Other statuses
-    /// and network errors still fail, so a broken server never reads as dry.
+    /// Nil for a dry tile (204/404, see RadarTileStatus); other statuses and network errors throw.
     private static func fetchTile(_ url: URL) async throws -> Data? {
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw SnapshotError.unavailable }
-        if http.statusCode == 404 { return nil }
-        guard http.statusCode == 200 else { throw SnapshotError.unavailable }
-        return data
+        switch RadarTileStatus.of(http.statusCode) {
+        case .image: return data
+        case .clear: return nil
+        case .failure: throw SnapshotError.unavailable
+        }
     }
 
     /// Self-hosted basemap renderer (tileserver-gl over VersaTiles). Same style family as the phone.
