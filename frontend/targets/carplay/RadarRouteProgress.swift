@@ -96,8 +96,13 @@ struct RadarRouteProgress {
         instruction.lowercased().hasPrefix("at the roundabout,") ? "arrow.counterclockwise" : nil
     }
 
+    /// Any real fix, however coarse or old: good enough to center the browsing map.
+    static func isValidFix(_ location: CLLocation) -> Bool {
+        CLLocationCoordinate2DIsValid(location.coordinate) && location.horizontalAccuracy >= 0
+    }
+
     static func accepts(_ location: CLLocation, now: Date = .now) -> Bool {
-        CLLocationCoordinate2DIsValid(location.coordinate) && location.horizontalAccuracy >= 0 &&
-        location.horizontalAccuracy <= 65 && abs(location.timestamp.timeIntervalSince(now)) <= 10
+        isValidFix(location) && location.horizontalAccuracy <= 65 &&
+        abs(location.timestamp.timeIntervalSince(now)) <= 10
     }
 }

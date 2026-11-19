@@ -9,6 +9,8 @@ final class RadarDrivingSession: NSObject, AVSpeechSynthesizerDelegate {
     enum Phase { case browsing, preview, navigating, arrived }
     private(set) var phase = Phase.browsing
     private(set) var location: CLLocation?
+    /// The newest valid fix even when too coarse or old for navigation; only centers the map.
+    private(set) var displayLocation: CLLocation?
     private(set) var locationMessage: String? = "Waiting for location"
     private(set) var frame: RadarFrame?
     private(set) var radarMessage = "Loading radar"
@@ -205,6 +207,11 @@ final class RadarDrivingSession: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     func receive(_ fix: CLLocation) {
+        if RadarRouteProgress.isValidFix(fix),
+           displayLocation == nil || fix.timestamp >= displayLocation!.timestamp {
+            displayLocation = fix
+            if !RadarRouteProgress.accepts(fix) { publish() }
+        }
         guard RadarRouteProgress.accepts(fix) else { return }
         guard lastFix == nil || fix.timestamp >= lastFix! else { return }
         let elapsed = lastFix.map { max(0, fix.timestamp.timeIntervalSince($0)) } ?? 0

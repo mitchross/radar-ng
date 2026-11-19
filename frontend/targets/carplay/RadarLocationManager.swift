@@ -45,7 +45,9 @@ final class RadarLocationManager: NSObject, @preconcurrency CLLocationManagerDel
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last(where: { RadarRouteProgress.accepts($0) }) else { return }
+        // Forward coarse or stale fixes too: the browsing map centers on them; receive() filters navigation.
+        guard let location = locations.last(where: { RadarRouteProgress.accepts($0) })
+            ?? locations.last(where: { RadarRouteProgress.isValidFix($0) }) else { return }
         onUpdate?(location)
     }
 

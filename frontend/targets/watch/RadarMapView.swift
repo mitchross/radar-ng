@@ -209,18 +209,16 @@ private struct TileImage: View {
             reportedKey = requestKey
             image = nil
             failed = false
-            // The tiler writes no file for a tile without precipitation, so 404
-            // means clear. A frame is listed only after every zoom is published,
-            // so there is no coarser tile to fall back to. Other failures report.
+            // 204/404 is a dry tile (RadarTileStatus); other failures report.
             guard let url = frame.tileURL(z: z, x: x, y: y) else { return }
             do {
                 var request = URLRequest(url: url)
                 request.timeoutInterval = 8
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard !Task.isCancelled else { return }
-                let status = (response as? HTTPURLResponse)?.statusCode
-                if status == 404 { return }  // clear: no precipitation here
-                if status == 200, let decoded = UIImage(data: data) {
+                let status = RadarTileStatus.of((response as? HTTPURLResponse)?.statusCode)
+                if status == .clear { return }
+                if status == .image, let decoded = UIImage(data: data) {
                     image = decoded
                     return
                 }

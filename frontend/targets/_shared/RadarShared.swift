@@ -66,6 +66,19 @@ struct RadarShared: Decodable {
     }
 }
 
+/// A dry tile is 204 (404 before Oct 2026); any other non-200 must never read as dry.
+enum RadarTileStatus: Equatable {
+    case image, clear, failure
+
+    static func of(_ statusCode: Int?) -> RadarTileStatus {
+        switch statusCode {
+        case 200: return .image
+        case 204, 404: return .clear
+        default: return .failure
+        }
+    }
+}
+
 /// One frame of the radar layer in /api/manifest.json. The widget, CarPlay and
 /// the Watch all decode, choose, check and address frames through this type.
 struct RadarFrame: Decodable, Equatable {
