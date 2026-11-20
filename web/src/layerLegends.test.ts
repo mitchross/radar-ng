@@ -72,4 +72,17 @@ describe("layerLegend", () => {
     expect(layerLegend(null, "classic", "temperature")).toBeNull();
     expect(layerLegend(palettes, "classic", "air-quality")).toBeNull();
   });
+
+  it("draws a gradient when the packed layer is smooth, flat bands otherwise", () => {
+    const stepped = layerLegend(palettes, "classic", "wind")!;
+    expect(layerLegend(palettes, "classic", "wind", undefined, false)).toEqual(stepped);
+    const smooth = layerLegend(palettes, "classic", "wind", undefined, true)!;
+    expect(smooth.labels).toEqual(stepped.labels);
+    expect(smooth.gradient).not.toBe(stepped.gradient);
+    const ranges = palettes.classic!.wind_speed.ranges!;
+    const [r, g, b] = ranges[1].rgba;
+    expect(smooth.gradient).toContain(`rgb(${r},${g},${b}) ${((5 / 150) * 100).toFixed(1)}%,`);
+    expect(smooth.gradient.endsWith("100.0%)")).toBe(true);
+  });
 });
+

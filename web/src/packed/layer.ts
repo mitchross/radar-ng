@@ -9,7 +9,7 @@ import type { PaletteId } from "../palettes";
 import { colorTable, type ServerPalettes } from "./colorTables";
 import {
   atlasSize,
-  buildLut,
+  buildRampLut,
   locateFrame,
   packedTileUrl,
   parsePackedMeta,
@@ -65,8 +65,12 @@ void main() {
 }`;
 
 /**
- * Manual bilinear over decoded texels; filter.ts (smoothSample) is the tested TypeScript twin of
- * this math, keep them in step. The atlas stays NEAREST: raw codes must never be blended.
+ * Manual bilinear over decoded texels; filter.ts (smoothSample, sampleColor) is the tested
+ * TypeScript twin of this math, keep them in step. The atlas and the LUT stay NEAREST: raw codes must
+ * never be blended, and a linear LUT fetch would blend across class ramps.
+ * u_smooth = 0 is PR #364's stepped path, unchanged (bilinear, rounded q, one LUT entry).
+ * u_smooth = 1 (smoothMain) samples a 4x4 cubic B-spline and blends the fractional q between the
+ * two neighbouring entries of the same class, on a smooth LUT.
  */
 export const FRAGMENT = `#version 300 es
 precision highp float;
@@ -77,6 +81,7 @@ uniform ivec2 u_origin;
 uniform int u_channel;
 uniform int u_size;
 uniform int u_stride;
+uniform int u_smooth;
 uniform float u_opacity;
 in vec2 v_uv;
 out vec4 fragColor;
@@ -85,7 +90,55 @@ int code(ivec2 p) {
   float c = u_channel == 0 ? t.r : (u_channel == 1 ? t.g : t.b);
   return int(c * 255.0 + 0.5);
 }
+// Cubic B-spline weights of the 4 taps around a texel fraction t (non-negative, sum to 1).
+vec4 bspline(float t) {
+  float s = 1.0 - t;
+  float t2 = t * t;
+  return vec4(s * s * s, 3.0 * t2 * t - 6.0 * t2 + 4.0, -3.0 * t2 * t + 3.0 * t2 + 3.0 * t + 1.0, t2 * t) / 6.0;
+}
+// Smooth mode: 4x4 B-spline over the texels instead of 2x2 bilinear, with #364's rules: missing
+// taps only lower coverage, the class with the most weight wins, and only its taps are averaged.
+// The fractional mean q blends the class's two neighbouring LUT entries (lutBlend in shared/packed).
+void smoothMain() {
+  vec2 f = v_uv * float(u_size) - 0.5;
+  vec2 i = floor(f);
+  vec4 wx = bspline(f.x - i.x);
+  vec4 wy = bspline(f.y - i.y);
+  float csum[8] = float[8](0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  float cw[8] = float[8](0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  float coverage = 0.0;
+  for (int y = 0; y < 4; y++) {
+    for (int x = 0; x < 4; x++) {
+      int c = code(clamp(ivec2(i) + ivec2(x - 1, y - 1), ivec2(0), ivec2(u_size - 1)));
+      int k = u_stride > 0 ? min(c / u_stride, 7) : 0;
+      int q = u_stride > 0 ? c - (c / u_stride) * u_stride : c;
+      if (q == 0) continue;
+      float w = wx[x] * wy[y];
+      coverage += w;
+      csum[k] += w * float(q);
+      cw[k] += w;
+    }
+  }
+  int best = 0;
+  for (int k = 1; k < 8; k++) if (cw[k] > cw[best]) best = k;
+  if (cw[best] <= 0.0) discard;
+  int qmax = u_stride > 0 ? u_stride - 1 : 255;
+  int base = u_stride > 0 ? best * u_stride : 0;
+  float m = clamp(csum[best] / cw[best], 1.0, float(qmax));
+  int lo = int(floor(m));
+  int hi = min(lo + 1, qmax);
+  vec4 c0 = texelFetch(u_lut, ivec2(base + lo, 0), 0);
+  vec4 c1 = texelFetch(u_lut, ivec2(base + hi, 0), 0);
+  vec4 p = mix(vec4(c0.rgb * c0.a, c0.a), vec4(c1.rgb * c1.a, c1.a), m - float(lo));
+  float a = u_opacity * smoothstep(0.15, 0.65, coverage);
+  if (p.a * a <= 0.0) discard;
+  fragColor = p * a;
+}
 void main() {
+  if (u_smooth == 1) {
+    smoothMain();
+    return;
+  }
   vec2 f = v_uv * float(u_size) - 0.5;
   vec2 i = floor(f);
   vec2 w = f - i;
@@ -124,7 +177,7 @@ void main() {
   fragColor = vec4(color.rgb * a, a);
 }`;
 
-type Uniform = "u_matrix" | "u_uv" | "u_atlas" | "u_lut" | "u_origin" | "u_channel" | "u_size" | "u_stride" | "u_opacity";
+type Uniform = "u_matrix" | "u_uv" | "u_atlas" | "u_lut" | "u_origin" | "u_channel" | "u_size" | "u_stride" | "u_smooth" | "u_opacity";
 
 const tileKey = (layer: string, bucket: string, t: TileId) => `${layer}|${bucket}|${t.z}/${t.x}/${t.y}`;
 
@@ -162,6 +215,8 @@ export class PackedRadarLayer implements CustomLayerInterface {
   constructor(
     private palette: PaletteId,
     private opacity: number,
+    /** Smooth colour ramps (default) or the server's stepped bands; see FRAGMENT. */
+    private smooth = true,
   ) {}
 
   // ---------- public API ----------
@@ -214,6 +269,13 @@ export class PackedRadarLayer implements CustomLayerInterface {
     this.repaint();
   }
 
+  /** Smooth ramps or stepped bands. Only the table and a uniform change: no tile is refetched. */
+  setSmooth(smooth: boolean) {
+    if (smooth === this.smooth) return;
+    this.smooth = smooth;
+    this.repaint();
+  }
+
   /** Every tile in view for the frame's bucket is settled (drawn, empty, or failed). */
   isFrameReady(ref: PackedFrameRef): boolean {
     const meta = this.metas[ref.layer];
@@ -254,7 +316,7 @@ export class PackedRadarLayer implements CustomLayerInterface {
       this.failed = true;
       return;
     }
-    for (const name of ["u_matrix", "u_uv", "u_atlas", "u_lut", "u_origin", "u_channel", "u_size", "u_stride", "u_opacity"] as Uniform[]) {
+    for (const name of ["u_matrix", "u_uv", "u_atlas", "u_lut", "u_origin", "u_channel", "u_size", "u_stride", "u_smooth", "u_opacity"] as Uniform[]) {
       this.uniforms[name] = gl.getUniformLocation(this.program, name);
     }
     this.buffer = gl.createBuffer();
@@ -305,6 +367,7 @@ export class PackedRadarLayer implements CustomLayerInterface {
     gl.uniform1i(this.uniforms.u_channel, channel);
     gl.uniform1i(this.uniforms.u_size, meta.tile_size);
     gl.uniform1i(this.uniforms.u_stride, meta.types?.stride ?? 0);
+    gl.uniform1i(this.uniforms.u_smooth, this.smooth ? 1 : 0);
     gl.uniform1f(this.uniforms.u_opacity, this.opacity);
 
     const main = options.defaultProjectionData.mainMatrix;
@@ -343,14 +406,14 @@ export class PackedRadarLayer implements CustomLayerInterface {
   }
 
   private lut(gl: WebGL2RenderingContext, meta: PackedMeta): WebGLTexture | null {
-    const key = `${this.palette}|${meta.color_key}|${meta.scale}|${meta.offset}|${meta.types?.stride ?? 0}|${meta.types?.classes.join(",") ?? ""}`;
+    const key = `${this.smooth ? "smooth" : "stepped"}|${this.palette}|${meta.color_key}|${meta.scale}|${meta.offset}|${meta.types?.stride ?? 0}|${meta.types?.classes.join(",") ?? ""}`;
     const existing = this.luts.get(key);
     if (existing) return existing;
     const table = colorTable(this.server, this.palette, meta.color_key);
     if (!table) return null;
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, buildLut(table, meta.scale, meta.offset, meta.types));
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, buildRampLut(table, meta.scale, meta.offset, meta.types, this.smooth));
     setNearest(gl);
     this.luts.set(key, tex);
     return tex;

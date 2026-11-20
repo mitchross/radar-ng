@@ -95,6 +95,8 @@ export default function SettingsScreen() {
   const setRadarOpacity = useWeatherStore((s) => s.setRadarOpacity);
   const playbackSpeed = useWeatherStore((s) => s.playbackSpeed);
   const fastRadar = useWeatherStore((s) => s.fastRadar);
+  const steppedBands = useWeatherStore((s) => s.steppedBands);
+  const setSteppedBands = useWeatherStore((s) => s.setSteppedBands);
   const setFastRadar = useWeatherStore((s) => s.setFastRadar);
   const inMapSummary = useInMapSummary();
   const satelliteVisible = useWeatherStore((s) => s.satelliteVisible);
@@ -555,6 +557,13 @@ export default function SettingsScreen() {
                 <PaletteSelector />
               </View>
             </View>
+            <Sep />
+            <ToggleRow
+              label="Stepped bands"
+              sub="One flat colour per band instead of smooth gradients (fast radar only)"
+              value={steppedBands}
+              onChange={setSteppedBands}
+            />
             <Sep />
             <View style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
               <Text style={styles.rowLabel}>Radar opacity {Math.round((opacityDraft ?? radarOpacity) * 100)}%</Text>

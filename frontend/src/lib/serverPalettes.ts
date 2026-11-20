@@ -46,6 +46,28 @@ export interface PrecipTypeRamp {
   colors: string[];
 }
 
+/**
+ * Colours and stop positions for an expo-linear-gradient legend bar. Smooth: the colours spread
+ * evenly and blend, as the GPU radar's smooth ramps. Stepped: each colour a flat block with hard
+ * edges (a doubled stop at every boundary), as the server's PNG tiles and Stepped bands.
+ */
+export function legendGradient(colors: readonly string[], stepped: boolean): { colors: string[]; locations?: number[] } {
+  if (!stepped || colors.length < 2) return { colors: [...colors] };
+  const n = colors.length;
+  return {
+    colors: colors.flatMap((c) => [c, c]),
+    locations: colors.flatMap((_, i) => [i / n, (i + 1) / n]),
+  };
+}
+
+/**
+ * True when the radar layer is drawn with smooth ramps: Stepped bands off and the GPU path drawing
+ * it (fast radar on, live data, the layer has packed tiles). PNG rasters are always stepped.
+ */
+export function legendIsSmooth(opts: { steppedBands: boolean; fastRadar: boolean; replaying: boolean; packed: boolean }): boolean {
+  return !opts.steppedBands && opts.fastRadar && !opts.replaying && opts.packed;
+}
+
 /** Rain, snow, mix and (when the server has it) ice ramps of the radar palette, for typed frames. */
 export function precipTypeRamps(palettes: ServerPalettes | null | undefined, palette: Palette): PrecipTypeRamp[] | null {
   const table = (palettes?.[palette] ?? palettes?.classic)?.reflectivity;

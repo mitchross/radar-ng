@@ -150,10 +150,35 @@ export const PALETTES: Record<PaletteId, { name: string; bands: Band[]; snow: Ba
 
 export const css = ([r, g, b, a]: Band["rgba"]) => `rgba(${r},${g},${b},${(Math.max(a, 150) / 255).toFixed(2)})`;
 
-/** Rain, snow, mix and ice legend ramps (weak to strong) for radar the server colors by precipitation type. */
-export function typeRamps(palette: PaletteId): { label: string; gradient: string }[] {
+/** The reflectivity legend runs from the lowest band to the top band's end. */
+export const RADAR_LEGEND_TOP = 75;
+
+/**
+ * CSS gradient of bands placed on a value axis from `bands[0].min` to `top`. Stepped: each band is a
+ * flat block (the server's PNG colours). Smooth: each band's colour sits at its start and blends into
+ * the next, the top band flat, as the packed radar's smooth ramp (shared/packed buildSmoothLut).
+ */
+export function bandGradient(bands: { min: number; rgba: Band["rgba"] }[], top: number, smooth: boolean): string {
+  const lo = bands[0].min;
+  const pos = (v: number) => `${((v - lo) / (top - lo)) * 100}%`;
+  const stops = smooth
+    ? [...bands.map((b) => `${css(b.rgba)} ${pos(b.min)}`), `${css(bands[bands.length - 1].rgba)} 100%`]
+    : bands.map((b, i) => `${css(b.rgba)} ${pos(b.min)} ${pos(Math.min(bands[i + 1]?.min ?? top, top))}`);
+  return `linear-gradient(90deg,${stops.join(",")})`;
+}
+
+export const radarLegendGradient = (bands: Band[], smooth: boolean) => bandGradient(bands, RADAR_LEGEND_TOP, smooth);
+
+/**
+ * Rain, snow, mix and ice legend ramps (weak to strong) for radar the server colors by precipitation
+ * type: evenly spaced gradients when smooth, flat equal blocks when stepped.
+ */
+export function typeRamps(palette: PaletteId, smooth = true): { label: string; gradient: string }[] {
   const p = PALETTES[palette];
-  const ramp = (bands: Band[]) => `linear-gradient(90deg,${bands.map((b) => css(b.rgba)).join(",")})`;
+  const ramp = (bands: Band[]) =>
+    smooth
+      ? `linear-gradient(90deg,${bands.map((b) => css(b.rgba)).join(",")})`
+      : `linear-gradient(90deg,${bands.map((b, i) => `${css(b.rgba)} ${((i / bands.length) * 100).toFixed(1)}% ${(((i + 1) / bands.length) * 100).toFixed(1)}%`).join(",")})`;
   return [
     { label: "Rain", gradient: ramp(p.bands) },
     { label: "Snow", gradient: ramp(p.snow) },
