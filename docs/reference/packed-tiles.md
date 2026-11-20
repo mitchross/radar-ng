@@ -243,8 +243,26 @@ codes (v2), build the table per code: class `code / stride` picks `ranges` (rain
 color every layer through the table of its `color_key`; the built-in fallback covers only
 `reflectivity`, so other layers use rasters until `/api/palettes` answers.
 
-The shader reads the slot's channel with `texelFetch` (nearest), maps it through the table, and
-multiplies by the layer opacity. A later version may crossfade two slots.
+The atlas is never filtered by the GPU: a linear blend of raw codes would mix classes (v2) and is
+not a value. The web shader reconstructs bilinearly from decoded texels instead
+(`web/src/packed/filter.ts` is the tested twin of its math):
+
+- It reads the 4 texels around the pixel with `texelFetch`, clamped to the tile's own block, so it
+  never reads a neighbouring slot block. A tile border is a clamp seam.
+- Each texel decodes to (class, `q`); `q` = 0 is missing. The class is the present texel with the
+  largest weight (the nearest one when present). `q` is the weight-normalised mean over present
+  texels of that class, so missing or other-class neighbours never pull it down or across a type
+  edge. The rounded code goes through the table.
+- The coverage (summed weight of present texels) fades the alpha with `smoothstep(0.15, 0.65)`:
+  echo edges fade over about a texel and an isolated texel keeps about its area.
+
+At texel centres this equals nearest sampling; past `max_zoom` texels become smooth contours
+instead of squares. The result is multiplied by the layer opacity. A later version may crossfade
+two slots.
+
+The app colors each tile 1:1 at its native zoom (one texel per output pixel, texel centres), and
+MapLibre overscales those PNGs past `max_zoom` with `raster-resampling: linear` (blending colors,
+not values).
 
 ## Clients
 

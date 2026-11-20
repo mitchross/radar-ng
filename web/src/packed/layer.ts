@@ -64,7 +64,11 @@ void main() {
   gl_Position = u_matrix * vec4(a_pos, 0.0, 1.0);
 }`;
 
-const FRAGMENT = `#version 300 es
+/**
+ * Manual bilinear over decoded texels; filter.ts (smoothSample) is the tested TypeScript twin of
+ * this math, keep them in step. The atlas stays NEAREST: raw codes must never be blended.
+ */
+export const FRAGMENT = `#version 300 es
 precision highp float;
 precision highp int;
 uniform sampler2D u_atlas;
@@ -72,22 +76,55 @@ uniform sampler2D u_lut;
 uniform ivec2 u_origin;
 uniform int u_channel;
 uniform int u_size;
+uniform int u_stride;
 uniform float u_opacity;
 in vec2 v_uv;
 out vec4 fragColor;
-void main() {
-  ivec2 p = clamp(ivec2(floor(v_uv * float(u_size))), ivec2(0), ivec2(u_size - 1));
+int code(ivec2 p) {
   vec3 t = texelFetch(u_atlas, u_origin + p, 0).rgb;
   float c = u_channel == 0 ? t.r : (u_channel == 1 ? t.g : t.b);
-  int q = int(c * 255.0 + 0.5);
-  if (q == 0) discard;
-  vec4 color = texelFetch(u_lut, ivec2(q, 0), 0);
-  float a = color.a * u_opacity;
+  return int(c * 255.0 + 0.5);
+}
+void main() {
+  vec2 f = v_uv * float(u_size) - 0.5;
+  vec2 i = floor(f);
+  vec2 w = f - i;
+  // Clamped to this slot's block: never a neighbouring block of the atlas.
+  ivec2 p0 = clamp(ivec2(i), ivec2(0), ivec2(u_size - 1));
+  ivec2 p1 = clamp(ivec2(i) + 1, ivec2(0), ivec2(u_size - 1));
+  int codes[4] = int[4](code(p0), code(ivec2(p1.x, p0.y)), code(ivec2(p0.x, p1.y)), code(p1));
+  float weights[4] = float[4]((1.0 - w.x) * (1.0 - w.y), w.x * (1.0 - w.y), (1.0 - w.x) * w.y, w.x * w.y);
+  int cls[4];
+  int q[4];
+  float coverage = 0.0;
+  int best = -1;
+  float bestW = -1.0;
+  for (int k = 0; k < 4; k++) {
+    cls[k] = u_stride > 0 ? codes[k] / u_stride : 0;
+    q[k] = u_stride > 0 ? codes[k] - cls[k] * u_stride : codes[k];
+    if (q[k] == 0) continue;
+    coverage += weights[k];
+    if (weights[k] > bestW) { bestW = weights[k]; best = k; }
+  }
+  if (best < 0) discard;
+  float sum = 0.0;
+  float wsum = 0.0;
+  for (int k = 0; k < 4; k++) {
+    if (q[k] == 0 || cls[k] != cls[best]) continue;
+    sum += weights[k] * float(q[k]);
+    wsum += weights[k];
+  }
+  float mean = wsum > 0.0 ? sum / wsum : float(q[best]);
+  int qmax = u_stride > 0 ? u_stride - 1 : 255;
+  int qi = clamp(int(floor(mean + 0.5)), 1, qmax);
+  int lutIndex = (u_stride > 0 ? cls[best] * u_stride : 0) + qi;
+  vec4 color = texelFetch(u_lut, ivec2(lutIndex, 0), 0);
+  float a = color.a * u_opacity * smoothstep(0.15, 0.65, coverage);
   if (a <= 0.0) discard;
   fragColor = vec4(color.rgb * a, a);
 }`;
 
-type Uniform = "u_matrix" | "u_uv" | "u_atlas" | "u_lut" | "u_origin" | "u_channel" | "u_size" | "u_opacity";
+type Uniform = "u_matrix" | "u_uv" | "u_atlas" | "u_lut" | "u_origin" | "u_channel" | "u_size" | "u_stride" | "u_opacity";
 
 const tileKey = (layer: string, bucket: string, t: TileId) => `${layer}|${bucket}|${t.z}/${t.x}/${t.y}`;
 
@@ -217,7 +254,7 @@ export class PackedRadarLayer implements CustomLayerInterface {
       this.failed = true;
       return;
     }
-    for (const name of ["u_matrix", "u_uv", "u_atlas", "u_lut", "u_origin", "u_channel", "u_size", "u_opacity"] as Uniform[]) {
+    for (const name of ["u_matrix", "u_uv", "u_atlas", "u_lut", "u_origin", "u_channel", "u_size", "u_stride", "u_opacity"] as Uniform[]) {
       this.uniforms[name] = gl.getUniformLocation(this.program, name);
     }
     this.buffer = gl.createBuffer();
@@ -267,6 +304,7 @@ export class PackedRadarLayer implements CustomLayerInterface {
     gl.uniform2i(this.uniforms.u_origin, x0, y0);
     gl.uniform1i(this.uniforms.u_channel, channel);
     gl.uniform1i(this.uniforms.u_size, meta.tile_size);
+    gl.uniform1i(this.uniforms.u_stride, meta.types?.stride ?? 0);
     gl.uniform1f(this.uniforms.u_opacity, this.opacity);
 
     const main = options.defaultProjectionData.mainMatrix;
