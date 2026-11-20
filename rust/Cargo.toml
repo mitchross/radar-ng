@@ -69,7 +69,7 @@ grib = { version = "0.19", default-features = false, features = ["png-unpack-wit
 
 # network
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "stream", "http2"] }
-quick-xml = { version = "0.37", features = ["serialize"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
 tokio-tungstenite = { version = "0.27", features = ["rustls-tls-webpki-roots"] }
 bytes = "1"
 url = "2.5"
