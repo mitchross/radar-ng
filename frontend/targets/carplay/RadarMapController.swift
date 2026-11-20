@@ -28,6 +28,11 @@ final class RadarMapController: UIViewController {
     private var searchCompletion: (([CPListItem]) -> Void)?
     private var searchGeneration = UUID()
     private var panOrigin: MKMapRect?
+    private var zoomOrigin: MKMapRect?
+    /// When panBeganWith stepped; a panWith right after it is the same press.
+    private var arrowStepAt: Date?
+    /// Outcome of each radar tile MapKit asked for; the status button reads the ones in view.
+    private var tileStatuses: [RadarMapViewport.Tile: RadarTileStatus] = [:]
     private var wasNavigating = false
 
     init(dashboard: Bool = false, driving: RadarDrivingSession? = nil) {
@@ -56,12 +61,13 @@ final class RadarMapController: UIViewController {
         let result = CPMapTemplate()
         template = result
         result.mapDelegate = self
-        result.automaticallyHidesNavigationBar = true
+        // Keep Search, radar status and the panning Done reachable; updateButtons hides it only while navigating.
+        result.automaticallyHidesNavigationBar = false
         result.hidesButtonsWithNavigationBar = false
         result.mapButtons = [
             mapButton("location.fill") { [weak self] in self?.recenter() },
-            mapButton("plus") { [weak self] in self?.zoom(0.6) },
-            mapButton("minus") { [weak self] in self?.zoom(1.6) },
+            mapButton("plus") { [weak self] in self?.zoom(levels: RadarMapViewport.zoomStep) },
+            mapButton("minus") { [weak self] in self?.zoom(levels: -RadarMapViewport.zoomStep) },
             mapButton("hand.draw") { [weak self] in self?.template?.showPanningInterface(animated: true) },
         ]
         buttonState = nil  // a new template has no buttons yet
@@ -99,6 +105,7 @@ final class RadarMapController: UIViewController {
                 overlay.onTileLoaded = { [weak self] path, data in
                     self?.onRadarTileLoaded?(frame, path, data)
                 }
+                overlay.onTileStatus = { [weak self] path, status in self?.record(path, status) }
                 radarOverlay = overlay
                 mapView.insertOverlay(overlay, at: 0, level: .aboveRoads)
             }
@@ -119,13 +126,11 @@ final class RadarMapController: UIViewController {
         let fix = driving.hasUsableLocation ? driving.location : (hasCentered ? nil : driving.displayLocation)
         if followsLocation, let location = fix {
             if driving.phase == .navigating && !wasNavigating {
-                mapView.setRegion(MKCoordinateRegion(center: location.coordinate,
-                    latitudinalMeters: 2400, longitudinalMeters: 2400), animated: true)
+                setSpan(RadarMapViewport.navigationSpanMeters, around: location.coordinate, animated: true)
                 hasCentered = true
             } else if !hasCentered {
-                mapView.setRegion(MKCoordinateRegion(center: location.coordinate,
-                    latitudinalMeters: dashboard ? 140_000 : 180_000,
-                    longitudinalMeters: dashboard ? 140_000 : 180_000), animated: false)
+                setSpan(RadarMapViewport.resetSpanMeters(navigating: false, dashboard: dashboard),
+                        around: location.coordinate, animated: false)
                 hasCentered = true
             } else { mapView.setCenter(location.coordinate, animated: true) }
         }
@@ -134,20 +139,55 @@ final class RadarMapController: UIViewController {
         updateButtons()
     }
 
+    /// The locate button: follow again and return to the default zoom (street span while navigating).
     func recenter() {
         followsLocation = true
-        if let location = driving.location ?? driving.displayLocation {
-            mapView.setCenter(location.coordinate, animated: true)
-        }
+        if template?.isPanningInterfaceVisible == true { template?.dismissPanningInterface(animated: true) }
+        guard let location = driving.location ?? driving.displayLocation else { return }
+        let span = RadarMapViewport.resetSpanMeters(navigating: driving.phase == .navigating, dashboard: dashboard)
+        setSpan(span, around: location.coordinate, animated: true)
     }
 
-    private func zoom(_ multiplier: Double) {
+    private func setSpan(_ meters: Double, around center: CLLocationCoordinate2D, animated: Bool) {
+        mapView.setRegion(MKCoordinateRegion(center: center, latitudinalMeters: meters, longitudinalMeters: meters),
+                          animated: animated)
+    }
+
+    private func latitude(of rect: MKMapRect) -> Double { MKMapPoint(x: rect.midX, y: rect.midY).coordinate.latitude }
+
+    private func widthMeters(of rect: MKMapRect) -> Double {
+        rect.width * RadarMapViewport.metersPerMapPoint(latitude: latitude(of: rect))
+    }
+
+    /// Shows `meters` across, clamped to the radar's zooms, keeping `anchor` fixed on screen.
+    private func setWidth(_ meters: Double, anchor: MKMapPoint, in rect: MKMapRect, animated: Bool) {
+        guard rect.width > 0 else { return }
+        let lat = latitude(of: rect)
+        let clamped = RadarMapViewport.clampedWidth(meters, viewWidthPoints: Double(mapView.bounds.width), latitude: lat)
+        let ratio = clamped / RadarMapViewport.metersPerMapPoint(latitude: lat) / rect.width
+        mapView.setVisibleMapRect(MKMapRect(x: anchor.x - (anchor.x - rect.minX) * ratio,
+                                            y: anchor.y - (anchor.y - rect.minY) * ratio,
+                                            width: rect.width * ratio, height: rect.height * ratio), animated: animated)
+    }
+
+    private func zoom(levels: Double) {
         let rect = mapView.visibleMapRect
-        let width = min(MKMapSize.world.width, max(500, rect.width * multiplier))
-        let ratio = width / rect.width
-        let size = MKMapSize(width: width, height: rect.height * ratio)
-        mapView.setVisibleMapRect(MKMapRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2,
-                                         width: size.width, height: size.height), animated: true)
+        setWidth(widthMeters(of: rect) / pow(2, levels), anchor: MKMapPoint(x: rect.midX, y: rect.midY),
+                 in: rect, animated: true)
+    }
+
+    private func record(_ path: MKTileOverlayPath, _ status: RadarTileStatus) {
+        if tileStatuses.count > 512 { tileStatuses.removeAll() }  // bound memory on long drives
+        tileStatuses[RadarMapViewport.Tile(z: path.z, x: path.x, y: path.y)] = status
+        updateButtons()
+    }
+
+    private func radarStatus() -> String {
+        let rect = mapView.visibleMapRect
+        let tiles = RadarMapViewport.visibleStatuses(tileStatuses, minX: rect.minX, minY: rect.minY,
+                                                     maxX: rect.maxX, maxY: rect.maxY)
+        return RadarMapViewport.statusText(frameAge: driving.frame?.observedAt.map { Date().timeIntervalSince($0) },
+                                           fetchFailed: driving.radarFailed, hidden: !radarVisible, tiles: tiles)
     }
 
     /// What the bar buttons show. They are rebuilt only when this changes: publish() runs on every fix and tick.
@@ -160,10 +200,11 @@ final class RadarMapController: UIViewController {
 
     private func updateButtons() {
         guard let template else { return }
-        let state = ButtonState(phase: driving.phase, status: driving.locationMessage ?? driving.radarMessage,
+        let state = ButtonState(phase: driving.phase, status: driving.locationMessage ?? radarStatus(),
                                 muted: driving.muted, panning: template.isPanningInterfaceVisible)
         guard state != buttonState else { return }
         buttonState = state
+        template.automaticallyHidesNavigationBar = driving.phase == .navigating
         if template.isPanningInterfaceVisible {
             template.leadingNavigationBarButtons = [CPBarButton(title: "Done") { [weak self] _ in
                 self?.template?.dismissPanningInterface(animated: true)
@@ -300,7 +341,7 @@ extension RadarMapController: MKMapViewDelegate {
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
         if overlay is RadarTileOverlay {
             let renderer = MKTileOverlayRenderer(tileOverlay: overlay as! RadarTileOverlay)
-            renderer.alpha = 0.65
+            renderer.alpha = 0.8  // light echoes must read in sunlight over the muted base
             return renderer
         }
         if let route = overlay as? MKPolyline {
@@ -310,6 +351,7 @@ extension RadarMapController: MKMapViewDelegate {
         }
         return MKOverlayRenderer(overlay: overlay)
     }
+    func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) { updateButtons() }
 }
 
 extension RadarMapController: CPSearchTemplateDelegate {
@@ -367,8 +409,7 @@ extension RadarMapController: CPMapTemplateDelegate {
             try driving.startNavigation()
             followsLocation = true
             if let location = driving.location {
-                mapView.setRegion(MKCoordinateRegion(center: location.coordinate,
-                    latitudinalMeters: 2400, longitudinalMeters: 2400), animated: true)
+                setSpan(RadarMapViewport.navigationSpanMeters, around: location.coordinate, animated: true)
             }
         } catch { showError(error) }
     }
@@ -378,26 +419,60 @@ extension RadarMapController: CPMapTemplateDelegate {
                      with travelEstimates: CPTravelEstimates) -> Bool { true }
     func mapTemplateDidShowPanningInterface(_ mapTemplate: CPMapTemplate) { followsLocation = false; updateButtons() }
     func mapTemplateDidDismissPanningInterface(_ mapTemplate: CPMapTemplate) { updateButtons() }
-    func mapTemplate(_ mapTemplate: CPMapTemplate, panWith direction: CPMapTemplate.PanDirection) {
+    private func step(_ direction: CPMapTemplate.PanDirection) {
         followsLocation = false
-        var rect = mapView.visibleMapRect
-        if direction.contains(.left) { rect.origin.x -= rect.width * 0.3 }
-        if direction.contains(.right) { rect.origin.x += rect.width * 0.3 }
-        if direction.contains(.up) { rect.origin.y -= rect.height * 0.3 }
-        if direction.contains(.down) { rect.origin.y += rect.height * 0.3 }
-        mapView.setVisibleMapRect(rect, animated: true)
+        let rect = mapView.visibleMapRect, step = RadarMapViewport.panStep
+        var center = MKMapPoint(x: rect.midX, y: rect.midY)
+        if direction.contains(.left) { center.x -= rect.width * step }
+        if direction.contains(.right) { center.x += rect.width * step }
+        if direction.contains(.up) { center.y -= rect.height * step }
+        if direction.contains(.down) { center.y += rect.height * step }
+        mapView.setCenter(center.coordinate, animated: true)
+    }
+    func mapTemplate(_ mapTemplate: CPMapTemplate, panWith direction: CPMapTemplate.PanDirection) {
+        defer { arrowStepAt = nil }
+        if let at = arrowStepAt, Date().timeIntervalSince(at) < 0.3 { return }  // panBeganWith already moved
+        step(direction)
     }
     func mapTemplate(_ mapTemplate: CPMapTemplate, panBeganWith direction: CPMapTemplate.PanDirection) {
-        self.mapTemplate(mapTemplate, panWith: direction)
+        step(direction); arrowStepAt = Date()
     }
     func mapTemplateDidBeginPanGesture(_ mapTemplate: CPMapTemplate) {
         followsLocation = false; panOrigin = mapView.visibleMapRect
     }
     func mapTemplate(_ mapTemplate: CPMapTemplate, didUpdatePanGestureWithTranslation translation: CGPoint, velocity: CGPoint) {
-        guard var rect = panOrigin, mapView.bounds.width > 0, mapView.bounds.height > 0 else { return }
-        rect.origin.x -= translation.x / mapView.bounds.width * rect.width
-        rect.origin.y -= translation.y / mapView.bounds.height * rect.height
-        mapView.setVisibleMapRect(rect, animated: false)
+        guard let rect = panOrigin, mapView.bounds.width > 0, mapView.bounds.height > 0 else { return }
+        // setCenter never changes the zoom, unlike refitting a rect each update.
+        let center = MKMapPoint(x: rect.midX - translation.x / mapView.bounds.width * rect.width,
+                                y: rect.midY - translation.y / mapView.bounds.height * rect.height)
+        mapView.setCenter(center.coordinate, animated: false)
     }
-    func mapTemplate(_ mapTemplate: CPMapTemplate, didEndPanGestureWithVelocity velocity: CGPoint) { panOrigin = nil }
+    func mapTemplate(_ mapTemplate: CPMapTemplate, didEndPanGestureWithVelocity velocity: CGPoint) {
+        panOrigin = nil
+        let size = mapView.bounds.size
+        guard size.width > 0, size.height > 0 else { return }
+        let coast = RadarMapViewport.momentum(velocityX: Double(velocity.x), velocityY: Double(velocity.y),
+                                              viewWidth: Double(size.width), viewHeight: Double(size.height))
+        guard coast.dx != 0 || coast.dy != 0 else { return }
+        let rect = mapView.visibleMapRect
+        let target = MKMapPoint(x: rect.midX - coast.dx / Double(size.width) * rect.width,
+                                y: rect.midY - coast.dy / Double(size.height) * rect.height)
+        // A short ease-out reads as the map coasting to a stop.
+        UIView.animate(withDuration: 0.5, delay: 0, options: [.curveEaseOut, .allowUserInteraction, .beginFromCurrentState]) {
+            self.mapView.setCenter(target.coordinate, animated: true)
+        }
+    }
+    // Touch zoom (pinch, double tap, two-finger double tap) arrives through these on iOS 26.
+    func mapTemplateDidBeginZoomGesture(_ mapTemplate: CPMapTemplate) {
+        followsLocation = false; zoomOrigin = mapView.visibleMapRect
+    }
+    func mapTemplate(_ mapTemplate: CPMapTemplate, didUpdateZoomGestureWithCenter center: CGPoint,
+                     scale: CGFloat, velocity: CGFloat) {
+        guard let rect = zoomOrigin, scale > 0, mapView.bounds.width > 0, mapView.bounds.height > 0 else { return }
+        // Scale is relative to the gesture's start, so zoom from the starting rect about the fingers.
+        let anchor = MKMapPoint(x: rect.minX + center.x / mapView.bounds.width * rect.width,
+                                y: rect.minY + center.y / mapView.bounds.height * rect.height)
+        setWidth(widthMeters(of: rect) / Double(scale), anchor: anchor, in: rect, animated: false)
+    }
+    func mapTemplate(_ mapTemplate: CPMapTemplate, didEndZoomGestureWithVelocity velocity: CGFloat) { zoomOrigin = nil }
 }
