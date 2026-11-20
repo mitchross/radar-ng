@@ -31,6 +31,15 @@ describe("InMapPackedRadar contracts", () => {
     expect(source).toContain('"raster-opacity-transition": { duration: 0, delay: 0 }');
   });
 
+  it("overscales past the packed max zoom with linear resampling, not nearest squares", () => {
+    // The tiles are colored 1:1 at native zooms (one texel per pixel, so the SkSL samples texel
+    // centres and needs no filtering); smoothing past max_zoom is MapLibre's raster resampling.
+    expect(source).toContain('"raster-resampling": "linear"');
+    expect(source).not.toContain('"nearest"');
+    const engine = read("components/map/inMapRadarEngine.ts");
+    expect(engine).toContain("effect.makeShaderWithChildren([0, 0, 1, x0, y0, channel, PACKED_TILE_SIZE, 1]");
+  });
+
   it("renders a keyed array with one 512-px source per frame, not a Fragment", () => {
     const body = source.slice(source.indexOf("export function InMapFrameLayers"));
     expect(body).toContain("return slots.map(");

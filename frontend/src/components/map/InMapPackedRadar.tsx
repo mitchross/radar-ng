@@ -219,6 +219,9 @@ export function InMapFrameLayers({ slots, currentIndex, opacity }: { slots: Fram
           "raster-opacity": spec.visible && index === currentIndex ? opacity : 0,
           "raster-fade-duration": 0,
           "raster-opacity-transition": { duration: 0, delay: 0 },
+          // Past the packed max zoom MapLibre overscales the colored tiles; linear (the style-spec
+          // default, pinned here) keeps them from turning into hard texel squares.
+          "raster-resampling": "linear",
         }}
       />
     </RasterSource>
