@@ -13,8 +13,8 @@ radar-ng pulls raw NOAA products (MRMS radar every 2 minutes, HRRR model runs ho
 | component | what it is | what it does | key files |
 |---|---|---|---|
 | `frontend/` | Expo SDK 58 app (bun) | MapLibre map + Skia wind particles; react-query data hooks, zustand + MMKV state, opt-in OTel client | `src/components/map/RadarOverlay.tsx` · `src/lib/radarCarousel.ts` · `src/stores/useWeatherStore.ts` · `src/lib/telemetry.ts` |
-| `web/` | the web radar (Vite) | browser radar on the same API | `src/` |
-| `radar api` | the tile-server (`radar-api`) | serves tile pyramids as static files, the basemap (PMTiles, styles, fonts, imagery proxy), `/api/*` (manifest, forecast, inspect, alerts, geocode, metrics) and `/v1/*` (starts Temporal workflows for mobile) | `rust/crates/radar-api/` |
+| `web/` | the web radar (Vite) | browser radar on the same API; `radar api` serves its static build | `src/` |
+| `radar api` | the tile-server (`radar-api`) | serves tile pyramids as static files, the basemap (PMTiles, styles, fonts, imagery proxy), the web radar build, `/api/*` (manifest, forecast, inspect, alerts, geocode, metrics) and `/v1/*` (starts Temporal workflows for mobile) | `rust/crates/radar-api/` |
 | MRMS ingest | `radar-ingest` + `radar-grib` + `radar-tiler` + `radar-storms` | lists, downloads and decodes 2-min MRMS GRIB2 frames, renders 3-palette tile pyramids, detects and tracks storm cells; one prefix-driven code path serves both `radar` and `radar-composite` | `rust/crates/radar-ingest/src/mrms.rs` |
 | HRRR ingest | `radar-ingest` | per-forecast-hour simulated reflectivity out to 18–48 h; secondary variables are capacity-gated (`HRRR_ENABLED_LAYERS`) | `rust/crates/radar-ingest/src/hrrr/` |
 | air quality | `radar-aux::aqm` | NAQFC/AQMv7 bias-corrected PM2.5 + ozone (72 hourly messages per cycle, 06z/12z) rendered per-chunk into AQI-colored pyramids | `rust/crates/radar-aux/src/aqm/` |

@@ -107,6 +107,8 @@ impl std::ops::Deref for AppState {
 pub struct Inner {
     /// Process configuration.
     pub config: Config,
+    /// The web radar lane, when `WEB_ROOT` is set.
+    pub web: Option<crate::web::WebLane>,
     /// Shared outbound HTTP client (Open-Meteo, NWS, geocoder, Photon, LLM, USGS).
     pub http: reqwest::Client,
     /// Trusted proxies for `X-Forwarded-For`.
@@ -227,7 +229,9 @@ impl AppState {
                 crate::satellite::ACCEPT_WINDOW_S.unsigned_abs(),
             ))
             .build();
+        let web = crate::web::WebLane::from_config(&config)?;
         let inner = Inner {
+            web,
             limiter: Mutex::new(RateLimiter::new(
                 config.rate_limit_rps,
                 config.rate_limit_burst,

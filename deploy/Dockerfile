@@ -7,13 +7,14 @@
 # Each target keeps the contract the deployments rely on: port, env names, uid, and the probe
 # helpers the cluster manifests exec (`sh`, `find`, `test` from busybox).
 #
-# Build context is the repository root (it reads rust/ only):
+# Build context is the repository root (it reads rust/ and web/):
 #   docker build -f deploy/Dockerfile --target api -t radar-ng-tile-server:local .
 #
 # Layout the build expects inside the context:
 #   rust/                     Cargo workspace (Cargo.lock committed; built with --locked)
 #   rust/assets/basemap/styles/   bundled map styles copied to /srv/basemap/styles
 #   rust/assets/basemap/fetch-glyphs.sh   glyph fetcher, pinned commit below
+#   web/                      the web radar; its Vite build is copied to /srv/web in the api target
 #
 # Pins:
 #   BUILDER_IMAGE    debian bookworm (glibc 2.36, same as the distroless runtime); rustup installs the
@@ -29,6 +30,11 @@ ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian12:latest@sha256:e5d81ddde149641e2a
 ARG BUSYBOX_IMAGE=busybox:1.36-musl@sha256:3c6ae8008e2c2eedd141725c30b20d9c36b026eb796688f88205845ef17aa213
 ARG ALPINE_IMAGE=alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
 ARG OPEN_METEO_IMAGE=ghcr.io/open-meteo/open-meteo:1.6.0@sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da
+ARG BUN_IMAGE=oven/bun:1.4-alpine@sha256:d888c0ae6c86d7866ff10c5aafdd9077b36aee6455b33dd270fb93c0dd5cef6f
+# Web radar analytics. An empty key ships with analytics off. The host is also the one third-party
+# origin the api allows in the page's CSP (WEB_ANALYTICS_ORIGIN).
+ARG VITE_POSTHOG_KEY=""
+ARG VITE_POSTHOG_HOST=https://ingest-posthog.vanillax.me
 # 1 runs the offline Temporal replay gate (every recorded Python history must replay on the Rust
 # workflows) before the binary is built. CI sets it to 0 only where the same gate already ran in an
 # earlier step.
@@ -50,6 +56,20 @@ FROM ${ALPINE_IMAGE} AS glyphs
 RUN apk add --no-cache curl
 COPY rust/assets/basemap/fetch-glyphs.sh /fetch-glyphs.sh
 RUN /fetch-glyphs.sh 028c18f713baecad011301ff7a69acc39bcc2ae7 /glyphs "Noto Sans Regular"
+
+# The web radar: a static Vite build. The .gz copies are what the api serves to gzip clients.
+FROM ${BUN_IMAGE} AS web
+WORKDIR /app
+COPY web/package.json web/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY web/ ./
+ARG VITE_POSTHOG_KEY
+ARG VITE_POSTHOG_HOST
+ENV VITE_POSTHOG_KEY=$VITE_POSTHOG_KEY \
+    VITE_POSTHOG_HOST=$VITE_POSTHOG_HOST
+RUN bun run build \
+    && find dist -type f \( -name '*.html' -o -name '*.js' -o -name '*.mjs' -o -name '*.css' \
+        -o -name '*.svg' -o -name '*.json' -o -name '*.webmanifest' \) -exec gzip -9 -k {} +
 
 FROM ${BUILDER_IMAGE} AS build
 # protoc: temporalio's proto build. Rust comes from rustup with the version pinned in
@@ -135,5 +155,10 @@ CMD ["worker", "--role", "open-meteo"]
 
 # API (tile-server). Last stage, so a build without --target gives the api.
 FROM runtime AS api
+# The web radar, served on every path the API and static lanes do not own (WEB_ROOT).
+COPY --from=web /app/dist/ /srv/web/
+ARG VITE_POSTHOG_HOST
+ENV WEB_ROOT=/srv/web \
+    WEB_ANALYTICS_ORIGIN=$VITE_POSTHOG_HOST
 EXPOSE 8080
 CMD ["api"]

@@ -70,6 +70,12 @@ no-op until the bbox, the max zoom (or, on Kubernetes, `REFRESH`) changes.
 | `BASEMAP_TILES_UPSTREAM` | `http://basemap:8081` | api: go-pmtiles server to proxy `/basemap/tiles/*` to when `BASEMAP_PMTILES` does not exist. |
 | `BASEMAP_PMTILES_RECHECK_S` | `10` | api: how often the archive's file identity is checked, so a renamed-in replacement is picked up. |
 
+### Web radar
+| Var | Default | Notes |
+|---|---|---|
+| `WEB_ROOT` | unset (image: `/srv/web`) | api: the built web radar. The api serves it on every path no API or static route owns. Empty turns it off. |
+| `WEB_ANALYTICS_ORIGIN` | empty (image: the build's `VITE_POSTHOG_HOST`) | api: the one third-party origin the page's CSP allows. |
+
 ### Frontend basemap provider (bundled vs external)
 
 By default the map renders the bundled

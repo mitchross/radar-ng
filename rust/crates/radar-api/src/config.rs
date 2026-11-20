@@ -27,6 +27,12 @@ pub struct Config {
     /// `BASEMAP_ROOT`, the static root for `/basemap/styles/*` and `/basemap/fonts/*`
     /// (Caddy's `root * /srv/basemap`). Default `/srv/basemap`.
     pub basemap_root: PathBuf,
+    /// `WEB_ROOT`, the built web radar (`web/dist`) served on every path no other route owns.
+    /// Unset or empty turns it off. The api image sets `/srv/web`.
+    pub web_root: Option<PathBuf>,
+    /// `WEB_ANALYTICS_ORIGIN`: the one third-party origin the web radar's CSP allows (PostHog).
+    /// Default empty (none).
+    pub web_analytics_origin: String,
     /// `BASEMAP_PMTILES`, the archive served at `/basemap/tiles/{z}/{x}/{y}.mvt`.
     /// Default `/data/basemap.pmtiles` (where the image copies it).
     pub pmtiles_path: PathBuf,
@@ -144,6 +150,10 @@ impl Config {
             grid_dir: env::path_var("GRID_DIR", "/data/grids"),
             state_dir: env::path_var("STATE_DIR", "/data/state"),
             basemap_root: env::path_var("BASEMAP_ROOT", "/srv/basemap"),
+            web_root: Some(str_var("WEB_ROOT", ""))
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from),
+            web_analytics_origin: str_var("WEB_ANALYTICS_ORIGIN", ""),
             pmtiles_path: env::path_var("BASEMAP_PMTILES", "/data/basemap.pmtiles"),
             pmtiles_recheck_s: pos_u64("BASEMAP_PMTILES_RECHECK_S", 10)?,
             open_meteo_base: str_var("OPEN_METEO_BASE", "https://api.open-meteo.com/v1/forecast"),
@@ -222,6 +232,8 @@ impl Config {
             grid_dir,
             state_dir,
             basemap_root: PathBuf::from("/srv/basemap"),
+            web_root: None,
+            web_analytics_origin: String::new(),
             pmtiles_path: PathBuf::from("/data/basemap.pmtiles"),
             pmtiles_recheck_s: 10,
             open_meteo_base: "https://api.open-meteo.com/v1/forecast".into(),

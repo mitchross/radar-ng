@@ -84,7 +84,7 @@ Read this first if you're an engineer or an LLM picking up radar-ng after the Py
 - **Fixture generators.** The golden-fixture generator scripts (`rust/crates/*/testdata/gen_*.py`) ran the
   Python code. To regenerate a fixture, check out `5b3cb39`.
 - **Web nginx MIME map.** A server-level `types {}` block replaces nginx's whole MIME map; include
-  `mime.types` first. When that was missed, radar.vanillax.me downloaded as a `.dms` file. `ghcr-web.yml` now
+  `mime.types` first. When that was missed, radar.vanillax.me downloaded as a `.dms` file. `ghcr-web.yml` (removed since; the api serves the web radar) then
   smoke-tests `Content-Type` before publishing.
 
 - **Publication locks and Rayon.** `radar_tiler::render_frame_palettes` holds a file lock while it

@@ -2639,3 +2639,94 @@ async fn normals_answer_the_nearest_land_cell_and_say_when_not_ready() {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(bad["detail"].as_array().unwrap().len(), 2);
 }
+
+/// The web radar lane (`WEB_ROOT`): the build is served from the fallback, hashed bundles are
+/// immutable and never fall back to the page, and the API and static lanes keep their own 404.
+#[tokio::test]
+async fn web_lane_serves_the_build_and_keeps_reserved_404s() {
+    let env = Env::new();
+    let web = env.path("web");
+    std::fs::create_dir_all(web.join("assets")).expect("assets dir");
+    for (name, body) in [
+        ("index.html", "<!doctype html><title>Radar NG</title>"),
+        ("assets/app-abc123.js", "console.log(1)"),
+        ("manifest.webmanifest", "{}"),
+        ("sw.js", "self.skipWaiting()"),
+    ] {
+        std::fs::write(web.join(name), body).expect("web file");
+    }
+    let app = env.app(|cfg| {
+        cfg.web_root = Some(web.clone());
+        cfg.web_analytics_origin = "https://ph.example.com".into();
+    });
+
+    for path in ["/", "/some/deep/link", "/?alertBounds=%5B1%2C2%5D"] {
+        let (status, headers, body) = send(&app, get_req(path)).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(header_str(&headers, "content-type").starts_with("text/html"));
+        assert_eq!(header_str(&headers, "cache-control"), "no-cache");
+        assert_eq!(header_str(&headers, "x-content-type-options"), "nosniff");
+        assert!(
+            header_str(&headers, "content-security-policy")
+                .contains("script-src 'self' https://ph.example.com;")
+        );
+        assert!(body.starts_with(b"<!doctype html>"));
+    }
+
+    let (js, jh, _) = send(&app, get_req("/assets/app-abc123.js")).await;
+    assert_eq!(js, StatusCode::OK);
+    assert!(header_str(&jh, "content-type").contains("javascript"));
+    assert_eq!(
+        header_str(&jh, "cache-control"),
+        "public, max-age=31536000, immutable"
+    );
+
+    let (gone, gh, gb) = send(&app, get_req("/assets/app-old.js")).await;
+    assert_eq!(gone, StatusCode::NOT_FOUND);
+    assert_eq!(header_str(&gh, "cache-control"), "no-store");
+    assert_eq!(header_str(&gh, "x-content-type-options"), "nosniff");
+    assert_eq!(gb, b"404 Not Found");
+
+    let (_, mh, _) = send(&app, get_req("/manifest.webmanifest")).await;
+    assert_eq!(header_str(&mh, "content-type"), "application/manifest+json");
+    let (_, sh, _) = send(&app, get_req("/sw.js")).await;
+    assert_eq!(header_str(&sh, "cache-control"), "no-cache");
+
+    let (head, hh, hb) = send(&app, request_with("HEAD", "/", None, None)).await;
+    assert_eq!(head, StatusCode::OK);
+    assert!(header_str(&hh, "content-type").starts_with("text/html"));
+    assert!(hb.is_empty());
+
+    let (api_missing, _, api_body) = get_json(&app, "/api/nope").await;
+    assert_eq!(api_missing, StatusCode::NOT_FOUND);
+    assert_eq!(api_body, json!({"detail": "Not Found"}));
+    for path in [
+        "/tiles/nope/1/2/3.png",
+        "/level2/nope",
+        "/replays/nope",
+        "/basemap/tiles/x",
+    ] {
+        let (status, _, body) = send(&app, get_req(path)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+        assert_eq!(body, b"404 Not Found", "{path}");
+    }
+    let (post, _, pb) = send(&app, request_with("POST", "/", None, Some(json!({})))).await;
+    assert_eq!(post, StatusCode::NOT_FOUND);
+    assert_eq!(pb, b"404 Not Found");
+}
+
+/// A `WEB_ROOT` without `index.html` and a multi-origin `WEB_ANALYTICS_ORIGIN` are startup errors.
+#[test]
+fn web_lane_rejects_a_bad_root_and_a_bad_origin() {
+    let env = Env::new();
+    let empty = env.path("web-empty");
+    std::fs::create_dir_all(&empty).expect("dir");
+    assert!(AppState::new(env.config(|cfg| cfg.web_root = Some(empty.clone()))).is_err());
+    std::fs::write(empty.join("index.html"), "<!doctype html>").expect("index");
+    assert!(AppState::new(env.config(|cfg| cfg.web_root = Some(empty.clone()))).is_ok());
+    let bad = env.config(|cfg| {
+        cfg.web_root = Some(empty.clone());
+        cfg.web_analytics_origin = "https://a.example; script-src *".into();
+    });
+    assert!(AppState::new(bad).is_err());
+}

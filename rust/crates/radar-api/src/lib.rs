@@ -39,6 +39,7 @@ mod snow;
 mod spc;
 mod state;
 mod upstream;
+mod web;
 mod wind;
 mod workflows;
 
@@ -74,8 +75,9 @@ fn is_json_or_text(
 }
 
 /// The whole application: the `/api` routes, the `/v1` routes (unless `DISABLE_WORKFLOW_ROUTES=1`),
-/// the static lanes, and the global middleware. Only the API routes are compressed (gzip or br,
-/// from `Accept-Encoding`); the static lanes serve their bytes as stored.
+/// the static lanes, the web radar on the fallback (when `WEB_ROOT` is set), and the global
+/// middleware. Only the API routes are compressed (gzip or br, from `Accept-Encoding`); the static
+/// lanes serve their bytes as stored.
 pub fn router(state: AppState) -> Router {
     let mut api = edge::api_router();
     if state.config.workflow_routes_enabled {

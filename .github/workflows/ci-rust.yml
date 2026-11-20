@@ -7,8 +7,9 @@ name: ci · rust
 #   live-noaa   the newest real MRMS and HRRR files decoded and rendered (rust/scripts/live-noaa-check.sh)
 #   binary      release `radar` built once on Bookworm with a cargo cache (shared with ghcr-backend)
 #   images      every image target builds from that binary; glibc floor, image users, api smoke run,
-#               open-meteo contract. The in-Docker source build runs only when the Dockerfile or
-#               toolchain changed (or on manual runs), because its cargo cache mount is not kept on CI.
+#               open-meteo contract. The api smoke run also checks the web radar it serves. The
+#               in-Docker source build runs only when the Dockerfile or toolchain changed (or on
+#               manual runs), because its cargo cache mount is not kept on CI.
 
 on:
   pull_request:
@@ -225,6 +226,18 @@ jobs:
           code=$(curl -s -o health.json -w '%{http_code}' http://127.0.0.1:18080/api/health)
           cat health.json; echo
           test "$code" = 503 && grep -q no_mrms_tiles health.json
+          # The web radar on the same port: status, Content-Type and the lanes it must not shadow.
+          ct() { curl -s -o /dev/null -w '%{http_code} %{content_type}' "http://127.0.0.1:18080$1"; }
+          check() { got=$(ct "$1"); echo "$1 -> $got"; case "$got" in "$2"*) ;; *) echo "::error::$1 served '$got', want $2"; exit 1;; esac; }
+          check / '200 text/html'
+          check /some/deep/link '200 text/html'
+          check /manifest.webmanifest '200 application/manifest+json'
+          js=$(curl -s http://127.0.0.1:18080/ | grep -o '/assets/[^"]*\.js' | head -1)
+          check "$js" '200 text/javascript'
+          check /assets/missing.js '404 text/plain'
+          check /api/nope '404 application/json'
+          curl -sI http://127.0.0.1:18080/ | grep -qi '^content-security-policy:'
+          curl -sI -H 'Accept-Encoding: gzip' "http://127.0.0.1:18080$js" | grep -qi '^content-encoding: gzip'
           docker rm -f api
       - name: Open-Meteo image contract
         run: |

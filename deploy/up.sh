@@ -93,7 +93,7 @@ radar-ng is running. Point an app at it (Settings → Advanced Mode → Stack UR
   iOS simulator on this machine:  http://localhost:${port}
   Android emulator:               http://10.0.2.2:${port}
   A phone on your Wi-Fi:          http://${ip}:${port}
-  Web radar (dev):                cd ../web && RADAR_API=http://localhost:${port} bun run dev
+  Web radar:                      http://localhost:${port}
 
 More layers (forecast, HRRR, nowcast) appear over the next 15-30 minutes.
 Stop:  docker compose down      (add -v to delete all data)
