@@ -16,6 +16,7 @@ export function usePackedFrames(): PackedFrames | null {
   const replaying = useWeatherStore((s) => s.source.kind === "replay");
   const activeLayer = useWeatherStore((s) => s.activeLayer);
   const activePalette = useWeatherStore((s) => s.activePalette);
+  const smooth = useWeatherStore((s) => !s.steppedBands);
   const frames = useWeatherStore((s) => s.frames);
   const manifest = useManifestQuery().data;
   const palettes = useServerPalettes().data;
@@ -23,6 +24,6 @@ export function usePackedFrames(): PackedFrames | null {
   return useMemo(() => {
     if (replaying || !enabled || !manifest || !palettes || frames.length === 0) return null;
     const tables = palettes[activePalette] ?? palettes.classic;
-    return buildPackedFrames(frames, manifest.layers, tables, activeLayer);
-  }, [replaying, enabled, manifest, palettes, frames, activeLayer, activePalette]);
+    return buildPackedFrames(frames, manifest.layers, tables, activeLayer, smooth);
+  }, [replaying, enabled, manifest, palettes, frames, activeLayer, activePalette, smooth]);
 }

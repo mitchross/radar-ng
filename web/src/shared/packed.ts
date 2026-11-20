@@ -120,6 +120,133 @@ export function buildLut(
   return lut;
 }
 
+/**
+ * Where the lowest band of a ramp starts when it fades in from the floor: this fraction of its alpha.
+ * Only tables whose `no_data_below` is the ramp's own floor (reflectivity, wind, cloud, rain total,
+ * AQ: the low end means "nothing") fade; full-coverage fields such as temperature (-999) do not.
+ */
+export const SMOOTH_FLOOR_ALPHA = 0.5;
+
+type Rgba = ColorRange["rgba"];
+
+interface Segment {
+  lo: number;
+  hi: number;
+  /** null: transparent (no range, or below `no_data_below`). */
+  rgba: Rgba | null;
+}
+
+/**
+ * The stepped ramp as segments of constant colour, by the renderer's rules (half-open ranges, the
+ * later overlapping range wins, values below `noDataBelow` transparent). Equal neighbours merge.
+ */
+function rampSegments(ranges: ColorRange[], noDataBelow: number): Segment[] {
+  const edges = new Set<number>();
+  for (const r of ranges) {
+    edges.add(r.min);
+    edges.add(r.max);
+  }
+  if (Number.isFinite(noDataBelow)) edges.add(noDataBelow);
+  const sorted = [...edges].filter(Number.isFinite).sort((a, b) => a - b);
+  const out: Segment[] = [];
+  for (let i = 0; i + 1 < sorted.length; i++) {
+    const lo = sorted[i];
+    let rgba: Rgba | null = null;
+    if (lo >= noDataBelow) for (const r of ranges) if (lo >= r.min && lo < r.max) rgba = r.rgba;
+    const prev = out[out.length - 1];
+    const same = prev && (prev.rgba === rgba || (prev.rgba && rgba && prev.rgba.every((c, k) => c === rgba![k])));
+    if (same) prev.hi = sorted[i + 1];
+    else out.push({ lo, hi: sorted[i + 1], rgba });
+  }
+  return out;
+}
+
+/**
+ * Colour of `value` on the smooth ramp: each band's colour sits at the band's start and blends
+ * linearly into the next band's colour at its start, so every band edge keeps its stepped colour.
+ * The top band, and a band followed by a gap, stay flat. With `fadeFloor`, the lowest band of the
+ * ramp starts at SMOOTH_FLOOR_ALPHA of its alpha and reaches the next stop's. Transparent wherever
+ * the stepped ramp is. Unrounded floats, 0..255.
+ */
+function smoothRampColor(segments: readonly Segment[], value: number, fadeFloor: boolean): Rgba | null {
+  for (let i = 0; i < segments.length; i++) {
+    const s = segments[i];
+    if (value < s.lo || value >= s.hi) continue;
+    if (!s.rgba) return null;
+    const next = segments[i + 1];
+    const floor = fadeFloor && !segments[i - 1]?.rgba;
+    const start: Rgba = floor ? [s.rgba[0], s.rgba[1], s.rgba[2], s.rgba[3] * SMOOTH_FLOOR_ALPHA] : s.rgba;
+    const end = next?.rgba && next.lo === s.hi ? next.rgba : floor ? s.rgba : null;
+    if (!end) return start;
+    const t = (value - s.lo) / (s.hi - s.lo);
+    return [0, 1, 2, 3].map((k) => start[k] + (end[k] - start[k]) * t) as Rgba;
+  }
+  return null;
+}
+
+/**
+ * The smooth twin of buildLut: the same 256 x 1 RGBA layout and the same transparent entries, but
+ * entry q holds the smooth ramp colour of `offset + q * scale` (see smoothRampColor). With `types`,
+ * each class gets its own ramp; a client blending between entries must stay inside one class.
+ */
+export function buildSmoothLut(
+  table: ColorTable | null | undefined,
+  scale: number,
+  offset: number,
+  types?: PackedTypes,
+): Uint8Array {
+  const lut = new Uint8Array(256 * 4);
+  if (!table?.ranges || table.ranges.length === 0) return lut;
+  const noDataBelow = finite(table.no_data_below) ? table.no_data_below : DEFAULT_NO_DATA_BELOW;
+  const fadeFloor = noDataBelow >= Math.min(...table.ranges.map((r) => r.min));
+  const stride = types ? types.stride : 256;
+  const classes = types ? types.classes.length : 1;
+  for (let cls = 0; cls < classes; cls++) {
+    // no_data_below applies to the rain ramp only, as on the server and in buildLut.
+    const segments = rampSegments(classRanges(table, types, cls), cls === 0 ? noDataBelow : -Infinity);
+    for (let q = 1; q < stride; q++) {
+      const code = cls * stride + q;
+      if (code > 255) break;
+      const value = Math.round((offset + q * scale) * 1e6) / 1e6;
+      const rgba = smoothRampColor(segments, value, fadeFloor);
+      if (!rgba) continue;
+      for (let c = 0; c < 4; c++) lut[code * 4 + c] = Math.max(0, Math.min(255, Math.round(rgba[c] ?? 0)));
+    }
+  }
+  return lut;
+}
+
+/** The table a client colours with: stepped (buildLut, the server's PNG colours) or smooth. */
+export function buildRampLut(
+  table: ColorTable | null | undefined,
+  scale: number,
+  offset: number,
+  types: PackedTypes | undefined,
+  smooth: boolean,
+): Uint8Array {
+  return smooth ? buildSmoothLut(table, scale, offset, types) : buildLut(table, scale, offset, types);
+}
+
+/**
+ * Colour of a fractional class-local q on a LUT, premultiplied, 0..1: entries floor(q) and the
+ * next one blended, both clamped to 1..qmax so the blend never leaves the class's code range.
+ * The web shader's smooth path does this per pixel; the app's tiles sample whole q, where it is
+ * just the entry.
+ */
+export function lutBlend(lut: Uint8Array, base: number, q: number, qmax: number): [number, number, number, number] {
+  const m = Math.min(qmax, Math.max(1, q));
+  const lo = Math.floor(m);
+  const hi = Math.min(lo + 1, qmax);
+  const t = m - lo;
+  const at = (i: number) => {
+    const a = lut[i * 4 + 3] / 255;
+    return [(lut[i * 4] / 255) * a, (lut[i * 4 + 1] / 255) * a, (lut[i * 4 + 2] / 255) * a, a];
+  };
+  const c0 = at(base + lo);
+  const c1 = at(base + hi);
+  return [0, 1, 2, 3].map((k) => c0[k] + (c1[k] - c0[k]) * t) as [number, number, number, number];
+}
+
 export interface SlotAddress {
   block: number;
   /** 0 = R, 1 = G, 2 = B. */

@@ -128,6 +128,6 @@ describe("packed fragment shader", () => {
     expect(FRAGMENT).toContain("clamp(ivec2(i), ivec2(0), ivec2(u_size - 1))");
     expect(FRAGMENT).toContain("clamp(ivec2(i) + 1, ivec2(0), ivec2(u_size - 1))");
     expect(FRAGMENT).toContain("cls[k] != cls[best]");
-    expect(FRAGMENT.match(/code\(/g)?.length).toBe(5); // the helper plus four fetches
+    expect(FRAGMENT.match(/code\(/g)?.length).toBe(6); // the helper, four bilinear fetches, the B-spline loop fetch
   });
 });

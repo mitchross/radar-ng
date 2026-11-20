@@ -10,7 +10,8 @@ import { MAP_CHROME_MAX_FONT_SCALE } from "../../lib/constants";
 import { useMapChromeInsets } from "../../hooks/useMapChromeInsets";
 import { MapChromeSurface } from "../ui/MapChromeSurface";
 import { useServerPalettes } from "../../hooks/useServerPalettes";
-import { precipTypeRamps, serverLegend } from "../../lib/serverPalettes";
+import { legendGradient, legendIsSmooth, precipTypeRamps, serverLegend } from "../../lib/serverPalettes";
+import { parsePackedMeta } from "../../lib/packed";
 import { useManifestQuery } from "../../hooks/useManifest";
 import { useReplayManifestQuery } from "../../hooks/useReplay";
 import { SEVERE_CREDIT, isSevereLayer } from "../../../../web/src/shared/severe";
@@ -338,6 +339,10 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
   // The server colors observed radar by precipitation type when the layer says so.
   const typedLayer = manifestLayer?.precip_type === true;
   const typeRamps = typedLayer ? precipTypeRamps(palettes, palette) : null;
+  const steppedBands = useWeatherStore((s) => s.steppedBands);
+  const fastRadar = useWeatherStore((s) => s.fastRadar);
+  const stepped = !legendIsSmooth({ steppedBands, fastRadar, replaying, packed: Boolean(parsePackedMeta(manifestLayer?.packed)) });
+  const bar = legendGradient(legend.stops.map((s) => s.color), stepped);
   const chrome = useMapChromeInsets();
   // Scalars, not the frame array: the card re-renders only when the tag can
   // change, not on every playback tick.
@@ -375,7 +380,8 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
         </View>
         <View style={styles.scaleRow}>
           <LinearGradient
-            colors={legend.stops.map((s) => s.color) as [string, string, ...string[]]}
+            colors={bar.colors as [string, string, ...string[]]}
+            locations={bar.locations as [number, number, ...number[]] | undefined}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
             style={styles.gradient}
@@ -416,19 +422,23 @@ export function LayerLegendCard({ activeLayer }: { activeLayer: LayerType }) {
         )}
         {typeRamps && (
           <View style={styles.types}>
-            {typeRamps.map((r) => (
+            {typeRamps.map((r) => {
+              const ramp = legendGradient(r.colors, stepped);
+              return (
               <View key={r.label} style={styles.typeRow}>
                 <Text maxFontSizeMultiplier={MAP_CHROME_MAX_FONT_SCALE} style={styles.typeLabel}>
                   {r.label}
                 </Text>
                 <LinearGradient
-                  colors={r.colors as [string, string, ...string[]]}
+                  colors={ramp.colors as [string, string, ...string[]]}
+                  locations={ramp.locations as [number, number, ...number[]] | undefined}
                   start={{ x: 0, y: 0.5 }}
                   end={{ x: 1, y: 0.5 }}
                   style={styles.typeBar}
                 />
               </View>
-            ))}
+              );
+            })}
           </View>
         )}
       </MapChromeSurface>

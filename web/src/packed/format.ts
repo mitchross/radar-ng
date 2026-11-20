@@ -7,6 +7,8 @@ import { slotAddress, type PackedLocation } from "../shared/packed";
 
 export {
   buildLut,
+  buildRampLut,
+  buildSmoothLut,
   classRanges,
   locateFrame,
   parsePackedMeta,
