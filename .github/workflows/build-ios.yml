@@ -59,6 +59,9 @@ jobs:
           swiftc -parse-as-library targets/carplay/RadarRouteProgress.swift targets/carplay/RadarAPI.swift \
             targets/_shared/RadarShared.swift tests/carplay/RouteProgressChecks.swift -o "$RUNNER_TEMP/route-progress-checks"
           "$RUNNER_TEMP/route-progress-checks"
+          swiftc -parse-as-library targets/carplay/RadarMapViewport.swift targets/_shared/RadarShared.swift \
+            tests/carplay/MapViewportChecks.swift -o "$RUNNER_TEMP/map-viewport-checks"
+          "$RUNNER_TEMP/map-viewport-checks"
 
       - name: Prebuild native project
         run: bunx expo prebuild --platform ios --clean --no-install

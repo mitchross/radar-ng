@@ -14,6 +14,8 @@ final class RadarDrivingSession: NSObject, AVSpeechSynthesizerDelegate {
     private(set) var locationMessage: String? = "Waiting for location"
     private(set) var frame: RadarFrame?
     private(set) var radarMessage = "Loading radar"
+    /// The last manifest fetch failed; the status button reads "Radar offline".
+    private(set) var radarFailed = false
     private(set) var routes: [MKRoute] = []
     private(set) var selectedRoute: MKRoute?
     private(set) var destination: MKMapItem?
@@ -112,11 +114,13 @@ final class RadarDrivingSession: NSObject, AVSpeechSynthesizerDelegate {
                 let next = try await RadarAPI.latestFrame()
                 try Task.checkCancellation()
                 self.frame = next
+                self.radarFailed = false
                 let date = next.observedAt!
                 self.radarMessage = "\(next.isFresh() ? "Radar" : "Older radar") · \(date.formatted(date: .omitted, time: .shortened))"
             } catch {
                 guard !Task.isCancelled else { return }
                 self.frame = nil
+                self.radarFailed = true
                 self.radarMessage = "Radar unavailable"
             }
             self.publish()
