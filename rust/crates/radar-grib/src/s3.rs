@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use quick_xml::Reader;
+use quick_xml::escape::resolve_predefined_entity;
 use quick_xml::events::Event;
 
 use crate::error::{GribError, Result};
@@ -48,9 +49,21 @@ pub fn parse_list_objects(xml: &str) -> Result<ListPage> {
             }
             Ok(Event::Text(t)) => {
                 let s = t
-                    .unescape()
+                    .decode()
                     .map_err(|e| GribError::ListingParse(format!("text: {e}")))?;
                 text.push_str(&s);
+            }
+            // quick-xml 0.38+ reports `&amp;` and `&#38;` as their own events, not inside Text.
+            Ok(Event::GeneralRef(r)) => {
+                let bad = |e: String| GribError::ListingParse(format!("text: {e}"));
+                if let Some(ch) = r.resolve_char_ref().map_err(|e| bad(e.to_string()))? {
+                    text.push(ch);
+                } else {
+                    let name = r.decode().map_err(|e| bad(e.to_string()))?;
+                    let s = resolve_predefined_entity(&name)
+                        .ok_or_else(|| bad(format!("unknown entity &{name};")))?;
+                    text.push_str(s);
+                }
             }
             Ok(Event::CData(t)) => {
                 text.push_str(&String::from_utf8_lossy(&t));
@@ -348,6 +361,21 @@ mod tests {
         );
         assert!(!p.is_truncated);
         assert_eq!(p.next_token, None);
+    }
+
+    #[test]
+    fn resolves_char_refs_and_rejects_unknown_entities() {
+        let p = parse_list_objects(
+            "<ListBucketResult><Contents><Key>a&#38;b&#x26;c</Key></Contents></ListBucketResult>",
+        )
+        .unwrap();
+        assert_eq!(p.keys, vec!["a&b&c".to_string()]);
+        assert!(
+            parse_list_objects(
+                "<ListBucketResult><Contents><Key>a&nope;</Key></Contents></ListBucketResult>"
+            )
+            .is_err()
+        );
     }
 
     #[test]
