@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 
 pub const SOURCE: &str = "https://www.ncei.noaa.gov/access/homr/file/nexrad-stations.txt";
 pub const SNAPSHOT: &str = include_str!("../testdata/nexrad-stations.txt");
-pub const FEED_VERIFIED: &[&str] = &["KGRR", "KDTX", "KLOT", "KAPX"];
+/// Stations whose live chunks, archive volumes and catalogue entry were checked, and whose real
+/// volumes decode through the shipped decoder and QC. KOUN is absent: it has no live chunks.
+pub const FEED_VERIFIED: &[&str] = &["KGRR", "KDTX", "KLOT", "KAPX", "KTLX", "KFFC", "KATX"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Site {
@@ -272,6 +274,23 @@ mod tests {
         );
         assert_ne!(c.sha256, before);
         server.abort();
+        Ok(())
+    }
+    #[test]
+    fn feed_verified_stations_are_in_the_snapshot() -> Result<()> {
+        assert_eq!(
+            FEED_VERIFIED,
+            ["KGRR", "KDTX", "KLOT", "KAPX", "KTLX", "KFFC", "KATX"]
+        );
+        let c = Catalogue::snapshot()?;
+        for id in FEED_VERIFIED {
+            assert!(c.sites.contains_key(*id), "{id} missing from snapshot");
+        }
+        assert!(!FEED_VERIFIED.contains(&"KOUN"));
+        let enabled: Vec<String> = FEED_VERIFIED.iter().map(|s| (*s).to_owned()).collect();
+        let tlx = &c.sites["KTLX"];
+        assert_eq!(c.candidates(tlx.lat, tlx.lon, &enabled)?[0].id, "KTLX");
+        assert!(c.candidates(tlx.lat, tlx.lon, &["KOUN".into()]).is_err());
         Ok(())
     }
     #[test]

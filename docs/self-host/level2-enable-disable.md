@@ -30,7 +30,7 @@ Rules for `LEVEL2_ENABLED_STATIONS`:
 
 - Always set it. If it is unset, the server enables `KGRR`.
 - List only feed-verified stations (`FEED_VERIFIED` in `rust/crates/radar-level2/src/catalogue.rs`;
-  `KGRR`, `KDTX`, `KLOT`, `KAPX` at the time of writing). One unknown or unverified ID makes the
+  `KGRR`, `KDTX`, `KLOT`, `KAPX`, `KTLX`, `KFFC`, `KATX` at the time of writing). One unknown or unverified ID makes the
   Level II service refuse to start: the API logs `Level II viewport disabled` and all Level II
   routes return `404`. It fails closed, for every station, not only the bad one.
 - `level2-api`, the publisher and the shadow recorder read it from the shared `radar-ng-level2`

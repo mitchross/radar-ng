@@ -13,7 +13,9 @@ bounded KGRR tile demand -> checked catalogue -> PostgreSQL admission
 
 The request supplies a centre and one valid z8–13 XYZ. Only KGRR is enabled for this tracer.
 Catalogue selection bounds candidates to three within 150 km and breaks distance ties by station ID.
-The feed-capable allowlist includes KGRR, KDTX, KLOT and KAPX, verified with anonymous chunk listings.
+The feed-capable allowlist (`catalogue::FEED_VERIFIED`) is KGRR, KDTX, KLOT, KAPX, KTLX, KFFC and KATX,
+verified with anonymous chunk listings. KTLX, KFFC and KATX were also checked against archive listings
+and decoded through the shipped decoder and QC. KOUN is not on it: it publishes no live chunks.
 Adding a catalogue station does not enable it. Both clients continue using MRMS.
 
 ## Tile tracer (slice B)
