@@ -18,7 +18,7 @@ Unfamiliar word? See the [glossary](glossary.md).
 |---|---|---|---|
 | Run the server on one computer | Docker Compose | ~10 min (mostly the map download), then ~2 min for the first radar frame | [Path A](#path-a-docker-compose-one-computer) and [compose.md](../self-host/compose.md) |
 | Run the server on my Kubernetes cluster | Kubernetes | ~30 min on a test cluster (kind, k3d, k3s) | [Path B](#path-b-kubernetes) and [deploy/kubernetes](../../deploy/kubernetes/README.md) |
-| See it in a browser, against a server I run | Web radar | ~5 min | [app/web-radar.md](../app/web-radar.md) |
+| See it in a browser, against a server I run | Web radar | open the server's address | [app/web-radar.md](../app/web-radar.md) |
 | Use the phone app with a server I run | Phone app | 30–60 min the first time (native build) | [Running the phone app](#running-the-phone-app) |
 | Change the code | Develop | | [CONTRIBUTING.md](../../CONTRIBUTING.md) |
 | Ship my own copy of the app | Fork | | [FORKING.md](../../FORKING.md) |

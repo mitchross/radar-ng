@@ -40,7 +40,7 @@ classes removed. Its README covers settings, Temporal options, storage and publi
 The owner's live manifests are a production example built on the same layout, in
 [talos-argocd-proxmox `my-apps/personal-projects/radar-ng/`](https://github.com/mitchross/talos-argocd-proxmox/tree/main/my-apps/personal-projects/radar-ng).
 They add cluster-specific pieces (ExternalSecret, PriorityClass, named storage classes, the web
-frontend):
+radar's hostname):
 
 | file | purpose |
 |---|---|
