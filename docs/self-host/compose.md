@@ -121,7 +121,7 @@ What starts:
 | `worker` | `radar worker --role legacy`. Runs every workflow and activity on task queue `radar-ng` and seeds the schedules; production splits roles onto isolated queues |
 | `open-meteo` | self-hosted forecast API |
 | `open-meteo-worker` | `radar worker --role open-meteo` (task queue `radar-ng-open-meteo`), runs the model syncs |
-| `api` | `radar api`: tiles, basemap, `/api`, `/v1`; the only public port (`:8080`) |
+| `api` | `radar api`: tiles, basemap, `/api`, `/v1` and the web radar at `/`; the only public port (`:8080`) |
 
 Named volumes: `tiles`, `grids`, `state`, `openmeteo-data`, `basemap-data`, `temporal-pg-data`. There is no cron anywhere. On startup the worker registers Temporal Schedules idempotently: MRMS polled every minute, HRRR every 15 min, nowcast every 2 min plus a kick from every new MRMS frame, tile-cleanup hourly, Open-Meteo syncs every 1–6 h.
 

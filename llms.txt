@@ -5,7 +5,7 @@
 radar-ng is a monorepo:
 - `rust/`: Cargo workspace building one binary, `radar`: the HTTP API and tile server (`radar api`, axum), the Temporal workers (`radar worker --role …`: MRMS radar, HRRR forecast, NAQFC air quality, lightning, tropical, nowcast, Open-Meteo sync, alerts), the schedule seeder (Temporal Schedules, no cron) and `radar debug` diagnostics.
 - `frontend/`: Expo SDK 58 / TypeScript app. Needs a native build (not Expo Go). App identity lives in `frontend/identity.js`.
-- `web/`: the web radar (Vite + TypeScript, MapLibre GL JS), served from the same host as the API.
+- `web/`: the web radar (Vite + TypeScript, MapLibre GL JS). `radar api` serves its static build (`WEB_ROOT`).
 - `deploy/`: the Dockerfile (three image targets), the Docker Compose stack, and batteries-included Kubernetes manifests in `deploy/kubernetes/` (Kustomize base + optional components).
 
 Images publish to `ghcr.io/<repo-owner>/radar-ng-{tile-server,temporal-worker,open-meteo-worker}` (upstream: `mitchross`).
@@ -24,7 +24,7 @@ Images publish to `ghcr.io/<repo-owner>/radar-ng-{tile-server,temporal-worker,op
 - [Configuration](https://github.com/mitchross/radar-ng/blob/master/docs/self-host/configuration.md): environment variables, including the `BASEMAP_PMTILES_URL` date gotcha.
 - [Tuning](https://github.com/mitchross/radar-ng/blob/master/docs/self-host/tuning.md): faster, cheaper or fresher, knob by knob.
 - [Phone app](https://github.com/mitchross/radar-ng/blob/master/docs/app/running-the-app.md): build, simulators, devices, IPA, CarPlay, Apple Watch.
-- [Web radar](https://github.com/mitchross/radar-ng/blob/master/docs/app/web-radar.md): run locally and host it (same-host routing).
+- [Web radar](https://github.com/mitchross/radar-ng/blob/master/docs/app/web-radar.md): run locally; the tile-server serves it in production.
 - [Forking](https://github.com/mitchross/radar-ng/blob/master/FORKING.md): your own app IDs, server URL and images.
 
 ## Work on the code
