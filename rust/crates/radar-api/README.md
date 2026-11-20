@@ -79,6 +79,18 @@ Static lane (not under `/api`):
 | `/tiles/satellite/{time}/{z}/{x}/{y}.png` | NASA GIBS GOES GeoColor proxy (`satellite.rs`): GOES-East east of 106.1° W, GOES-West west of it, seam tiles spliced. `time` is a 10-minute step in the last 6 h; `z` is 0 to 7. Moka cache (`SATELLITE_CACHE_MAX_BYTES`) | `public, max-age=86400, immutable` |
 | `/basemap/tiles/{z}/{x}/{y}.mvt` | `pmtiles` crate reading `BASEMAP_PMTILES` through a positioned-read backend (F6); proxied to `BASEMAP_TILES_UPSTREAM` (default `http://basemap:8081`) when no local archive exists | `public, max-age=86400` |
 
+Web radar lane (`web.rs`, only when `WEB_ROOT` is set). It runs from the top-level fallback for GET
+and HEAD, outside `/api`, `/v1`, `/tiles`, `/basemap`, `/replays` and `/level2`:
+
+| Path | Source | Cache-Control |
+|---|---|---|
+| `/assets/*` | `ServeDir` on `WEB_ROOT`, gzip precompressed; a missing file is a text 404 | `public, max-age=31536000, immutable` |
+| any other path | the file under `WEB_ROOT` when it exists, otherwise `index.html` | `no-cache` |
+
+Every response of this lane carries `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: strict-origin-when-cross-origin` and a `Content-Security-Policy` that allows
+`'self'` plus `WEB_ANALYTICS_ORIGIN`. Requests count under the `unmatched` route label in the metrics.
+
 The static lane sets ACAO `*`. It overrides errors to
 `Cache-Control: no-store` with a text body `"{code} {reason}"`. Imagery non-matches are a bare
 404 with no headers.
@@ -95,7 +107,7 @@ The static lane sets ACAO `*`. It overrides errors to
 | Imagery regexp and reverse proxy with z/y/x rewrite | `/basemap/imagery/{z}/{x}/{yjpg}` route, `reqwest` GET to `{USGS_IMAGERY_BASE}/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}`. Hits served from a moka cache (`IMAGERY_CACHE_MAX_BYTES`, default 128 MiB; 0 disables it). Each entry keeps the upstream `ETag` and `Last-Modified`, which are forwarded on hits and misses. |
 | `handle_path /basemap/tiles/*` to the go-pmtiles sidecar | In-process `pmtiles` reader on `BASEMAP_PMTILES`. 204 for a missing tile. The file is reopened when its inode, size or mtime changes (F6). |
 | `log { format json }` with probes skipped | `tracing` JSON lines from `edge::edge` with `method`, `uri`, `status`, `duration`, `user_agent`. `/api/livez` and `/api/health` are skipped. |
-| Unmatched path returns 200 empty | Top-level fallback returns 404 (D13). Known templates with a trailing slash get a 307. |
+| Unmatched path returns 200 empty | Top-level fallback returns 404 (D13), or the web radar when `WEB_ROOT` is set. Known templates with a trailing slash get a 307. |
 | uvicorn `X-Forwarded-Proto` handling (`request.base_url` for storm-prefetch URLs) | `prefetch::request_base` reads `X-Forwarded-Proto` (default `http`) and `Host`. |
 
 ## Behavior notes
@@ -188,6 +200,7 @@ Other behavior:
 
 Environment variables (see `src/config.rs`): `LISTEN_ADDR`, `TILE_DIR`, `GRID_DIR`, `STATE_DIR`,
 `BASEMAP_ROOT`, `BASEMAP_PMTILES`, `BASEMAP_PMTILES_RECHECK_S`, `BASEMAP_TILES_UPSTREAM`,
+`WEB_ROOT`, `WEB_ANALYTICS_ORIGIN`,
 `OPEN_METEO_BASE`, `MRMS_MAX_AGE_S`,
 `FORECAST_TTL_S`, `FORECAST_CACHE_MAX_BYTES` (64 MiB), `NOWCAST_POINT_CACHE_MAX_BYTES` (16 MiB),
 `WIND_CACHE_MAX_BYTES` (32 MiB), `ALERTS_TTL_S`, `ALERTS_CACHE_MAX_BYTES` (16 MiB), `NWS_POINTS_URL`,

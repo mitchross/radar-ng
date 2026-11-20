@@ -7,7 +7,7 @@
 # only. Use it too when you change the Rust code. The first build compiles the whole workspace and needs
 # several GB of RAM and disk; later builds are cached.
 #
-# Build context: the repository root (..). deploy/Dockerfile.dockerignore keeps it to rust/.
+# Build context: the repository root (..). deploy/Dockerfile.dockerignore keeps it to rust/ and web/.
 
 services:
   worker:

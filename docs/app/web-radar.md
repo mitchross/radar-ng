@@ -22,25 +22,22 @@ uses the upstream project's public server.
 
 ## Host it for real
 
-The web radar is a folder of static files (`bun run build` writes them to `web/dist/`), or the
-`ghcr.io/<owner>/radar-ng-web` image (nginx on port 8080, health check `/healthz`).
+The tile-server serves it. The `radar-ng-tile-server` image carries the built site and answers
+every path that is not `/api`, `/tiles`, `/basemap`, `/replays`, `/level2` or `/v1` with it. Open
+your server's address in a browser (`http://localhost:8080` on the Compose stack).
 
-**It must live on the same address as your server.** The server doesn't send CORS headers, so the
-browser only loads data from the site's own host. Put a reverse proxy or ingress in front that
-routes:
+- Route the whole hostname to the tile-server (port 8080). No second container or path rule is needed.
+- A web change ships with the next backend image release.
+- To serve your own build, run `bun run build` and set `WEB_ROOT` to the `dist/` folder.
+- To turn the web radar off, set `WEB_ROOT` to an empty value. The server then answers 404 on `/`.
 
-| Path | Goes to |
-|---|---|
-| `/api`, `/tiles`, `/packed`, `/basemap` | the tile-server (port 8080) |
-| everything else (`/`) | the web radar |
-
-The upstream cluster does this with one Gateway API `HTTPRoute` (two rules on one hostname). Any
-proxy that routes by path works: Caddy, Traefik, nginx, an Ingress.
+The site and the API share one address because the server sends no CORS headers.
 
 ## Analytics
 
-Off unless you build with `VITE_POSTHOG_KEY` (and optionally `VITE_POSTHOG_HOST`). If you turn
-them on with your own PostHog host, add that host to the CSP in `web/security-headers.conf`.
+Off unless you build the image with `VITE_POSTHOG_KEY` (and optionally `VITE_POSTHOG_HOST`). The
+image build copies the host into `WEB_ANALYTICS_ORIGIN`, the one third-party origin the page's CSP
+allows. Set that variable yourself when you serve your own build with another PostHog host.
 
 ## What it shows
 

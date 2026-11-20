@@ -29,16 +29,15 @@ copies it into each image (`RADAR_FROM=prebuilt`):
 | Image | Workflow | `deploy/Dockerfile` target |
 |---|---|---|
 | `ghcr.io/mitchross/radar-ng-temporal-worker` | `ghcr-backend.yml` | `worker` |
-| `ghcr.io/mitchross/radar-ng-tile-server` | `ghcr-backend.yml` | `api` |
+| `ghcr.io/mitchross/radar-ng-tile-server` | `ghcr-backend.yml` | `api` (includes the web radar build) |
 | `ghcr.io/mitchross/radar-ng-open-meteo-worker` | `ghcr-backend.yml` | `open-meteo` |
-| `ghcr.io/mitchross/radar-ng-web` | `ghcr-web.yml` | `web/Dockerfile` |
 
 Never deploy `latest`. GitOps pins `vX.Y.Z@sha256:…`.
 
 ## Before merging source
 
 1. `ci-rust.yml` must be green: fmt, clippy, tests, the Temporal integration tests, the live-NOAA check,
-   and the image builds with their smoke runs. App changes run `ci-frontend.yml`. `ghcr-web.yml` builds the web image.
+   and the image builds with their smoke runs. App changes run `ci-frontend.yml`. Web changes run `ci-web.yml`.
 2. Keep one release per image in flight at a time.
 3. For workflow-code changes, the replay gate must pass (below). If it fails, use a reviewed patch
    marker instead of editing fixtures. A unit test does not prove history compatibility.

@@ -1,0 +1,45 @@
+name: ci · web
+
+# Checks for the web radar (web/): unit tests and the production build.
+# The api image serves the build; ci-rust's `images` job smoke-tests that.
+
+on:
+  pull_request:
+    paths:
+      - 'web/**'
+      - '.github/workflows/ci-web.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'web/**'
+      - '.github/workflows/ci-web.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Test
+        run: bun run test
+
+      - name: Build (typecheck and bundle)
+        run: bun run build

@@ -1,16 +1,19 @@
 name: ghcr · backend
 
 # Public GHCR images of the Rust backend, all three from one `radar` binary (deploy/Dockerfile):
-#   radar-ng-tile-server         target `api`
+#   radar-ng-tile-server         target `api` (also carries the web radar build, web/)
 #   radar-ng-temporal-worker     target `worker` (WORKER_ROLE picks the pool)
 #   radar-ng-open-meteo-worker   target `open-meteo`
 # The binary is compiled once, with a cargo cache, and copied into each image.
+# PostHog for the web radar: set the repository variable POSTHOG_PROJECT_KEY to the project's
+# public phc_ key (gh variable set POSTHOG_PROJECT_KEY); unset builds ship with analytics off.
 
 on:
   push:
     branches: [master]
     paths:
       - 'rust/**'
+      - 'web/**'
       - 'deploy/Dockerfile'
       - 'deploy/Dockerfile.dockerignore'
       - '.github/workflows/ghcr-backend.yml'
@@ -156,7 +159,9 @@ jobs:
           context: .
           file: deploy/Dockerfile
           target: ${{ matrix.target }}
-          build-args: RADAR_FROM=prebuilt
+          build-args: |
+            RADAR_FROM=prebuilt
+            VITE_POSTHOG_KEY=${{ vars.POSTHOG_PROJECT_KEY }}
           build-contexts: radar-bin=dist
           push: true
           tags: ${{ steps.meta.outputs.tags }}

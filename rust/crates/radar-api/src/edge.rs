@@ -10,8 +10,8 @@
 //!
 //! Method and path fallbacks: a HEAD on a `/api` route answers 405, and every 405 under `/api` or
 //! `/v1` carries FastAPI's `{"detail":"Method Not Allowed"}` body. An unknown `/api` or `/v1` path
-//! answers 404 `{"detail":"Not Found"}`. Any other unknown path answers the Caddy-style text 404
-//! (D13: Caddy answered 200 empty).
+//! answers 404 `{"detail":"Not Found"}`. Any other unknown path goes to the web radar when `WEB_ROOT`
+//! is set (`web`), and otherwise answers the Caddy-style text 404 (D13: Caddy answered 200 empty).
 
 use std::net::SocketAddr;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -268,8 +268,9 @@ fn rewrite_405(resp: Response, path: &str) -> Response {
     out
 }
 
-/// Unmatched paths: Starlette's redirect for a trailing slash, then 404.
-pub async fn unmatched(req: Request) -> Response {
+/// Unmatched paths: Starlette's redirect for a trailing slash, then the web radar when it is
+/// configured, then 404.
+pub async fn unmatched(State(state): State<AppState>, req: Request) -> Response {
     let path = req.uri().path().to_string();
     if path.len() > 1 && path.ends_with('/') {
         let trimmed = path.trim_end_matches('/');
@@ -290,6 +291,12 @@ pub async fn unmatched(req: Request) -> Response {
     }
     if path.starts_with("/basemap/imagery/") {
         return crate::basemap::bare_404();
+    }
+    if let Some(web) = &state.web
+        && matches!(*req.method(), Method::GET | Method::HEAD)
+        && !crate::web::is_reserved(&path)
+    {
+        return web.serve(req).await;
     }
     respond::caddy_error(StatusCode::NOT_FOUND)
 }
