@@ -845,7 +845,7 @@ function renderSheet() {
       <label class="toggle"><span><b>Strong storm heading my way</b><small>Radar estimate for 55+ dBZ cells within 10 km in 30 min. Not an NWS warning. On this device only</small></span><input id="storm-notice" type="checkbox" ${stormNotice.enabled ? "checked" : ""} /><i></i></label>
     </div>
     ${ANALYTICS_AVAILABLE ? `<div class="sheet-section"><div class="section-label">PRIVACY</div>
-      <label class="toggle"><span><b>Usage analytics</b><small>Self-hosted PostHog: anonymous events and session replay. Off sends nothing.</small></span><input type="checkbox" id="analytics" ${analyticsEnabled() ? "checked" : ""} /><i></i></label>
+      <label class="toggle"><span><b>Usage analytics</b><small>Self-hosted analytics: anonymous events and optional session replay. Off sends nothing.</small></span><input type="checkbox" id="analytics" ${analyticsEnabled() ? "checked" : ""} /><i></i></label>
     </div>` : ""}
     <div class="sheet-section"><div class="section-label">KEYBOARD</div>
       <p class="hint"><kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> step · <kbd>W</kbd> warnings · <kbd>S</kbd> storms · <kbd>L</kbd> lightning · <kbd>H</kbd> hurricanes</p>

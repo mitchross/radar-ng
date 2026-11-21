@@ -30,8 +30,8 @@ pub struct Config {
     /// `WEB_ROOT`, the built web radar (`web/dist`) served on every path no other route owns.
     /// Unset or empty turns it off. The api image sets `/srv/web`.
     pub web_root: Option<PathBuf>,
-    /// `WEB_ANALYTICS_ORIGIN`: the one third-party origin the web radar's CSP allows (PostHog).
-    /// Default empty (none).
+    /// `WEB_ANALYTICS_ORIGIN`: the analytics origins the web radar's CSP allows, `;`-separated
+    /// (PostHog today, PostHog and Umami during the dual-collector migration). Default empty (none).
     pub web_analytics_origin: String,
     /// `BASEMAP_PMTILES`, the archive served at `/basemap/tiles/{z}/{x}/{y}.mvt`.
     /// Default `/data/basemap.pmtiles` (where the image copies it).
