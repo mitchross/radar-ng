@@ -162,6 +162,10 @@ jobs:
           build-args: |
             RADAR_FROM=prebuilt
             VITE_POSTHOG_KEY=${{ vars.POSTHOG_PROJECT_KEY }}
+            VITE_UMAMI_HOST=${{ vars.UMAMI_HOST }}
+            VITE_UMAMI_WEBSITE_ID=${{ vars.UMAMI_WEBSITE_ID }}
+            VITE_ANALYTICS_RECORDER_OWNER=${{ vars.ANALYTICS_RECORDER_OWNER || 'posthog' }}
+            WEB_ANALYTICS_ORIGIN=${{ vars.ANALYTICS_ORIGINS || 'https://ingest-posthog.vanillax.me' }}
           build-contexts: radar-bin=dist
           push: true
           tags: ${{ steps.meta.outputs.tags }}

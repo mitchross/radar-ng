@@ -2730,3 +2730,22 @@ fn web_lane_rejects_a_bad_root_and_a_bad_origin() {
     });
     assert!(AppState::new(bad).is_err());
 }
+
+/// Two collectors run side by side during the Umami migration: both origins reach the CSP.
+#[tokio::test]
+async fn web_lane_allows_every_analytics_origin_in_the_list() {
+    let env = Env::new();
+    let web = env.path("web-multi");
+    std::fs::create_dir_all(&web).expect("dir");
+    std::fs::write(web.join("index.html"), "<!doctype html>").expect("index");
+    let app = env.app(|cfg| {
+        cfg.web_root = Some(web.clone());
+        cfg.web_analytics_origin = "https://ph.example.com; https://um.example.com".into();
+    });
+    let (status, headers, _) = send(&app, get_req("/")).await;
+    assert_eq!(status, StatusCode::OK);
+    let csp = header_str(&headers, "content-security-policy");
+    assert!(csp.contains("script-src 'self' https://ph.example.com https://um.example.com;"));
+    assert!(csp.contains("connect-src 'self' https://ph.example.com https://um.example.com;"));
+    assert!(!csp.contains("unsafe-eval"));
+}
