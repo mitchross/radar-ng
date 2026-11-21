@@ -120,7 +120,7 @@ Run `bash scripts/android-inmap-evidence.sh collect` straight away, then add:
 - the status line text, which shows the error stage and the fallback reason;
 - `adb logcat | grep -iE "radar|maplibre|inmap"` (the script saves the same lines);
 - the tile files in the app's cache folder `radar-inmap` (the script saves them only on a debug build; on a release build it says so);
-- PostHog `inmap_diag` events.
+- the `inmap_diag` telemetry events.
 
 ---
 

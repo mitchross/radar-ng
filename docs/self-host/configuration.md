@@ -74,7 +74,7 @@ no-op until the bbox, the max zoom (or, on Kubernetes, `REFRESH`) changes.
 | Var | Default | Notes |
 |---|---|---|
 | `WEB_ROOT` | unset (image: `/srv/web`) | api: the built web radar. The api serves it on every path no API or static route owns. Empty turns it off. |
-| `WEB_ANALYTICS_ORIGIN` | empty (image: the build's `VITE_POSTHOG_HOST`) | api: the one third-party origin the page's CSP allows. |
+| `WEB_ANALYTICS_ORIGIN` | empty (image: the build's `VITE_UMAMI_HOST`) | api: the one third-party origin the page's CSP allows. |
 
 ### Frontend basemap provider (bundled vs external)
 

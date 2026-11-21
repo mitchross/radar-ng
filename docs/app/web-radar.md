@@ -35,9 +35,11 @@ The site and the API share one address because the server sends no CORS headers.
 
 ## Analytics
 
-Off unless you build the image with `VITE_POSTHOG_KEY` (and optionally `VITE_POSTHOG_HOST`). The
+Umami. Off unless you build the image with `VITE_UMAMI_HOST` and `VITE_UMAMI_WEBSITE_ID`. The
 image build copies the host into `WEB_ANALYTICS_ORIGIN`, the one third-party origin the page's CSP
-allows. Set that variable yourself when you serve your own build with another PostHog host.
+allows. Only the allowlisted product events in `web/src/analytics.ts` are sent, never coordinates
+or search text. Session replay (Umami `recorder.js`) starts after any `alertBounds` link is cleared
+from the URL; Umami's per-site settings mask text. Do Not Track and the Settings privacy switch turn both off.
 
 ## What it shows
 

@@ -79,6 +79,6 @@ The web radar (`web/`) is served from the same host as the API, so there's no de
 
 - Local dev proxies to `RADAR_API` (defaults to the upstream API). Set it to your server:
   `RADAR_API=https://your-api.example.com bun run dev`.
-- **Analytics are off** unless you build the api image with `VITE_POSTHOG_KEY`. `VITE_POSTHOG_HOST`
-  sets your PostHog host, and the image build allows that host in the page's CSP
-  (`WEB_ANALYTICS_ORIGIN`).
+- **Analytics are off** unless you build the api image with `VITE_UMAMI_HOST` and
+  `VITE_UMAMI_WEBSITE_ID` (your Umami instance). The image build allows that host in the page's
+  CSP (`WEB_ANALYTICS_ORIGIN`).

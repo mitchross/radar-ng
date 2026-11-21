@@ -31,7 +31,7 @@ pub struct Config {
     /// Unset or empty turns it off. The api image sets `/srv/web`.
     pub web_root: Option<PathBuf>,
     /// `WEB_ANALYTICS_ORIGIN`: the analytics origins the web radar's CSP allows, `;`-separated
-    /// (PostHog today, PostHog and Umami during the dual-collector migration). Default empty (none).
+    /// (the Umami host). Default empty (none).
     pub web_analytics_origin: String,
     /// `BASEMAP_PMTILES`, the archive served at `/basemap/tiles/{z}/{x}/{y}.mvt`.
     /// Default `/data/basemap.pmtiles` (where the image copies it).

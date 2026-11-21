@@ -5,8 +5,8 @@ name: ghcr · backend
 #   radar-ng-temporal-worker     target `worker` (WORKER_ROLE picks the pool)
 #   radar-ng-open-meteo-worker   target `open-meteo`
 # The binary is compiled once, with a cargo cache, and copied into each image.
-# PostHog for the web radar: set the repository variable POSTHOG_PROJECT_KEY to the project's
-# public phc_ key (gh variable set POSTHOG_PROJECT_KEY); unset builds ship with analytics off.
+# Umami for the web radar: set the repository variables UMAMI_HOST and UMAMI_WEBSITE_ID
+# (gh variable set ...); unset builds ship with analytics off.
 
 on:
   push:
@@ -161,11 +161,8 @@ jobs:
           target: ${{ matrix.target }}
           build-args: |
             RADAR_FROM=prebuilt
-            VITE_POSTHOG_KEY=${{ vars.POSTHOG_PROJECT_KEY }}
             VITE_UMAMI_HOST=${{ vars.UMAMI_HOST }}
             VITE_UMAMI_WEBSITE_ID=${{ vars.UMAMI_WEBSITE_ID }}
-            VITE_ANALYTICS_RECORDER_OWNER=${{ vars.ANALYTICS_RECORDER_OWNER || 'posthog' }}
-            WEB_ANALYTICS_ORIGIN=${{ vars.ANALYTICS_ORIGINS || 'https://ingest-posthog.vanillax.me' }}
           build-contexts: radar-bin=dist
           push: true
           tags: ${{ steps.meta.outputs.tags }}
