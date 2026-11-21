@@ -5,7 +5,7 @@
  */
 import {
   PACKED_TILE_SIZE,
-  buildLut,
+  buildRampLut,
   locateFrame,
   parsePackedMeta,
   slotAddress,
@@ -18,6 +18,8 @@ import type { PlaybackWindow } from "./radarCarousel";
 export {
   PACKED_TILE_SIZE,
   buildLut,
+  buildRampLut,
+  buildSmoothLut,
   classRanges,
   locateFrame,
   parsePackedMeta,
@@ -53,12 +55,15 @@ const lutKeyOf = (meta: PackedMeta) =>
 /**
  * Where each frame lives in packed tiles. A frame's layer is its `source` (the merged radar
  * stream), else `fallbackLayer`. Null when no frame has a slot and a palette table to color it.
+ * `smooth` picks smooth ramp tables (the default) over the server's stepped bands; the tables are
+ * built here once per palette and mode, and a mode change only recolours (new LUT hash, same atlases).
  */
 export function buildPackedFrames(
   frames: readonly { timestamp: string; source?: string }[],
   layers: Record<string, { packed?: unknown } | undefined>,
   tables: Record<string, unknown> | undefined,
   fallbackLayer: string,
+  smooth = false,
 ): PackedFrames | null {
   const metas = new Map<string, PackedMeta | null>();
   const luts: Record<string, Uint8Array> = {};
@@ -68,7 +73,7 @@ export function buildPackedFrames(
       const table = meta ? (tables?.[meta.color_key] as ColorTable | undefined) : undefined;
       // No table for the key: leave the layer on rasters rather than draw it blank.
       const usable = meta && table?.ranges?.length ? meta : null;
-      if (usable && table) luts[lutKeyOf(usable)] ??= buildLut(table, usable.scale, usable.offset, usable.types);
+      if (usable && table) luts[lutKeyOf(usable)] ??= buildRampLut(table, usable.scale, usable.offset, usable.types, smooth);
       metas.set(layer, usable);
     }
     return metas.get(layer) ?? null;

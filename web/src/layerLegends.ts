@@ -42,6 +42,8 @@ export function layerLegend(
   palette: PaletteId,
   layer: string,
   serverKey?: string | null,
+  /** Smooth gradient (the packed GPU layer's smooth ramp) instead of the PNG tiles' flat bands. */
+  smooth = false,
 ): LayerLegend | null {
   const spec = LAYER_TABLES[layer];
   const key = layerPaletteKey(layer, serverKey);
@@ -52,7 +54,9 @@ export function layerLegend(
   const hi = ranges[ranges.length - 1].max;
   const pos = (v: number) => `${(((v - lo) / (hi - lo)) * 100).toFixed(1)}%`;
   const color = ([r, g, b]: ColorRange["rgba"]) => `rgb(${r},${g},${b})`;
-  const stops = ranges.map((r) => `${color(r.rgba)} ${pos(r.min)} ${pos(Math.min(r.max, hi))}`).join(",");
+  const stops = smooth
+    ? [...ranges.map((r) => `${color(r.rgba)} ${pos(r.min)}`), `${color(ranges[ranges.length - 1].rgba)} 100.0%`].join(",")
+    : ranges.map((r) => `${color(r.rgba)} ${pos(r.min)} ${pos(Math.min(r.max, hi))}`).join(",");
   return {
     title: `${spec.title} (${spec.unit})`,
     gradient: `linear-gradient(90deg,${stops})`,

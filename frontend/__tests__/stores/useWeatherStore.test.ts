@@ -21,6 +21,12 @@ describe("useWeatherStore", () => {
     expect(useWeatherStore.getState().temperatureUnit).toBe("celsius");
     expect(useWeatherStore.getState().radarOpacity).toBe(0.45);
   });
+  it("draws smooth ramps by default and remembers Stepped bands", () => {
+    expect(useWeatherStore.getState().steppedBands).toBe(false);
+    useWeatherStore.getState().setSteppedBands(true);
+    expect(setString).toHaveBeenCalledWith("steppedBands", "1");
+    expect(useWeatherStore.getState().steppedBands).toBe(true);
+  });
   it("keeps satellite clouds off until asked and remembers the choice", () => {
     expect(useWeatherStore.getState().satelliteVisible).toBe(false);
     useWeatherStore.getState().setSatelliteVisible(true);

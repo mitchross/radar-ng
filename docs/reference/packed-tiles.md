@@ -264,6 +264,29 @@ The app colors each tile 1:1 at its native zoom (one texel per output pixel, tex
 MapLibre overscales those PNGs past `max_zoom` with `raster-resampling: linear` (blending colors,
 not values).
 
+### Smooth ramps and Stepped bands
+
+Both clients draw **smooth ramps** by default; Settings → **Stepped bands** (web: palette
+settings, `rng.steppedBands` in localStorage; app: Settings, `steppedBands` in the weather store)
+brings back the flat band colours above, unchanged. Switching swaps the table (and on web a
+uniform); no tile is refetched. Server PNG rasters (layers without `packed`, `?raster=1`, replay,
+Level II, Fast radar off) are always stepped.
+
+- **Table.** `buildSmoothLut` (`web/src/shared/packed.ts`) keeps the stepped table's transparent
+  entries, but each band's colour sits at the band's start and blends linearly into the next
+  band's colour at its start; the top band, and a band followed by a gap, stay flat. When
+  `no_data_below` is the ramp's own floor (reflectivity, wind, rain total, clouds, AQ), the lowest
+  band starts at half its alpha and fades in instead of cutting in. Each v2 class gets its own ramp.
+- **Web sampling.** In smooth mode the shader uses a 4x4 cubic B-spline over the decoded texels
+  instead of the 2x2 bilinear (16 `texelFetch` instead of 4), with the same rules: missing texels
+  only lower coverage, the class with the most weight wins and only its texels are averaged. The
+  unrounded mean `q` blends the class's two neighbouring table entries (never past the class's
+  last code). `bsplineTexels` and `sampleColor` in `filter.ts` are the tested twins.
+- **App.** The same smooth table, built once per palette and mode in `buildPackedFrames`. Tiles are
+  still colored per texel; MapLibre's linear resampling blends neighbouring texels, which on a
+  smooth ramp gives continuous colour. The table hash is part of the frame key, so a mode change
+  recolours from the decoded atlases.
+
 ## Clients
 
 - **Web.** A MapLibre custom layer (WebGL2) under the label layers. It draws one quad per visible

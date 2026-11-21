@@ -17,7 +17,8 @@ import {
   replayTileUrl, replayTimeLabel, replayWarningCollection, replayWarningCopy, replayWarningKey, sourceKey, SourceGuard, type ReplayManifest, type SourceContext,
 } from "./shared/replaySource";
 import { compass, describeFeature, incomingStorm, OVERLAYS, Overlays, WARNING_COLORS, type OverlayId } from "./overlays";
-import { css, LEGEND_TICKS, PALETTES, typeRamps, type PaletteId } from "./palettes";
+import { LEGEND_TICKS, PALETTES, RADAR_LEGEND_TOP, radarLegendGradient, typeRamps, type PaletteId } from "./palettes";
+import { parsePackedMeta } from "./shared/packed";
 import { fetchServerPalettes, layerLegend, uvCategory } from "./layerLegends";
 import type { ServerPalettes } from "./shared/serverPalettes";
 import {
@@ -169,6 +170,8 @@ const state = {
   mapStyle: stored<MapStyleId>("rng.mapStyle", "light"),
   layer: stored<string>("rng.layer", "radar"),
   palette: stored<PaletteId>("rng.palette", "classic"),
+  /** Flat band colours instead of smooth ramps on the packed (GPU) radar; off by default. */
+  steppedBands: stored<boolean>("rng.steppedBands", false),
   product: stored<ProductId>("rng.product", "radar"),
   opacity: stored<number>("rng.opacity", 0.8),
   speed: stored<number>("rng.speed", 1),
@@ -233,7 +236,7 @@ map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom
 const overlays = new Overlays(map, state.overlays);
 const wind = new WindLayer(map);
 /** Packed data tiles (docs/reference/packed-tiles.md); `?raster=1` turns them off. */
-const packed = new URLSearchParams(location.search).get("raster") === "1" ? null : new PackedRadarLayer(state.palette, state.opacity);
+const packed = new URLSearchParams(location.search).get("raster") === "1" ? null : new PackedRadarLayer(state.palette, state.opacity, !state.steppedBands);
 
 /** GOES imagery goes under the lowest radar layer (raster frame or packed), else under the labels. */
 const satellite = new SatelliteLayer(map, state.satellite, () => map.getStyle().layers?.find((l) => l.id.startsWith("wx-") || l.id === packed?.id)?.id ?? radarBeforeId());
@@ -699,24 +702,34 @@ function severeNote(layer: string): string {
   return `<div class="legend-note">${asOf ? `${asOf} · ` : ""}${escapeHtml(winter.hint)} · ${winter.credit}</div>`;
 }
 
+/**
+ * True when the active layer is drawn with smooth ramps: the setting is on and the packed GPU layer
+ * draws it. Server PNG rasters (replay, `?raster=1`, Level II, layers without packed tiles) are stepped.
+ */
+function smoothLegend(): boolean {
+  if (state.steppedBands || !packed || packed.failed || replaying()) return false;
+  if (state.layer === "radar" && closeUpOn) return false;
+  const layer = state.layer === "radar" ? (state.product === "radar-composite" ? "radar-composite" : "radar") : state.layer;
+  return Boolean(parsePackedMeta(activeManifest()?.layers[layer]?.packed));
+}
+
 function renderLegend() {
   const el = $("legend");
+  const smooth = smoothLegend();
   if (state.layer === "radar") {
     const bands = PALETTES[replaying() ? REPLAY_PALETTE : state.palette].bands;
-    const lo = bands[0].min;
-    const hi = 75;
-    const pos = (dbz: number) => `${((dbz - lo) / (hi - lo)) * 100}%`;
+    const pos = (dbz: number) => `${((dbz - bands[0].min) / (RADAR_LEGEND_TOP - bands[0].min)) * 100}%`;
     el.hidden = false;
     el.innerHTML =
       `<div class="legend-title"><span>Precipitation</span><span class="legend-tag">${PALETTES[state.palette].name}</span></div>` +
-      `<div class="legend-bar" style="background:linear-gradient(90deg,${bands.map((b, i) => `${css(b.rgba)} ${pos(b.min)} ${pos(bands[i + 1]?.min ?? hi)}`).join(",")})"></div>` +
+      `<div class="legend-bar" style="background:${radarLegendGradient(bands, smooth)}"></div>` +
       `<div class="legend-ticks">${LEGEND_TICKS.map(([dbz, name]) => `<span style="left:${pos(dbz)}">${name}</span>`).join("")}</div>`;
     if (closeUpOn) el.innerHTML += `<div class="legend-note">Level II close-up: one radar's reflectivity aloft, not surface rain. Same colours as MRMS.</div>`;
     // Observed radar is colored by precipitation type when the server says so.
     if (!replaying() && state.manifest?.layers.radar?.precip_type === true) {
       el.innerHTML +=
         `<div class="legend-types">` +
-        typeRamps(state.palette)
+        typeRamps(state.palette, smooth)
           .map((r) => `<div class="legend-type"><span>${r.label}</span><div class="legend-type-bar" style="background:${r.gradient}"></div></div>`)
           .join("") +
         `</div>`;
@@ -756,7 +769,7 @@ function renderLegend() {
       `<div class="legend-note">Daily high above or below normal \u00B7 ${TEMP_NORMAL_LAYER.credit}</div>`;
     return;
   }
-  const table = layerLegend(serverPalettes, replaying() ? REPLAY_PALETTE : state.palette, state.layer, activeManifest()?.layers[state.layer]?.palette_key);
+  const table = layerLegend(serverPalettes, replaying() ? REPLAY_PALETTE : state.palette, state.layer, activeManifest()?.layers[state.layer]?.palette_key, smooth);
   if (table) {
     el.hidden = false;
     el.innerHTML =
@@ -821,6 +834,7 @@ function renderSheet() {
       <p class="hint">${PRODUCTS[state.product].hint}</p>
       ${seg("palette", (Object.keys(PALETTES) as PaletteId[]).map((id) => [id, PALETTES[id].name, id === "muted" ? "Colorblind-safe (viridis)" : undefined]), state.palette)}
       <p class="hint">Muted is the colorblind-safe palette (viridis). Warning outlines are also labelled TOR, SVR or FFW.</p>
+      <label class="toggle"><span><b>Stepped bands</b><small>One flat colour per band instead of smooth gradients</small></span><input id="stepped-bands" type="checkbox" ${state.steppedBands ? "checked" : ""} /><i></i></label>
       <label class="range-row"><span>Opacity</span><input id="opacity" type="range" min="0.3" max="1" step="0.05" value="${state.opacity}" aria-label="Radar opacity" /></label>
     </div>
     ${snowCardVisible ? "" : winterSection}
@@ -1516,6 +1530,13 @@ $("sheet-body").addEventListener("change", (e) => {
       renderSheet();
       void renderNextHour();
     });
+  } else if (el.id === "stepped-bands") {
+    // A table and a uniform swap on the GPU layer; tiles stay as they are.
+    state.steppedBands = el.checked;
+    store("rng.steppedBands", el.checked);
+    packed?.setSmooth(!el.checked);
+    track("stepped_bands_toggled", { on: el.checked });
+    renderLegend();
   } else if (el.id === "storm-notice") {
     void stormNotice.setEnabled(el.checked).then(renderThreat);
   } else if (el.id === "rain-alert-lead") {
