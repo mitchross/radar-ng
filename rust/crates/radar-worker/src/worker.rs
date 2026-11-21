@@ -192,7 +192,7 @@ pub fn registration(role: WorkerRole) -> Registration {
     };
     if !matches!(
         role,
-        WorkerRole::OpenMeteo | WorkerRole::Level2 | WorkerRole::Legacy | WorkerRole::All
+        WorkerRole::OpenMeteo | WorkerRole::Legacy | WorkerRole::All
     ) {
         workflows.push(SMOKE_WORKFLOW);
         activities.push(SMOKE_ACTIVITY);
@@ -412,9 +412,9 @@ fn add_activities(
     }
     if let Some(level2) = deps.level2 {
         builder = builder.register_activities(level2);
-    } else {
-        builder = builder.register_activities(SmokeActivities::new());
     }
+    // The controller gates every WorkerDeployment on `RadarDeploymentSmokeWorkflow`, the Level II pool included.
+    builder = builder.register_activities(SmokeActivities::new());
     Ok(builder)
 }
 
@@ -764,7 +764,8 @@ mod tests {
 
     #[test]
     fn deployment_smoke_is_on_every_role_except_legacy_all_and_open_meteo() {
-        for role in POOLS {
+        // Level II is not in POOLS (it owns no shared workflow), but its WorkerDeployment is gated on smoke.
+        for role in POOLS.into_iter().chain([WorkerRole::Level2]) {
             let reg = registration(role);
             let has_workflow = reg.workflows.contains(&wire::WORKFLOW_DEPLOYMENT_SMOKE);
             let has_activity = reg
@@ -857,12 +858,16 @@ mod tests {
     #[test]
     fn level2_pool_is_isolated_from_every_other_role() {
         let level2 = registration(WorkerRole::Level2);
-        assert_eq!(level2.workflows, vec![wire::WORKFLOW_LEVEL2_POOL]);
+        assert_eq!(
+            level2.workflows,
+            vec![wire::WORKFLOW_LEVEL2_POOL, wire::WORKFLOW_DEPLOYMENT_SMOKE]
+        );
         assert_eq!(
             level2.activities,
             vec![
                 wire::ACTIVITY_LEVEL2_TICK,
-                wire::ACTIVITY_LEVEL2_POLL_STATION
+                wire::ACTIVITY_LEVEL2_POLL_STATION,
+                wire::ACTIVITY_RADAR_DEPLOYMENT_SMOKE
             ]
         );
         assert_eq!(
