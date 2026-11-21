@@ -29,6 +29,8 @@ type ProductEvent = { name?: string; data?: Payload };
 type Provider = { ready?: (event: ProductEvent) => void; pending?: Promise<void>; queue: ProductEvent[]; pageview: boolean };
 const um: Provider = { queue: [], pageview: false };
 let umamiLoaded = false;
+let replayWanted = false;
+let recorderLoaded = false;
 
 declare global {
   interface Window {
@@ -95,11 +97,27 @@ function loadUmami(epoch: number): Promise<void> {
           void window.umami!.track({ website: UMAMI!.id, ...page(), ...(event.name ? { name: event.name, data: event.data } : {}) }).catch(() => {});
         };
         flush(um);
+        loadRecorder();
       }
       resolve();
     };
     document.head.append(script);
   });
+}
+// Session replay (rrweb). Umami's per-site settings decide masking and sampling; the recorder
+// waits for the tracker's session, so the opt-outs above cover it too.
+function loadRecorder() {
+  if (!UMAMI || !umamiLoaded || !replayWanted || recorderLoaded || !allowed()) return;
+  recorderLoaded = true;
+  const script = document.createElement("script");
+  script.src = `${UMAMI.host}/recorder.js`;
+  Object.assign(script.dataset, { websiteId: UMAMI.id, hostUrl: UMAMI.host });
+  document.head.append(script);
+}
+/** Start replay once the URL holds no location state (alertBounds is stripped first). */
+export function startReplay(): void {
+  replayWanted = true;
+  loadRecorder();
 }
 function start(provider: Provider, load: (epoch: number) => Promise<void>) {
   if (provider.ready || provider.pending) return provider.pending;

@@ -120,3 +120,24 @@ it("respects Do Not Track", async () => {
   await a.initAnalytics();
   expect(scripts).toHaveLength(0);
 });
+
+it("loads the recorder only after startReplay and the tracker are both ready", async () => {
+  const a = await load();
+  await a.initAnalytics();
+  expect(scripts.map(s => s.src)).toEqual(["https://ingest-umami.vanillax.me/script.js"]);
+  a.startReplay();
+  a.startReplay();
+  expect(scripts.map(s => s.src)).toEqual([
+    "https://ingest-umami.vanillax.me/script.js",
+    "https://ingest-umami.vanillax.me/recorder.js",
+  ]);
+  expect(scripts[1].dataset).toMatchObject({ websiteId: "0b6a1d26-3f0e-4dad-8b8a-6c3a9c1f2d10" });
+});
+
+it("never loads the recorder when analytics are off", async () => {
+  values.set("rng.analytics", "0");
+  const a = await load();
+  a.startReplay();
+  await a.initAnalytics();
+  expect(scripts).toHaveLength(0);
+});

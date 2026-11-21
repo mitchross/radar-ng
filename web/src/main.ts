@@ -6,7 +6,7 @@ import type { Map as MLMap, StyleSpecification } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
-import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabled, track } from "./analytics";
+import { ANALYTICS_AVAILABLE, analyticsEnabled, initAnalytics, setAnalyticsEnabled, startReplay, track } from "./analytics";
 import { buildFrames, forecastLine, forecastTitle, isForecastSource, longZoomLabel, nowIndex, offsetLabel, playbackSequence, refreshKeepTime, sameFrames, type Frame, type Manifest, type Zoom } from "./frames";
 import { escapeHtml } from "./html";
 import { bannerHtml, fetchReplayCatalogue, fetchReplayManifest, fetchReplayWarnings, pickerHtml } from "./replay";
@@ -1989,6 +1989,7 @@ async function boot() {
     url.searchParams.delete("alertBounds");
     history.replaceState(null, "", url);
   }
+  startReplay();
   overlays.start();
   if (rainAlerts.enabled) void rainAlerts.connect();
   if (state.wind) setOverlay("wind", true);
