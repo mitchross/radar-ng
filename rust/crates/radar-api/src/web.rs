@@ -39,8 +39,8 @@ pub fn is_reserved(path: &str) -> bool {
     })
 }
 
-/// The Content-Security-Policy for the page. `analytics_origin` (PostHog) is the only third-party
-/// origin; empty allows none.
+/// The Content-Security-Policy for the page. `analytics_origin` is the analytics
+/// allowlist — one origin, or several separated by `;` — and empty allows none.
 fn content_security_policy(analytics_origin: &str) -> String {
     let extra = if analytics_origin.is_empty() {
         String::new()
@@ -79,12 +79,24 @@ impl WebLane {
         if !index.is_file() {
             bail!("WEB_ROOT has no index.html: {}", index.display());
         }
-        let origin = analytics_origin.trim();
-        // One origin only: a separator would add a second source or a second directive.
-        if origin.contains([';', ',']) || origin.contains(char::is_whitespace) {
-            bail!("WEB_ANALYTICS_ORIGIN is not a single origin: {analytics_origin:?}");
+        // A semicolon-separated list of origins, so a dual-collector migration can allow both.
+        // Every token is checked: a space, comma or injected directive must never reach the header.
+        let mut origins: Vec<&str> = Vec::new();
+        for raw in analytics_origin.split(';') {
+            let token = raw.trim();
+            if token.is_empty() {
+                continue;
+            }
+            if !token.contains("://")
+                || token.contains([',', ';'])
+                || token.contains(char::is_whitespace)
+            {
+                bail!("WEB_ANALYTICS_ORIGIN is not an origin list: {analytics_origin:?}");
+            }
+            origins.push(token);
         }
-        let csp = HeaderValue::from_str(&content_security_policy(origin)).map_err(|_| {
+        let origins = origins.join(" ");
+        let csp = HeaderValue::from_str(&content_security_policy(&origins)).map_err(|_| {
             anyhow::anyhow!("WEB_ANALYTICS_ORIGIN has characters a header cannot carry")
         })?;
         Ok(Self {
