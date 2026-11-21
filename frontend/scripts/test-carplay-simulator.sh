@@ -23,6 +23,7 @@ xcrun --sdk iphonesimulator swiftc -parse-as-library \
   targets/carplay/RadarAPI.swift targets/carplay/RadarRouteProgress.swift \
   targets/carplay/RadarLocationManager.swift targets/carplay/RadarDrivingSession.swift \
   targets/carplay/RadarTileOverlay.swift targets/carplay/RadarManeuverFactory.swift targets/carplay/RadarMapController.swift \
+  targets/carplay/RadarMapViewport.swift targets/_shared/RadarShared.swift \
   tests/carplay/CarPlayTestHost.swift -o "$CARPLAY_TEST_APP/CarPlayTestHost"
 codesign --force --sign - "$CARPLAY_TEST_APP"
 xcrun simctl install "$IOS_SIMULATOR_UDID" "$CARPLAY_TEST_APP"

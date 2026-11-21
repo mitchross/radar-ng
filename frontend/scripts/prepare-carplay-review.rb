@@ -8,8 +8,9 @@ FileUtils.mkdir_p(output)
 project_path = File.join(output, 'CarPlayReview.xcodeproj')
 project = Xcodeproj::Project.new(project_path)
 target = project.new_target(:application, 'CarPlayReview', :ios, '26.0')
-sources = %w[RadarAPI RadarRouteProgress RadarLocationManager RadarDrivingSession RadarTileOverlay RadarManeuverFactory RadarMapController]
+sources = %w[RadarAPI RadarRouteProgress RadarLocationManager RadarDrivingSession RadarTileOverlay RadarManeuverFactory RadarMapController RadarMapViewport]
 sources.each { |name| target.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'targets/carplay', "#{name}.swift"))) }
+target.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'targets/_shared/RadarShared.swift')))
 target.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'tests/carplay/CarPlayReviewHost.swift')))
 # Team and bundle ID from identity.js (env or the upstream defaults; FORKING.md).
 identity = JSON.parse(`node -e "process.stdout.write(JSON.stringify(require(process.argv[1])))" '#{File.join(root, 'identity.js')}'`)
