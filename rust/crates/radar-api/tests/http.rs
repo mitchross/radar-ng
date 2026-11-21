@@ -2731,7 +2731,7 @@ fn web_lane_rejects_a_bad_root_and_a_bad_origin() {
     assert!(AppState::new(bad).is_err());
 }
 
-/// Two collectors run side by side during the Umami migration: both origins reach the CSP.
+/// A `;`-separated list puts every origin in the CSP.
 #[tokio::test]
 async fn web_lane_allows_every_analytics_origin_in_the_list() {
     let env = Env::new();

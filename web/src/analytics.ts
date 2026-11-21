@@ -1,10 +1,5 @@
-import type { PostHog } from "posthog-js";
-
-const KEY = import.meta.env.VITE_POSTHOG_KEY;
-const HOST = import.meta.env.VITE_POSTHOG_HOST || "https://ingest-posthog.vanillax.me";
 const PREF_KEY = "rng.analytics";
 const LIMIT = 64;
-const RECORDER = import.meta.env.VITE_ANALYTICS_RECORDER_OWNER ?? "posthog";
 
 function umamiConfig(): { host: string; id: string } | undefined {
   const host = import.meta.env.VITE_UMAMI_HOST;
@@ -16,7 +11,7 @@ function umamiConfig(): { host: string; id: string } | undefined {
   } catch { /* Invalid build config disables this provider. */ }
 }
 const UMAMI = umamiConfig();
-export const ANALYTICS_AVAILABLE = Boolean(KEY || UMAMI);
+export const ANALYTICS_AVAILABLE = Boolean(UMAMI);
 
 function permitted(): boolean {
   try {
@@ -32,9 +27,7 @@ export const analyticsEnabled = allowed;
 type Payload = Record<string, unknown>;
 type ProductEvent = { name?: string; data?: Payload };
 type Provider = { ready?: (event: ProductEvent) => void; pending?: Promise<void>; queue: ProductEvent[]; pageview: boolean };
-const ph: Provider = { queue: [], pageview: false };
 const um: Provider = { queue: [], pageview: false };
-let client: PostHog | undefined;
 let umamiLoaded = false;
 
 declare global {
@@ -67,7 +60,7 @@ function safeData(name: string, data?: Payload): Payload | undefined {
 function deliver(provider: Provider, event: ProductEvent) {
   if (!allowed()) return;
   if (provider.ready) {
-    try { provider.ready(event); } catch { /* One provider must not interrupt the other. */ }
+    try { provider.ready(event); } catch { /* A tracker error must not break the page. */ }
   } else {
     if (provider.queue.length === LIMIT) provider.queue.shift();
     provider.queue.push(event);
@@ -80,36 +73,6 @@ function flush(provider: Provider) {
     deliver(provider, {});
   }
   for (const event of provider.queue.splice(0)) deliver(provider, event);
-}
-async function loadPostHog(epoch: number) {
-  const { default: posthog } = await import("posthog-js");
-  if (!allowed() || epoch !== generation) return;
-  posthog.init(KEY!, {
-    api_host: HOST, ui_host: HOST, person_profiles: "identified_only",
-    autocapture: false, capture_pageview: false, capture_pageleave: false,
-    opt_out_capturing_by_default: true, respect_dnt: true,
-    request_batching: false, capture_performance: false,
-    disable_session_recording: RECORDER !== "posthog",
-    advanced_disable_feature_flags: true,
-    session_recording: { maskAllInputs: true, maskTextSelector: "*", recordCrossOriginIframes: false },
-    before_send: event => {
-      if (!allowed()) return null;
-      if (event?.properties) {
-        event.properties.$current_url = page().url;
-        event.properties.$referrer = "";
-        event.properties.$pathname = "/";
-        event.properties.$initial_current_url = page().url;
-        event.properties.$initial_referrer = "";
-      }
-      return event;
-    },
-  });
-  client = posthog;
-  if (!allowed() || epoch !== generation) { stop(); return; }
-  posthog.opt_in_capturing({ captureEventName: false });
-  ph.ready = event => posthog.capture(event.name ?? "$pageview", { ...event.data, $current_url: page().url });
-  if (RECORDER === "posthog") posthog.startSessionRecording();
-  flush(ph);
 }
 function loadUmami(epoch: number): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -145,28 +108,19 @@ function start(provider: Provider, load: (epoch: number) => Promise<void>) {
 }
 export async function initAnalytics(): Promise<void> {
   if (!allowed()) return;
-  await Promise.all([KEY ? start(ph, loadPostHog) : undefined, UMAMI ? start(um, loadUmami) : undefined]);
-}
-function stop() {
-  client?.stopSessionRecording();
-  client?.opt_out_capturing();
+  if (UMAMI) await start(um, loadUmami);
 }
 function revoke() {
   denied = true;
   generation++;
-  ph.queue.length = um.queue.length = 0;
-  stop();
-  // Umami v3.5.0 exposes no safe runtime recorder stop; recorder.js is never loaded.
+  um.queue.length = 0;
+  // A loaded tracker cannot be unloaded; reload so it never runs again on this page.
   if (umamiLoaded || um.pending) location.reload();
 }
 export async function setAnalyticsEnabled(on: boolean): Promise<void> {
   try { localStorage.setItem(PREF_KEY, on ? "1" : "0"); } catch { revoke(); return; }
   if (!on || !permitted()) { revoke(); return; }
   denied = false;
-  if (client) {
-    client.opt_in_capturing({ captureEventName: false });
-    if (RECORDER === "posthog") client.startSessionRecording();
-  }
   await initAnalytics();
 }
 // Only in the browser; unit tests import this module under Node.
@@ -181,6 +135,5 @@ if (typeof window !== "undefined") {
 export function track(event: string, props?: Payload): void {
   if (!allowed() || !Object.hasOwn(fields, event)) return;
   const payload = { name: event, data: safeData(event, props) };
-  if (KEY) deliver(ph, payload);
   if (UMAMI) deliver(um, payload);
 }

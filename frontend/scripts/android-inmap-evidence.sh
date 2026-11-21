@@ -97,7 +97,7 @@ case "$cmd" in
     say ""
     say "Copy in by hand (the script cannot read these):"
     say "  - the Fast radar status line text from Settings (error stage, fallback reason)"
-    say "  - PostHog inmap_diag events for this device and time"
+    say "  - inmap_diag telemetry events for this device and time"
     say "  - your pass/fail for each of the 7 checks (docs/app/phone-acceptance.md, part A)"
     echo
     echo "Evidence folder: $OUT"

@@ -31,15 +31,10 @@ ARG BUSYBOX_IMAGE=busybox:1.36-musl@sha256:3c6ae8008e2c2eedd141725c30b20d9c36b02
 ARG ALPINE_IMAGE=alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
 ARG OPEN_METEO_IMAGE=ghcr.io/open-meteo/open-meteo:1.6.0@sha256:e1517a01a061fd96e2a9017d022c5809bb51725bcd733bcbed435e7ea32dd9da
 ARG BUN_IMAGE=oven/bun:1.4-alpine@sha256:d888c0ae6c86d7866ff10c5aafdd9077b36aee6455b33dd270fb93c0dd5cef6f
-# Web radar analytics. An empty key ships with analytics off. The hosts are also the third-party
-# origins the api allows in the page's CSP (WEB_ANALYTICS_ORIGIN).
-ARG VITE_POSTHOG_KEY=""
-ARG VITE_POSTHOG_HOST=https://ingest-posthog.vanillax.me
-# Umami runs beside PostHog during the migration; an empty host or website id keeps it off.
+# Web radar analytics (Umami). An empty host or website id ships with analytics off. The host is
+# also the one third-party origin the api allows in the page's CSP (WEB_ANALYTICS_ORIGIN).
 ARG VITE_UMAMI_HOST=""
 ARG VITE_UMAMI_WEBSITE_ID=""
-# Which provider records sessions: `posthog` (default) or `umami`; never both.
-ARG VITE_ANALYTICS_RECORDER_OWNER=posthog
 # 1 runs the offline Temporal replay gate (every recorded Python history must replay on the Rust
 # workflows) before the binary is built. CI sets it to 0 only where the same gate already ran in an
 # earlier step.
@@ -68,16 +63,10 @@ WORKDIR /app
 COPY web/package.json web/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY web/ ./
-ARG VITE_POSTHOG_KEY
-ARG VITE_POSTHOG_HOST
 ARG VITE_UMAMI_HOST
 ARG VITE_UMAMI_WEBSITE_ID
-ARG VITE_ANALYTICS_RECORDER_OWNER
-ENV VITE_POSTHOG_KEY=$VITE_POSTHOG_KEY \
-    VITE_POSTHOG_HOST=$VITE_POSTHOG_HOST \
-    VITE_UMAMI_HOST=$VITE_UMAMI_HOST \
-    VITE_UMAMI_WEBSITE_ID=$VITE_UMAMI_WEBSITE_ID \
-    VITE_ANALYTICS_RECORDER_OWNER=$VITE_ANALYTICS_RECORDER_OWNER
+ENV VITE_UMAMI_HOST=$VITE_UMAMI_HOST \
+    VITE_UMAMI_WEBSITE_ID=$VITE_UMAMI_WEBSITE_ID
 RUN bun run build \
     && find dist -type f \( -name '*.html' -o -name '*.js' -o -name '*.mjs' -o -name '*.css' \
         -o -name '*.svg' -o -name '*.json' -o -name '*.webmanifest' \) -exec gzip -9 -k {} +
@@ -168,10 +157,9 @@ CMD ["worker", "--role", "open-meteo"]
 FROM runtime AS api
 # The web radar, served on every path the API and static lanes do not own (WEB_ROOT).
 COPY --from=web /app/dist/ /srv/web/
-# Analytics origins the page's CSP allows, `;`-separated. Defaults to the PostHog host so a
-# plain build keeps working; CI passes both collectors while the migration is in flight.
-ARG WEB_ANALYTICS_ORIGIN="https://ingest-posthog.vanillax.me"
+# The page's CSP allows the Umami host the web build was made with; override at runtime if needed.
+ARG VITE_UMAMI_HOST
 ENV WEB_ROOT=/srv/web \
-    WEB_ANALYTICS_ORIGIN=$WEB_ANALYTICS_ORIGIN
+    WEB_ANALYTICS_ORIGIN=$VITE_UMAMI_HOST
 EXPOSE 8080
 CMD ["api"]
