@@ -111,7 +111,8 @@ These items record where the code departs from the spec or from the old Python w
    allows this). It registers no metrics or tracing and uses a 25 s drain. It runs the same health loop as the
    main pool, from the start, so `/tmp/worker-alive` is touched every 30 s during a sync (F2).
 8. **Deployment smoke.** The palette, PNG, grid and volume checks are native. The old Python gate also imported
-   pysteps and ecCodes. The Rust build has no such runtime modules, so those checks have no counterpart.
+   pysteps and ecCodes. The Rust build has no such runtime modules, so those checks have no counterpart. The
+   `level2` role has no data volumes and probes only `TMPDIR` (default `/scratch`).
 9. **Metrics.** Prometheus is served at `TEMPORAL_METRICS_BIND` (default `0.0.0.0:9464`, `off` disables it).
    OTLP tracing is deferred.
 

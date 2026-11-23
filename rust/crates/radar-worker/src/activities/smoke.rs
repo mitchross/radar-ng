@@ -2,7 +2,8 @@
 //!
 //! The original Python check imported pysteps and pygrib. The Rust build uses native checks instead:
 //! palette files resolve through `radar_tiler`, a 2x2 indexed PNG is recoloured and decoded, and
-//! every volume is probed by a write, fsync, rename and read-back. The pysteps and ecCodes checks
+//! every volume is probed by a write, fsync, rename and read-back. The Level II pool has no data
+//! volumes, so it probes only its `TMPDIR` scratch volume. The pysteps and ecCodes checks
 //! have no native counterpart here and are not performed (see the crate README).
 
 use std::fs::File;
@@ -18,7 +19,9 @@ use temporalio_sdk::activities::{ActivityContext, ActivityError};
 use crate::support::with_cancel;
 
 /// Roles that `check_release` accepts.
-pub const KNOWN_ROLES: [&str; 7] = ["mrms", "nowcast", "hrrr", "aux", "alerts", "legacy", "all"];
+pub const KNOWN_ROLES: [&str; 8] = [
+    "mrms", "nowcast", "hrrr", "aux", "alerts", "level2", "legacy", "all",
+];
 /// Palettes checked when `PALETTES` is unset.
 pub const DEFAULT_PALETTES: &str = "classic,muted,vivid";
 
@@ -67,7 +70,16 @@ pub fn check_release(
 
     verify_png_round_trip()?;
 
-    let volumes: Vec<(PathBuf, &str)> = if role == "alerts" {
+    let volumes: Vec<(PathBuf, &str)> = if role == "level2" {
+        vec![(
+            PathBuf::from(
+                env("TMPDIR")
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "/scratch".to_owned()),
+            ),
+            "TMPDIR",
+        )]
+    } else if role == "alerts" {
         let grid_dir = env("GRID_DIR")
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "/data/grids".to_owned());
@@ -196,4 +208,88 @@ fn smoke_png() -> anyhow::Result<Vec<u8>> {
     let tile = [1u8, 0, 1, 1];
     let plte = [0u8, 0, 0, 255, 255, 255];
     radar_tiler::encode_indexed(&tile, 2, 2, &plte, &[], 6).context("encoding smoke PNG")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use radar_types::wire::{self, WorkerRole};
+
+    use super::*;
+    use crate::worker::registration;
+
+    fn lookup(vars: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + use<> {
+        let map: HashMap<String, String> = vars
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect();
+        move |name| map.get(name).cloned()
+    }
+
+    #[test]
+    fn level2_passes_with_only_tmpdir() {
+        let scratch = tempfile::tempdir().unwrap();
+        let missing = scratch.path().join("absent");
+        let missing = missing.to_str().unwrap();
+        let env = lookup(&[
+            ("WORKER_ROLE", "level2"),
+            ("TMPDIR", scratch.path().to_str().unwrap()),
+            ("TILE_DIR", missing),
+            ("GRID_DIR", missing),
+            ("STATE_DIR", missing),
+        ]);
+        let result = check_release(&env).unwrap();
+        assert!(result.ok);
+        assert_eq!(result.role, "level2");
+    }
+
+    #[test]
+    fn level2_fails_when_tmpdir_is_not_mounted() {
+        let scratch = tempfile::tempdir().unwrap();
+        let missing = scratch.path().join("absent");
+        let env = lookup(&[
+            ("WORKER_ROLE", "level2"),
+            ("TMPDIR", missing.to_str().unwrap()),
+        ]);
+        let err = check_release(&env).unwrap_err().to_string();
+        assert!(err.contains("not mounted"), "{err}");
+    }
+
+    #[test]
+    fn other_roles_still_probe_data_volumes() {
+        let scratch = tempfile::tempdir().unwrap();
+        let missing = scratch.path().join("absent");
+        let env = lookup(&[
+            ("WORKER_ROLE", "mrms"),
+            ("TMPDIR", scratch.path().to_str().unwrap()),
+            ("TILE_DIR", missing.to_str().unwrap()),
+            ("GRID_DIR", scratch.path().to_str().unwrap()),
+            ("STATE_DIR", scratch.path().to_str().unwrap()),
+        ]);
+        assert!(check_release(&env).is_err());
+    }
+
+    #[test]
+    fn unknown_role_is_rejected() {
+        let env = lookup(&[("WORKER_ROLE", "bogus")]);
+        let err = check_release(&env).unwrap_err().to_string();
+        assert_eq!(err, "Unknown worker role");
+    }
+
+    #[test]
+    fn every_role_that_registers_smoke_is_known() {
+        for role in WorkerRole::ALL {
+            if registration(role)
+                .activities
+                .contains(&wire::ACTIVITY_RADAR_DEPLOYMENT_SMOKE)
+            {
+                assert!(
+                    KNOWN_ROLES.contains(&role.as_str()),
+                    "{} registers smoke but check_release rejects it",
+                    role.as_str()
+                );
+            }
+        }
+    }
 }
