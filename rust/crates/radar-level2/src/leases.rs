@@ -9,6 +9,24 @@ pub enum Reservation {
     Duplicate,
 }
 
+/// The database could not be reached. The only Level II startup error worth retrying.
+#[derive(Debug)]
+pub struct Unavailable;
+
+impl std::fmt::Display for Unavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Level II database connection failed")
+    }
+}
+
+impl std::error::Error for Unavailable {}
+
+/// True when `e` is a connection failure (database not up yet), not a config error.
+#[must_use]
+pub fn is_transient(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<Unavailable>().is_some()
+}
+
 pub struct Pool {
     pub client: Client,
     schema: String,
@@ -24,9 +42,13 @@ impl Pool {
                     .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'),
             "invalid Level II schema"
         );
-        let (client, connection) = tokio_postgres::connect(url, NoTls)
+        let config: tokio_postgres::Config = url
+            .parse()
+            .map_err(|_| anyhow::anyhow!("invalid Level II database URL"))?;
+        let (client, connection) = config
+            .connect(NoTls)
             .await
-            .map_err(|_| anyhow::anyhow!("Level II database connection failed"))?;
+            .map_err(|_| anyhow::Error::new(Unavailable))?;
         tokio::spawn(async move {
             let _ = connection.await;
         });

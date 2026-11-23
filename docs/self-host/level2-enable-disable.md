@@ -33,6 +33,9 @@ Rules for `LEVEL2_ENABLED_STATIONS`:
   `KGRR`, `KDTX`, `KLOT`, `KAPX`, `KTLX`, `KFFC`, `KATX` at the time of writing). One unknown or unverified ID makes the
   Level II service refuse to start: the API logs `Level II viewport disabled` and all Level II
   routes return `404`. It fails closed, for every station, not only the bad one.
+- An unreachable database is different: `level2-api` keeps retrying (1 s doubling to 30 s, logged
+  as `Level II viewport not ready, retrying`) and attaches Level II once Postgres answers. Its
+  routes return `404` until then; MRMS serves throughout.
 - `level2-api`, the publisher and the shadow recorder read it from the shared `radar-ng-level2`
   ConfigMap (`deploy/kubernetes/components/level2/level2.env`), so one edit changes all three.
   The pool worker does not read it: it decodes whatever stations hold demand.

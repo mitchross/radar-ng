@@ -108,7 +108,7 @@ pub async fn serve(config: Config) -> Result<()> {
     radar_core::logging::init("radar-api")?;
     let addr: SocketAddr = config.listen_addr;
     let state = AppState::new(config)?;
-    attach_level2(&state).await;
+    attach_level2(&state);
     let app = router(state).into_make_service_with_connect_info::<SocketAddr>();
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -121,13 +121,36 @@ pub async fn serve(config: Config) -> Result<()> {
     Ok(())
 }
 
-/// Connects the Level II viewport service when its gate is on. A failure leaves it off (MRMS only).
-async fn attach_level2(state: &AppState) {
+/// Connects the Level II viewport service in the background when its gate is on, so the listener
+/// binds at once and MRMS keeps serving. An unreachable database (cold start) is retried with capped
+/// backoff; Level II routes 404 until it attaches. Config errors leave it off (MRMS only).
+fn attach_level2(state: &AppState) {
     match radar_level2::runtime::enabled() {
-        Ok(true) => match radar_level2::runtime::service().await {
-            Ok(svc) => state.set_level2(svc),
-            Err(e) => tracing::error!("Level II viewport disabled: {e:#}"),
-        },
+        Ok(true) => {
+            let state = state.clone();
+            tokio::spawn(async move {
+                let svc = radar_level2::retry::retry(
+                    radar_level2::retry::Backoff::STARTUP,
+                    radar_level2::runtime::service,
+                    radar_level2::leases::is_transient,
+                    |attempt, e, wait| {
+                        tracing::warn!(
+                            attempt,
+                            ?wait,
+                            "Level II viewport not ready, retrying: {e:#}"
+                        );
+                    },
+                )
+                .await;
+                match svc {
+                    Ok(svc) => {
+                        state.set_level2(svc);
+                        tracing::info!("Level II viewport attached");
+                    }
+                    Err(e) => tracing::error!("Level II viewport disabled: {e:#}"),
+                }
+            });
+        }
         Ok(false) => {}
         Err(e) => tracing::error!("Level II viewport gate invalid: {e}"),
     }
