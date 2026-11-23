@@ -31,4 +31,5 @@ tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
 object_store = { version = "0.12", features = ["aws"] }
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 axum.workspace = true

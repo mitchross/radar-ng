@@ -13,6 +13,7 @@ pub mod polar;
 pub mod poller;
 pub mod pool_ops;
 pub mod publish;
+pub mod retry;
 pub mod runtime;
 pub mod service;
 pub mod shadow;
