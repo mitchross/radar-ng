@@ -385,3 +385,52 @@ fn values_follow_the_colored_tile_routes() {
         .fold(f32::NAN, f32::max);
     assert_eq!(max, 60.0);
 }
+
+#[test]
+fn dry_frame_clears_ghost_pixels_from_crashed_pack() {
+    let dir = tempfile::tempdir().unwrap();
+    let bucket_dir = dir.path().join("b");
+    let storm_a = grid_filled(20.0);
+    let storm_ghost = grid_filled(55.0);
+    let dry = grid_filled(f32::NAN);
+
+    // Commit slot 0 ("t0"), then pack slot 1 ("t1") and roll back the bucket manifest to simulate
+    // a crash after tiles were written but before .packed-bucket-v1.json was updated.
+    written(pack(dir.path(), "b", &["t0"], &[&storm_a], 512));
+    let committed_manifest = fs::read_to_string(bucket_dir.join(BUCKET_FILE)).unwrap();
+    written(pack(dir.path(), "b", &["t1"], &[&storm_ghost], 512));
+    fs::write(bucket_dir.join(BUCKET_FILE), &committed_manifest).unwrap();
+
+    // Next pack assigns slot 1 to a dry frame ("t2"): it must zero out the ghost pixels from "t1"
+    // while preserving slot 0 ("t0").
+    let (bucket, tiles_written) = written(pack(dir.path(), "b", &["t2"], &[&dry], 512));
+    assert_eq!(bucket.slots, ["t0", "t2"]);
+    assert_eq!(tiles_written, 1);
+
+    let (w, _, atlas) = only_tile(&bucket_dir);
+    let (px, py) = inside_pixel();
+    assert_eq!(texel(&atlas, w, px, py, 0), REFL.quantize(20.0));
+    assert_eq!(
+        texel(&atlas, w, px, py, 1),
+        0,
+        "ghost pixels in slot 1 must be cleared"
+    );
+}
+
+#[test]
+fn dry_frame_removes_orphan_tile_from_crashed_first_pack() {
+    let dir = tempfile::tempdir().unwrap();
+    let bucket_dir = dir.path().join("b");
+    let storm_ghost = grid_filled(45.0);
+    let dry = grid_filled(f32::NAN);
+
+    // Simulate a crash during the very first pack of a bucket: tile exists on disk, no bucket file.
+    written(pack(dir.path(), "b", &["t0"], &[&storm_ghost], 512));
+    fs::remove_file(bucket_dir.join(BUCKET_FILE)).unwrap();
+
+    // Packing a dry frame into slot 0 must clear slot 0 and delete the now-empty tile file.
+    let (bucket, tiles_written) = written(pack(dir.path(), "b", &["t1"], &[&dry], 512));
+    assert_eq!(bucket.slots, ["t1"]);
+    assert_eq!(tiles_written, 1);
+    assert!(existing_tiles(&bucket_dir).unwrap().is_empty());
+}

@@ -482,18 +482,32 @@ fn lambert_grid(
     let lat_mesh: Vec<f64> = latlons.iter().map(|p| p.0).collect();
     let lon_mesh: Vec<f64> = latlons.iter().map(|p| p.1).collect();
 
-    let mut xs = vec![0.0_f64; ni * nj];
-    let mut ys = vec![0.0_f64; ni * nj];
-    for (k, (lat, lon)) in latlons.iter().enumerate() {
-        let (x, y) = crs.forward(*lon, *lat);
-        xs[k] = x;
-        ys[k] = y;
-    }
+    // Project only the four border edges needed for the axis medians instead of all ni * nj cells.
     let at = |r: usize, c: usize| r * ni + c;
-    let col_first: Vec<f64> = (0..nj).map(|r| xs[at(r, 0)]).collect();
-    let col_last: Vec<f64> = (0..nj).map(|r| xs[at(r, ni - 1)]).collect();
-    let row_first: Vec<f64> = (0..ni).map(|c| ys[at(0, c)]).collect();
-    let row_last: Vec<f64> = (0..ni).map(|c| ys[at(nj - 1, c)]).collect();
+    let col_first: Vec<f64> = (0..nj)
+        .map(|r| {
+            let (lat, lon) = latlons[at(r, 0)];
+            crs.forward(lon, lat).0
+        })
+        .collect();
+    let col_last: Vec<f64> = (0..nj)
+        .map(|r| {
+            let (lat, lon) = latlons[at(r, ni - 1)];
+            crs.forward(lon, lat).0
+        })
+        .collect();
+    let row_first: Vec<f64> = (0..ni)
+        .map(|c| {
+            let (lat, lon) = latlons[at(0, c)];
+            crs.forward(lon, lat).1
+        })
+        .collect();
+    let row_last: Vec<f64> = (0..ni)
+        .map(|c| {
+            let (lat, lon) = latlons[at(nj - 1, c)];
+            crs.forward(lon, lat).1
+        })
+        .collect();
     let x0 = nanmedian(&col_first);
     let x1 = nanmedian(&col_last);
     let y0 = nanmedian(&row_first);

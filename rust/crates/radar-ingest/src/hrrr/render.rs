@@ -291,14 +291,22 @@ fn extract_latest_window(bytes: &[u8], var: HrrrVar) -> Option<DecodedMessage> {
     }
 }
 
-/// Owned grid from a message's values, with its geometry.
-fn grid_of(values: Vec<f32>, template: &Grid) -> Grid {
-    Grid {
-        width: template.width,
-        height: template.height,
-        values,
-        geo: template.geo.clone(),
+/// Extract only the south-up cell values of a secondary HRRR variable, dropping its duplicate
+/// `lat_mesh`/`lon_mesh` (~30 MiB per variable) immediately after decoding.
+fn extract_values(bytes: &[u8], var: HrrrVar, height: usize, width: usize) -> Option<Vec<f32>> {
+    let msg = extract(bytes, var)?;
+    if msg.grid.height != height || msg.grid.width != width {
+        tracing::warn!(
+            var = var.key(),
+            got_h = msg.grid.height,
+            got_w = msg.grid.width,
+            expected_h = height,
+            expected_w = width,
+            "hrrr_grid_shape_mismatch"
+        );
+        return None;
     }
+    Some(msg.grid.values)
 }
 
 /// Process one forecast hour's GRIB file (spec §12.2). Returns the layers
@@ -328,35 +336,41 @@ pub fn process_hour_sync(
     };
 
     // Fields used by more than one layer are decoded once, and only when a layer needs them.
-    let t2m_msg = (enabled("temperature") || enabled("feels-like") || enabled("nice-day"))
-        .then(|| extract(bytes, HrrrVar::T2m))
+    // Keep only cell values (dropping each message's duplicate ~30 MiB lat/lon mesh) and reuse a
+    // single `work_grid` carrying `refc`'s geometry for every layer render.
+    let t2m_vals = (enabled("temperature") || enabled("feels-like") || enabled("nice-day"))
+        .then(|| extract_values(bytes, HrrrVar::T2m, src_h, src_w))
         .flatten();
-    let rh2m_msg = (enabled("humidity") || enabled("feels-like") || enabled("nice-day"))
-        .then(|| extract(bytes, HrrrVar::Rh2m))
+    let mut rh2m_vals = (enabled("humidity") || enabled("feels-like") || enabled("nice-day"))
+        .then(|| extract_values(bytes, HrrrVar::Rh2m, src_h, src_w))
         .flatten();
-    let u10_msg = (enabled("feels-like") || enabled("wind") || enabled("nice-day"))
-        .then(|| extract(bytes, HrrrVar::U10))
+    let u10_vals = (enabled("feels-like") || enabled("wind") || enabled("nice-day"))
+        .then(|| {
+            let msg = extract(bytes, HrrrVar::U10)?;
+            if msg.grid.height != src_h || msg.grid.width != src_w {
+                return None;
+            }
+            let uv_rel = msg.uv_grid_relative();
+            Some((msg.grid.values, uv_rel))
+        })
         .flatten();
-    let v10_msg = (enabled("feels-like") || enabled("wind") || enabled("nice-day"))
-        .then(|| extract(bytes, HrrrVar::V10))
+    let v10_vals = (enabled("feels-like") || enabled("wind") || enabled("nice-day"))
+        .then(|| extract_values(bytes, HrrrVar::V10, src_h, src_w))
         .flatten();
 
     let mut rendered = Vec::new();
     // HRRR precip type: always decoded for the `precip-type` grid that colours MRMS ice, and for the
     // classes of `radar-hrrr`; the standalone PNG layer only when enabled.
-    let flags: Vec<Option<DecodedMessage>> = [
+    let flags: Vec<Option<Vec<f32>>> = [
         HrrrVar::Crain,
         HrrrVar::Csnow,
         HrrrVar::Cfrzr,
         HrrrVar::Cicep,
     ]
     .into_iter()
-    .map(|v| extract(bytes, v))
+    .map(|v| extract_values(bytes, v, src_h, src_w))
     .collect();
-    let flag_slices: Vec<Option<&[f32]>> = flags
-        .iter()
-        .map(|f| f.as_ref().map(|m| m.grid.values.as_slice()))
-        .collect();
+    let flag_slices: Vec<Option<&[f32]>> = flags.iter().map(|f| f.as_deref()).collect();
     let has_flags = flag_slices.iter().any(Option::is_some);
     let len = src_h * src_w;
     let radar_types = (cfg.precip_type && has_flags)
@@ -370,242 +384,242 @@ pub fn process_hour_sync(
             ))
         })
         .flatten();
+
+    // Single reusable grid holding the shared HRRR geometry; each layer swaps its values in.
+    let mut work_grid = refc.grid;
     // radar-hrrr (always on).
     if render_layer_typed(
         cfg,
         RADAR_HRRR,
         run_id,
         valid,
-        &refc.grid,
+        &work_grid,
         palettes,
         "reflectivity",
         false,
         radar_types,
     )? {
         rendered.push(RADAR_HRRR.to_string());
-        dump("radar-hrrr", &refc.grid.values, "dBZ");
+        dump("radar-hrrr", &work_grid.values, "dBZ");
     }
+    work_grid.values.clear();
 
     if enabled("temperature")
-        && let Some(t2m) = &t2m_msg
+        && let Some(t2m) = &t2m_vals
     {
-        let vals: Vec<f32> = t2m
-            .grid
-            .values
-            .iter()
-            .map(|&k| units::kelvin_to_f(k))
-            .collect();
-        let g = grid_of(vals, &t2m.grid);
+        work_grid.values = t2m.iter().map(|&k| units::kelvin_to_f(k)).collect();
         if render_layer(
             cfg,
             "temperature",
             run_id,
             valid,
-            &g,
+            &work_grid,
             palettes,
             "temperature",
             false,
         )? {
             rendered.push("temperature".into());
-            dump("temperature", &g.values, "degF");
+            dump("temperature", &work_grid.values, "degF");
         }
+        work_grid.values.clear();
     }
     if enabled("dewpoint")
-        && let Some(d) = extract(bytes, HrrrVar::Dpt2m)
+        && let Some(d) = extract_values(bytes, HrrrVar::Dpt2m, src_h, src_w)
     {
-        let vals: Vec<f32> = d
-            .grid
-            .values
-            .iter()
-            .map(|&k| units::kelvin_to_f(k))
-            .collect();
-        let g = grid_of(vals, &d.grid);
+        work_grid.values = d.iter().map(|&k| units::kelvin_to_f(k)).collect();
         if render_layer(
-            cfg, "dewpoint", run_id, valid, &g, palettes, "dewpoint", false,
+            cfg, "dewpoint", run_id, valid, &work_grid, palettes, "dewpoint", false,
         )? {
             rendered.push("dewpoint".into());
-            dump("dewpoint", &g.values, "degF");
+            dump("dewpoint", &work_grid.values, "degF");
         }
+        work_grid.values.clear();
     }
     if enabled("humidity")
-        && let Some(rh) = &rh2m_msg
-        && render_layer(
-            cfg, "humidity", run_id, valid, &rh.grid, palettes, "humidity", false,
-        )?
+        && let Some(rh) = rh2m_vals.as_mut()
     {
-        rendered.push("humidity".into());
-        dump("humidity", &rh.grid.values, "%");
+        std::mem::swap(&mut work_grid.values, rh);
+        let ok = render_layer(
+            cfg, "humidity", run_id, valid, &work_grid, palettes, "humidity", false,
+        )?;
+        if ok {
+            rendered.push("humidity".into());
+            dump("humidity", &work_grid.values, "%");
+        }
+        std::mem::swap(&mut work_grid.values, rh);
     }
     if enabled("feels-like")
-        && let (Some(t2m), Some(rh), Some(u), Some(v)) = (&t2m_msg, &rh2m_msg, &u10_msg, &v10_msg)
+        && let (Some(t2m), Some(rh), Some((u, _)), Some(v)) =
+            (&t2m_vals, &rh2m_vals, &u10_vals, &v10_vals)
     {
-        let vals: Vec<f32> = t2m
-            .grid
-            .values
+        work_grid.values = t2m
             .iter()
-            .zip(&rh.grid.values)
-            .zip(u.grid.values.iter().zip(&v.grid.values))
+            .zip(rh)
+            .zip(u.iter().zip(v))
             .map(|((&k, &h), (&uc, &vc))| {
                 let wind = units::wind_speed_mph(units::ms_to_mph(uc), units::ms_to_mph(vc));
                 units::apparent_temperature_f(units::kelvin_to_f(k), h, wind)
             })
             .collect();
-        let g = grid_of(vals, &t2m.grid);
         if render_layer(
             cfg,
             "feels-like",
             run_id,
             valid,
-            &g,
+            &work_grid,
             palettes,
             "temperature",
             false,
         )? {
             rendered.push("feels-like".into());
-            dump("feels-like", &g.values, "degF");
+            dump("feels-like", &work_grid.values, "degF");
         }
+        work_grid.values.clear();
     }
     if enabled("cape")
-        && let Some(cape) = extract(bytes, HrrrVar::Cape)
-        && render_layer(
-            cfg, "cape", run_id, valid, &cape.grid, palettes, "cape", false,
-        )?
+        && let Some(cape) = extract_values(bytes, HrrrVar::Cape, src_h, src_w)
     {
-        rendered.push("cape".into());
-        dump("cape", &cape.grid.values, "J/kg");
+        work_grid.values = cape;
+        if render_layer(
+            cfg, "cape", run_id, valid, &work_grid, palettes, "cape", false,
+        )? {
+            rendered.push("cape".into());
+            dump("cape", &work_grid.values, "J/kg");
+        }
+        work_grid.values.clear();
     }
     if enabled("wind")
-        && let (Some(u), Some(v)) = (&u10_msg, &v10_msg)
+        && let (Some((u, uv_grid_rel)), Some(v)) = (&u10_vals, &v10_vals)
     {
-        let u_mph: Vec<f32> = u.grid.values.iter().map(|&c| units::ms_to_mph(c)).collect();
-        let v_mph: Vec<f32> = v.grid.values.iter().map(|&c| units::ms_to_mph(c)).collect();
-        let speed: Vec<f32> = u_mph
+        let u_mph: Vec<f32> = u.iter().map(|&c| units::ms_to_mph(c)).collect();
+        let v_mph: Vec<f32> = v.iter().map(|&c| units::ms_to_mph(c)).collect();
+        work_grid.values = u_mph
             .iter()
             .zip(&v_mph)
             .map(|(&a, &b)| units::wind_speed_mph(a, b))
             .collect();
-        let g = grid_of(speed, &u.grid);
         if render_layer(
             cfg,
             "wind",
             run_id,
             valid,
-            &g,
+            &work_grid,
             palettes,
             "wind_speed",
             false,
         )? {
             rendered.push("wind".into());
-            dump("wind", &g.values, "mph");
-            let (wu, wv) = resampler.wind_components(&u_mph, &v_mph, u.uv_grid_relative());
+            dump("wind", &work_grid.values, "mph");
+            let (wu, wv) = resampler.wind_components(&u_mph, &v_mph, *uv_grid_rel);
             safe_dump(cfg, "wind_u", valid, &wu, &lats_t, &lons_t, "mph");
             safe_dump(cfg, "wind_v", valid, &wv, &lats_t, &lons_t, "mph");
         }
+        work_grid.values.clear();
     }
     if enabled("precip-accum")
-        && let Some(apcp) = extract(bytes, HrrrVar::Apcp)
+        && let Some(apcp) = extract_values(bytes, HrrrVar::Apcp, src_h, src_w)
     {
-        let vals: Vec<f32> = apcp
-            .grid
-            .values
-            .iter()
-            .map(|&d| units::mm_to_inches(d))
-            .collect();
-        let g = grid_of(vals, &apcp.grid);
+        work_grid.values = apcp.iter().map(|&d| units::mm_to_inches(d)).collect();
         if render_layer(
             cfg,
             "precip-accum",
             run_id,
             valid,
-            &g,
+            &work_grid,
             palettes,
             "precip_accum",
             false,
         )? {
             rendered.push("precip-accum".into());
-            dump("precip-accum", &g.values, "in");
+            dump("precip-accum", &work_grid.values, "in");
         }
+        work_grid.values.clear();
     }
-    let tcdc_msg = (enabled("cloud") || enabled("stargazing"))
-        .then(|| extract(bytes, HrrrVar::Tcdc))
+    let mut tcdc_vals = (enabled("cloud") || enabled("stargazing"))
+        .then(|| extract_values(bytes, HrrrVar::Tcdc, src_h, src_w))
         .flatten();
     if enabled("cloud")
-        && let Some(tcdc) = &tcdc_msg
-        && render_layer(
+        && let Some(tcdc) = tcdc_vals.as_mut()
+    {
+        std::mem::swap(&mut work_grid.values, tcdc);
+        let ok = render_layer(
             cfg,
             "cloud",
             run_id,
             valid,
-            &tcdc.grid,
+            &work_grid,
             palettes,
             "cloud_cover",
             false,
-        )?
-    {
-        rendered.push("cloud".into());
-        dump("cloud", &tcdc.grid.values, "%");
+        )?;
+        if ok {
+            rendered.push("cloud".into());
+            dump("cloud", &work_grid.values, "%");
+        }
+        std::mem::swap(&mut work_grid.values, tcdc);
     }
     if enabled("nice-day")
-        && let (Some(t2m), Some(rh), Some(u), Some(v)) = (&t2m_msg, &rh2m_msg, &u10_msg, &v10_msg)
+        && let (Some(t2m), Some(rh), Some((u, _)), Some(v)) =
+            (&t2m_vals, &rh2m_vals, &u10_vals, &v10_vals)
     {
         // A missing rain field scores dry rather than dropping the layer for the hour.
-        let rain = extract_latest_window(bytes, HrrrVar::Apcp);
+        let rain = extract_latest_window(bytes, HrrrVar::Apcp).map(|m| m.grid.values);
         let rain_in = |i: usize| {
             rain.as_ref()
-                .and_then(|m| m.grid.values.get(i))
+                .and_then(|vals| vals.get(i))
                 .map_or(0.0, |&mm| units::mm_to_inches(mm))
         };
-        let vals: Vec<f32> = (0..t2m.grid.values.len())
+        work_grid.values = (0..t2m.len())
             .map(|i| {
-                let t = units::kelvin_to_f(t2m.grid.values[i]);
-                let h = rh.grid.values[i];
-                let wind = units::wind_speed_mph(
-                    units::ms_to_mph(u.grid.values[i]),
-                    units::ms_to_mph(v.grid.values[i]),
-                );
+                let t = units::kelvin_to_f(t2m[i]);
+                let h = rh[i];
+                let wind = units::wind_speed_mph(units::ms_to_mph(u[i]), units::ms_to_mph(v[i]));
                 let feels = units::apparent_temperature_f(t, h, wind);
                 radar_grib::nice_day::nice_day_cell(t, feels, wind, rain_in(i), h)
             })
             .collect();
-        let g = grid_of(vals, &t2m.grid);
         if render_layer(
-            cfg, "nice-day", run_id, valid, &g, palettes, "nice_day", false,
+            cfg, "nice-day", run_id, valid, &work_grid, palettes, "nice_day", false,
         )? {
             rendered.push("nice-day".into());
-            dump("nice-day", &g.values, "score");
+            dump("nice-day", &work_grid.values, "score");
         }
+        work_grid.values.clear();
     }
     if enabled("stargazing")
-        && let Some(tcdc) = &tcdc_msg
+        && let Some(tcdc) = tcdc_vals.as_mut()
         && let Ok(at) = chrono::DateTime::parse_from_rfc3339(valid)
     {
         // ECCC seeing and transparency trim the score where the aux worker has stored them.
+        std::mem::swap(&mut work_grid.values, tcdc);
         let seeing = radar_grib::seeing::SeeingHour::load(&cfg.paths.state_dir, at.to_utc());
         let vals = match &seeing {
             Some(s) => radar_grib::stargazing::stargazing_grid_with(
-                &tcdc.grid,
+                &work_grid,
                 at.timestamp() as f64,
                 |lat, lon| s.factor_at(lat, lon),
             ),
-            None => radar_grib::stargazing::stargazing_grid(&tcdc.grid, at.timestamp() as f64),
+            None => radar_grib::stargazing::stargazing_grid(&work_grid, at.timestamp() as f64),
         };
-        let g = grid_of(vals, &tcdc.grid);
+        std::mem::swap(&mut work_grid.values, tcdc);
+        work_grid.values = vals;
         if render_layer(
             cfg,
             "stargazing",
             run_id,
             valid,
-            &g,
+            &work_grid,
             palettes,
             "stargazing",
             false,
         )? {
             rendered.push("stargazing".into());
             // A daytime hour has no values to read back.
-            if g.values.iter().any(|v| v.is_finite()) {
-                dump("stargazing", &g.values, "score");
+            if work_grid.values.iter().any(|v| v.is_finite()) {
+                dump("stargazing", &work_grid.values, "score");
             }
         }
+        work_grid.values.clear();
     }
     if has_flags {
         let cat = units::precip_type_category(
@@ -626,14 +640,14 @@ pub fn process_hour_sync(
             &lons_t,
             "category",
         );
-        let g = grid_of(vals, &refc.grid);
+        work_grid.values = vals;
         if enabled("precip-type")
             && render_layer(
                 cfg,
                 "precip-type",
                 run_id,
                 valid,
-                &g,
+                &work_grid,
                 palettes,
                 "precip_type",
                 true,
