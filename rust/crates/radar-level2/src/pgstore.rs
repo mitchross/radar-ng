@@ -421,7 +421,12 @@ impl ViewStore for PgStore {
                 .await?;
                 let dead = tx
                     .query(
-                        &format!("SELECT DISTINCT p.key FROM {s}.pins p WHERE p.until<$1 AND NOT EXISTS(SELECT 1 FROM {s}.pins q WHERE q.key=p.key AND q.until>=$1)"),
+                        &format!(
+                            "SELECT DISTINCT p.key FROM {s}.pins p \
+                             WHERE p.until<$1 AND NOT EXISTS(SELECT 1 FROM {s}.pins q WHERE q.key=p.key AND q.until>=$1) \
+                             UNION \
+                             SELECT key FROM {s}.tiles WHERE collecting"
+                        ),
                         &[&now],
                     )
                     .await?;

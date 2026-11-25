@@ -202,13 +202,17 @@ pub async fn edge(State(state): State<AppState>, req: Request, next: Next) -> Re
         .extensions()
         .get::<MatchedPath>()
         .map_or_else(|| "unmatched".to_string(), |m| m.as_str().to_string());
-    let client = client_key(&state, &req);
     // Only the API lanes are limited (F1). Static lanes (tiles, basemap styles, fonts, imagery and
     // vector tiles) were served by Caddy and never reached FastAPI's limiter, and `/api/livez` is
     // exempt so the liveness probe cannot be throttled into a restart.
     let exempt = path == "/api/livez" || !is_api_path(&path);
 
-    let admitted = lock(&state.limiter).admit(&client, Instant::now(), exempt);
+    let admitted = if exempt {
+        true
+    } else {
+        let client = client_key(&state, &req);
+        lock(&state.limiter).admit(&client, Instant::now(), false)
+    };
     let resp = if !admitted {
         state
             .metrics

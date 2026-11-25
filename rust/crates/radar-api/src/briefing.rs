@@ -673,9 +673,29 @@ pub async fn get_briefing(State(state): State<AppState>, uri: Uri) -> Response {
     }
 }
 
-/// The `properties` object of the NWS alert named by `id`, or `None` on any failure.
-async fn fetch_alert_properties(state: &AppState, id: &str) -> Option<Value> {
-    let alert_id = id.rsplit('/').next().unwrap_or(id);
+/// Extracts and validates the NWS alert identifier segment, rejecting path traversal and query injection.
+fn parse_alert_id(id: &str) -> Option<&str> {
+    let alert_id = if let Some(rest) = id.strip_prefix("https://api.weather.gov/alerts/") {
+        rest
+    } else if id.starts_with("urn:oid:") {
+        id
+    } else {
+        return None;
+    };
+    if alert_id.is_empty() || alert_id == "." || alert_id == ".." {
+        return None;
+    }
+    if !alert_id
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b':' | b'-'))
+    {
+        return None;
+    }
+    Some(alert_id)
+}
+
+/// The `properties` object of the NWS alert named by `alert_id`, or `None` on any failure.
+async fn fetch_alert_properties(state: &AppState, alert_id: &str) -> Option<Value> {
     // D14: the detail base is configurable (NWS_ALERT_DETAIL_BASE). The default is the NWS host.
     let base = state.config.nws_alert_detail_base.trim_end_matches('/');
     let url = format!("{base}/{alert_id}");
@@ -720,14 +740,14 @@ pub async fn explain_alert(State(state): State<AppState>, uri: Uri) -> Response 
     if state.config.llm_base_url.is_empty() {
         return unavailable("not_configured");
     }
-    if !(id.starts_with("urn:oid:") || id.starts_with("https://api.weather.gov/alerts/")) {
+    let Some(alert_id) = parse_alert_id(&id) else {
         return unavailable("bad_id");
-    }
+    };
     let key = format!("alert:{id}");
     if let Some(hit) = state.briefing_cache.get(&key) {
         return ok_json(&hit, 600);
     }
-    let Some(props) = fetch_alert_properties(&state, &id).await else {
+    let Some(props) = fetch_alert_properties(&state, alert_id).await else {
         return unavailable("alert_unavailable");
     };
     let text = json!({
@@ -896,5 +916,23 @@ mod tests {
         assert_eq!(facts["next_hour_radar"], json!("radar nowcast unavailable"));
         // 2026-10-13 is a Tuesday; 12:00 UTC at UTC-4 is 8:00 AM.
         assert_eq!(facts["local_time"], json!("Tuesday 8:00 AM"));
+    }
+
+    #[test]
+    fn parse_alert_id_rejects_traversal_and_query_injection() {
+        assert_eq!(
+            parse_alert_id("urn:oid:2.49.0.1.840.0.abc-123_4"),
+            Some("urn:oid:2.49.0.1.840.0.abc-123_4")
+        );
+        assert_eq!(
+            parse_alert_id("https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.abc"),
+            Some("urn:oid:2.49.0.1.840.0.abc")
+        );
+        assert!(parse_alert_id("https://api.weather.gov/alerts/..").is_none());
+        assert!(parse_alert_id("https://api.weather.gov/alerts/.").is_none());
+        assert!(parse_alert_id("https://api.weather.gov/alerts/a/b").is_none());
+        assert!(parse_alert_id("https://api.weather.gov/alerts/x?foo=bar").is_none());
+        assert!(parse_alert_id("urn:oid:x?foo=bar#frag").is_none());
+        assert!(parse_alert_id("urn:oid:x%2f..").is_none());
     }
 }
