@@ -88,15 +88,16 @@ export function WeatherMap({
   }, [recenterNonce, focused]);
 
   // Frame a requested area (e.g. "Open in Radar" from an alert) once, clearing
-  // top chrome and the timeline card, then drop the request.
+  // top chrome and the timeline card, then drop the request. Wait until the
+  // Radar tab is focused so MapLibre doesn't drop the camera move while hidden.
   useEffect(() => {
-    if (!focusBounds || !patchedStyle) return;
+    if (!focused || !focusBounds || !patchedStyle) return;
     cameraRef.current?.fitBounds(focusBounds, {
       padding: { top: chrome.top + 28, right: chrome.right + 58, bottom: chrome.aboveTimeline + 20, left: chrome.left + 28 },
       duration: 600,
     });
     setFocusBounds(null);
-  }, [focusBounds, patchedStyle, setFocusBounds, chrome]);
+  }, [focused, focusBounds, patchedStyle, setFocusBounds, chrome]);
 
   if (!patchedStyle) return null;
 

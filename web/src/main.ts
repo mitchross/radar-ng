@@ -889,7 +889,7 @@ async function renderForecast(refresh = false) {
   try {
     fc = await fetchForecast(lat, lon);
   } catch {
-    if (refresh) return;
+    if (refresh || lat !== state.place.latitude || lon !== state.place.longitude) return;
     body.innerHTML = `<p class="muted">Can't reach the forecast API.</p><button id="forecast-retry" class="retry">Retry</button>`;
     return;
   }
@@ -1638,7 +1638,7 @@ map.on("click", async (e) => {
         if (slot) slot.innerHTML = result;
       });
       track("overlay_inspected", { layer: hit.layer.id });
-      if (alertId) void fillExplanation(alertId);
+      if (alertId) void fillExplanation(alertId, click);
       return;
     }
   }
@@ -1681,8 +1681,9 @@ map.on("click", async (e) => {
 });
 
 /** Adds the LLM's plain-English take to an open warning popup, or quietly removes the placeholder. */
-async function fillExplanation(alertId: string) {
+async function fillExplanation(alertId: string, click: number) {
   const x = await explainAlert(alertId);
+  if (click !== clickSeq) return;
   const slot = popup.getElement()?.querySelector<HTMLElement>(".explain");
   if (!slot) return;
   if (!x) return slot.remove();
