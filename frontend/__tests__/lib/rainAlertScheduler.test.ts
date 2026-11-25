@@ -1,5 +1,5 @@
 import * as Notifications from "expo-notifications";
-import { syncRainAlert } from "../../src/lib/rainAlertScheduler";
+import { cancelPendingRainAlert, syncRainAlert } from "../../src/lib/rainAlertScheduler";
 import type { RainAlertPlan } from "../../src/lib/rainAlerts";
 
 jest.mock("expo-notifications", () => ({
@@ -70,4 +70,50 @@ it("cancels a pending alert when rain disappears and can schedule it if rain ret
   expect(await syncRainAlert(null, NOW + MIN)).toBe("cancelled");
   expect(await syncRainAlert(plan, NOW + 2 * MIN)).toBe("scheduled");
   expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(2);
+});
+
+it("serializes concurrent syncRainAlert calls so only one notification is scheduled", async () => {
+  let resolveSchedule!: (id: string) => void;
+  let markStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  jest.mocked(Notifications.scheduleNotificationAsync).mockImplementationOnce(
+    () =>
+      new Promise<string>((resolve) => {
+        resolveSchedule = resolve;
+        markStarted();
+      }),
+  );
+
+  const first = syncRainAlert(plan, NOW);
+  const second = syncRainAlert(plan, NOW);
+  await started;
+  resolveSchedule("notif-1");
+
+  expect(await Promise.all([first, second])).toEqual(["scheduled", "kept"]);
+  expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+});
+
+it("serializes cancelPendingRainAlert behind an in-flight schedule so no orphan remains", async () => {
+  let resolveSchedule!: (id: string) => void;
+  let markStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  jest.mocked(Notifications.scheduleNotificationAsync).mockImplementationOnce(
+    () =>
+      new Promise<string>((resolve) => {
+        resolveSchedule = resolve;
+        markStarted();
+      }),
+  );
+
+  const scheduled = syncRainAlert(plan, NOW);
+  const cancelled = cancelPendingRainAlert(NOW);
+  await started;
+  resolveSchedule("notif-orphan-check");
+
+  await Promise.all([scheduled, cancelled]);
+  expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith("notif-orphan-check");
 });

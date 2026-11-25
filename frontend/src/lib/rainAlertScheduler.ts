@@ -93,8 +93,18 @@ function readLast(): LastRainAlert | null {
   return parseLastRainAlert(getString(LAST_KEY, ""));
 }
 
-/** Drop a pending notification; an alert that never showed is forgotten so the storm can be announced again. */
-export async function cancelPendingRainAlert(now = Date.now()): Promise<void> {
+let opQueue: Promise<unknown> = Promise.resolve();
+
+function serialized<T>(fn: () => Promise<T>): Promise<T> {
+  const run = opQueue.then(fn, fn);
+  opQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+async function cancelPendingRainAlertInner(now: number): Promise<void> {
   const pending = readScheduled();
   if (!pending) return;
   try {
@@ -105,21 +115,21 @@ export async function cancelPendingRainAlert(now = Date.now()): Promise<void> {
   if (last && last.key === pending.key && pending.fireAt > now) setString(LAST_KEY, "");
 }
 
-/**
- * Make the OS schedule match the plan: keep an identical pending alert,
- * replace a changed one, cancel when the rain is gone, and never announce the
- * same event twice.
- */
-export async function syncRainAlert(plan: RainAlertPlan | null, now = Date.now()): Promise<RainAlertSync> {
+/** Drop a pending notification; an alert that never showed is forgotten so the storm can be announced again. */
+export function cancelPendingRainAlert(now = Date.now()): Promise<void> {
+  return serialized(() => cancelPendingRainAlertInner(now));
+}
+
+async function syncRainAlertInner(plan: RainAlertPlan | null, now: number): Promise<RainAlertSync> {
   const pending = readScheduled();
   if (!plan) {
-    if (pending) await cancelPendingRainAlert(now);
+    if (pending) await cancelPendingRainAlertInner(now);
     return "cancelled";
   }
   if (pending && pending.key === plan.key && Math.abs(pending.fireAt - plan.fireAt) <= 60_000) return "kept";
   // A future notification has not announced anything yet. Cancel it before
   // deduplication so a new run or lead-time preference can replace the plan.
-  if (pending) await cancelPendingRainAlert(now);
+  if (pending) await cancelPendingRainAlertInner(now);
   if (!shouldNotify(plan, readLast(), now)) {
     return "skipped";
   }
@@ -142,6 +152,15 @@ export async function syncRainAlert(plan: RainAlertPlan | null, now = Date.now()
   const last: LastRainAlert = { key: plan.key, startAt: plan.startAt, firedAt: plan.fireAt };
   setString(LAST_KEY, JSON.stringify(last));
   return "scheduled";
+}
+
+/**
+ * Make the OS schedule match the plan: keep an identical pending alert,
+ * replace a changed one, cancel when the rain is gone, and never announce the
+ * same event twice.
+ */
+export function syncRainAlert(plan: RainAlertPlan | null, now = Date.now()): Promise<RainAlertSync> {
+  return serialized(() => syncRainAlertInner(plan, now));
 }
 
 /**
