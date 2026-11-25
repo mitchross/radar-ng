@@ -368,7 +368,7 @@ export function createInMapEngine(onChange: () => void) {
 
   /** Delete frames that left the manifest and every gen a source no longer reads. */
   function scheduleSweep() {
-    if (sweepTimer) clearTimeout(sweepTimer);
+    if (sweepTimer) return;
     sweepTimer = setTimeout(() => {
       sweepTimer = null;
       const current = input;
@@ -392,8 +392,14 @@ export function createInMapEngine(onChange: () => void) {
     },
     stop() {
       stopped = true;
-      if (sweepTimer) clearTimeout(sweepTimer);
-      if (retryTimer) clearTimeout(retryTimer);
+      if (sweepTimer) {
+        clearTimeout(sweepTimer);
+        sweepTimer = null;
+      }
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
       [...waiters].forEach((w) => w());
     },
   };

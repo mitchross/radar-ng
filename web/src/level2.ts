@@ -104,6 +104,11 @@ export class Level2Layer {
     this.paint();
   }
 
+  /** Repaint existing sweep layers after an external opacity change. */
+  repaint(): void {
+    this.paint();
+  }
+
   private paint() {
     const snap = this.session.snapshot();
     for (const [path, id] of this.ids) {

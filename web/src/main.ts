@@ -1492,6 +1492,7 @@ $("sheet-body").addEventListener("input", (e) => {
   packed?.setOpacity(state.opacity);
   const id = shownKey && cached.get(shownKey);
   if (id) map.setPaintProperty(id, "raster-opacity", state.opacity);
+  level2.repaint();
 });
 
 function setOverlay(id: OverlayId | "wind" | "ai" | "satellite", on: boolean) {
