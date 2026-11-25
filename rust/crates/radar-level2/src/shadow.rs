@@ -4,7 +4,10 @@
 //!
 //! Docs: `docs/develop/level2-shadow.md` (field names, valid days, how to read the report).
 
-use crate::{clocks::SweepClock, leases::Pool};
+use crate::{
+    clocks::SweepClock,
+    leases::{Pool, SharedPool},
+};
 use anyhow::{Context, Result, bail, ensure};
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
@@ -634,7 +637,7 @@ async fn read_reply(sent: reqwest::Result<reqwest::Response>) -> Reply {
 // ---------- storage ----------
 
 pub struct PgSink {
-    pool: tokio::sync::Mutex<Pool>,
+    pool: SharedPool,
 }
 
 const SEEN_COLUMNS: &str = "station,sweep_id,scan_end,view_id,revision,manifest_ready_at,manifest_ms,edge_display_at,tile_cold_ms,tile_cached_ms,tile_status,tile_cache";
@@ -650,7 +653,7 @@ impl PgSink {
         pool.initialize_clocks().await?;
         initialize(&pool).await?;
         Ok(Self {
-            pool: tokio::sync::Mutex::new(pool),
+            pool: SharedPool::new(pool),
         })
     }
 }

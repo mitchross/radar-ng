@@ -1,14 +1,17 @@
 //! PostgreSQL `ViewStore` and `SweepIndex`. Every mutation runs in one transaction under one advisory lock.
 
-use crate::{health::Health, leases::Pool, viewport::*};
+use crate::{
+    health::Health,
+    leases::{Pool, SharedPool},
+    viewport::*,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
-use tokio::sync::Mutex;
 use tokio_postgres::Transaction;
 
 pub struct PgStore {
-    pool: Mutex<Pool>,
+    pool: SharedPool,
     schema: String,
 }
 
@@ -38,7 +41,7 @@ impl PgStore {
             ))
             .await?;
         Ok(Self {
-            pool: Mutex::new(pool),
+            pool: SharedPool::new(pool),
             schema,
         })
     }
