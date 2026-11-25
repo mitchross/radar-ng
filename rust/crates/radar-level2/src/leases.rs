@@ -30,6 +30,41 @@ pub fn is_transient(e: &anyhow::Error) -> bool {
 pub struct Pool {
     pub client: Client,
     schema: String,
+    url: String,
+}
+
+async fn open(url: &str) -> Result<Client> {
+    let config: tokio_postgres::Config = url
+        .parse()
+        .map_err(|_| anyhow::anyhow!("invalid Level II database URL"))?;
+    let (client, connection) = config
+        .connect(NoTls)
+        .await
+        .map_err(|_| anyhow::Error::new(Unavailable))?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    Ok(client)
+}
+
+/// A long-lived connection that reopens on the next `lock` after Postgres drops it.
+pub struct SharedPool(tokio::sync::Mutex<Pool>);
+
+impl SharedPool {
+    pub fn new(pool: Pool) -> Self {
+        Self(tokio::sync::Mutex::new(pool))
+    }
+    /// A failed reopen keeps the closed client, so the caller's query fails and the next lock retries.
+    pub async fn lock(&self) -> tokio::sync::MutexGuard<'_, Pool> {
+        let mut pool = self.0.lock().await;
+        if pool.client.is_closed() {
+            match pool.reconnect().await {
+                Ok(()) => eprintln!("level2_pg_reconnected=1"),
+                Err(e) => eprintln!("level2_pg_reconnect_error={e}"),
+            }
+        }
+        pool
+    }
 }
 
 impl Pool {
@@ -42,20 +77,15 @@ impl Pool {
                     .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'),
             "invalid Level II schema"
         );
-        let config: tokio_postgres::Config = url
-            .parse()
-            .map_err(|_| anyhow::anyhow!("invalid Level II database URL"))?;
-        let (client, connection) = config
-            .connect(NoTls)
-            .await
-            .map_err(|_| anyhow::Error::new(Unavailable))?;
-        tokio::spawn(async move {
-            let _ = connection.await;
-        });
         Ok(Self {
-            client,
+            client: open(url).await?,
             schema: schema.into(),
+            url: url.into(),
         })
+    }
+    pub async fn reconnect(&mut self) -> Result<()> {
+        self.client = open(&self.url).await?;
+        Ok(())
     }
     pub fn schema(&self) -> &str {
         &self.schema
@@ -449,6 +479,43 @@ mod tests {
             .get(0);
         assert_eq!(indexed, 6);
 
+        Ok(())
+    }
+    #[tokio::test]
+    async fn shared_pool_reopens_after_server_drops_connection() -> Result<()> {
+        let Ok(url) = std::env::var("LEVEL2_TEST_PG") else {
+            eprintln!("SKIP: LEVEL2_TEST_PG absent");
+            return Ok(());
+        };
+        let schema = format!("level2_test_{}", uuid::Uuid::new_v4().simple());
+        let shared = SharedPool::new(Pool::connect(&url, &schema).await?);
+        let pid: i32 = shared
+            .lock()
+            .await
+            .client
+            .query_one("SELECT pg_backend_pid()", &[])
+            .await?
+            .get(0);
+        let admin = Pool::connect(&url, &schema).await?;
+        admin
+            .client
+            .execute("SELECT pg_terminate_backend($1)", &[&pid])
+            .await?;
+        for _ in 0..50 {
+            if shared.0.lock().await.client.is_closed() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(shared.0.lock().await.client.is_closed());
+        let next: i32 = shared
+            .lock()
+            .await
+            .client
+            .query_one("SELECT pg_backend_pid()", &[])
+            .await?
+            .get(0);
+        assert_ne!(next, pid);
         Ok(())
     }
     #[tokio::test]

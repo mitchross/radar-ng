@@ -1,6 +1,6 @@
 use crate::{
     HOT_LIMIT, MIB, RENDER_LIMIT, artifact,
-    leases::{Pool, Reservation},
+    leases::{Pool, Reservation, SharedPool},
     polar::{
         PolarSweep, SAMPLER_VERSION, Scratch, TILE_SCRATCH_BYTES, palette_version,
         reflectivity_model,
@@ -86,7 +86,7 @@ struct State {
 }
 
 pub struct TileService {
-    pool: tokio::sync::Mutex<Pool>,
+    pool: SharedPool,
     store: Arc<dyn ObjectStore>,
     model: ClassModel,
     version: String,
@@ -135,7 +135,7 @@ impl TileService {
     pub fn new(pool: Pool, store: Arc<dyn ObjectStore>, limits: Limits) -> Result<Arc<Self>> {
         let model = reflectivity_model()?;
         Ok(Arc::new(Self {
-            pool: tokio::sync::Mutex::new(pool),
+            pool: SharedPool::new(pool),
             store,
             version: format!("{SAMPLER_VERSION}-{}", palette_version(&model)),
             model,
