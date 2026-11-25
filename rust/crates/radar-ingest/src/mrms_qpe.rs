@@ -14,7 +14,9 @@ use radar_core::manifest::{AddOptions, FrameSpec};
 use radar_geo::Grid;
 use radar_grib::mrms as gmrms;
 use radar_grib::units;
-use radar_tiler::{ColorTable, FrameKind, FrameOptions, Overview};
+use radar_tiler::{
+    ColorTable, FrameKind, FrameOptions, MultiPaletteRenderResult, Overview, PublishStatus,
+};
 use radar_types::payloads::mrms::{ProcessFrameInput, ProcessFrameResult};
 use serde_json::{Map, Value, json};
 
@@ -283,11 +285,11 @@ pub async fn process_frame(
         ..FrameOptions::default()
     };
     let expected = tables.len();
-    let (grid, rendered) = heartbeat::blocking(
+    let (grid, outcome) = heartbeat::blocking(
         RENDER_BEAT,
         hb,
         json!({"phase": "render", "timestamp": timestamp}),
-        move || -> anyhow::Result<(Grid, Vec<String>)> {
+        move || -> anyhow::Result<(Grid, RenderOutcome)> {
             let kind = FrameKind::Continuous {
                 nodata_value: None,
                 min_valid_weight: 1.0,
@@ -300,25 +302,35 @@ pub async fn process_frame(
                 &MRMS_ZOOMS,
                 &options,
             )?;
-            let rendered = res
-                .rendered_palettes()
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            Ok((grid, rendered))
+            let outcome = classify_render(&res, expected);
+            Ok((grid, outcome))
         },
     )
     .await?;
-    if rendered.len() != expected {
-        tracing::error!(layer = %layer, timestamp = %timestamp, rendered_palettes = ?rendered, "frame_incomplete");
-        return Ok(ProcessFrameResult {
-            key,
-            timestamp,
-            rendered: false,
-            palettes: rendered,
-            duration_s: elapsed_s(started),
-        });
-    }
+    let rendered = match outcome {
+        RenderOutcome::Complete(rendered) => rendered,
+        RenderOutcome::AllEmpty => {
+            let duration_s = elapsed_s(started);
+            tracing::info!(layer = %layer, timestamp = %timestamp, duration_s, "frame_empty");
+            return Ok(ProcessFrameResult {
+                key,
+                timestamp,
+                rendered: true,
+                palettes: Vec::new(),
+                duration_s,
+            });
+        }
+        RenderOutcome::Incomplete(rendered) => {
+            tracing::error!(layer = %layer, timestamp = %timestamp, rendered_palettes = ?rendered, "frame_incomplete");
+            return Ok(ProcessFrameResult {
+                key,
+                timestamp,
+                rendered: false,
+                palettes: rendered,
+                duration_s: elapsed_s(started),
+            });
+        }
+    };
 
     let options = AddOptions {
         palettes: rendered.clone(),
@@ -354,6 +366,37 @@ pub async fn process_frame(
         palettes: rendered,
         duration_s,
     })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum RenderOutcome {
+    /// Every configured palette produced at least one tile.
+    Complete(Vec<String>),
+    /// Every configured palette rendered cleanly with zero above-threshold tiles (e.g. calm weather).
+    AllEmpty,
+    /// Only a subset of palettes produced tiles; leave the key unmarked so it can be retried.
+    Incomplete(Vec<String>),
+}
+
+fn classify_render(res: &MultiPaletteRenderResult, expected: usize) -> RenderOutcome {
+    let rendered: Vec<String> = res
+        .rendered_palettes()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    if rendered.len() == expected {
+        RenderOutcome::Complete(rendered)
+    } else if res.outcomes.len() == expected
+        && !res.outcomes.is_empty()
+        && res
+            .outcomes
+            .iter()
+            .all(|(_, o)| o.status == PublishStatus::Empty)
+    {
+        RenderOutcome::AllEmpty
+    } else {
+        RenderOutcome::Incomplete(rendered)
+    }
 }
 
 /// Write the point grid for the inspector in the layer's unit, then prune the layer to [`QPE_GRID_KEEP`].
@@ -487,5 +530,83 @@ mod tests {
         );
         assert_eq!(top.extra["unit"], "kft");
         assert!(top.extra.get("window_minutes").is_none());
+    }
+
+    #[test]
+    fn all_empty_publish_is_classified_as_empty_not_incomplete() {
+        use radar_tiler::PalettePublishOutcome;
+
+        let all_empty = MultiPaletteRenderResult {
+            outcomes: ["classic", "muted", "vivid"]
+                .into_iter()
+                .map(|n| {
+                    (
+                        n.to_string(),
+                        PalettePublishOutcome {
+                            status: PublishStatus::Empty,
+                            tile_count: 0,
+                        },
+                    )
+                })
+                .collect(),
+        };
+        assert_eq!(classify_render(&all_empty, 3), RenderOutcome::AllEmpty);
+
+        let partial = MultiPaletteRenderResult {
+            outcomes: vec![
+                (
+                    "classic".into(),
+                    PalettePublishOutcome {
+                        status: PublishStatus::Created,
+                        tile_count: 12,
+                    },
+                ),
+                (
+                    "muted".into(),
+                    PalettePublishOutcome {
+                        status: PublishStatus::Empty,
+                        tile_count: 0,
+                    },
+                ),
+            ],
+        };
+        assert_eq!(
+            classify_render(&partial, 2),
+            RenderOutcome::Incomplete(vec!["classic".into()])
+        );
+    }
+
+    #[test]
+    fn calm_weather_hail_grid_renders_all_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let product = product_for(HAIL_LAYER).unwrap();
+        let names: Vec<String> = ["classic", "muted", "vivid"].map(String::from).into();
+        let tables = load_tables(&names, product.color_key);
+        let dirs: Vec<(String, PathBuf)> = tables
+            .iter()
+            .map(|(n, _)| (n.clone(), dir.path().join(n).join("2026-10-15T22:00:00Z")))
+            .collect();
+        let grid = Grid {
+            width: 4,
+            height: 4,
+            values: vec![0.0_f32; 16],
+            geo: radar_geo::GridGeo::Regular {
+                lats: vec![35.0, 36.0, 37.0, 38.0],
+                lons: vec![-95.0, -94.0, -93.0, -92.0],
+            },
+        };
+        let kind = FrameKind::Continuous {
+            nodata_value: None,
+            min_valid_weight: 1.0,
+        };
+        let options = FrameOptions {
+            source_id: "mrms:hail-size:2026-10-15T22:00:00Z".into(),
+            publication_lock_root: Some(dir.path().to_path_buf()),
+            overview: Some(Overview::Max),
+            ..FrameOptions::default()
+        };
+        let res = radar_tiler::render_frame_palettes(&grid, &kind, &tables, &dirs, &[4], &options)
+            .unwrap();
+        assert_eq!(classify_render(&res, tables.len()), RenderOutcome::AllEmpty);
     }
 }
