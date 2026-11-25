@@ -176,6 +176,7 @@ services:
       - grids:/data/grids
       - state:/data/state
     healthcheck: *worker-healthcheck
+    stop_grace_period: 30s
     logging: *default-logging
     restart: unless-stopped
 
@@ -198,6 +199,7 @@ services:
     volumes:
       - openmeteo-data:/app/data
     healthcheck: *worker-healthcheck
+    stop_grace_period: 30s
     logging: *default-logging
     restart: unless-stopped
 

@@ -535,16 +535,23 @@ impl MergeCtx<'_, '_, '_> {
             None => vec![0u8; w * h * 3],
             Some(bytes) => {
                 let (ew, eh, data) = decode_rgb8(bytes)?;
-                if !any_data && !self.rewrite && (ew, eh) == (w, h) {
-                    return Ok(0);
-                }
-                if ew != w || eh > h {
+                let max_h = atlas_dims(PACKED_MAX_SLOTS, t).1;
+                if ew != w || eh == 0 || !eh.is_multiple_of(t) || eh > max_h {
                     return Err(TilerError::Corrupt(format!(
-                        "packed tile {} is {ew}x{eh}, expected {w}x<={h}",
+                        "packed tile {} is {ew}x{eh}, expected {w}x<={max_h}",
                         path.display()
                     )));
                 }
+                if !any_data
+                    && !self.rewrite
+                    && (ew, eh) == (w, h)
+                    && slots_are_zero(&data, ew, t, self.assigned)
+                {
+                    return Ok(0);
+                }
                 let mut atlas = data;
+                // Truncates uncommitted trailing block rows if a prior multi-frame pack crashed
+                // after growing the atlas, or zero-pads when this update grows it.
                 atlas.resize(w * h * 3, 0);
                 atlas
             }
@@ -568,6 +575,24 @@ impl MergeCtx<'_, '_, '_> {
         write_atomic(&path, &png)?;
         Ok(1)
     }
+}
+
+/// True when every texel of every slot in `slots` is 0 in `atlas`.
+///
+/// Guards the dry-frame fast path against ghost pixels left behind in an uncommitted slot when a
+/// previous `pack_frames` crashed after writing some tiles and before updating `.packed-bucket-v1.json`.
+fn slots_are_zero(atlas: &[u8], width: usize, tile: usize, slots: &[usize]) -> bool {
+    slots.iter().all(|&slot| {
+        let pos = slot_position(slot, tile);
+        (0..tile).all(|py| {
+            let start = ((pos.y0 + py) * width + pos.x0) * 3;
+            let row = &atlas[start..start + tile * 3];
+            row.as_chunks::<3>()
+                .0
+                .iter()
+                .all(|texel| texel[pos.channel] == 0)
+        })
+    })
 }
 
 /// Copy a `tile x tile` plane into one channel of an RGB atlas `width` pixels wide.
