@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef } from "react";
 import { useIsFocused } from "expo-router";
 import { fetchWithTimeout } from "../lib/api";
 import { fallbackCopy, Level2Session, type Level2Palette, type Viewport } from "../lib/level2";
@@ -40,6 +40,10 @@ export function useLevel2(): { onCamera: (c: Level2Camera) => void } {
     session.current.update(vp);
   }, [palette, active]);
 
+  const applyLatest = useEffectEvent(() => {
+    apply();
+  });
+
   useEffect(() => {
     const s = new Level2Session({
       request: async (path, init) => {
@@ -64,13 +68,13 @@ export function useLevel2(): { onCamera: (c: Level2Camera) => void } {
       published.current = key;
       useWeatherStore.getState().setLevel2({ view: snap.view, opacity: snap.opacity, fallback: snap.unavailable ? fallbackCopy(snap.reason) : null, centre });
     });
-    apply();
+    applyLatest();
     return () => {
       s.stop();
       session.current = null;
       useWeatherStore.getState().setLevel2(NO_LEVEL2);
     };
-  }, [serverUrl, apply]);
+  }, [serverUrl]);
 
   useEffect(apply, [apply]);
 
