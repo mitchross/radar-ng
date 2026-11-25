@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 import { Linking } from "react-native";
 import { LocationPermissionCard } from "../../src/components/home/LocationPermissionCard";
 import { useActiveLocation } from "../../src/hooks/useActiveLocation";
-import { requestDeviceLocation, useLocationController } from "../../src/hooks/useLocation";
+import { refreshDeviceLocation, requestDeviceLocation, useLocationController } from "../../src/hooks/useLocation";
 import { useWeatherStore } from "../../src/stores/useWeatherStore";
 import { renderWithProviders } from "./helpers";
 
@@ -17,7 +17,7 @@ jest.mock("expo-location", () => ({
   getForegroundPermissionsAsync: () => mockLocation.getForegroundPermissionsAsync(),
   requestForegroundPermissionsAsync: () => mockLocation.requestForegroundPermissionsAsync(),
   getLastKnownPositionAsync: () => mockLocation.getLastKnownPositionAsync(),
-  getCurrentPositionAsync: () => mockLocation.getCurrentPositionAsync(),
+  getCurrentPositionAsync: (opts: unknown) => mockLocation.getCurrentPositionAsync(opts),
   Accuracy: { Balanced: 3 },
 }));
 
@@ -92,5 +92,71 @@ describe("after a denial", () => {
     expect(openSettings).toHaveBeenCalled();
     await fireEvent.press(screen.getByRole("button", { name: "Choose a city" }));
     expect(onChooseCity).toHaveBeenCalled();
+  });
+});
+
+describe("in-flight escalation", () => {
+  test("Locate tap is not swallowed while an automatic fix is in flight", async () => {
+    let rejectAuto!: (err: Error) => void;
+    mockLocation.getForegroundPermissionsAsync.mockResolvedValue({ status: "granted", canAskAgain: true });
+    mockLocation.getLastKnownPositionAsync.mockResolvedValue(null);
+    mockLocation.getCurrentPositionAsync
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectAuto = reject;
+          }),
+      )
+      .mockResolvedValueOnce(fix);
+
+    await renderWithProviders(<Harness onChooseCity={jest.fn()} />);
+    await waitFor(() => expect(mockLocation.getCurrentPositionAsync).toHaveBeenCalledTimes(1));
+    expect(mockLocation.getCurrentPositionAsync).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mayShowUserSettingsDialog: false }),
+    );
+
+    await act(async () => {
+      refreshDeviceLocation();
+    });
+    await waitFor(() => expect(useWeatherStore.getState().locationStatus).toBe("live"));
+    expect(mockLocation.getCurrentPositionAsync).toHaveBeenCalledTimes(2);
+    expect(mockLocation.getCurrentPositionAsync).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mayShowUserSettingsDialog: true }),
+    );
+
+    // Late failure of the superseded automatic pass must not clobber the live fix.
+    await act(async () => {
+      rejectAuto(new Error("timeout"));
+      await Promise.resolve();
+    });
+    expect(useWeatherStore.getState().locationStatus).toBe("live");
+    expect(useWeatherStore.getState().latitude).toBe(42.5);
+  });
+
+  test("Allow prompt is not swallowed while an automatic permission check is in flight", async () => {
+    let resolveAuto!: (v: { status: string; canAskAgain: boolean }) => void;
+    mockLocation.getForegroundPermissionsAsync.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveAuto = resolve;
+        }),
+    );
+    mockLocation.requestForegroundPermissionsAsync.mockResolvedValue({ status: "granted", canAskAgain: true });
+
+    await renderWithProviders(<Harness onChooseCity={jest.fn()} />);
+    await waitFor(() => expect(mockLocation.getForegroundPermissionsAsync).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await requestDeviceLocation();
+    });
+    expect(mockLocation.requestForegroundPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(useWeatherStore.getState().locationStatus).toBe("live");
+
+    // Late resolution of the superseded automatic check must not revert live status.
+    await act(async () => {
+      resolveAuto({ status: "undetermined", canAskAgain: true });
+      await Promise.resolve();
+    });
+    expect(useWeatherStore.getState().locationStatus).toBe("live");
   });
 });

@@ -19,7 +19,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   ]).finally(() => clearTimeout(timer));
 }
 
-let inFlight: Promise<void> | null = null;
+interface InFlightPass {
+  promise: Promise<void>;
+  prompt: boolean;
+  userInitiated: boolean;
+  seq: number;
+}
+
+let inFlight: InFlightPass | null = null;
+let passSeq = 0;
 
 /**
  * One device-location pass: permission, cached fix, then a bounded fresh fix.
@@ -30,14 +38,22 @@ let inFlight: Promise<void> | null = null;
  * foreground fixes must not nag with it every time.
  */
 function locateDevice(prompt: boolean, userInitiated = false): Promise<void> {
-  if (inFlight) return inFlight;
+  // Deduplicate only when the in-flight pass already satisfies this call's
+  // escalation level; never let an automatic pass swallow an explicit user
+  // permission prompt or Locate tap.
+  if (inFlight && (!prompt || inFlight.prompt) && (!userInitiated || inFlight.userInitiated)) {
+    return inFlight.promise;
+  }
+  const seq = ++passSeq;
+  const isCurrent = () => passSeq === seq;
   const store = useWeatherStore.getState;
 
-  inFlight = (async () => {
+  const promise = (async () => {
     try {
       const { status, canAskAgain } = prompt
         ? await Location.requestForegroundPermissionsAsync()
         : await Location.getForegroundPermissionsAsync();
+      if (!isCurrent()) return;
       if (status !== "granted") {
         store().applyLocationFailure(!prompt && canAskAgain ? "undetermined" : "denied");
         return;
@@ -46,6 +62,7 @@ function locateDevice(prompt: boolean, userInitiated = false): Promise<void> {
       // Fast path: the OS's cached fix renders something right away.
       try {
         const last = await Location.getLastKnownPositionAsync();
+        if (!isCurrent()) return;
         if (last) store().applyDeviceFix(last.coords.latitude, last.coords.longitude, last.timestamp);
       } catch {
         // Fall through to a fresh request.
@@ -59,17 +76,21 @@ function locateDevice(prompt: boolean, userInitiated = false): Promise<void> {
           }),
           FRESH_FIX_TIMEOUT_MS,
         );
+        if (!isCurrent()) return;
         store().applyDeviceFix(loc.coords.latitude, loc.coords.longitude, loc.timestamp);
       } catch {
+        if (!isCurrent()) return;
         store().applyLocationFailure("unavailable");
       }
     } catch {
+      if (!isCurrent()) return;
       store().applyLocationFailure("unavailable");
     } finally {
-      inFlight = null;
+      if (inFlight?.seq === seq) inFlight = null;
     }
   })();
-  return inFlight;
+  inFlight = { promise, prompt, userInitiated, seq };
+  return promise;
 }
 
 /**
