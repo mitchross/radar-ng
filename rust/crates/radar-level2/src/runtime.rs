@@ -101,13 +101,14 @@ pub async fn publish_worker() -> Result<()> {
     let publisher = Publisher {
         store: p.pg.clone(),
         index: p.pg,
-        tiles: Arc::new(tiles),
+        tiles: Arc::new(Arc::clone(&tiles)),
         objects: p.objects,
         catalogue: p.catalogue,
         clock: clock(),
         instance: uuid::Uuid::new_v4().simple().to_string(),
     };
     let mut last_gc = std::time::Instant::now();
+    tiles.beat().await?;
     loop {
         match publisher.run_once().await {
             Ok(crate::publish::Done::Idle) => tokio::time::sleep(Duration::from_millis(500)).await,
@@ -119,6 +120,9 @@ pub async fn publish_worker() -> Result<()> {
         }
         if last_gc.elapsed() >= Duration::from_secs(30) {
             last_gc = std::time::Instant::now();
+            if let Err(e) = tiles.beat().await {
+                eprintln!("level2_beat_error={e}");
+            }
             match publisher.collect().await {
                 Ok(n) if n > 0 => eprintln!("level2_collected={n}"),
                 Ok(_) => {}

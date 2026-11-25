@@ -87,9 +87,23 @@ pub struct Snapshot {
     pub skill_lines: Vec<String>,
 }
 
+fn normalize_method(method: &str) -> &'static str {
+    match method {
+        "GET" => "GET",
+        "HEAD" => "HEAD",
+        "POST" => "POST",
+        "PUT" => "PUT",
+        "DELETE" => "DELETE",
+        "PATCH" => "PATCH",
+        "OPTIONS" => "OPTIONS",
+        _ => "OTHER",
+    }
+}
+
 impl Metrics {
     /// Record one finished request. Called after the handler, so a scrape never counts itself.
     pub fn record(&self, method: &str, route: &str, status: u16, elapsed_secs: f64) {
+        let method = normalize_method(method);
         let mut http = self
             .http
             .lock()
@@ -193,5 +207,18 @@ mod tests {
         assert!(text.contains("radar_ng_tile_timestamps{layer=\"radar\"} 3\n"));
         assert!(text.contains("radar_ng_mrms_age_seconds 42\n"));
         assert!(text.contains("radar_ng_nowcast_skill_runs 8\n"));
+    }
+
+    #[test]
+    fn unknown_http_methods_collapse_to_other() {
+        let m = Metrics::default();
+        m.record("M00001", "unmatched", 405, 0.01);
+        m.record("M00002", "unmatched", 405, 0.02);
+        let text = m.render(&Snapshot::default());
+        assert!(text.contains(
+            "radar_ng_http_requests_total{method=\"OTHER\",path=\"unmatched\",status=\"405\"} 2\n"
+        ));
+        assert!(!text.contains("M00001"));
+        assert!(!text.contains("M00002"));
     }
 }
