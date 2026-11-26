@@ -400,7 +400,10 @@ function nextFrameReady(): boolean {
   return !id || map.isSourceLoaded(id);
 }
 
+let styleSeq = 0;
+
 async function applyMapStyle(id: MapStyleId) {
+  const seq = ++styleSeq;
   state.mapStyle = id;
   store("rng.mapStyle", id);
   document.documentElement.dataset.map = id;
@@ -408,10 +411,12 @@ async function applyMapStyle(id: MapStyleId) {
   try {
     style = await loadStyle(id);
   } catch (err) {
+    if (seq !== styleSeq) return;
     console.error(err);
     toast("Couldn't load the map style");
     return;
   }
+  if (seq !== styleSeq) return;
   clearFrames();
   satellite.clear();
   styleReady = false;
@@ -1270,7 +1275,10 @@ function toast(message: string) {
 
 // ---------- place ----------
 
+let locateSeq = 0;
+
 function setPlace(place: Place, fly = true) {
+  locateSeq++;
   state.place = place;
   store("rng.place", place);
   renderLocationCard(null);
@@ -1554,13 +1562,17 @@ $("sheet-body").addEventListener("change", (e) => {
 
 function locate() {
   if (!navigator.geolocation) return toast("Location isn't available in this browser");
+  const seq = ++locateSeq;
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
+      if (seq !== locateSeq) return;
       const { latitude, longitude } = pos.coords;
       const place = await reversePlace(latitude, longitude).catch(() => null);
+      if (seq !== locateSeq) return;
       setPlace({ name: place?.name ?? "My location", admin1: place?.admin1, latitude, longitude });
     },
     (err) => {
+      if (seq !== locateSeq) return;
       const card = cardAfterGeoError(err.code);
       if (card) renderLocationCard(card, true);
       else toast("Couldn't find your location");

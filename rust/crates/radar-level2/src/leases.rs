@@ -1,6 +1,10 @@
 use crate::{HOT_LIMIT, JOB_RESERVATION, OBJECT_LIMIT, RENDER_JOBS};
 use anyhow::{Result, ensure};
+use std::time::Duration;
 use tokio_postgres::{Client, NoTls};
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(30);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Reservation {
@@ -34,16 +38,25 @@ pub struct Pool {
 }
 
 async fn open(url: &str) -> Result<Client> {
-    let config: tokio_postgres::Config = url
+    let mut config: tokio_postgres::Config = url
         .parse()
         .map_err(|_| anyhow::anyhow!("invalid Level II database URL"))?;
-    let (client, connection) = config
-        .connect(NoTls)
+    if config.get_connect_timeout().is_none() {
+        config.connect_timeout(CONNECT_TIMEOUT);
+    }
+    config.keepalives(true).keepalives_idle(KEEPALIVE_IDLE);
+    let (client, connection) = tokio::time::timeout(CONNECT_TIMEOUT, config.connect(NoTls))
         .await
+        .map_err(|_| anyhow::Error::new(Unavailable))?
         .map_err(|_| anyhow::Error::new(Unavailable))?;
     tokio::spawn(async move {
         let _ = connection.await;
     });
+    // Bound statement and advisory-lock waits so a wedged query cannot hold SharedPool indefinitely.
+    client
+        .batch_execute("SET statement_timeout = '15s'; SET lock_timeout = '10s'")
+        .await
+        .map_err(|_| anyhow::Error::new(Unavailable))?;
     Ok(client)
 }
 
