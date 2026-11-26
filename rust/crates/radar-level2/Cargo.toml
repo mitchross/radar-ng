@@ -27,7 +27,7 @@ radar-tiler.workspace = true
 nexrad-data = { version = "=1.0.0", default-features = false }
 nexrad-decode = { version = "=1.0.0", default-features = false }
 bzip2 = "0.6.1"
-tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
+tokio-postgres.workspace = true
 object_store = { version = "0.12", features = ["aws"] }
 
 [dev-dependencies]

@@ -259,7 +259,7 @@ pub fn replace_packed_buckets(
 pub fn remove_packed_buckets(
     state_dir: &Path,
     layer: &str,
-    expired: impl Fn(&str) -> bool,
+    expired: impl Fn(&str) -> bool + Sync,
 ) -> Result<Vec<String>, ManifestError> {
     let mut dropped = Vec::new();
     with_locked_manifest(state_dir, Utc::now(), |manifest| {

@@ -31,4 +31,5 @@ pub mod nowcast_skill;
 pub mod processed_set;
 pub mod push_tokens;
 pub mod pycompat;
+pub mod state_pg;
 pub mod time;
