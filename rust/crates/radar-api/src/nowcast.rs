@@ -404,16 +404,31 @@ pub fn point_class(
     for r in row.saturating_sub(reach_r)..=(row + reach_r).min(m.height - 1) {
         let cell_lat = m.lat_max - r as f64 * dlat;
         let classes = types.row_span(r, c0, c1)?;
+        let lon0 = (m.lon_min + c0 as f64 * dlon).clamp(echo.meta.lon_min, echo.meta.lon_max);
+        let lon1 = (m.lon_min + c1 as f64 * dlon).clamp(echo.meta.lon_min, echo.meta.lon_max);
+        let Some((er, ec0)) = nearest_cell(&echo.meta, cell_lat, lon0) else {
+            continue;
+        };
+        let Some((_, ec1)) = nearest_cell(&echo.meta, cell_lat, lon1) else {
+            continue;
+        };
+        let (elo, ehi) = if ec0 <= ec1 { (ec0, ec1) } else { (ec1, ec0) };
+        let Some(echo_row) = echo.row_span(er, elo, ehi) else {
+            continue;
+        };
         for (c, class) in (c0..=c1).zip(classes) {
             let cell_lon = m.lon_min + c as f64 * dlon;
             let (dy, dx) = ((cell_lat - lat) * km_lat, (cell_lon - lon) * km_lon);
             if dy.hypot(dx) > CLASS_RADIUS_KM || !(0.0..=3.0).contains(&class) {
                 continue;
             }
-            let Some((er, ec)) = nearest_cell(&echo.meta, cell_lat, cell_lon) else {
+            let Some((_, ec)) = nearest_cell(&echo.meta, cell_lat, cell_lon) else {
                 continue;
             };
-            if echo.value(er, ec).is_some_and(|dbz| dbz >= CLASS_ECHO_DBZ) {
+            if let Some(&dbz) = ec.checked_sub(elo).and_then(|i| echo_row.get(i))
+                && dbz.is_finite()
+                && dbz >= CLASS_ECHO_DBZ
+            {
                 votes[class.round() as usize] += 1;
             }
         }
@@ -460,13 +475,6 @@ impl Dump {
                 .map(|b| f32::from_le_bytes(*b))
                 .collect(),
         )
-    }
-
-    fn value(&self, r: usize, c: usize) -> Option<f32> {
-        self.row_span(r, c, c)?
-            .first()
-            .copied()
-            .filter(|v| v.is_finite())
     }
 }
 
