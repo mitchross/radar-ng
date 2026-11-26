@@ -98,8 +98,17 @@ pub fn file_url(root: &str, run: DateTime<Utc>, valid: DateTime<Utc>, field: &st
     )
 }
 
+fn seeing_key(valid: DateTime<Utc>) -> String {
+    format!("{SEEING_DIR}/{}", seeing::file_name(valid))
+}
+
 /// The run stored for a valid hour, if its file is readable.
 fn stored_run(dir: &Path, valid: DateTime<Utc>) -> Option<i64> {
+    if let Some(pg) = radar_core::state_pg::global().filter(|s| s.read_pg()) {
+        let (bytes, _) = pg.get_blocking(&seeing_key(valid)).ok()??;
+        let head: [u8; seeing::HEADER_LEN] = bytes.get(..seeing::HEADER_LEN)?.try_into().ok()?;
+        return seeing::parse_header(&head).map(|(_, run)| run);
+    }
     use std::io::Read;
     let mut head = [0u8; seeing::HEADER_LEN];
     fs::File::open(dir.join(seeing::file_name(valid)))
@@ -111,6 +120,19 @@ fn stored_run(dir: &Path, valid: DateTime<Utc>) -> Option<i64> {
 /// Removes hour files older than [`KEEP_PAST_H`] and stray temp files.
 fn prune(dir: &Path, now: DateTime<Utc>) -> std::io::Result<()> {
     let cutoff = seeing::file_name(now - TimeDelta::hours(KEEP_PAST_H));
+    if let Some(pg) = radar_core::state_pg::global().filter(|s| s.read_pg()) {
+        let prefix = format!("{SEEING_DIR}/");
+        let keys = pg
+            .list_prefix_blocking(&prefix)
+            .map_err(std::io::Error::other)?;
+        for key in keys {
+            let name = key.strip_prefix(&prefix).unwrap_or(&key);
+            if name.len() == cutoff.len() && name.ends_with(".bin") && name < cutoff.as_str() {
+                pg.delete_blocking(&key).map_err(std::io::Error::other)?;
+            }
+        }
+        return Ok(());
+    }
     let Ok(entries) = fs::read_dir(dir) else {
         return Ok(());
     };
@@ -122,6 +144,12 @@ fn prune(dir: &Path, now: DateTime<Utc>) -> std::io::Result<()> {
         let stray_tmp = name.starts_with(".sky.") && name.ends_with(".tmp");
         if old || stray_tmp {
             fs::remove_file(entry.path())?;
+            if old && let Some(pg) = radar_core::state_pg::global() {
+                let key = format!("{SEEING_DIR}/{name}");
+                if let Err(err) = pg.delete_blocking(&key) {
+                    tracing::warn!(key, err = %format!("{err:#}"), "state_pg_seeing_prune_failed");
+                }
+            }
         }
     }
     Ok(())
@@ -176,7 +204,9 @@ pub async fn ingest(
         return Ok(result("disabled", None, None));
     }
     let dir = state_dir.join(SEEING_DIR);
-    fs::create_dir_all(&dir)?;
+    if !radar_core::state_pg::read_enabled() {
+        fs::create_dir_all(&dir)?;
+    }
     prune(&dir, now)?;
     let run = latest_run(now);
     let todo: Vec<DateTime<Utc>> = wanted_hours(run, now)
@@ -215,7 +245,10 @@ pub async fn ingest(
             tracing::warn!(%valid, "eccc files did not decode; keeping the last files");
             return Ok(result("invalid", Some(200), Some(run)));
         };
-        super::iss::write_public_atomic(&dir, &dir.join(seeing::file_name(valid)), &packed)?;
+        let key = seeing_key(valid);
+        radar_core::state_pg::write_or_mirror(Some(&key), &packed, || {
+            super::iss::write_public_atomic(&dir, &dir.join(seeing::file_name(valid)), &packed)
+        })?;
     }
     Ok(result("published", Some(200), Some(run)))
 }
@@ -223,6 +256,14 @@ pub async fn ingest(
 /// `(seeing, transparency)` at a point for a valid hour, reading one byte of the stored file.
 #[must_use]
 pub fn read_point(state_dir: &Path, valid: DateTime<Utc>, lat: f64, lon: f64) -> Option<(u8, u8)> {
+    if let Some(pg) = radar_core::state_pg::global().filter(|s| s.read_pg()) {
+        let (bytes, _) = pg.get_blocking(&seeing_key(valid)).ok()??;
+        let head: [u8; seeing::HEADER_LEN] = bytes.get(..seeing::HEADER_LEN)?.try_into().ok()?;
+        let (grid, _) = seeing::parse_header(&head)?;
+        let offset = usize::try_from(seeing::cell_offset(&grid, lat, lon)?).ok()?;
+        let cell = *bytes.get(offset)?;
+        return seeing::unpack(cell);
+    }
     use std::os::unix::fs::FileExt;
     let f = fs::File::open(state_dir.join(SEEING_DIR).join(seeing::file_name(valid))).ok()?;
     let mut head = [0u8; seeing::HEADER_LEN];

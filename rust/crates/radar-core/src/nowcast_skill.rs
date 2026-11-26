@@ -133,19 +133,25 @@ pub fn skill_path(state_dir: &Path) -> PathBuf {
 /// `read_log(state_dir)`: the log, or an empty one when the file is missing, unreadable, not JSON, not an
 /// object, or has no `entries` array (NSK-03).
 pub fn read_log(state_dir: &Path, cfg: &SkillConfig) -> SkillLog {
-    match parse_log_file(&skill_path(state_dir)) {
-        Ok(Some(log)) => log,
-        Ok(None) | Err(_) => SkillLog::empty(cfg),
-    }
+    let path = skill_path(state_dir);
+    let bytes = match crate::state_pg::read_doc_or_disk(&path, Some(SKILL_FILE)) {
+        Ok(Some(b)) => b,
+        Ok(None) | Err(_) => return SkillLog::empty(cfg),
+    };
+    parse_log_bytes(&bytes).unwrap_or_else(|_| SkillLog::empty(cfg))
 }
 
 /// Parse the file. `Ok(None)` when it is missing. `Err` when present but unreadable or structurally wrong.
 fn parse_log_file(path: &Path) -> Result<Option<SkillLog>, String> {
-    let value = match fsutil::read_json_opt(path) {
-        Ok(None) => return Ok(None),
-        Ok(Some(v)) => v,
-        Err(e) => return Err(e.to_string()),
-    };
+    match std::fs::read(path) {
+        Ok(bytes) => parse_log_bytes(&bytes).map(Some),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+fn parse_log_bytes(bytes: &[u8]) -> Result<SkillLog, String> {
+    let value: Value = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
     let Value::Object(mut obj) = value else {
         return Err("top level is not an object".into());
     };
@@ -160,42 +166,21 @@ fn parse_log_file(path: &Path) -> Result<Option<SkillLog>, String> {
     let window_hours = obj.remove("window_hours").and_then(|v| py_int(&v));
     obj.remove("schema_version");
     obj.remove("thresholds_dbz");
-    Ok(Some(SkillLog {
+    Ok(SkillLog {
         updated_at,
         window_hours,
         entries,
         extra: obj,
-    }))
+    })
 }
 
-/// `append_entries(state_dir, entries, now=now, window_hours=...)`.
-///
-/// Keeps entries whose `scored_at` falls within the window (future entries are kept), sorts by
-/// `(scored_at, lead_minutes)`, and writes the file atomically with fsync. The directory is locked for the
-/// duration on `nowcast-skill.lock` (D15, F4). A lock failure is logged and returned, never ignored. A corrupt
-/// existing file is an error and is not overwritten.
-pub fn append_entries(
-    state_dir: &Path,
+fn merge_and_render(
+    mut log: SkillLog,
     entries: &[Map<String, Value>],
     now: DateTime<Utc>,
     window_hours: Option<i64>,
     cfg: &SkillConfig,
-) -> Result<SkillLog, SkillError> {
-    std::fs::create_dir_all(state_dir)?;
-    let lock_path = state_dir.join(LOCK_FILE);
-    let _lock = match FlockGuard::exclusive(&lock_path) {
-        Ok(guard) => guard,
-        Err(err) => {
-            tracing::error!(path = %lock_path.display(), error = %err, "nowcast skill lock failed; log not updated");
-            return Err(err.into());
-        }
-    };
-    let path = skill_path(state_dir);
-    let mut log = match parse_log_file(&path) {
-        Ok(Some(log)) => log,
-        Ok(None) => SkillLog::empty(cfg),
-        Err(reason) => return Err(SkillError::CorruptLog { path, reason }),
-    };
+) -> Result<String, SkillError> {
     let window_hours_value = window_hours.filter(|h| *h != 0).unwrap_or(cfg.window_hours);
     let window = ChronoDuration::hours(window_hours_value);
 
@@ -234,8 +219,73 @@ pub fn append_entries(
     for (k, v) in log.extra {
         doc.entry(k).or_insert(v);
     }
-    let rendered = render_document(&Value::Object(doc));
+    Ok(render_document(&Value::Object(doc)))
+}
+
+enum PgSkillErr {
+    Skill(SkillError),
+    Pg(anyhow::Error),
+}
+
+impl From<anyhow::Error> for PgSkillErr {
+    fn from(err: anyhow::Error) -> Self {
+        Self::Pg(err)
+    }
+}
+
+/// `append_entries(state_dir, entries, now=now, window_hours=...)`.
+///
+/// Keeps entries whose `scored_at` falls within the window (future entries are kept), sorts by
+/// `(scored_at, lead_minutes)`, and writes the file atomically with fsync. The directory is locked for the
+/// duration on `nowcast-skill.lock` (D15, F4). A lock failure is logged and returned, never ignored. A corrupt
+/// existing file is an error and is not overwritten.
+pub fn append_entries(
+    state_dir: &Path,
+    entries: &[Map<String, Value>],
+    now: DateTime<Utc>,
+    window_hours: Option<i64>,
+    cfg: &SkillConfig,
+) -> Result<SkillLog, SkillError> {
+    let path = skill_path(state_dir);
+    if let Some(pg) = crate::state_pg::global().filter(|s| s.read_pg()) {
+        let (rendered, _) = pg
+            .update_doc_blocking::<PgSkillErr, _>(SKILL_FILE, |current| {
+                let log = match current {
+                    None => SkillLog::empty(cfg),
+                    Some(bytes) => parse_log_bytes(&bytes).map_err(|reason| {
+                        PgSkillErr::Skill(SkillError::CorruptLog {
+                            path: path.clone(),
+                            reason,
+                        })
+                    })?,
+                };
+                let rendered = merge_and_render(log, entries, now, window_hours, cfg)
+                    .map_err(PgSkillErr::Skill)?;
+                Ok(rendered.into_bytes())
+            })
+            .map_err(|err| match err {
+                PgSkillErr::Skill(s) => s,
+                PgSkillErr::Pg(e) => SkillError::Io(std::io::Error::other(e)),
+            })?;
+        return Ok(parse_log_bytes(&rendered).unwrap_or_else(|_| SkillLog::empty(cfg)));
+    }
+    std::fs::create_dir_all(state_dir)?;
+    let lock_path = state_dir.join(LOCK_FILE);
+    let _lock = match FlockGuard::exclusive(&lock_path) {
+        Ok(guard) => guard,
+        Err(err) => {
+            tracing::error!(path = %lock_path.display(), error = %err, "nowcast skill lock failed; log not updated");
+            return Err(err.into());
+        }
+    };
+    let log = match parse_log_file(&path) {
+        Ok(Some(log)) => log,
+        Ok(None) => SkillLog::empty(cfg),
+        Err(reason) => return Err(SkillError::CorruptLog { path, reason }),
+    };
+    let rendered = merge_and_render(log, entries, now, window_hours, cfg)?;
     fsutil::atomic_write(&path, rendered.as_bytes(), ".nowcast-skill.json.", ".tmp")?;
+    crate::state_pg::mirror_write(SKILL_FILE, rendered.as_bytes());
     // Re-read so the caller gets exactly what is on disk.
     Ok(parse_log_file(&path)
         .ok()

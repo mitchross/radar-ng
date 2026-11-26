@@ -21,7 +21,6 @@ pub fn write_status(
     reason: Option<&str>,
     detail: Option<&str>,
 ) -> io::Result<()> {
-    std::fs::create_dir_all(state_dir)?;
     let mut body = Map::new();
     body.insert("status".into(), Value::from(status));
     body.insert("reason".into(), reason.map_or(Value::Null, Value::from));
@@ -29,12 +28,15 @@ pub fn write_status(
     body.insert("updated_at".into(), Value::from(isoformat_utc(&Utc::now())));
     let mut text = dumps_value(&Value::Object(body), Style::Compact, true);
     text.push('\n');
-    radar_core::fsutil::atomic_write(
-        &state_dir.join(STATUS_FILE),
-        text.as_bytes(),
-        ".nowcast-status.",
-        ".tmp",
-    )
+    radar_core::state_pg::write_or_mirror(Some(STATUS_FILE), text.as_bytes(), || {
+        std::fs::create_dir_all(state_dir)?;
+        radar_core::fsutil::atomic_write(
+            &state_dir.join(STATUS_FILE),
+            text.as_bytes(),
+            ".nowcast-status.",
+            ".tmp",
+        )
+    })
 }
 
 #[cfg(test)]
