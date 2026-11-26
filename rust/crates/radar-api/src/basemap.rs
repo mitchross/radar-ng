@@ -239,13 +239,15 @@ pub async fn get_imagery(
     let Some((zoom, x, y)) = imagery_parts(&z, &x, &yjpg) else {
         return bare_404();
     };
-    let cache_key = match (x.parse::<u64>(), y.parse::<u64>()) {
-        (Ok(xn), Ok(yn)) => Some((zoom, xn, yn)),
-        _ => None,
+    let (Ok(xn), Ok(yn)) = (x.parse::<u64>(), y.parse::<u64>()) else {
+        return bare_404();
     };
-    if let Some(key) = cache_key
-        && let Some(hit) = state.imagery_cache.get(&key)
-    {
+    let max_coord = 1u64 << zoom;
+    if xn >= max_coord || yn >= max_coord {
+        return bare_404();
+    }
+    let key = (zoom, xn, yn);
+    if let Some(hit) = state.imagery_cache.get(&key) {
         return image_response(hit.body, &hit.headers);
     }
     let url = format!(
@@ -260,15 +262,13 @@ pub async fn get_imagery(
         return respond::caddy_error(fetched.status);
     }
     let forwarded = forwarded_headers(&fetched.headers);
-    if let Some(key) = cache_key {
-        state.imagery_cache.insert(
-            key,
-            CachedImagery {
-                body: fetched.body.clone(),
-                headers: forwarded.clone(),
-            },
-        );
-    }
+    state.imagery_cache.insert(
+        key,
+        CachedImagery {
+            body: fetched.body.clone(),
+            headers: forwarded.clone(),
+        },
+    );
     image_response(fetched.body, &forwarded)
 }
 

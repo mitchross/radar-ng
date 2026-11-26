@@ -482,7 +482,7 @@ async fn imagery_proxy_rewrites_to_zyx_and_caches_bytes() {
             let hits = usgs_hits.clone();
             async move {
                 hits.fetch_add(1, Ordering::SeqCst);
-                if x == "99" {
+                if x == "7" {
                     return (StatusCode::NOT_FOUND, "nope").into_response_boxed();
                 }
                 let body = format!("JPEG-{z}-{y}-{x}");
@@ -514,10 +514,18 @@ async fn imagery_proxy_rewrites_to_zyx_and_caches_bytes() {
     );
 
     let (missing, missing_headers, missing_body) =
-        send(&app, get_req("/basemap/imagery/3/99/1.jpg")).await;
+        send(&app, get_req("/basemap/imagery/3/7/1.jpg")).await;
     assert_eq!(missing, StatusCode::NOT_FOUND);
     assert_eq!(header_str(&missing_headers, "cache-control"), "no-store");
     assert_eq!(missing_body, b"404 Not Found");
+
+    // Coordinates >= 2^z are rejected locally without contacting USGS upstream.
+    let hits_before_oob = hits.load(Ordering::SeqCst);
+    let (oob, oob_headers, oob_body) = send(&app, get_req("/basemap/imagery/3/99/1.jpg")).await;
+    assert_eq!(oob, StatusCode::NOT_FOUND);
+    assert!(oob_headers.get("cache-control").is_none());
+    assert!(oob_body.is_empty());
+    assert_eq!(hits.load(Ordering::SeqCst), hits_before_oob);
 }
 
 /// Small helper so handlers with different body types return one type.

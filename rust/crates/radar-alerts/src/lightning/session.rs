@@ -25,6 +25,8 @@ pub const PING_INTERVAL: Duration = Duration::from_secs(30);
 pub const PING_TIMEOUT: Duration = Duration::from_secs(30);
 /// Connect and handshake timeout (`open_timeout=10`).
 pub const OPEN_TIMEOUT: Duration = Duration::from_secs(10);
+/// Write timeout for subscribe and keepalive ping frames so a half-open socket never hangs shutdown.
+pub const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Largest accepted message, the `websockets` library default `max_size` (spec section 16.1).
 pub const MAX_MESSAGE_BYTES: usize = 1 << 20;
 /// Subscription frame sent after connecting. Exact bytes of `json.dumps({"a": 111})`.
@@ -74,8 +76,19 @@ pub(crate) async fn run(
     };
 
     let (mut write, mut read) = socket.split();
-    if let Err(err) = write.send(Message::Text(SUBSCRIBE_FRAME.into())).await {
-        return Ok(failed(0, err.into()));
+    let sub_send = tokio::select! {
+        _ = cancel.cancelled() => return Err(LightningError::Cancelled),
+        res = tokio::time::timeout(WRITE_TIMEOUT, write.send(Message::Text(SUBSCRIBE_FRAME.into()))) => res,
+    };
+    match sub_send {
+        Err(_elapsed) => {
+            return Ok(failed(
+                0,
+                anyhow!("subscribe write timeout after {}s", WRITE_TIMEOUT.as_secs()),
+            ));
+        }
+        Ok(Err(err)) => return Ok(failed(0, err.into())),
+        Ok(Ok(())) => {}
     }
 
     let mut keepalive =
@@ -99,9 +112,26 @@ pub(crate) async fn run(
                     error = Some(anyhow!("ping timeout after {}s", PING_TIMEOUT.as_secs()));
                     break;
                 }
-                if let Err(err) = write.send(Message::Ping(Vec::new().into())).await {
-                    error = Some(err.into());
-                    break;
+                let ping_send = tokio::select! {
+                    _ = cancel.cancelled() => {
+                        let _ = tokio::time::timeout(Duration::from_secs(2), write.close()).await;
+                        return Err(LightningError::Cancelled);
+                    }
+                    res = tokio::time::timeout(WRITE_TIMEOUT, write.send(Message::Ping(Vec::new().into()))) => res,
+                };
+                match ping_send {
+                    Err(_elapsed) => {
+                        error = Some(anyhow!(
+                            "ping write timeout after {}s",
+                            WRITE_TIMEOUT.as_secs()
+                        ));
+                        break;
+                    }
+                    Ok(Err(err)) => {
+                        error = Some(err.into());
+                        break;
+                    }
+                    Ok(Ok(())) => {}
                 }
                 awaiting_pong_since.get_or_insert_with(TokioInstant::now);
             }
