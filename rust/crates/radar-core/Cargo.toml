@@ -22,6 +22,7 @@ walkdir.workspace = true
 uuid.workspace = true
 rusqlite.workspace = true
 tokio.workspace = true
+tokio-postgres.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -187,6 +187,18 @@ pub fn read_manifest(state_dir: &Path) -> Result<Manifest, ManifestError> {
 }
 
 fn read_manifest_at(state_dir: &Path, now: DateTime<Utc>) -> Result<Manifest, ManifestError> {
+    if let Some(store) = crate::state_pg::global().filter(|s| s.read_pg()) {
+        let bytes = store
+            .get_blocking(MANIFEST_FILE)
+            .map_err(|e| ManifestError::Io(std::io::Error::other(e.to_string())))?;
+        return match bytes {
+            None => Ok(Manifest::empty(now)),
+            Some((raw, _rev)) => {
+                let value: Value = serde_json::from_slice(&raw).map_err(ManifestError::Parse)?;
+                parse_manifest_value(value, now)
+            }
+        };
+    }
     match fsutil::read_json_opt(&manifest_path(state_dir))? {
         None => Ok(Manifest::empty(now)),
         Some(value) => parse_manifest_value(value, now),
@@ -449,8 +461,42 @@ fn with_locked_manifest<F>(
     mutate: F,
 ) -> Result<Manifest, ManifestError>
 where
-    F: FnOnce(&mut Manifest) -> Result<(), ManifestError>,
+    F: FnOnce(&mut Manifest) -> Result<(), ManifestError> + Send,
 {
+    if let Some(store) = crate::state_pg::global().filter(|s| s.read_pg()) {
+        // Primary Postgres mode (RFC #389 Phase 1): serialize read-modify-write under a Postgres
+        // advisory lock so multi-node workers no longer need a shared `manifest.lock` PVC, while
+        // still best-effort mirroring to STATE_DIR during the rollback window.
+        let (next_bytes, _rev) = store
+            .update_doc_blocking::<anyhow::Error, _>(MANIFEST_FILE, |current| {
+                let mut manifest = match current {
+                    None => Manifest::empty(now),
+                    Some(raw) => {
+                        let value: Value =
+                            serde_json::from_slice(&raw).map_err(ManifestError::Parse)?;
+                        parse_manifest_value(value, now)?
+                    }
+                };
+                mutate(&mut manifest)?;
+                manifest.schema_version = MANIFEST_SCHEMA_VERSION;
+                manifest.updated_at = isoformat_utc(&now);
+                let text = render_manifest(&manifest)?;
+                Ok(text.into_bytes())
+            })
+            .map_err(|e| ManifestError::Io(std::io::Error::other(e.to_string())))?;
+        let value: Value = serde_json::from_slice(&next_bytes).map_err(ManifestError::Parse)?;
+        let out_manifest = parse_manifest_value(value, now)?;
+        if std::fs::create_dir_all(state_dir).is_ok() {
+            let _ = fsutil::atomic_write(
+                &manifest_path(state_dir),
+                &next_bytes,
+                ".manifest.json.",
+                ".tmp",
+            );
+        }
+        return Ok(out_manifest);
+    }
+
     std::fs::create_dir_all(state_dir)?;
     let _lock = FlockGuard::exclusive(&manifest_lock_path(state_dir))?;
     let mut manifest = read_manifest_at(state_dir, now)?;
@@ -464,6 +510,8 @@ where
         ".manifest.json.",
         ".tmp",
     )?;
+    // Shadow dual-write to Postgres when RADAR_STATE_DATABASE_URL is configured.
+    crate::state_pg::mirror_write(MANIFEST_FILE, text.as_bytes());
     Ok(manifest)
 }
 

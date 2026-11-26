@@ -86,6 +86,7 @@ jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 
 # storage
 rusqlite = { version = "0.37", features = ["bundled"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
 
 # temporal
 temporalio-sdk = "1.1"
