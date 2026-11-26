@@ -152,6 +152,9 @@ export class Overlays {
   private data: Record<string, FC> = {};
   private timers = new Map<OverlayId, number>();
   private pulse = 0;
+  private pulseTimer: number | null = null;
+  private pulseRaf: number | null = null;
+  private started = false;
   cells: StormCell[] = [];
   /** Epoch seconds of the scan the tracks were built from. */
   trackSec: number | null = null;
@@ -209,6 +212,7 @@ export class Overlays {
     m.addLayer({ id: "ov-lightning", type: "circle", source: "ov-lightning", layout: { visibility: vis("lightning") }, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 1.8, 9, 4], "circle-color": ageColor as never, "circle-stroke-color": "#111827", "circle-stroke-width": 0.8, "circle-opacity": ["interpolate", ["linear"], ["get", "age_s"], 0, 1, 900, 0.35] } });
     this.installWhiteChristmas();
     this.applyStormFade();
+    this.syncPulse();
   }
 
   private installWhiteChristmas() {
@@ -254,6 +258,7 @@ export class Overlays {
     for (const o of OVERLAYS) this.applyVisibility(o.id);
     this.setWhiteChristmas(on ? null : this.wxmas);
     this.onStorms();
+    this.syncPulse();
     if (!on) this.start(false);
   }
 
@@ -273,12 +278,17 @@ export class Overlays {
     on ? this.enabled.add(id) : this.enabled.delete(id);
     this.applyVisibility(id);
     this.schedule(id);
+    if (id === "lightning") this.syncPulse();
   }
 
   start(first = true) {
     for (const o of OVERLAYS) this.schedule(o.id);
-    if (!first) return;
-    this.animatePulse();
+    if (!first) {
+      this.syncPulse();
+      return;
+    }
+    this.started = true;
+    this.syncPulse();
     window.setInterval(() => this.expireSpc(), 15_000);
   }
 
@@ -310,6 +320,7 @@ export class Overlays {
   private set(id: string, fc: FC) {
     this.data[id] = fc;
     (this.map.getSource(id) as GeoJSONSource | undefined)?.setData(fc);
+    if (id === "ov-lightning") this.syncPulse();
   }
 
   private expireSpc() {
@@ -351,16 +362,46 @@ export class Overlays {
     }
   }
 
-  private animatePulse() {
+  private shouldPulse(): boolean {
+    return (
+      this.started &&
+      !this.replay &&
+      this.enabled.has("lightning") &&
+      (this.data["ov-lightning"]?.features.length ?? 0) > 0
+    );
+  }
+
+  private stopPulse() {
+    if (this.pulseTimer !== null) {
+      window.clearTimeout(this.pulseTimer);
+      this.pulseTimer = null;
+    }
+    if (this.pulseRaf !== null) {
+      cancelAnimationFrame(this.pulseRaf);
+      this.pulseRaf = null;
+    }
+  }
+
+  private syncPulse() {
+    if (!this.shouldPulse()) {
+      this.stopPulse();
+      return;
+    }
+    if (this.pulseTimer !== null || this.pulseRaf !== null) return;
     const tick = () => {
-      if (this.enabled.has("lightning") && this.map.getLayer("ov-lightning-pulse")) {
+      this.pulseRaf = null;
+      if (!this.shouldPulse()) return;
+      if (this.map.getLayer("ov-lightning-pulse")) {
         this.pulse = (this.pulse + 0.035) % 1;
         this.map.setPaintProperty("ov-lightning-pulse", "circle-radius", 4 + this.pulse * 14);
         this.map.setPaintProperty("ov-lightning-pulse", "circle-stroke-opacity", 0.9 * (1 - this.pulse));
       }
-      window.setTimeout(() => requestAnimationFrame(tick), 50);
+      this.pulseTimer = window.setTimeout(() => {
+        this.pulseTimer = null;
+        if (this.shouldPulse()) this.pulseRaf = requestAnimationFrame(tick);
+      }, 50);
     };
-    requestAnimationFrame(tick);
+    this.pulseRaf = requestAnimationFrame(tick);
   }
 }
 
