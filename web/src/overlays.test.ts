@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import type { MapGeoJSONFeature } from "maplibre-gl";
-import { advance, compass, describeFeature, distanceKm, incomingStorm, lightningWithAge, parseStorms, stormGeoJSON, type StormCell } from "./overlays";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Map as MLMap, MapGeoJSONFeature } from "maplibre-gl";
+import { advance, compass, describeFeature, distanceKm, incomingStorm, lightningWithAge, Overlays, parseStorms, stormGeoJSON, type StormCell } from "./overlays";
 
 const cell = (over: Partial<StormCell> = {}): StormCell => ({
   history: [[0, -86.4, 42.96], [300, -86.3, 42.96], [600, -86.2, 42.96]],
@@ -110,5 +110,59 @@ describe("SPC product panels", () => {
     expect(html).toContain("Aviation watch approximation");
     f.properties.expires = "2000-01-01T00:00:00Z";
     expect(describeFeature(f, [])).toBe("");
+  });
+});
+
+describe("Overlays lightning pulse lifecycle", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("does not run the 20 fps pulse loop when lightning is disabled or empty, and stops when turned off", async () => {
+    vi.useFakeTimers();
+    const rafCallbacks: FrameRequestCallback[] = [];
+    const raf = vi.fn((cb: FrameRequestCallback) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    });
+    const caf = vi.fn();
+    vi.stubGlobal("window", globalThis);
+    vi.stubGlobal("requestAnimationFrame", raf);
+    vi.stubGlobal("cancelAnimationFrame", caf);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () =>
+        url === "/api/lightning"
+          ? { type: "FeatureCollection", features: [{ type: "Feature", geometry: { type: "Point", coordinates: [-85, 42] }, properties: { time: Date.now() / 1000 } }] }
+          : { type: "FeatureCollection", features: [] },
+    })));
+
+    const setPaintProperty = vi.fn();
+    const map = {
+      getLayer: vi.fn((id: string) => (id === "ov-lightning-pulse" ? {} : undefined)),
+      getSource: vi.fn(() => ({ setData: vi.fn() })),
+      getStyle: vi.fn(() => ({ layers: [] })),
+      setLayoutProperty: vi.fn(),
+      setPaintProperty,
+    } as unknown as MLMap;
+
+    const overlays = new Overlays(map, new Set());
+    overlays.start(true);
+    expect(raf).not.toHaveBeenCalled();
+
+    overlays.setEnabled("lightning", true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(raf).toHaveBeenCalledTimes(1);
+
+    // Run one pulse frame and verify paint updates.
+    rafCallbacks.shift()!(16);
+    expect(setPaintProperty).toHaveBeenCalledWith("ov-lightning-pulse", "circle-radius", expect.any(Number));
+
+    // Disabling lightning cancels the scheduled timer so no further frames fire.
+    overlays.setEnabled("lightning", false);
+    setPaintProperty.mockClear();
+    vi.advanceTimersByTime(500);
+    expect(setPaintProperty).not.toHaveBeenCalled();
   });
 });
