@@ -79,6 +79,17 @@ pub fn write_storms_json(
     write_storms_json_with_clock(state_dir, grid, timestamp, cfg, now_epoch_seconds())
 }
 
+enum PgStormsErr {
+    Storms(StormsError),
+    Pg(radar_core::state_pg::PgError),
+}
+
+impl From<radar_core::state_pg::PgError> for PgStormsErr {
+    fn from(err: radar_core::state_pg::PgError) -> Self {
+        Self::Pg(err)
+    }
+}
+
 /// Same as [`write_storms_json`] with an explicit wall clock (epoch seconds).
 ///
 /// # Errors
@@ -90,6 +101,40 @@ pub fn write_storms_json_with_clock(
     cfg: &StormConfig,
     wall_now: f64,
 ) -> Result<WriteOutcome, StormsError> {
+    if let Some(pg) = radar_core::state_pg::global().filter(|s| s.read_pg()) {
+        let wrote = pg
+            .update_doc_opt_blocking::<PgStormsErr, _>(STORMS_FILE, |current| {
+                let previous = current.and_then(|bytes| match serde_json::from_slice::<Value>(&bytes) {
+                    Ok(v) => Some(v),
+                    Err(err) => {
+                        tracing::warn!(error = %err, "storms.json in state_pg is not valid JSON; treating as no previous frame");
+                        None
+                    }
+                });
+                if let (Some(cur), Some(stored)) = (
+                    parse_timestamp(timestamp),
+                    stored_timestamp(previous.as_ref()),
+                ) && cur <= stored
+                {
+                    return Ok(None);
+                }
+                let doc = detect_storms_with_clock(grid, timestamp, previous.as_ref(), cfg, wall_now);
+                let mut bytes = serde_json::to_vec(&doc)
+                    .map_err(|e| PgStormsErr::Storms(StormsError::from(e)))?;
+                bytes.push(b'\n');
+                Ok(Some(bytes))
+            })
+            .map_err(|err| match err {
+                PgStormsErr::Storms(s) => s,
+                PgStormsErr::Pg(e) => StormsError::Io(io::Error::other(e)),
+            })?;
+        return Ok(if wrote.is_some() {
+            WriteOutcome::Written
+        } else {
+            WriteOutcome::SkippedStale
+        });
+    }
+
     fs::create_dir_all(state_dir)?;
     let _lock = LockGuard::acquire(&state_dir.join(STORMS_LOCK_FILE))?;
     let path = state_dir.join(STORMS_FILE);
@@ -107,21 +152,22 @@ pub fn write_storms_json_with_clock(
     let mut bytes = serde_json::to_vec(&doc)?;
     bytes.push(b'\n');
     atomic_replace(state_dir, &path, ".storms.", &bytes)?;
+    radar_core::state_pg::mirror_write(STORMS_FILE, &bytes);
     Ok(WriteOutcome::Written)
 }
 
 /// Read the previous payload: `None` for missing, unreadable or invalid JSON.
 #[must_use]
 pub fn read_previous(path: &Path) -> Option<Value> {
-    match fs::read(path) {
-        Ok(bytes) => match serde_json::from_slice::<Value>(&bytes) {
+    match radar_core::state_pg::read_doc_or_disk(path, Some(STORMS_FILE)) {
+        Ok(Some(bytes)) => match serde_json::from_slice::<Value>(&bytes) {
             Ok(value) => Some(value),
             Err(err) => {
                 tracing::warn!(path = %path.display(), error = %err, "storms.json is not valid JSON; treating as no previous frame");
                 None
             }
         },
-        Err(err) if err.kind() == io::ErrorKind::NotFound => None,
+        Ok(None) => None,
         Err(err) => {
             tracing::warn!(path = %path.display(), error = %err, "storms.json unreadable; treating as no previous frame");
             None

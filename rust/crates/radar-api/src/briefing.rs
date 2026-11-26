@@ -526,9 +526,10 @@ async fn gather(state: &AppState, lat: f64, lon: f64) -> (Value, Value, Value, V
     let storms = async {
         let path = state.config.state_dir.join("storms.json");
         tokio::task::spawn_blocking(move || {
-            std::fs::read_to_string(path)
+            radar_core::state_pg::read_doc_or_disk(&path, Some("storms.json"))
                 .ok()
-                .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+                .flatten()
+                .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
                 .unwrap_or_else(|| json!({}))
         })
         .await

@@ -67,21 +67,31 @@ pub struct Skill {
     pub value: Value,
 }
 
-/// Identity of the skill log file. The writer replaces it with tmp + rename, which changes it.
+/// Identity of the skill log (file metadata on disk, or Postgres revision when `RADAR_STATE_READ_PG=1`).
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct LogStamp {
-    len: u64,
-    modified: Option<SystemTime>,
-    ino: u64,
+enum LogStamp {
+    File {
+        len: u64,
+        modified: Option<SystemTime>,
+        ino: u64,
+    },
+    Pg(i64),
 }
 
 fn log_stamp(path: &Path) -> Option<LogStamp> {
+    if let Some(pg) = radar_core::state_pg::global().filter(|s| s.read_pg()) {
+        return pg
+            .get_revision_blocking(nowcast_skill::SKILL_FILE)
+            .ok()
+            .flatten()
+            .map(LogStamp::Pg);
+    }
     let meta = std::fs::metadata(path).ok()?;
     #[cfg(unix)]
     let ino = std::os::unix::fs::MetadataExt::ino(&meta);
     #[cfg(not(unix))]
     let ino = 0;
-    Some(LogStamp {
+    Some(LogStamp::File {
         len: meta.len(),
         modified: meta.modified().ok(),
         ino,
@@ -160,8 +170,13 @@ fn lock<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 /// Read `STATE_DIR/nowcast-status.json` if it parses to an object.
 fn read_status(state: &AppState) -> Option<Map<String, Value>> {
-    let text = std::fs::read_to_string(state.state_file("nowcast-status.json")).ok()?;
-    match serde_json::from_str::<Value>(&text).ok()? {
+    let bytes = radar_core::state_pg::read_doc_or_disk(
+        &state.state_file("nowcast-status.json"),
+        Some("nowcast-status.json"),
+    )
+    .ok()
+    .flatten()?;
+    match serde_json::from_slice::<Value>(&bytes).ok()? {
         Value::Object(map) => Some(map),
         _ => None,
     }

@@ -363,7 +363,9 @@ pub async fn tropical_fetch_and_publish(
     cfg: &TropicalConfig,
     http: &reqwest::Client,
 ) -> Result<TropicalResult, TropicalError> {
-    fs::create_dir_all(&cfg.state_dir)?;
+    if !radar_core::state_pg::read_enabled() {
+        fs::create_dir_all(&cfg.state_dir)?;
+    }
     let feed = get_json(http, &cfg.feed_url, cfg.feed_timeout).await?;
     let bins = gis_bins(&feed);
     let gis = fetch_gis(http, cfg, &bins).await;
@@ -372,9 +374,13 @@ pub async fn tropical_fetch_and_publish(
     let bytes = serde_json::to_vec(&built.document)?;
     let out = cfg.out_path();
     let dir = cfg.state_dir.clone();
-    tokio::task::spawn_blocking(move || write_public_atomic(&dir, &out, &bytes))
-        .await
-        .map_err(|e| TropicalError::Io(std::io::Error::other(e)))??;
+    tokio::task::spawn_blocking(move || {
+        radar_core::state_pg::write_or_mirror(Some(OUT_FILE), &bytes, || {
+            write_public_atomic(&dir, &out, &bytes)
+        })
+    })
+    .await
+    .map_err(|e| TropicalError::Io(std::io::Error::other(e)))??;
     info!(
         storm_count = built.storm_count,
         features = built.feature_count,

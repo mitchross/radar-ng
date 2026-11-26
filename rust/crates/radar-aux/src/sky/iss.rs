@@ -97,12 +97,17 @@ fn split_csv(line: &str) -> Vec<String> {
 
 /// Read `STATE_DIR/iss.json`, `None` when missing or unreadable.
 pub fn read_iss(state_dir: &Path) -> Option<IssFile> {
-    let bytes = fs::read(state_dir.join(ISS_FILE)).ok()?;
+    let bytes = radar_core::state_pg::read_doc_or_disk(&state_dir.join(ISS_FILE), Some(ISS_FILE))
+        .ok()
+        .flatten()?;
     serde_json::from_slice(&bytes).ok()
 }
 
 fn last_attempt_slot(state_dir: &Path) -> Option<i64> {
-    let bytes = fs::read(state_dir.join(ATTEMPT_FILE)).ok()?;
+    let bytes =
+        radar_core::state_pg::read_doc_or_disk(&state_dir.join(ATTEMPT_FILE), Some(ATTEMPT_FILE))
+            .ok()
+            .flatten()?;
     serde_json::from_slice::<Attempt>(&bytes)
         .ok()
         .map(|a| a.slot)
@@ -115,7 +120,9 @@ fn record(state_dir: &Path, slot: i64, now: DateTime<Utc>, outcome: &str) -> std
         outcome: outcome.to_owned(),
     };
     let bytes = serde_json::to_vec(&attempt).map_err(std::io::Error::other)?;
-    write_public_atomic(state_dir, &state_dir.join(ATTEMPT_FILE), &bytes)
+    radar_core::state_pg::write_or_mirror(Some(ATTEMPT_FILE), &bytes, || {
+        write_public_atomic(state_dir, &state_dir.join(ATTEMPT_FILE), &bytes)
+    })
 }
 
 fn result(outcome: &str, http_status: Option<i64>, epoch: Option<String>) -> SkyResult {
@@ -134,7 +141,9 @@ pub async fn ingest(
     state_dir: &Path,
     now: DateTime<Utc>,
 ) -> Result<SkyResult, SkyError> {
-    fs::create_dir_all(state_dir)?;
+    if !radar_core::state_pg::read_enabled() {
+        fs::create_dir_all(state_dir)?;
+    }
     let slot = slot_of(now);
     if last_attempt_slot(state_dir) == Some(slot) {
         return Ok(result("skipped-slot", None, None));
@@ -170,7 +179,9 @@ pub async fn ingest(
         elements,
     };
     let bytes = serde_json::to_vec(&file).map_err(std::io::Error::other)?;
-    write_public_atomic(state_dir, &state_dir.join(ISS_FILE), &bytes)?;
+    radar_core::state_pg::write_or_mirror(Some(ISS_FILE), &bytes, || {
+        write_public_atomic(state_dir, &state_dir.join(ISS_FILE), &bytes)
+    })?;
     record(state_dir, slot, now, "published")?;
     Ok(result("published", Some(200), Some(epoch)))
 }

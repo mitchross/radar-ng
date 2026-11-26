@@ -38,9 +38,11 @@ pub fn request_base(headers: &HeaderMap) -> String {
 }
 
 /// Read a JSON file under the state directory: `None` on any error.
-fn read_json_file(path: &std::path::Path) -> Option<Value> {
-    let text = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&text).ok()
+fn read_json_file(path: &std::path::Path, key: &str) -> Option<Value> {
+    let bytes = radar_core::state_pg::read_doc_or_disk(path, Some(key))
+        .ok()
+        .flatten()?;
+    serde_json::from_slice(&bytes).ok()
 }
 
 /// The plan body, shared by the route and tests.
@@ -61,7 +63,7 @@ pub async fn plan_for(
 ) -> Result<Value, Response> {
     let state_dir = state.config.state_dir.clone();
     let storms = tokio::task::spawn_blocking(move || {
-        read_json_file(&state_dir.join("storms.json"))
+        read_json_file(&state_dir.join("storms.json"), "storms.json")
             .unwrap_or_else(|| json!({ "type": "FeatureCollection", "features": [] }))
     })
     .await
