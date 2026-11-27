@@ -86,15 +86,31 @@ pub enum Sample {
 
 /// Read and parse a metadata file.
 pub fn read_meta(meta_path: &Path) -> Result<GridMeta, GridReadError> {
-    let text = match fs::read_to_string(meta_path) {
-        Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Err(GridReadError::MetaMissing(meta_path.to_path_buf()));
+    let text = if let Some(s3) = crate::object_store::global().filter(|s| s.read_grids_s3()) {
+        let key = s3
+            .grid_key_for_path(meta_path)
+            .ok_or_else(|| GridReadError::MetaMissing(meta_path.to_path_buf()))?;
+        let bytes = s3
+            .get_blocking(&key)
+            .map_err(|e| GridReadError::Io(std::io::Error::other(e)))?
+            .ok_or_else(|| GridReadError::MetaMissing(meta_path.to_path_buf()))?;
+        String::from_utf8(bytes).map_err(|e| GridReadError::MetaInvalid(e.to_string()))?
+    } else {
+        match fs::read_to_string(meta_path) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err(GridReadError::MetaMissing(meta_path.to_path_buf()));
+            }
+            Err(e) => return Err(GridReadError::Io(e)),
         }
-        Err(e) => return Err(GridReadError::Io(e)),
     };
+    parse_meta_str(&text, meta_path)
+}
+
+/// Parse metadata JSON text (using `meta_path` only for legacy `.bin` fallback naming).
+pub fn parse_meta_str(text: &str, meta_path: &Path) -> Result<GridMeta, GridReadError> {
     let doc: Value =
-        serde_json::from_str(&text).map_err(|e| GridReadError::MetaInvalid(e.to_string()))?;
+        serde_json::from_str(text).map_err(|e| GridReadError::MetaInvalid(e.to_string()))?;
     let Value::Object(obj) = doc else {
         return Err(GridReadError::MetaInvalid(
             "metadata is not an object".into(),
@@ -146,6 +162,122 @@ pub fn read_meta(meta_path: &Path) -> Result<GridMeta, GridReadError> {
     })
 }
 
+/// Read the raw bytes of a grid file (`.meta.json` or `.bin`) from S3 when `RADAR_GRIDS_READ_S3=1`,
+/// else from disk.
+pub fn read_grid_bytes(path: &Path) -> std::io::Result<Vec<u8>> {
+    if let Some(s3) = crate::object_store::global().filter(|s| s.read_grids_s3()) {
+        let key = s3
+            .grid_key_for_path(path)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "outside GRID_DIR"))?;
+        return s3
+            .get_blocking(&key)
+            .map_err(std::io::Error::other)?
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, key));
+    }
+    fs::read(path)
+}
+
+/// Read an exact byte range `[offset, offset + len)` from a grid `.bin` (S3 HTTP Range when
+/// `RADAR_GRIDS_READ_S3=1`, else `pread`).
+pub fn read_grid_range(bin_path: &Path, offset: u64, len: usize) -> std::io::Result<Vec<u8>> {
+    if let Some(s3) = crate::object_store::global().filter(|s| s.read_grids_s3()) {
+        let key = s3
+            .grid_key_for_path(bin_path)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "outside GRID_DIR"))?;
+        return s3
+            .get_range_blocking(&key, offset, len)
+            .map_err(std::io::Error::other)?
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, key));
+    }
+    use std::os::unix::fs::FileExt;
+    let file = fs::File::open(bin_path)?;
+    let mut buf = vec![0u8; len];
+    file.read_exact_at(&mut buf, offset)?;
+    Ok(buf)
+}
+
+/// True when a grid file (`.meta.json` or `.bin`) exists (S3 `HEAD` when `RADAR_GRIDS_READ_S3=1`,
+/// else filesystem check).
+#[must_use]
+pub fn grid_file_exists(path: &Path) -> bool {
+    if let Some(s3) = crate::object_store::global().filter(|s| s.read_grids_s3()) {
+        let Some(key) = s3.grid_key_for_path(path) else {
+            return false;
+        };
+        return s3.head_blocking(&key).ok().flatten().is_some();
+    }
+    path.exists()
+}
+
+/// Sorted direct `*.meta.json` file names inside `dir` (S3 `ListObjectsV2` when
+/// `RADAR_GRIDS_READ_S3=1`, else `fs::read_dir`).
+#[must_use]
+pub fn list_meta_names(dir: &Path) -> Vec<String> {
+    if let Some(s3) = crate::object_store::global().filter(|s| s.read_grids_s3()) {
+        let Some(key_prefix) = s3.grid_key_for_path(dir) else {
+            return Vec::new();
+        };
+        let prefix = format!("{}/", key_prefix.trim_end_matches('/'));
+        let Ok(objs) = s3.list_prefix_blocking(&prefix) else {
+            return Vec::new();
+        };
+        let mut names: Vec<String> = objs
+            .into_iter()
+            .filter_map(|o| {
+                let name = o.key.strip_prefix(&prefix)?;
+                (!name.contains('/') && name.ends_with(".meta.json")).then(|| name.to_string())
+            })
+            .collect();
+        names.sort();
+        return names;
+    }
+    let Ok(read) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = read
+        .flatten()
+        .filter_map(|e| e.file_name().to_str().map(str::to_string))
+        .filter(|n| n.ends_with(".meta.json"))
+        .collect();
+    names.sort();
+    names
+}
+
+/// Sorted direct child directory names under `dir` (S3 prefix segments when `RADAR_GRIDS_READ_S3=1`,
+/// else `fs::read_dir` filtered to directories).
+#[must_use]
+pub fn list_child_dirs(dir: &Path) -> Vec<String> {
+    if let Some(s3) = crate::object_store::global().filter(|s| s.read_grids_s3()) {
+        let Some(key_prefix) = s3.grid_key_for_path(dir) else {
+            return Vec::new();
+        };
+        let prefix = format!("{}/", key_prefix.trim_end_matches('/'));
+        let Ok(objs) = s3.list_prefix_blocking(&prefix) else {
+            return Vec::new();
+        };
+        let mut names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for o in objs {
+            if let Some(rest) = o.key.strip_prefix(&prefix)
+                && let Some((child, _)) = rest.split_once('/')
+                && !child.is_empty()
+            {
+                names.insert(child.to_string());
+            }
+        }
+        return names.into_iter().collect();
+    }
+    let Ok(read) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = read
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().to_str().map(str::to_string))
+        .collect();
+    names.sort();
+    names
+}
+
 /// Read the metadata and its data file.
 pub fn read_grid(meta_path: &Path) -> Result<GridDump, GridReadError> {
     let meta = read_meta(meta_path)?;
@@ -153,7 +285,7 @@ pub fn read_grid(meta_path: &Path) -> Result<GridDump, GridReadError> {
         .parent()
         .unwrap_or(Path::new("."))
         .join(&meta.data_file);
-    let bytes = match fs::read(&bin_path) {
+    let bytes = match read_grid_bytes(&bin_path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Err(GridReadError::DataMissing(bin_path));
@@ -267,10 +399,10 @@ pub fn nearest_grid_meta(
     t: chrono::DateTime<chrono::Utc>,
     max: chrono::Duration,
 ) -> Option<PathBuf> {
+    let layer_dir = grid_dir.join(layer);
     let mut best: Option<(chrono::Duration, PathBuf)> = None;
-    for entry in fs::read_dir(grid_dir.join(layer)).ok()?.flatten() {
-        let name = entry.file_name();
-        let Some(stamp) = name.to_str().and_then(|n| n.strip_suffix(".meta.json")) else {
+    for name in list_meta_names(&layer_dir) {
+        let Some(stamp) = name.strip_suffix(".meta.json") else {
             continue;
         };
         let Ok(valid) = chrono::DateTime::parse_from_rfc3339(stamp) else {
@@ -278,7 +410,7 @@ pub fn nearest_grid_meta(
         };
         let gap = (valid.to_utc() - t).abs();
         if gap <= max && best.as_ref().is_none_or(|(g, _)| gap < *g) {
-            best = Some((gap, entry.path()));
+            best = Some((gap, layer_dir.join(name)));
         }
     }
     best.map(|(_, p)| p)

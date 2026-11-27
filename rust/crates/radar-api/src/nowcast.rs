@@ -459,10 +459,15 @@ pub fn point_class(
     (total > 0).then_some(CLASS_NAMES[class])
 }
 
+enum DumpBacking {
+    File(File),
+    S3(std::path::PathBuf),
+}
+
 /// A grid dump read a few cells at a time.
 struct Dump {
     meta: GridMeta,
-    file: File,
+    backing: DumpBacking,
 }
 
 impl Dump {
@@ -472,17 +477,31 @@ impl Dump {
             return None;
         }
         let bin = meta_path.parent()?.join(&meta.data_file);
-        Some(Self {
-            meta,
-            file: File::open(bin).ok()?,
-        })
+        let backing = if radar_core::object_store::read_grids_s3() {
+            if !radar_core::grid_read::grid_file_exists(&bin) {
+                return None;
+            }
+            DumpBacking::S3(bin)
+        } else {
+            DumpBacking::File(File::open(bin).ok()?)
+        };
+        Some(Self { meta, backing })
     }
 
     /// Cells `c0..=c1` of row `r`.
     fn row_span(&self, r: usize, c0: usize, c1: usize) -> Option<Vec<f32>> {
-        let mut buf = vec![0u8; (c1 + 1 - c0) * 4];
+        let len = (c1 + 1 - c0) * 4;
         let offset = ((r * self.meta.width + c0) * 4) as u64;
-        self.file.read_exact_at(&mut buf, offset).ok()?;
+        let buf = match &self.backing {
+            DumpBacking::File(file) => {
+                let mut buf = vec![0u8; len];
+                file.read_exact_at(&mut buf, offset).ok()?;
+                buf
+            }
+            DumpBacking::S3(path) => {
+                radar_core::grid_read::read_grid_range(path, offset, len).ok()?
+            }
+        };
         Some(
             buf.as_chunks::<4>()
                 .0

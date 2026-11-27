@@ -45,19 +45,9 @@ fn sanitize(raw: &str) -> String {
 
 /// Stems of `*.meta.json` in `dir`, with `.meta` removed.
 fn meta_stems(dir: &Path) -> BTreeSet<String> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return BTreeSet::new();
-    };
-    entries
-        .filter_map(Result::ok)
-        .filter_map(|e| {
-            let name = e.file_name().to_string_lossy().into_owned();
-            let stem = name.strip_suffix(".json")?;
-            if !stem.ends_with(".meta") {
-                return None;
-            }
-            Some(stem.replace(".meta", ""))
-        })
+    radar_core::grid_read::list_meta_names(dir)
+        .into_iter()
+        .filter_map(|name| name.strip_suffix(".meta.json").map(str::to_string))
         .collect()
 }
 
@@ -83,8 +73,8 @@ fn bin_path_for(meta_path: &Path, meta: &Value) -> Result<PathBuf, ()> {
 }
 
 fn read_meta(path: &Path) -> Result<Value, ()> {
-    let text = std::fs::read_to_string(path).map_err(|_| ())?;
-    serde_json::from_str(&text).map_err(|_| ())
+    let bytes = radar_core::grid_read::read_grid_bytes(path).map_err(|_| ())?;
+    serde_json::from_slice(&bytes).map_err(|_| ())
 }
 
 fn float_of(meta: &Value, key: &str) -> Result<f64, ()> {
@@ -114,10 +104,14 @@ fn compute(u_meta_path: &Path, v_meta_path: &Path, ts: &str) -> Result<Value, &'
     if v_h != Some(h as i64) || v_w != Some(w as i64) {
         return Err("grid_read_failed"); // D18: the v grid must match the u grid.
     }
-    let u_bin = std::fs::read(bin_path_for(u_meta_path, &u_m).map_err(|()| "grid_read_failed")?)
-        .map_err(|_| "grid_read_failed")?;
-    let v_bin = std::fs::read(bin_path_for(v_meta_path, &v_m).map_err(|()| "grid_read_failed")?)
-        .map_err(|_| "grid_read_failed")?;
+    let u_bin = radar_core::grid_read::read_grid_bytes(
+        &bin_path_for(u_meta_path, &u_m).map_err(|()| "grid_read_failed")?,
+    )
+    .map_err(|_| "grid_read_failed")?;
+    let v_bin = radar_core::grid_read::read_grid_bytes(
+        &bin_path_for(v_meta_path, &v_m).map_err(|()| "grid_read_failed")?,
+    )
+    .map_err(|_| "grid_read_failed")?;
     let need = h * w * 4;
     if u_bin.len() < need || v_bin.len() < need {
         return Err("grid_read_failed");
@@ -198,8 +192,9 @@ pub fn wind_field(state: &AppState, raw_timestamp: &str) -> WindOutcome {
     let u_dir = grid.join("wind_u");
     let v_dir = grid.join("wind_v");
     let mut ts = sanitize(raw_timestamp);
-    let pair_present = u_dir.join(format!("{ts}.meta.json")).exists()
-        && v_dir.join(format!("{ts}.meta.json")).exists();
+    let pair_present =
+        radar_core::grid_read::grid_file_exists(&u_dir.join(format!("{ts}.meta.json")))
+            && radar_core::grid_read::grid_file_exists(&v_dir.join(format!("{ts}.meta.json")));
     if ts.eq_ignore_ascii_case("latest") || !pair_present {
         // One directory listing per TTL, shared by concurrent requests. "No grids" is not cached.
         let newest = state.wind_latest.try_get_with((), || {

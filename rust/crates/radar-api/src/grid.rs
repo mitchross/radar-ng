@@ -107,7 +107,7 @@ pub fn sample_point(
         .parent()
         .unwrap_or(Path::new("."))
         .join(&meta.data_file);
-    if !bin_path.exists() {
+    if !radar_core::grid_read::grid_file_exists(&bin_path) {
         return json!({ "ok": false, "reason": "meta_invalid" });
     }
     // Degenerate grids (fewer than two rows or columns, or zero extent) are invalid metadata. This
@@ -153,17 +153,34 @@ fn bilinear(bin_path: &Path, meta: &GridMeta, lat: f64, lon: f64) -> Result<Opti
     let dx = fx - x0 as f64;
     let dy = fy - y0 as f64;
 
-    let file = File::open(bin_path).map_err(|_| ())?;
-    let read_cell = |ix: usize, iy: usize| -> Result<f64, ()> {
-        let mut buf = [0u8; 4];
-        let offset = ((iy * w + ix) * 4) as u64;
-        file.read_exact_at(&mut buf, offset).map_err(|_| ())?;
-        Ok(f64::from(f32::from_le_bytes(buf)))
+    let (v00, v10, v01, v11) = if radar_core::object_store::read_grids_s3() {
+        // Two 8-byte HTTP Range GETs cover both adjacent pairs (x0, x0+1) on rows y0 and y0+1.
+        let r0 = radar_core::grid_read::read_grid_range(bin_path, ((y0 * w + x0) * 4) as u64, 8)
+            .map_err(|_| ())?;
+        let r1 =
+            radar_core::grid_read::read_grid_range(bin_path, (((y0 + 1) * w + x0) * 4) as u64, 8)
+                .map_err(|_| ())?;
+        (
+            f64::from(f32::from_le_bytes(r0[0..4].try_into().map_err(|_| ())?)),
+            f64::from(f32::from_le_bytes(r0[4..8].try_into().map_err(|_| ())?)),
+            f64::from(f32::from_le_bytes(r1[0..4].try_into().map_err(|_| ())?)),
+            f64::from(f32::from_le_bytes(r1[4..8].try_into().map_err(|_| ())?)),
+        )
+    } else {
+        let file = File::open(bin_path).map_err(|_| ())?;
+        let read_cell = |ix: usize, iy: usize| -> Result<f64, ()> {
+            let mut buf = [0u8; 4];
+            let offset = ((iy * w + ix) * 4) as u64;
+            file.read_exact_at(&mut buf, offset).map_err(|_| ())?;
+            Ok(f64::from(f32::from_le_bytes(buf)))
+        };
+        (
+            read_cell(x0, y0)?,
+            read_cell(x0 + 1, y0)?,
+            read_cell(x0, y0 + 1)?,
+            read_cell(x0 + 1, y0 + 1)?,
+        )
     };
-    let v00 = read_cell(x0, y0)?;
-    let v10 = read_cell(x0 + 1, y0)?;
-    let v01 = read_cell(x0, y0 + 1)?;
-    let v11 = read_cell(x0 + 1, y0 + 1)?;
 
     let fill = meta.fill;
     let is_fill = |v: f64| v.is_nan() || (v - fill).abs() < 1e-6;
@@ -273,10 +290,11 @@ fn add_ice_class(body: &mut Value, dir: &Path, layer: &str, timestamp: &str, lat
         .parent()
         .unwrap_or(Path::new("."))
         .join(&meta.data_file);
-    let mut buf = [0u8; 4];
-    let read = File::open(&bin)
-        .and_then(|f| f.read_exact_at(&mut buf, ((row * meta.width + col) * 4) as u64));
-    if read.is_ok() && is_ice_category(f32::from_le_bytes(buf)) {
+    let offset = ((row * meta.width + col) * 4) as u64;
+    if let Ok(bytes) = radar_core::grid_read::read_grid_range(&bin, offset, 4)
+        && let Ok(buf) = <[u8; 4]>::try_from(bytes.as_slice())
+        && is_ice_category(f32::from_le_bytes(buf))
+    {
         body["precip_class"] = json!("ice");
     }
 }

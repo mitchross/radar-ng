@@ -199,6 +199,14 @@ fn axis_bounds(lats: &[f64], lons: &[f64]) -> GridBounds {
 }
 
 fn sorted_children(dir: &Path, dirs_only: bool) -> Vec<PathBuf> {
+    if radar_core::object_store::read_grids_s3() {
+        let names = if dirs_only {
+            radar_core::grid_read::list_child_dirs(dir)
+        } else {
+            radar_core::grid_read::list_meta_names(dir)
+        };
+        return names.into_iter().map(|n| dir.join(n)).collect();
+    }
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new();
     };

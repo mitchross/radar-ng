@@ -28,6 +28,7 @@ pub mod ice;
 pub mod logging;
 pub mod manifest;
 pub mod nowcast_skill;
+pub mod object_store;
 pub mod processed_set;
 pub mod push_tokens;
 pub mod pycompat;
