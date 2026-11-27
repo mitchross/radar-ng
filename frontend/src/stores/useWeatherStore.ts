@@ -85,6 +85,8 @@ interface WeatherState {
   satelliteVisible: boolean;
   /** Optional local-LLM briefing card; the card hides itself whenever the model is unavailable. */
   aiNarration: boolean;
+  /** Optional forecast extras (Nice Day/Bonfire, holiday countdown, White Christmas, Sky Tonight); off by default. */
+  showWeatherExtras: boolean;
   /** "Rain starts in N min" local notifications planned on this phone from the radar nowcast. */
   rainAlertsEnabled: boolean;
   stormNoticeEnabled: boolean;
@@ -121,6 +123,7 @@ interface WeatherState {
   setSpcVisible: (kind: "watches" | "discussions", on: boolean) => void;
   setSatelliteVisible: (on: boolean) => void;
   setAiNarration: (on: boolean) => void;
+  setShowWeatherExtras: (on: boolean) => void;
   setRainAlertsEnabled: (on: boolean) => void;
   setStormNoticeEnabled: (on: boolean) => void;
   setRainAlertLeadMinutes: (minutes: RainAlertLeadMinutes) => void;
@@ -220,6 +223,7 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   extrasVisible: getString("extrasVisible", "0") === "1",
   satelliteVisible: getString("satelliteVisible", "0") === "1",
   aiNarration: getString("aiNarration", "1") === "1",
+  showWeatherExtras: getString("showWeatherExtras", "0") === "1",
   rainAlertsEnabled: getString("rainAlertsEnabled", "0") === "1",
   stormNoticeEnabled: getString("stormNoticeEnabled", "0") === "1",
   rainAlertLeadMinutes: parseRainAlertLead(getString("rainAlertLeadMinutes", ""), DEFAULT_RAIN_ALERT_LEAD),
@@ -398,6 +402,10 @@ export const useWeatherStore = create<WeatherState>()((set, get) => ({
   setAiNarration: (on) => {
     setString("aiNarration", on ? "1" : "0");
     set({ aiNarration: on });
+  },
+  setShowWeatherExtras: (on) => {
+    setString("showWeatherExtras", on ? "1" : "0");
+    set({ showWeatherExtras: on });
   },
   setRainAlertsEnabled: (on) => {
     setString("rainAlertsEnabled", on ? "1" : "0");
