@@ -3,7 +3,6 @@
 //! Metadata and data come from `radar_core::grid_read`. This module adds the radar-ng rules on top:
 //! fill normalization, the linspace axes, and the input-layer fallback.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -81,7 +80,12 @@ pub fn load_grid(meta_path: &Path) -> Option<LoadedGrid> {
 /// layer directory is absent and the layer is not already `radar` (spec 2.3).
 pub fn input_layer_dir(cfg: &NowcastConfig) -> PathBuf {
     let dir = cfg.paths.grid_dir.join(&cfg.input_layer);
-    if !dir.exists() && cfg.input_layer != "radar" {
+    let missing = if radar_core::object_store::read_grids_s3() {
+        grid_read::list_meta_names(&dir).is_empty()
+    } else {
+        !dir.exists()
+    };
+    if missing && cfg.input_layer != "radar" {
         return cfg.paths.grid_dir.join("radar");
     }
     dir
@@ -89,16 +93,7 @@ pub fn input_layer_dir(cfg: &NowcastConfig) -> PathBuf {
 
 /// All `*.meta.json` in `dir`, sorted by file name, as candidates.
 pub fn list_metas(dir: &Path) -> Vec<Candidate<PathBuf>> {
-    let Ok(read) = fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut names: Vec<String> = read
-        .flatten()
-        .filter_map(|e| e.file_name().to_str().map(str::to_string))
-        .filter(|n| n.ends_with(".meta.json"))
-        .collect();
-    names.sort();
-    names
+    grid_read::list_meta_names(dir)
         .into_iter()
         .map(|name| {
             let stem = name.trim_end_matches(".meta.json").to_string();

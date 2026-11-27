@@ -320,6 +320,30 @@ pub fn write_grid_with(
         bytes.extend_from_slice(&v.to_le_bytes());
     }
 
+    let rel_parent = relative
+        .parent()
+        .and_then(|p| p.to_str())
+        .filter(|p| !p.is_empty());
+    let (bin_s3_key, meta_s3_key) = match rel_parent {
+        Some(sub) => (
+            format!("grids/{layer}/{sub}/{bin_name}"),
+            format!("grids/{layer}/{sub}/{meta_name}"),
+        ),
+        None => (
+            format!("grids/{layer}/{bin_name}"),
+            format!("grids/{layer}/{meta_name}"),
+        ),
+    };
+
+    if let Some(s3) = crate::object_store::global().filter(|s| s.read_grids_s3()) {
+        // Upload immutable .bin first, then commit pointer .meta.json (same ordering as disk).
+        s3.put_blocking(&bin_s3_key, &bytes, "application/octet-stream")
+            .map_err(io::Error::other)?;
+        s3.put_blocking(&meta_s3_key, meta_text.as_bytes(), "application/json")
+            .map_err(io::Error::other)?;
+        return Ok(Some(bin_path));
+    }
+
     let _lock = layer_lock(&layer_dir, dir_sync)?;
     fsutil::durable_mkdir(&parent, dir_sync)?;
     {
@@ -336,6 +360,9 @@ pub fn write_grid_with(
         ".tmp",
         dir_sync,
     )?;
+    // Shadow dual-write to S3 when configured with RADAR_GRIDS_READ_S3=0.
+    crate::object_store::mirror_put(&bin_s3_key, &bytes, "application/octet-stream");
+    crate::object_store::mirror_put(&meta_s3_key, meta_text.as_bytes(), "application/json");
     Ok(Some(bin_path))
 }
 
@@ -354,6 +381,42 @@ pub fn finalize_grid_generation(
     }
     let layer_dir = cfg.layer_dir(layer);
     let generation_dir = layer_dir.join(GENERATION_ROOT).join(&relative);
+    let gen_prefix = format!("grids/{layer}/{GENERATION_ROOT}/{generation}/");
+    let marker_key = format!("{gen_prefix}{GENERATION_COMPLETE_FILE}");
+
+    if let Some(s3) = crate::object_store::global().filter(|s| s.read_grids_s3()) {
+        let objs = s3
+            .list_prefix_blocking(&gen_prefix)
+            .map_err(io::Error::other)?;
+        let mut meta_names: Vec<String> = objs
+            .into_iter()
+            .filter_map(|o| {
+                let name = o.key.strip_prefix(&gen_prefix)?;
+                (!name.contains('/') && name.ends_with(".meta.json")).then(|| name.to_string())
+            })
+            .collect();
+        meta_names.sort();
+        if meta_names.is_empty() {
+            return Err(GridError::InvalidInput(format!(
+                "grid generation has no metadata in S3: {gen_prefix}"
+            )));
+        }
+        let marker = Json::Object(vec![
+            ("schema_version".into(), Json::Int(1)),
+            ("generation".into(), Json::Str(generation.to_string())),
+            ("grid_count".into(), Json::Int(meta_names.len() as i64)),
+            (
+                "grid_metadata".into(),
+                Json::Array(meta_names.iter().map(|n| Json::Str(n.clone())).collect()),
+            ),
+        ]);
+        let mut text = pycompat::dumps(&marker, Style::Compact, true);
+        text.push('\n');
+        s3.put_blocking(&marker_key, text.as_bytes(), "application/json")
+            .map_err(io::Error::other)?;
+        return Ok(generation_dir);
+    }
+
     let _lock = layer_lock(&layer_dir, &fsutil::fsync_dir)?;
     if !generation_dir.is_dir() {
         return Err(GridError::Io(io::Error::new(
@@ -385,6 +448,7 @@ pub fn finalize_grid_generation(
         &format!(".{GENERATION_COMPLETE_FILE}."),
         ".tmp",
     )?;
+    crate::object_store::mirror_put(&marker_key, text.as_bytes(), "application/json");
     Ok(generation_dir)
 }
 
@@ -427,6 +491,9 @@ pub fn prune_grid_generations(
             )));
         }
     }
+    if let Some(s3) = crate::object_store::global().filter(|s| s.read_grids_s3()) {
+        return prune_grid_generations_s3(s3, layer, keep, active_generation);
+    }
     let layer_dir = cfg.layer_dir(layer);
     let root = layer_dir.join(GENERATION_ROOT);
     if !root.is_dir() {
@@ -463,6 +530,59 @@ pub fn prune_grid_generations(
     if removed > 0 {
         fsutil::fsync_dir(&root)?;
     }
+    if let Some(s3) = crate::object_store::global()
+        && let Err(err) = prune_grid_generations_s3(s3, layer, keep, active_generation)
+    {
+        tracing::warn!(layer, err = %err, "s3_shadow_prune_generations_failed");
+    }
+    Ok(removed)
+}
+
+fn prune_grid_generations_s3(
+    s3: &crate::object_store::S3Store,
+    layer: &str,
+    keep: u64,
+    active_generation: Option<&str>,
+) -> Result<usize, GridError> {
+    let prefix = format!("grids/{layer}/{GENERATION_ROOT}/");
+    let objs = s3.list_prefix_blocking(&prefix).map_err(io::Error::other)?;
+    let mut by_gen: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for o in objs {
+        if let Some(rest) = o.key.strip_prefix(&prefix)
+            && let Some((gen_name, _)) = rest.split_once('/')
+            && !gen_name.is_empty()
+        {
+            by_gen.entry(gen_name.to_string()).or_default().push(o.key);
+        }
+    }
+    let mut complete: Vec<String> = Vec::new();
+    for (gen_name, keys) in &by_gen {
+        let marker_key = format!("{prefix}{gen_name}/{GENERATION_COMPLETE_FILE}");
+        if keys.iter().any(|k| k == &marker_key) {
+            complete.push(gen_name.clone());
+        }
+    }
+    complete.sort();
+    let mut retained: BTreeSet<String> = BTreeSet::new();
+    if keep > 0 {
+        let start = complete.len().saturating_sub(keep as usize);
+        retained.extend(complete[start..].iter().cloned());
+    }
+    if let Some(active) = active_generation {
+        retained.insert(active.to_string());
+    }
+    let mut removed = 0usize;
+    for gen_name in &complete {
+        if retained.contains(gen_name) {
+            continue;
+        }
+        if let Some(keys) = by_gen.get(gen_name) {
+            for k in keys {
+                s3.delete_blocking(k).map_err(io::Error::other)?;
+                removed += 1;
+            }
+        }
+    }
     Ok(removed)
 }
 
@@ -472,14 +592,95 @@ pub fn prune_grid_layer(cfg: &GridConfig, layer: &str, keep: Option<u64>) -> usi
     let Some(keep) = keep.or_else(|| cfg.keep_last.get(layer).copied()) else {
         return 0;
     };
+    if let Some(s3) = crate::object_store::global().filter(|s| s.read_grids_s3()) {
+        return prune_layer_s3(s3, cfg, layer, keep, SystemTime::now());
+    }
     let layer_dir = cfg.layer_dir(layer);
     if !layer_dir.is_dir() {
         return 0;
     }
-    match layer_lock(&layer_dir, &fsutil::fsync_dir) {
+    let removed = match layer_lock(&layer_dir, &fsutil::fsync_dir) {
         Ok(_lock) => prune_layer_unlocked(cfg, &layer_dir, keep, SystemTime::now()),
         Err(_) => 0,
+    };
+    if let Some(s3) = crate::object_store::global() {
+        let _ = prune_layer_s3(s3, cfg, layer, keep, SystemTime::now());
     }
+    removed
+}
+
+fn prune_layer_s3(
+    s3: &crate::object_store::S3Store,
+    cfg: &GridConfig,
+    layer: &str,
+    keep: u64,
+    now: SystemTime,
+) -> usize {
+    let prefix = format!("grids/{layer}/");
+    let Ok(objs) = s3.list_prefix_blocking(&prefix) else {
+        return 0;
+    };
+    let top_level: Vec<(String, crate::object_store::ListedObject)> = objs
+        .into_iter()
+        .filter_map(|o| {
+            let name = o.key.strip_prefix(&prefix)?.to_string();
+            (!name.contains('/')).then_some((name, o))
+        })
+        .collect();
+    let mut metas: Vec<&(String, crate::object_store::ListedObject)> = top_level
+        .iter()
+        .filter(|(n, _)| n.ends_with(".meta.json"))
+        .collect();
+    metas.sort_by(|a, b| a.0.cmp(&b.0));
+    let kept_start = if keep > 0 {
+        metas.len().saturating_sub(keep as usize)
+    } else {
+        metas.len()
+    };
+    let mut keep_names: HashSet<String> = HashSet::new();
+    let mut committed: HashSet<String> = HashSet::new();
+    for (idx, (name, obj)) in metas.iter().enumerate() {
+        let data_file = s3
+            .get_blocking(&obj.key)
+            .ok()
+            .flatten()
+            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            .and_then(|v| {
+                v.get("data_file")
+                    .and_then(Value::as_str)
+                    .filter(|s| is_plain_file_name(s))
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| format!("{}.bin", grid_timestamp_of(name)));
+        committed.insert(data_file.clone());
+        if idx >= kept_start {
+            keep_names.insert(name.clone());
+            keep_names.insert(data_file);
+        }
+    }
+    let meta_names: HashSet<&str> = metas.iter().map(|(n, _)| n.as_str()).collect();
+    let mut removed = 0usize;
+    for (name, obj) in &top_level {
+        if keep_names.contains(name) {
+            continue;
+        }
+        if !(name.ends_with(".bin") || meta_names.contains(name.as_str())) {
+            continue;
+        }
+        if name.ends_with(".bin") && !committed.contains(name) {
+            let age = obj
+                .last_modified
+                .and_then(|lm| now.duration_since(lm).ok())
+                .unwrap_or(Duration::ZERO);
+            if age < Duration::from_secs(cfg.orphan_grace_s) {
+                continue;
+            }
+        }
+        if s3.delete_blocking(&obj.key).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
 }
 
 /// Layers written less often than `GRID_MAX_AGE_S` keep their grids at least this long (seconds). The
@@ -502,6 +703,9 @@ pub fn max_age_for(cfg: &GridConfig, layer: &str) -> u64 {
 /// `cleanup_old_grids()`: apply keep-N per layer, then sweep files older than `GRID_MAX_AGE_S`. Run
 /// directories older than the cutoff are removed too (D11). Layers that cannot take the lock are skipped.
 pub fn cleanup_old_grids(cfg: &GridConfig) -> Result<usize, GridError> {
+    if let Some(s3) = crate::object_store::global().filter(|s| s.read_grids_s3()) {
+        return cleanup_old_grids_s3(s3, cfg);
+    }
     if !cfg.grid_dir.exists() {
         return Ok(0);
     }
@@ -548,6 +752,51 @@ pub fn cleanup_old_grids(cfg: &GridConfig) -> Result<usize, GridError> {
             if modified < cutoff && fs::remove_file(&path).is_ok() {
                 removed += 1;
             }
+        }
+    }
+    if let Some(s3) = crate::object_store::global()
+        && let Err(err) = cleanup_old_grids_s3(s3, cfg)
+    {
+        tracing::warn!(err = %err, "s3_shadow_cleanup_old_grids_failed");
+    }
+    Ok(removed)
+}
+
+fn cleanup_old_grids_s3(
+    s3: &crate::object_store::S3Store,
+    cfg: &GridConfig,
+) -> Result<usize, GridError> {
+    let now = SystemTime::now();
+    let objs = s3
+        .list_prefix_blocking("grids/")
+        .map_err(io::Error::other)?;
+    let mut layers: BTreeSet<String> = BTreeSet::new();
+    for o in &objs {
+        if let Some(rest) = o.key.strip_prefix("grids/")
+            && let Some((layer, _)) = rest.split_once('/')
+            && !layer.is_empty()
+        {
+            layers.insert(layer.to_string());
+        }
+    }
+    let mut removed = 0usize;
+    for layer in &layers {
+        if let Some(keep) = cfg.keep_last.get(layer).copied() {
+            removed += prune_layer_s3(s3, cfg, layer, keep, now);
+        }
+    }
+    for o in objs {
+        let Some(rest) = o.key.strip_prefix("grids/") else {
+            continue;
+        };
+        let Some((layer, _)) = rest.split_once('/') else {
+            continue;
+        };
+        let cutoff = now
+            .checked_sub(Duration::from_secs(max_age_for(cfg, layer)))
+            .unwrap_or(UNIX_EPOCH);
+        if o.last_modified.is_some_and(|lm| lm < cutoff) && s3.delete_blocking(&o.key).is_ok() {
+            removed += 1;
         }
     }
     Ok(removed)

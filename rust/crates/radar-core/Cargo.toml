@@ -23,6 +23,12 @@ uuid.workspace = true
 rusqlite.workspace = true
 tokio.workspace = true
 tokio-postgres.workspace = true
+reqwest.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+hex.workspace = true
+url.workspace = true
+quick-xml.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
