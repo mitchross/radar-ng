@@ -392,6 +392,9 @@ pub fn pack_frames(
             "every packed frame must use the same tile size".into(),
         ));
     }
+    if let Some(s3) = radar_core::object_store::global().filter(|s| s.read_tiles_s3()) {
+        return pack_frames_s3(s3, layer_dir, bucket_id, frames, quant, tile);
+    }
     fs::create_dir_all(layer_dir)?;
     let _lock = LayerLock::acquire(&layer_dir.join(LOCK_FILE))?;
     let bucket_dir = layer_dir.join(bucket_id);
@@ -464,6 +467,147 @@ pub fn pack_frames(
     let text = serde_json::to_string(&bucket.to_json())
         .map_err(|e| TilerError::Invalid(format!("bucket file: {e}")))?;
     write_atomic(&bucket_dir.join(BUCKET_FILE), text.as_bytes())?;
+    if let Some(s3) = radar_core::object_store::global()
+        && let (Some(bundle_key), Some(meta_key)) = (
+            s3.tile_bundle_key_for_dir(&bucket_dir),
+            s3.packed_bucket_meta_key_for_dir(&bucket_dir),
+        )
+        && let Ok(bytes) = radar_core::tile_bundle::TileBundle::from_dir(&bucket_dir)
+    {
+        radar_core::object_store::mirror_put(&bundle_key, &bytes, "application/octet-stream");
+        radar_core::object_store::mirror_put(&meta_key, text.as_bytes(), "application/json");
+    }
+    Ok(PackOutcome::Written {
+        bucket,
+        tiles_written,
+    })
+}
+
+fn pack_frames_s3(
+    s3: &radar_core::object_store::S3Store,
+    layer_dir: &Path,
+    bucket_id: &str,
+    frames: &[PackFrame<'_, '_>],
+    quant: Quantizer,
+    tile: usize,
+) -> Result<PackOutcome> {
+    let logical_bucket = layer_dir.join(bucket_id);
+    let bundle_key = s3.tile_bundle_key_for_dir(&logical_bucket).ok_or_else(|| {
+        TilerError::Invalid(format!(
+            "packed bucket {} is outside TILE_DIR",
+            logical_bucket.display()
+        ))
+    })?;
+    let meta_key = s3
+        .packed_bucket_meta_key_for_dir(&logical_bucket)
+        .ok_or_else(|| {
+            TilerError::Invalid(format!(
+                "packed bucket {} is outside TILE_DIR",
+                logical_bucket.display()
+            ))
+        })?;
+
+    let work_dir =
+        std::env::temp_dir().join(format!("radar-packed-s3-{}", uuid::Uuid::new_v4().simple()));
+    fs::create_dir_all(&work_dir)?;
+    struct CleanDir(PathBuf);
+    impl Drop for CleanDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    let _cleanup = CleanDir(work_dir.clone());
+
+    let previous = match s3
+        .get_blocking(&meta_key)
+        .map_err(|e| std::io::Error::other(e.to_string()))?
+    {
+        Some(bytes) => {
+            fs::write(work_dir.join(BUCKET_FILE), &bytes)?;
+            read_bucket(&work_dir)?
+        }
+        None => None,
+    };
+    if previous.as_ref().is_some_and(|b| b.typed != quant.typed) {
+        return Err(TilerError::Invalid(format!(
+            "bucket {bucket_id} holds {} codes",
+            if quant.typed { "untyped" } else { "typed" }
+        )));
+    }
+    if let Some(raw) = s3
+        .get_blocking(&bundle_key)
+        .map_err(|e| std::io::Error::other(e.to_string()))?
+    {
+        let bundle = radar_core::tile_bundle::TileBundle::parse_vec(raw).map_err(|e| {
+            TilerError::Corrupt(format!("corrupt packed S3 bundle {bundle_key}: {e}"))
+        })?;
+        bundle.unpack_to_dir(&work_dir)?;
+    }
+
+    let mut slots = previous.as_ref().map_or_default(|b| b.slots.clone());
+    let mut assigned = Vec::with_capacity(frames.len());
+    let mut rewrite = false;
+    for frame in frames {
+        match slots.iter().position(|s| s == frame.timestamp) {
+            Some(slot) => {
+                rewrite = true;
+                assigned.push(slot);
+            }
+            None => {
+                slots.push(frame.timestamp.to_string());
+                assigned.push(slots.len() - 1);
+            }
+        }
+    }
+    if slots.len() > PACKED_MAX_SLOTS {
+        return Ok(PackOutcome::Full);
+    }
+    let dims = atlas_dims(slots.len(), tile);
+
+    let mut work: BTreeMap<(u32, u32, u32), Vec<Option<usize>>> = BTreeMap::new();
+    for (f, frame) in frames.iter().enumerate() {
+        for (i, coord) in frame.sampler.tiles().into_iter().enumerate() {
+            work.entry(coord)
+                .or_insert_with(|| vec![None; frames.len()])[f] = Some(i);
+        }
+    }
+    for coord in existing_tiles(&work_dir)? {
+        work.entry(coord)
+            .or_insert_with(|| vec![None; frames.len()]);
+    }
+    let work: Vec<_> = work.into_iter().collect();
+    let ctx = MergeCtx {
+        bucket_dir: &work_dir,
+        frames,
+        assigned: &assigned,
+        quant,
+        tile,
+        dims,
+        rewrite,
+    };
+    let tiles_written = work
+        .par_iter()
+        .map_init(
+            || (Vec::new(), Vec::new(), Vec::new()),
+            |(values, types, planes), (coord, indices)| {
+                ctx.merge_tile(*coord, indices, values, types, planes)
+            },
+        )
+        .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
+
+    let bucket = BucketState {
+        v: previous.map_or_default(|b| b.v) + 1,
+        slots,
+        typed: quant.typed,
+    };
+    let text = serde_json::to_string(&bucket.to_json())
+        .map_err(|e| TilerError::Invalid(format!("bucket file: {e}")))?;
+    let bundle_bytes = radar_core::tile_bundle::TileBundle::from_dir(&work_dir)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    s3.put_blocking(&bundle_key, &bundle_bytes, "application/octet-stream")
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    s3.put_blocking(&meta_key, text.as_bytes(), "application/json")
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
     Ok(PackOutcome::Written {
         bucket,
         tiles_written,

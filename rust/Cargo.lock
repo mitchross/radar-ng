@@ -3045,6 +3045,7 @@ name = "radar-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "chrono",
  "hex",
  "hmac 0.12.1",
@@ -3239,6 +3240,7 @@ dependencies = [
  "flate2",
  "hex",
  "png",
+ "radar-core",
  "radar-geo",
  "rayon",
  "rustix",

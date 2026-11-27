@@ -407,6 +407,9 @@ where
         ));
     }
     let finals = canonical_finals(outputs)?;
+    if let Some(s3) = radar_core::object_store::global().filter(|s| s.read_tiles_s3()) {
+        return publish_palette_set_s3(s3, outputs, &finals, keep_empty, render);
+    }
     let locks = acquire_locks(&finals, lock_root)?;
 
     let mut outcomes: Vec<Option<PalettePublishOutcome>> = vec![None; finals.len()];
@@ -576,6 +579,24 @@ where
                         &locks.roots[i],
                     )?;
                     let created = inspect_complete_pyramid(final_path, Some(identity))?;
+                    if let Some(s3) = radar_core::object_store::global()
+                        && let Some(key) = s3.tile_bundle_key_for_dir(final_path)
+                    {
+                        match radar_core::tile_bundle::TileBundle::from_dir(final_path) {
+                            Ok(bytes) => {
+                                radar_core::object_store::mirror_put(
+                                    &key,
+                                    &bytes,
+                                    "application/octet-stream",
+                                );
+                            }
+                            Err(err) => {
+                                eprintln!(
+                                    "radar-tiler: failed to build shadow tile bundle {key}: {err}"
+                                );
+                            }
+                        }
+                    }
                     PalettePublishOutcome {
                         status: PublishStatus::Created,
                         tile_count: created.tile_count as u64,
@@ -602,6 +623,93 @@ where
     }
     drop(staging);
     drop(locks);
+    Ok(assemble(outcomes))
+}
+
+/// S3-authoritative pyramid publication (`RADAR_TILES_READ_S3=1`): renders into a local temporary
+/// directory, bundles into a single `RTB1` object, uploads to S3, and removes the local temp dir.
+fn publish_palette_set_s3<F>(
+    s3: &radar_core::object_store::S3Store,
+    outputs: &[(String, PathBuf)],
+    finals: &[(String, PathBuf)],
+    keep_empty: bool,
+    render: F,
+) -> Result<MultiPaletteRenderResult>
+where
+    F: FnOnce(&[(String, PathBuf)]) -> Result<Vec<u64>>,
+{
+    let mut outcomes: Vec<Option<PalettePublishOutcome>> = vec![None; finals.len()];
+    let mut unresolved: Vec<(usize, String)> = Vec::new();
+    for (i, (_, final_path)) in finals.iter().enumerate() {
+        let key = s3.tile_bundle_key_for_dir(final_path).ok_or_else(|| {
+            TilerError::Invalid(format!(
+                "tile output {} is outside TILE_DIR",
+                final_path.display()
+            ))
+        })?;
+        let exists = s3
+            .head_blocking(&key)
+            .map_err(|e| std::io::Error::other(e.to_string()))?
+            .is_some();
+        if exists {
+            outcomes[i] = Some(PalettePublishOutcome {
+                status: PublishStatus::ExistingValid,
+                tile_count: 0,
+            });
+        } else {
+            unresolved.push((i, key));
+        }
+    }
+    let assemble = |outcomes: Vec<Option<PalettePublishOutcome>>| MultiPaletteRenderResult {
+        outcomes: outputs
+            .iter()
+            .zip(outcomes)
+            .map(|((name, _), o)| (name.clone(), o.expect("every palette is resolved")))
+            .collect(),
+    };
+    if unresolved.is_empty() {
+        return Ok(assemble(outcomes));
+    }
+
+    let stage_root =
+        std::env::temp_dir().join(format!("radar-tiler-s3-{}", uuid::Uuid::new_v4().simple()));
+    fs::create_dir_all(&stage_root)?;
+    let _guard = StagingSet(vec![stage_root.clone()]);
+    let staged_targets: Vec<(String, PathBuf)> = unresolved
+        .iter()
+        .enumerate()
+        .map(|(k, (i, _))| (finals[*i].0.clone(), stage_root.join(format!("p{k}"))))
+        .collect();
+    let counts = render(&staged_targets)?;
+    if counts.len() != staged_targets.len() {
+        return Err(TilerError::Corrupt(
+            "renderer did not report every staged palette".into(),
+        ));
+    }
+    for (k, (i, key)) in unresolved.into_iter().enumerate() {
+        let count = counts[k];
+        let staged_dir = &staged_targets[k].1;
+        if count == 0 && !keep_empty {
+            outcomes[i] = Some(PalettePublishOutcome {
+                status: PublishStatus::Empty,
+                tile_count: 0,
+            });
+            continue;
+        }
+        let bundle = if count == 0 {
+            radar_core::tile_bundle::TileBundle::encode(&[])
+                .map_err(|e| std::io::Error::other(e.to_string()))?
+        } else {
+            radar_core::tile_bundle::TileBundle::from_dir(staged_dir)
+                .map_err(|e| std::io::Error::other(e.to_string()))?
+        };
+        s3.put_blocking(&key, &bundle, "application/octet-stream")
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        outcomes[i] = Some(PalettePublishOutcome {
+            status: PublishStatus::Created,
+            tile_count: count,
+        });
+    }
     Ok(assemble(outcomes))
 }
 

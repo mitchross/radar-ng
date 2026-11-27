@@ -396,6 +396,33 @@ fn existing_tile_urls(
     let (x_min, y_min) = lat_lon_to_tile(north, west, zoom_u);
     let (x_max, y_max) = lat_lon_to_tile(south, east, zoom_u);
     let mut urls = Vec::new();
+    if let Some(s3) = radar_core::object_store::global().filter(|s| s.read_tiles_s3()) {
+        let key = radar_core::object_store::tile_bundle_key_for_rel(&format!(
+            "{}/{palette}/{}",
+            frame.layer, frame.path
+        ));
+        let Some(bundle) = s3
+            .get_blocking(&key)
+            .ok()
+            .flatten()
+            .and_then(|raw| radar_core::tile_bundle::TileBundle::parse_vec(raw).ok())
+        else {
+            return urls;
+        };
+        for x in x_min.min(x_max)..=x_min.max(x_max) {
+            for y in y_min.min(y_max)..=y_min.max(y_max) {
+                if let (Ok(xu), Ok(yu)) = (u32::try_from(x), u32::try_from(y))
+                    && bundle.contains(zoom_u, xu, yu)
+                {
+                    urls.push(format!(
+                        "{base_url}{}",
+                        tile_url_path(&frame.layer, palette, &frame.path, zoom, x, y)
+                    ));
+                }
+            }
+        }
+        return urls;
+    }
     for x in x_min.min(x_max)..=x_min.max(x_max) {
         for y in y_min.min(y_max)..=y_min.max(y_max) {
             let raw = format!(

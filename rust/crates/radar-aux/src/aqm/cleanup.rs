@@ -30,44 +30,102 @@ pub(crate) fn cleanup_blocking(
             .and_then(|layer| layer.extra.get("run_id"))
             .and_then(|v| v.as_str())
             .map(str::to_string);
+        if let Some(s3) = radar_core::object_store::global().filter(|s| s.read_tiles_s3()) {
+            removed += cleanup_aqm_layer_s3(s3, spec.name, current.as_deref(), cutoff);
+            continue;
+        }
         removed +=
             super::packed::cleanup_buckets(&cfg.tile_dir, spec.name, current.as_deref(), cutoff)?;
         let layer_dir = cfg.tile_dir.join(spec.name);
-        if !layer_dir.is_dir() {
-            continue;
+        if layer_dir.is_dir() {
+            for palette_dir in sorted_children(&layer_dir)? {
+                let runs_root = palette_dir.join("runs");
+                if !runs_root.is_dir() {
+                    continue;
+                }
+                for run_dir in fs::read_dir(&runs_root)? {
+                    let run_dir = run_dir?.path();
+                    if !run_dir.is_dir() {
+                        continue;
+                    }
+                    let name = run_dir
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    if current.as_deref() == Some(name.as_str()) {
+                        continue;
+                    }
+                    let Some(run_dt) = parse_run_id(&name) else {
+                        continue;
+                    };
+                    if unix_secs_of(&run_dt) < cutoff {
+                        let _ = fs::remove_dir_all(&run_dir);
+                        removed += 1;
+                    }
+                }
+            }
         }
-        for palette_dir in sorted_children(&layer_dir)? {
-            let runs_root = palette_dir.join("runs");
-            if !runs_root.is_dir() {
-                continue;
-            }
-            for run_dir in fs::read_dir(&runs_root)? {
-                let run_dir = run_dir?.path();
-                if !run_dir.is_dir() {
-                    continue;
-                }
-                let name = run_dir
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or_default()
-                    .to_string();
-                if current.as_deref() == Some(name.as_str()) {
-                    continue;
-                }
-                let Some(run_dt) = parse_run_id(&name) else {
-                    continue;
-                };
-                if unix_secs_of(&run_dt) < cutoff {
-                    let _ = fs::remove_dir_all(&run_dir);
-                    removed += 1;
-                }
-            }
+        if let Some(s3) = radar_core::object_store::global() {
+            let _ = cleanup_aqm_layer_s3(s3, spec.name, current.as_deref(), cutoff);
         }
     }
     sweep_download_cache(&cfg.tmp_root);
     Ok(AqmCleanupResult {
         tile_dirs_removed: removed,
     })
+}
+
+fn cleanup_aqm_layer_s3(
+    s3: &radar_core::object_store::S3Store,
+    layer: &str,
+    current_run: Option<&str>,
+    cutoff: f64,
+) -> i64 {
+    let mut removed = 0i64;
+    let prefix = format!("tiles/{layer}/");
+    if let Ok(objs) = s3.list_prefix_blocking(&prefix) {
+        for obj in objs {
+            let Some(rel) = obj.key.strip_prefix(&prefix) else {
+                continue;
+            };
+            let parts: Vec<&str> = rel.split('/').collect();
+            if parts.len() >= 3 && parts[1] == "runs" {
+                let run_name = parts[2];
+                if current_run == Some(run_name) {
+                    continue;
+                }
+                if let Some(run_dt) = parse_run_id(run_name)
+                    && unix_secs_of(&run_dt) < cutoff
+                {
+                    let _ = s3.delete_blocking(&obj.key);
+                    removed += 1;
+                }
+            }
+        }
+    }
+    let packed_prefix = format!("tiles/packed/{layer}/");
+    if let Ok(objs) = s3.list_prefix_blocking(&packed_prefix) {
+        for obj in objs {
+            let Some(rel) = obj.key.strip_prefix(&packed_prefix) else {
+                continue;
+            };
+            let stem = rel
+                .strip_suffix(".rtb")
+                .or_else(|| rel.strip_suffix(".bucket.json"))
+                .unwrap_or("");
+            if stem.is_empty() || current_run == Some(stem) {
+                continue;
+            }
+            if let Some(run_dt) = parse_run_id(stem)
+                && unix_secs_of(&run_dt) < cutoff
+            {
+                let _ = s3.delete_blocking(&obj.key);
+                removed += 1;
+            }
+        }
+    }
+    removed
 }
 
 /// Keeps only the newest run's download cache. The workflow always runs cleanup last, and the newest run is

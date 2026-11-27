@@ -91,9 +91,9 @@ fn empty_tile() -> Response {
         .into_response()
 }
 
-/// The pyramid root of a `/{pyramid...}/{z}/{x}/{y}.png` tile path (relative to `TILE_DIR`, percent-
-/// decoded), or `None` for any other shape or an unsafe segment.
-fn pyramid_root(rel: &str) -> Option<PathBuf> {
+/// Parse a `/{pyramid...}/{z}/{x}/{y}.png` tile path (relative to `TILE_DIR`, percent-decoded)
+/// into `(pyramid_rel, z, x, y)`, or `None` for any other shape or unsafe segment.
+fn parse_tile_path(rel: &str) -> Option<(String, u32, u32, u32)> {
     let decoded = percent_encoding::percent_decode_str(rel)
         .decode_utf8()
         .ok()?;
@@ -111,7 +111,17 @@ fn pyramid_root(rel: &str) -> Option<PathBuf> {
     if pyramid.iter().any(unsafe_segment) {
         return None;
     }
-    Some(pyramid.iter().collect())
+    let z_u: u32 = z.parse().ok()?;
+    let x_u: u32 = x.parse().ok()?;
+    let y_u: u32 = y.parse().ok()?;
+    Some((pyramid.join("/"), z_u, x_u, y_u))
+}
+
+/// The pyramid root of a `/{pyramid...}/{z}/{x}/{y}.png` tile path (relative to `TILE_DIR`, percent-
+/// decoded), or `None` for any other shape or an unsafe segment.
+fn pyramid_root(rel: &str) -> Option<PathBuf> {
+    let (pyramid, _, _, _) = parse_tile_path(rel)?;
+    Some(pyramid.split('/').collect())
 }
 
 async fn in_complete_pyramid(root: &FsPath, rel: &str) -> bool {
@@ -129,6 +139,99 @@ async fn in_complete_pyramid(root: &FsPath, rel: &str) -> bool {
     false
 }
 
+/// Byte-weighted singleflight cache of S3 `RTB1` tile bundles for `/tiles/*`.
+#[derive(Clone)]
+struct S3TileCache {
+    /// Immutable pyramids and `?v=<n>`-qualified packed buckets (30-min TTL).
+    immutable: moka::future::Cache<String, Arc<radar_core::tile_bundle::TileBundle>>,
+    /// Unversioned packed bucket requests (short 5 s TTL so new slots appear promptly).
+    packed_live: moka::future::Cache<String, Arc<radar_core::tile_bundle::TileBundle>>,
+}
+
+impl S3TileCache {
+    fn new() -> Self {
+        let max_bytes = std::env::var("TILE_CACHE_MAX_BYTES")
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .filter(|&n| n >= 1024 * 1024)
+            .unwrap_or(256 * 1024 * 1024);
+        let weigh = |_k: &String, v: &Arc<radar_core::tile_bundle::TileBundle>| {
+            u32::try_from(v.byte_len()).unwrap_or(u32::MAX)
+        };
+        Self {
+            immutable: moka::future::Cache::builder()
+                .max_capacity(max_bytes)
+                .weigher(weigh)
+                .time_to_live(Duration::from_secs(1800))
+                .build(),
+            packed_live: moka::future::Cache::builder()
+                .max_capacity((max_bytes / 4).max(16 * 1024 * 1024))
+                .weigher(weigh)
+                .time_to_live(Duration::from_secs(5))
+                .build(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        s3: &'static radar_core::object_store::S3Store,
+        rel: &str,
+        query: Option<&str>,
+    ) -> Response {
+        let Some((pyramid_rel, z, x, y)) = parse_tile_path(rel) else {
+            return StatusCode::NOT_FOUND.into_response();
+        };
+        let s3_key = radar_core::object_store::tile_bundle_key_for_rel(&pyramid_rel);
+        let is_packed = pyramid_rel.starts_with("packed/");
+        let version = query.and_then(|q| {
+            q.split('&')
+                .find_map(|p| p.strip_prefix("v="))
+                .filter(|v| !v.is_empty())
+        });
+        let (cache, cache_key) = if is_packed && version.is_none() {
+            (&self.packed_live, s3_key.clone())
+        } else if let Some(v) = version {
+            (&self.immutable, format!("{s3_key}?v={v}"))
+        } else {
+            (&self.immutable, s3_key.clone())
+        };
+
+        let fetched = cache
+            .try_get_with(cache_key, async move {
+                let raw = s3
+                    .get(&s3_key)
+                    .await
+                    .map_err(|e| format!("s3 get failed: {e}"))?
+                    .ok_or_else(|| "not_found".to_string())?;
+                let bundle = radar_core::tile_bundle::TileBundle::parse_vec(raw)
+                    .map_err(|e| format!("corrupt tile bundle: {e}"))?;
+                Ok::<_, String>(Arc::new(bundle))
+            })
+            .await;
+
+        match fetched {
+            Ok(bundle) => match bundle.get(z, x, y) {
+                Some(png) => (
+                    StatusCode::OK,
+                    [
+                        (header::CONTENT_TYPE, "image/png"),
+                        (header::CACHE_CONTROL, TILE_CC),
+                        (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+                    ],
+                    png,
+                )
+                    .into_response(),
+                None => empty_tile(),
+            },
+            Err(err) if err.as_str() == "not_found" => StatusCode::NOT_FOUND.into_response(),
+            Err(err) => {
+                tracing::warn!(rel, err = %err, "s3_tile_bundle_fetch_failed");
+                StatusCode::BAD_GATEWAY.into_response()
+            }
+        }
+    }
+}
+
 /// The static lane router: radar tiles, basemap styles and fonts, imagery, and vector tiles.
 pub fn static_router(tile_dir: PathBuf, basemap_root: PathBuf) -> Router<AppState> {
     let with_headers = |cc: &'static str| {
@@ -144,13 +247,19 @@ pub fn static_router(tile_dir: PathBuf, basemap_root: PathBuf) -> Router<AppStat
     };
     let serve_tiles = with_headers(TILE_CC).service(ServeDir::new(&tile_dir).precompressed_gzip());
     let tile_root = Arc::new(tile_dir);
+    let s3_cache = S3TileCache::new();
     let tiles = tower::service_fn(move |req: Request| {
         let serve = serve_tiles.clone();
         let root = Arc::clone(&tile_root);
+        let s3_cache = s3_cache.clone();
         async move {
             let rel = req.uri().path().to_owned();
+            let query = req.uri().query().map(str::to_owned);
             if crate::replays::is_private_tile_path(&rel) {
                 return Ok(StatusCode::NOT_FOUND.into_response());
+            }
+            if let Some(s3) = radar_core::object_store::global().filter(|s| s.read_tiles_s3()) {
+                return Ok::<_, Infallible>(s3_cache.serve(s3, &rel, query.as_deref()).await);
             }
             let resp = serve.oneshot(req).await?.into_response();
             if resp.status() == StatusCode::NOT_FOUND && in_complete_pyramid(&root, &rel).await {
