@@ -179,6 +179,8 @@ const state = {
   wind: stored<boolean>("rng.wind", false),
   satellite: stored<boolean>("rng.satellite", false),
   ai: stored<boolean>("rng.ai", true),
+  /** Optional forecast extras (Nice Day/Bonfire, Coming Up, White Christmas, Sky Tonight); off by default. */
+  showWeatherExtras: stored<boolean>("rng.showWeatherExtras", false),
   zoom: "1h" as Zoom,
   manifest: null as Manifest | null,
   /** Explicit data source: the live feeds, or one pinned replay case revision. */
@@ -850,6 +852,9 @@ function renderSheet() {
     <div class="sheet-section"><div class="section-label">OVERLAYS</div>
       ${toggles.map((t) => `<label class="toggle"><span><b>${t.name}</b><small>${t.hint}</small></span><input type="checkbox" data-overlay="${t.id}" ${t.on ? "checked" : ""} /><i></i></label>`).join("")}
     </div>
+    <div class="sheet-section"><div class="section-label">FORECAST</div>
+      <label class="toggle"><span><b>Weather extras</b><small>Nice Day &amp; Bonfire, holiday countdown, White Christmas, and Sky Tonight cards</small></span><input id="show-weather-extras" type="checkbox" ${state.showWeatherExtras ? "checked" : ""} /><i></i></label>
+    </div>
     <div class="sheet-section"><div class="section-label">NWS ALERTS</div>
       <label class="range-row"><span>NWS alert interruptions</span><select id="nws-alert-level" aria-label="NWS alert interruptions">${ALERT_PREFERENCES.map(p => `<option value="${p.value}" ${p.value === nwsNotifications.preference ? "selected" : ""}>${p.label}</option>`).join("")}</select></label>
       <button id="test-nws-alert" type="button">Send test alert</button>
@@ -911,9 +916,9 @@ async function renderForecast(refresh = false) {
   const rainTotal = rain.reduce((a, b) => a + b, 0);
   const peak = Math.max(0.05, ...rain);
   const days = fc.daily.time.slice(0, 7);
-  const countdownHtml = countdownFor(fc, lat, lon);
-  const wxmasHtml = whiteChristmasFor(fc, lat, lon);
-  const skyHtml = skyTonightFor(fc, lat, lon);
+  const countdownHtml = state.showWeatherExtras ? countdownFor(fc, lat, lon) : "";
+  const wxmasHtml = state.showWeatherExtras ? whiteChristmasFor(fc, lat, lon) : "";
+  const skyHtml = state.showWeatherExtras ? skyTonightFor(fc, lat, lon) : "";
   const snowHtml = snowSpotFor(fc, lat, lon);
   const normalsHtml = normalsFor(fc, lat, lon);
   const lows = fc.daily.temperature_2m_min.slice(0, 7).filter((v): v is number => v != null);
@@ -949,7 +954,7 @@ async function renderForecast(refresh = false) {
       <div class="section-label">HOURLY</div>
       <div class="hourly">${hours.map((i, k) => `<div class="hour ${k === 0 ? "now-hour" : ""}"><b>${fmtHour(fc.hourly.time[i], k)}</b>${iconSvg(conditionOf(fc.hourly.weather_code[i]), 22)}<div class="t">${deg(fc.hourly.temperature_2m[i])}</div></div>`).join("")}</div>
     </div>
-    ${niceDayCardHtml(fc.hourly, start, wallClock(Date.now(), fc.utc_offset_seconds).dateKey)}
+    ${state.showWeatherExtras ? niceDayCardHtml(fc.hourly, start, wallClock(Date.now(), fc.utc_offset_seconds).dateKey) : ""}
     <div class="section">
       <div class="section-label" style="display:flex;justify-content:space-between"><span>RAIN · NEXT 24H</span><span>${rainTotal.toFixed(2)}″</span></div>
       <div class="rainbars">${rain.map((v) => `<i class="${v ? "" : "dry"}" style="height:${v ? Math.max(8, (v / peak) * 100) : 6}%"></i>`).join("")}</div>
@@ -990,9 +995,11 @@ async function renderForecast(refresh = false) {
     $("briefing").innerHTML = briefing.innerHTML;
   } else void renderBriefing();
   void renderNextHour();
-  if (!countdownHtml) void renderCountdown(fc, lat, lon);
-  void renderWhiteChristmas(fc, lat, lon);
-  void renderSkyTonight(fc, lat, lon);
+  if (state.showWeatherExtras) {
+    if (!countdownHtml) void renderCountdown(fc, lat, lon);
+    void renderWhiteChristmas(fc, lat, lon);
+    void renderSkyTonight(fc, lat, lon);
+  }
   void renderSnowSpot(fc, lat, lon);
   void renderNormals(fc, lat, lon);
 }
@@ -1546,6 +1553,11 @@ $("sheet-body").addEventListener("change", (e) => {
     packed?.setSmooth(!el.checked);
     track("stepped_bands_toggled", { on: el.checked });
     renderLegend();
+  } else if (el.id === "show-weather-extras") {
+    state.showWeatherExtras = el.checked;
+    store("rng.showWeatherExtras", el.checked);
+    if (!el.checked && overlays.whiteChristmasOn) overlays.setWhiteChristmas(null);
+    void renderForecast(true);
   } else if (el.id === "storm-notice") {
     void stormNotice.setEnabled(el.checked).then(renderThreat);
   } else if (el.id === "rain-alert-lead") {

@@ -66,6 +66,7 @@ export default function HomeScreen() {
   const temperatureUnit = useWeatherStore((s) => s.temperatureUnit);
   const viewMode = useWeatherStore((s) => s.viewMode);
   const setViewMode = useWeatherStore((s) => s.setViewMode);
+  const showWeatherExtras = useWeatherStore((s) => s.showWeatherExtras);
 
   const {
     data: forecast,
@@ -435,7 +436,7 @@ export default function HomeScreen() {
               </View>
             ))}
           </ScrollView>
-          <NiceDayCard forecast={forecast} nowMs={now.getTime()} />
+          {showWeatherExtras ? <NiceDayCard forecast={forecast} nowMs={now.getTime()} /> : null}
 
           {/* 24h precip chart */}
           <View style={styles.sectionWrap}>
@@ -530,9 +531,13 @@ export default function HomeScreen() {
               );
             })}
           </View>
-          <CountdownCard forecast={forecast} nowMs={now.getTime()} />
-          <WhiteChristmasCard forecast={forecast} nowMs={now.getTime()} />
-          <SkyTonightCard forecast={forecast} nowMs={now.getTime()} />
+          {showWeatherExtras ? (
+            <>
+              <CountdownCard forecast={forecast} nowMs={now.getTime()} />
+              <WhiteChristmasCard forecast={forecast} nowMs={now.getTime()} />
+              <SkyTonightCard forecast={forecast} nowMs={now.getTime()} />
+            </>
+          ) : null}
 
           {/* Mini radar map */}
           <RadarMiniMap />

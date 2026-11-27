@@ -81,6 +81,8 @@ export default function SettingsScreen() {
   const setMapStyle = useWeatherStore((s) => s.setMapStyle);
   const aiNarration = useWeatherStore((s) => s.aiNarration);
   const setAiNarration = useWeatherStore((s) => s.setAiNarration);
+  const showWeatherExtras = useWeatherStore((s) => s.showWeatherExtras);
+  const setShowWeatherExtras = useWeatherStore((s) => s.setShowWeatherExtras);
   const { enabled: rainAlertsEnabled, blocked: rainAlertsBlocked, setRainAlerts } = useRainAlertOptIn();
   const { enabled: stormNoticeEnabled, blocked: stormNoticeBlocked, setStormNotice } = useStormNoticeOptIn();
   const { enabled: issAlertsOn, blocked: issAlertsBlocked, setIssAlerts } = useIssAlertOptIn();
@@ -533,6 +535,13 @@ export default function SettingsScreen() {
               sub="Local-LLM weather summaries; hides itself if the model is down"
               value={aiNarration}
               onChange={setAiNarration}
+            />
+            <Sep />
+            <ToggleRow
+              label="Weather extras"
+              sub="Nice Day & Bonfire, holiday countdown, White Christmas, and Sky Tonight cards"
+              value={showWeatherExtras}
+              onChange={setShowWeatherExtras}
             />
             <Sep />
             <ToggleRow
