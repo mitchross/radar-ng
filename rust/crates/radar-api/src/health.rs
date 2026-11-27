@@ -141,11 +141,15 @@ pub async fn get_health(State(state): State<AppState>) -> Response {
         reasons.push("nowcast_expired".into());
     }
 
-    let tile_dir = state.config.tile_dir.clone();
-    let disk = tokio::task::spawn_blocking(move || tiles_disk(&tile_dir))
-        .await
-        .ok()
-        .flatten();
+    let disk = if radar_core::object_store::read_tiles_s3() {
+        None
+    } else {
+        let tile_dir = state.config.tile_dir.clone();
+        tokio::task::spawn_blocking(move || tiles_disk(&tile_dir))
+            .await
+            .ok()
+            .flatten()
+    };
     let skill = skill_summary(&state).await;
 
     let body = json!({
