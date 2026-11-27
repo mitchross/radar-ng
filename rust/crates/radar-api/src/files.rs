@@ -25,13 +25,13 @@ enum Read {
     Failed,
 }
 
-fn read_file(path: &Path) -> Read {
-    match std::fs::read_to_string(path) {
-        Ok(text) => match serde_json::from_str::<Value>(&text) {
+fn read_file(path: &Path, key: &str) -> Read {
+    match radar_core::state_pg::read_doc_or_disk(path, Some(key)) {
+        Ok(Some(bytes)) => match serde_json::from_slice::<Value>(&bytes) {
             Ok(value) => Read::Value(value),
             Err(_) => Read::Failed,
         },
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Read::Missing,
+        Ok(None) => Read::Missing,
         Err(_) => Read::Failed,
     }
 }
@@ -44,7 +44,7 @@ async fn passthrough(
     cache_max_age: u64,
 ) -> Response {
     let path = state.state_file(file);
-    let outcome = tokio::task::spawn_blocking(move || read_file(&path))
+    let outcome = tokio::task::spawn_blocking(move || read_file(&path, file))
         .await
         .unwrap_or(Read::Failed);
     let body = match outcome {
@@ -90,16 +90,16 @@ mod tests {
     fn missing_malformed_and_valid_files() {
         let tmp = tempfile::tempdir().expect("tmp");
         assert!(matches!(
-            read_file(&tmp.path().join("nope.json")),
+            read_file(&tmp.path().join("nope.json"), "nope.json"),
             Read::Missing
         ));
         std::fs::write(tmp.path().join("bad.json"), "{").expect("write");
         assert!(matches!(
-            read_file(&tmp.path().join("bad.json")),
+            read_file(&tmp.path().join("bad.json"), "bad.json"),
             Read::Failed
         ));
         std::fs::write(tmp.path().join("ok.json"), "[1,2]").expect("write");
-        match read_file(&tmp.path().join("ok.json")) {
+        match read_file(&tmp.path().join("ok.json"), "ok.json") {
             Read::Value(v) => assert_eq!(v, json!([1, 2])),
             _ => panic!("expected a value"),
         }

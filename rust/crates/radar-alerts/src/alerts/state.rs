@@ -24,8 +24,10 @@ pub const SNAPSHOT_FILE: &str = "alerts_active_snapshot.json";
 pub const MAX_SEEN: usize = 5000;
 
 /// Read a top-level JSON array. Missing files, unreadable files, invalid JSON and non-array JSON all give `None`.
-fn read_array(path: &Path) -> Option<Vec<Value>> {
-    let bytes = std::fs::read(path).ok()?;
+fn read_array(path: &Path, key: &str) -> Option<Vec<Value>> {
+    let bytes = radar_core::state_pg::read_doc_or_disk(path, Some(key))
+        .ok()
+        .flatten()?;
     match serde_json::from_slice::<Value>(&bytes).ok()? {
         Value::Array(items) => Some(items),
         _ => None,
@@ -36,7 +38,7 @@ fn read_array(path: &Path) -> Option<Vec<Value>> {
 /// alert ID anyway).
 #[must_use]
 pub fn load_seen(state_dir: &Path) -> BTreeSet<String> {
-    read_array(&state_dir.join(SEEN_FILE))
+    read_array(&state_dir.join(SEEN_FILE), SEEN_FILE)
         .unwrap_or_default()
         .iter()
         .filter_map(|v| v.as_str().map(str::to_owned))
@@ -46,7 +48,8 @@ pub fn load_seen(state_dir: &Path) -> BTreeSet<String> {
 /// The active snapshot written by the last fetch. `None` when missing or bad, which means "no pruning this run".
 #[must_use]
 pub fn load_active_snapshot(state_dir: &Path) -> Option<BTreeSet<String>> {
-    read_array(&state_dir.join(SNAPSHOT_FILE)).map(|items| items.iter().map(py_str).collect())
+    read_array(&state_dir.join(SNAPSHOT_FILE), SNAPSHOT_FILE)
+        .map(|items| items.iter().map(py_str).collect())
 }
 
 fn sorted_array(values: impl Iterator<Item = String>) -> String {
@@ -71,25 +74,29 @@ pub fn save_seen(
             .cloned()
             .chain(expired.iter().take(room).cloned()),
     );
-    std::fs::create_dir_all(state_dir)?;
-    atomic_write(
-        &state_dir.join(SEEN_FILE),
-        text.as_bytes(),
-        ".alerts-seen.",
-        ".tmp",
-    )
+    radar_core::state_pg::write_or_mirror(Some(SEEN_FILE), text.as_bytes(), || {
+        std::fs::create_dir_all(state_dir)?;
+        atomic_write(
+            &state_dir.join(SEEN_FILE),
+            text.as_bytes(),
+            ".alerts-seen.",
+            ".tmp",
+        )
+    })
 }
 
 /// Write the active snapshot as a sorted JSON array.
 pub fn write_active_snapshot(state_dir: &Path, active: &BTreeSet<String>) -> io::Result<()> {
     let text = sorted_array(active.iter().cloned());
-    std::fs::create_dir_all(state_dir)?;
-    atomic_write(
-        &state_dir.join(SNAPSHOT_FILE),
-        text.as_bytes(),
-        ".alerts-active.",
-        ".tmp",
-    )
+    radar_core::state_pg::write_or_mirror(Some(SNAPSHOT_FILE), text.as_bytes(), || {
+        std::fs::create_dir_all(state_dir)?;
+        atomic_write(
+            &state_dir.join(SNAPSHOT_FILE),
+            text.as_bytes(),
+            ".alerts-active.",
+            ".tmp",
+        )
+    })
 }
 
 /// Commit `handled` to the seen set (spec 10.3). Synchronous, so the async activity wrapper runs it on a blocking

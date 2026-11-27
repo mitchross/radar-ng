@@ -92,7 +92,8 @@ pub fn load_existing_strikes(
     now: f64,
     max_strikes: usize,
 ) -> Vec<Strike> {
-    let Ok(bytes) = std::fs::read(path) else {
+    let Ok(Some(bytes)) = radar_core::state_pg::read_doc_or_disk(path, Some("lightning.json"))
+    else {
         return Vec::new();
     };
     let Ok(body) = serde_json::from_slice::<Value>(&bytes) else {
@@ -195,11 +196,13 @@ fn obj(pairs: Vec<(&str, Json)>) -> Json {
 /// Write `lightning.json` atomically (spec 6.9): a unique temp file in the same directory, then rename over the
 /// target. Creates the directory first. Blocking, so call it through `spawn_blocking`.
 pub fn write_geojson(path: &Path, strikes: &[Strike], retention_min: i64) -> io::Result<()> {
-    if let Some(parent) = path.parent().filter(|p| !p.is_empty()) {
-        std::fs::create_dir_all(parent)?;
-    }
     let text = render_geojson(strikes, now_epoch(), retention_min);
-    atomic_write(path, text.as_bytes(), ".lightning.json.", ".tmp")
+    radar_core::state_pg::write_or_mirror(Some("lightning.json"), text.as_bytes(), || {
+        if let Some(parent) = path.parent().filter(|p| !p.is_empty()) {
+            std::fs::create_dir_all(parent)?;
+        }
+        atomic_write(path, text.as_bytes(), ".lightning.json.", ".tmp")
+    })
 }
 
 #[cfg(test)]

@@ -149,15 +149,31 @@ impl ProcessedSet {
             Json::Array(self.items.iter().map(|s| Json::Str(s.clone())).collect()),
         )]);
         let text = pycompat::dumps(&body, Style::Default, false);
-        fsutil::atomic_write(&self.path, text.as_bytes(), ".state-", ".json.tmp")
+        let key = state_key(&self.path);
+        crate::state_pg::write_or_mirror(key.as_deref(), text.as_bytes(), || {
+            fsutil::atomic_write(&self.path, text.as_bytes(), ".state-", ".json.tmp")
+        })
     }
+}
+
+fn state_key(path: &Path) -> Option<String> {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .map(str::to_string)
 }
 
 /// Parse the file into items. Any failure gives an empty list, with a warning logged.
 fn load_items(path: &Path) -> Vec<String> {
-    let value = match fsutil::read_json_opt(path) {
+    let key = state_key(path);
+    let value = match crate::state_pg::read_doc_or_disk(path, key.as_deref()) {
         Ok(None) => return Vec::new(),
-        Ok(Some(value)) => value,
+        Ok(Some(bytes)) => match serde_json::from_slice::<Value>(&bytes) {
+            Ok(value) => value,
+            Err(err) => {
+                tracing::warn!(path = %path.display(), err = %err, "processed set unreadable, starting empty");
+                return Vec::new();
+            }
+        },
         Err(err) => {
             tracing::warn!(path = %path.display(), err = %err, "processed set unreadable, starting empty");
             return Vec::new();

@@ -44,8 +44,13 @@ pub fn radar_age_seconds(snap: &ManifestSnapshot, now: DateTime<Utc>) -> Option<
 
 /// `nowcast-status.json` when it parses to an object, else `None`.
 fn read_nowcast_status(state: &AppState) -> Option<Map<String, Value>> {
-    let text = std::fs::read_to_string(state.state_file("nowcast-status.json")).ok()?;
-    match serde_json::from_str::<Value>(&text).ok()? {
+    let bytes = radar_core::state_pg::read_doc_or_disk(
+        &state.state_file("nowcast-status.json"),
+        Some("nowcast-status.json"),
+    )
+    .ok()
+    .flatten()?;
+    match serde_json::from_slice::<Value>(&bytes).ok()? {
         Value::Object(map) => Some(map),
         _ => None,
     }

@@ -97,32 +97,69 @@ impl PushTokenStore {
         platform: &str,
         created_at: f64,
     ) -> Result<(), PushTokenError> {
+        if let Some(pg) = crate::state_pg::global().filter(|s| s.read_pg()) {
+            pg.push_token_upsert_blocking(user_id, token, platform, created_at)
+                .map_err(std::io::Error::other)?;
+            return Ok(());
+        }
         let conn = self.connect()?;
         conn.execute(
             "INSERT INTO push_tokens(user_id, token, platform, created_at) VALUES(?1, ?2, ?3, ?4) \
              ON CONFLICT(token) DO UPDATE SET user_id=excluded.user_id, platform=excluded.platform",
             params![user_id, token, platform, created_at],
         )?;
+        if let Some(pg) = crate::state_pg::global()
+            && let Err(err) = pg.push_token_upsert_blocking(user_id, token, platform, created_at)
+        {
+            tracing::warn!(err = %format!("{err:#}"), "state_pg_push_token_mirror_upsert_failed");
+        }
         Ok(())
     }
 
     /// Delete every row with this token. Returns the number of rows removed.
     pub fn delete_by_token(&self, token: &str) -> Result<usize, PushTokenError> {
+        if let Some(pg) = crate::state_pg::global().filter(|s| s.read_pg()) {
+            return pg
+                .push_token_delete_by_token_blocking(token)
+                .map_err(|e| PushTokenError::Io(std::io::Error::other(e)));
+        }
         let conn = self.connect()?;
-        Ok(conn.execute("DELETE FROM push_tokens WHERE token = ?1", params![token])?)
+        let removed = conn.execute("DELETE FROM push_tokens WHERE token = ?1", params![token])?;
+        if let Some(pg) = crate::state_pg::global()
+            && let Err(err) = pg.push_token_delete_by_token_blocking(token)
+        {
+            tracing::warn!(err = %format!("{err:#}"), "state_pg_push_token_mirror_delete_failed");
+        }
+        Ok(removed)
     }
 
     /// Delete the row for this user and token. Returns the number of rows removed.
     pub fn delete_for_user(&self, user_id: &str, token: &str) -> Result<usize, PushTokenError> {
+        if let Some(pg) = crate::state_pg::global().filter(|s| s.read_pg()) {
+            return pg
+                .push_token_delete_for_user_blocking(user_id, token)
+                .map_err(|e| PushTokenError::Io(std::io::Error::other(e)));
+        }
         let conn = self.connect()?;
-        Ok(conn.execute(
+        let removed = conn.execute(
             "DELETE FROM push_tokens WHERE user_id = ?1 AND token = ?2",
             params![user_id, token],
-        )?)
+        )?;
+        if let Some(pg) = crate::state_pg::global()
+            && let Err(err) = pg.push_token_delete_for_user_blocking(user_id, token)
+        {
+            tracing::warn!(err = %format!("{err:#}"), "state_pg_push_token_mirror_delete_failed");
+        }
+        Ok(removed)
     }
 
     /// All tokens for a user. No order is guaranteed (spec §9.4).
     pub fn list_for_user(&self, user_id: &str) -> Result<Vec<PushToken>, PushTokenError> {
+        if let Some(pg) = crate::state_pg::global().filter(|s| s.read_pg()) {
+            return pg
+                .push_token_list_for_user_blocking(user_id)
+                .map_err(|e| PushTokenError::Io(std::io::Error::other(e)));
+        }
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
             "SELECT user_id, token, platform, created_at FROM push_tokens WHERE user_id = ?1",
