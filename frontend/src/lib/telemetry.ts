@@ -1,6 +1,6 @@
-// Opt-in OpenTelemetry wiring for the Expo/React Native app. Production
-// exports only when EXPO_PUBLIC_TELEMETRY_ENABLED=1 and an explicit endpoint
-// is configured. Location attributes are dropped before export.
+// Opt-in OpenTelemetry wiring for the Expo/React Native app. Exports only when
+// EXPO_PUBLIC_TELEMETRY_ENABLED=1, to the build's default stack relay
+// (/api/telemetry/v1/*). Location attributes are dropped before export.
 //
 // The OTLP/HTTP exporters use fetch() under the hood, which RN provides
 // natively, no polyfills required. We don't use any auto-instrumentation
@@ -23,16 +23,18 @@ import {
   telemetryErrorType,
   type TelemetryAttributes,
 } from "./telemetryPrivacy";
+import { telemetryExporterConfig } from "./telemetryExport";
+import { SELF_HOSTED } from "./constants";
 
-const OTLP_BASE = process.env.EXPO_PUBLIC_OTLP_BASE as string | undefined;
-const TELEMETRY_ENABLED =
-  process.env.EXPO_PUBLIC_TELEMETRY_ENABLED === "1" && Boolean(OTLP_BASE);
+const TELEMETRY_ENABLED = process.env.EXPO_PUBLIC_TELEMETRY_ENABLED === "1";
+// A revocable abuse filter for the relay, not a secret: it ships inside the app.
+const TELEMETRY_TOKEN = process.env.EXPO_PUBLIC_TELEMETRY_TOKEN as string | undefined;
 
 // The SDK and exporters (~300 KB) are required only inside this branch.
 // EXPO_PUBLIC_* values are inlined at build time, so a build without telemetry
 // constant-folds the branch away and never bundles them. With it off, the API
 // packages above hand out no-op tracers and loggers.
-if (TELEMETRY_ENABLED && OTLP_BASE) {
+if (TELEMETRY_ENABLED) {
   /* eslint-disable @typescript-eslint/no-require-imports */
   const { resourceFromAttributes } = require("@opentelemetry/resources") as typeof import("@opentelemetry/resources");
   const { WebTracerProvider, BatchSpanProcessor } =
@@ -57,7 +59,9 @@ if (TELEMETRY_ENABLED && OTLP_BASE) {
     resource,
     spanProcessors: [
       new BatchSpanProcessor(
-        new OTLPTraceExporter({ url: `${OTLP_BASE}/v1/traces` }),
+        new OTLPTraceExporter(
+          telemetryExporterConfig(SELF_HOSTED.DEFAULT_URL, "traces", TELEMETRY_TOKEN),
+        ),
         { maxExportBatchSize: 32, scheduledDelayMillis: 5000 },
       ),
     ],
@@ -68,7 +72,9 @@ if (TELEMETRY_ENABLED && OTLP_BASE) {
     resource,
     processors: [
       new BatchLogRecordProcessor({
-        exporter: new OTLPLogExporter({ url: `${OTLP_BASE}/v1/logs` }),
+        exporter: new OTLPLogExporter(
+          telemetryExporterConfig(SELF_HOSTED.DEFAULT_URL, "logs", TELEMETRY_TOKEN),
+        ),
         maxExportBatchSize: 32,
         scheduledDelayMillis: 5000,
       }),

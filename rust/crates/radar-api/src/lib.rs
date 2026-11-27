@@ -38,6 +38,7 @@ mod sky;
 mod snow;
 mod spc;
 mod state;
+mod telemetry;
 mod upstream;
 mod web;
 mod wind;
@@ -84,6 +85,7 @@ pub fn router(state: AppState) -> Router {
         api = api.merge(workflows::routes());
     }
     let level2 = level2::routes();
+    let telemetry = telemetry::routes();
     let api =
         api.layer(CompressionLayer::new().compress_when(SizeAbove::new(1024).and(is_json_or_text)));
     let statics = basemap::static_router(
@@ -94,6 +96,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(api)
         .merge(level2)
+        .merge(telemetry)
         .merge(statics)
         .fallback(edge::unmatched)
         .layer(from_fn_with_state(state.clone(), edge::edge))

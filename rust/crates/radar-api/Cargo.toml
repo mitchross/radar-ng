@@ -46,6 +46,7 @@ lru = "0.18"
 percent-encoding = "2"
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 radar-replay = { workspace = true, features = ["testkit"] }
 tempfile.workspace = true
 futures.workspace = true

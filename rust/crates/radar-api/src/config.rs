@@ -128,6 +128,14 @@ pub struct Config {
     /// `TRUSTED_PROXIES` (new): extra comma-separated IPs or CIDRs trusted for `X-Forwarded-For`,
     /// in addition to the private ranges and loopback.
     pub trusted_proxies_extra: String,
+    /// `OTLP_UPSTREAM`: OTLP/HTTP collector base for `/api/telemetry/v1/*`. Empty turns the relay off.
+    pub otlp_upstream: String,
+    /// `TELEMETRY_TOKEN`: bearer token the relay requires when set. Default empty (no token).
+    pub telemetry_token: String,
+    /// `TELEMETRY_RATE_PER_MIN`: relay requests per minute per client. Default 60.
+    pub telemetry_rate_per_min: f64,
+    /// `TELEMETRY_RATE_BURST`: relay bucket size per client. Default 20.
+    pub telemetry_rate_burst: f64,
 }
 
 impl Config {
@@ -219,6 +227,13 @@ impl Config {
             .to_string(),
             satellite_cache_max_bytes: pos_u64("SATELLITE_CACHE_MAX_BYTES", 128 * MIB)?,
             trusted_proxies_extra: str_var("TRUSTED_PROXIES", ""),
+            otlp_upstream: str_var("OTLP_UPSTREAM", "")
+                .trim()
+                .trim_end_matches('/')
+                .to_string(),
+            telemetry_token: str_var("TELEMETRY_TOKEN", "").trim().to_string(),
+            telemetry_rate_per_min: env::float_var("TELEMETRY_RATE_PER_MIN", 60.0)?,
+            telemetry_rate_burst: env::float_var("TELEMETRY_RATE_BURST", 20.0)?,
         })
     }
 
@@ -277,6 +292,10 @@ impl Config {
             gibs_wmts_base: String::new(),
             satellite_cache_max_bytes: 0,
             trusted_proxies_extra: String::new(),
+            otlp_upstream: String::new(),
+            telemetry_token: String::new(),
+            telemetry_rate_per_min: 60.0,
+            telemetry_rate_burst: 20.0,
         }
     }
 }

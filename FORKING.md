@@ -40,6 +40,12 @@ All four are read by [`frontend/identity.js`](frontend/identity.js), the one pla
 | `EXPO_PUBLIC_RADAR_DEFAULT_URL` | The stack a fresh install talks to. Users can still change it in **Settings → Advanced Mode → Stack URL** | `https://radar-ng-api.vanillax.me` |
 | `RADAR_BASEMAP_RASTER_URL` | tileserver-gl raster endpoint for the Watch and widget map images | `https://maps.vanillax.me/raster` |
 
+App telemetry is off unless you build with `EXPO_PUBLIC_TELEMETRY_ENABLED=1`. It goes to your stack's
+`/api/telemetry/v1/*` relay (server `OTLP_UPSTREAM`, see
+[docs/self-host/configuration.md](docs/self-host/configuration.md)). If the server sets
+`TELEMETRY_TOKEN`, put the same value in `EXPO_PUBLIC_TELEMETRY_TOKEN` in git-ignored
+`frontend/.env.local`.
+
 Release builds also read the basemap styles from [`frontend/.env.production`](frontend/.env.production).
 Point those lines at your own map server, or delete them to use the bundled Protomaps style.
 

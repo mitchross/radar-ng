@@ -83,6 +83,8 @@ pub const ROUTE_TEMPLATES: &[&str] = &[
     "/api/sky/tonight/{lat}/{lon}",
     "/api/snow/{lat}/{lon}",
     "/api/normals/{lat}/{lon}",
+    "/api/telemetry/v1/traces",
+    "/api/telemetry/v1/logs",
     "/v1/push-tokens",
     "/v1/push-tokens/{token}",
     "/v1/watches",
