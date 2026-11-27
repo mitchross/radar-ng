@@ -19,8 +19,12 @@ use crate::state::AppState;
 pub const MAX_BODY_BYTES: usize = 1024 * 1024;
 /// Largest upstream response body passed back to the client.
 const MAX_REPLY_BYTES: usize = 64 * 1024;
-/// Upstream request timeout.
+/// Upstream request timeout, reply body included.
 const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(5);
+/// Deadline for reading the client's body, so stalled uploads free their buffer.
+const BODY_TIMEOUT: Duration = Duration::from_secs(10);
+/// Relays in flight at once (bounds buffered bodies to about 32 MiB).
+pub const MAX_IN_FLIGHT: usize = 32;
 const NO_STORE: &str = "no-store";
 
 /// The two relay routes (both 404 while `OTLP_UPSTREAM` is unset).
@@ -119,12 +123,22 @@ async fn relay(state: &AppState, signal: &str, req: Request) -> Response {
     if declared_too_big {
         return error(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large");
     }
-    let Ok(body) = axum::body::to_bytes(req.into_body(), MAX_BODY_BYTES).await else {
-        return error(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large");
+    let Ok(_slot) = state.telemetry_slots.try_acquire() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, "busy");
+    };
+    let body = match tokio::time::timeout(
+        BODY_TIMEOUT,
+        axum::body::to_bytes(req.into_body(), MAX_BODY_BYTES),
+    )
+    .await
+    {
+        Ok(Ok(body)) => body,
+        Ok(Err(_)) => return error(StatusCode::PAYLOAD_TOO_LARGE, "body_too_large"),
+        Err(_) => return error(StatusCode::REQUEST_TIMEOUT, "body_timeout"),
     };
 
     let mut out = state
-        .http
+        .telemetry_http
         .post(format!("{upstream}/v1/{signal}"))
         .timeout(UPSTREAM_TIMEOUT)
         .header(header::CONTENT_TYPE, content_type)
@@ -141,7 +155,9 @@ async fn relay(state: &AppState, signal: &str, req: Request) -> Response {
     };
     let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
     let reply_type = resp.headers().get(header::CONTENT_TYPE).cloned();
-    let reply = read_capped(resp).await.unwrap_or_default();
+    let Some(reply) = read_capped(resp).await else {
+        return error(StatusCode::BAD_GATEWAY, "upstream_unavailable");
+    };
     let mut headers = HeaderMap::new();
     if let Some(ct) = reply_type {
         headers.insert(header::CONTENT_TYPE, ct);

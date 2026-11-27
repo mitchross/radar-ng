@@ -184,6 +184,10 @@ pub struct Inner {
     pub level2_limiter: Mutex<RateLimiter>,
     /// Per-client bucket for `/api/telemetry/v1/*` on top of the global limiter.
     pub telemetry_limiter: Mutex<RateLimiter>,
+    /// Telemetry relays in flight; acquisition is non-blocking.
+    pub telemetry_slots: Semaphore,
+    /// Client for the telemetry relay: no redirects, so it only ever reaches `OTLP_UPSTREAM`.
+    pub telemetry_http: reqwest::Client,
 }
 
 /// A moka weight in bytes, saturating at `u32::MAX`.
@@ -214,6 +218,10 @@ impl AppState {
             .pool_max_idle_per_host(20)
             .build()
             .context("building the upstream HTTP client")?;
+        let telemetry_http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .context("building the telemetry HTTP client")?;
         let storm_cfg = StormConfig::from_env().context("storm configuration")?;
         let skill_cfg = SkillConfig::from_env().context("nowcast skill configuration")?;
         let ttl = |secs: u64| Duration::from_secs(secs);
@@ -330,6 +338,8 @@ impl AppState {
                 config.telemetry_rate_per_min / 60.0,
                 config.telemetry_rate_burst,
             )),
+            telemetry_slots: Semaphore::new(crate::telemetry::MAX_IN_FLIGHT),
+            telemetry_http,
             config,
         };
         Ok(Self(Arc::new(inner)))

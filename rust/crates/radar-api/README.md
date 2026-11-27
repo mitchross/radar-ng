@@ -62,7 +62,7 @@ Every `/api` route is a GET (`/api/livez` included), except the POST-only teleme
 | GET | `/api/sky/tonight/{lat}/{lon}` | `sky::get_sky_tonight` | Visible ISS passes for the next three nights from `STATE_DIR/iss.json` (SGP4) |
 | GET | `/api/snow/{lat}/{lon}` | `snow::get_snow` | Snow at one spot: Open-Meteo hourly snowfall plus winter layer samples; byte-capped 0.1° cell cache |
 | GET | `/api/normals/{lat}/{lon}` | `normals::get_normals` | 1991-2020 normal high and low for `?date=`; 404 off the lower 48, 503 until the store is built |
-| POST | `/api/telemetry/v1/traces`, `/api/telemetry/v1/logs` | `telemetry::relay` | OTLP/HTTP relay to `OTLP_UPSTREAM` (404 when unset). `TELEMETRY_TOKEN` bearer (401), own per-client limit (429), 1 MiB cap (413), OTLP content types only (415), upstream status passed through, transport errors 502 |
+| POST | `/api/telemetry/v1/traces`, `/api/telemetry/v1/logs` | `telemetry::relay` | OTLP/HTTP relay to `OTLP_UPSTREAM` (404 when unset). `TELEMETRY_TOKEN` bearer (401), own per-client limit (429), 1 MiB cap (413), 10 s body deadline (408), 32 in flight (503), OTLP content types only (415), no redirects, upstream status passed through, transport errors 502 |
 | POST | `/v1/push-tokens` | `workflows::post_push_token` | Bearer auth, owner check, 200 `{"registered":true}`. 503 `{"detail":"push token store is read-only"}` when `STATE_DIR` is not writable (F9) |
 | DELETE | `/v1/push-tokens/{token}` | `workflows::delete_push_token` | 204 always |
 | POST | `/v1/watches` | `workflows::post_watch` | Temporal start; 201, 409, 410, 503 |

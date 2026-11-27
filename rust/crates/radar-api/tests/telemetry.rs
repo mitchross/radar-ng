@@ -169,6 +169,36 @@ async fn upstream_status_passes_through_and_transport_errors_are_502() {
 }
 
 #[tokio::test]
+async fn upstream_redirects_are_not_followed() {
+    let (target, seen) = collector(StatusCode::OK).await;
+    let redirect = Router::new().fallback(move || {
+        let to = format!("{target}/v1/traces");
+        async move { (StatusCode::TEMPORARY_REDIRECT, [(header::LOCATION, to)]) }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, redirect).await;
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(&dir, |c| c.otlp_upstream = base);
+    let (code, _) = status(&app, otlp("/api/telemetry/v1/traces", None, "x")).await;
+    assert_eq!(code, StatusCode::TEMPORARY_REDIRECT);
+    assert!(seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn stalled_upload_times_out_with_408() {
+    let (base, seen) = collector(StatusCode::OK).await;
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(&dir, |c| c.otlp_upstream = base);
+    let stalled = Body::from_stream(futures::stream::pending::<Result<Bytes, std::io::Error>>());
+    let (code, _) = status(&app, otlp("/api/telemetry/v1/traces", None, stalled)).await;
+    assert_eq!(code, StatusCode::REQUEST_TIMEOUT);
+    assert!(seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn per_client_limit_answers_429() {
     let (base, seen) = collector(StatusCode::OK).await;
     let dir = tempfile::tempdir().unwrap();
