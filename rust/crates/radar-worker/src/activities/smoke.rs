@@ -70,56 +70,85 @@ pub fn check_release(
 
     verify_png_round_trip()?;
 
-    let volumes: Vec<(PathBuf, &str)> = if role == "level2" {
-        vec![(
+    let truthy = |key: &str| {
+        env(key).is_some_and(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+    };
+    let non_empty = |key: &str| env(key).is_some_and(|v| !v.trim().is_empty());
+    let state_pg_active = non_empty("RADAR_STATE_DATABASE_URL") && truthy("RADAR_STATE_READ_PG");
+    let s3_configured = non_empty("RADAR_S3_ENDPOINT");
+    let grids_s3_active = s3_configured && truthy("RADAR_GRIDS_READ_S3");
+    let tiles_s3_active = s3_configured && truthy("RADAR_TILES_READ_S3");
+
+    let mut volumes: Vec<(PathBuf, &str)> = Vec::new();
+    if role == "level2" {
+        volumes.push((
             PathBuf::from(
                 env("TMPDIR")
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| "/scratch".to_owned()),
             ),
             "TMPDIR",
-        )]
+        ));
     } else if role == "alerts" {
-        let grid_dir = env("GRID_DIR")
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "/data/grids".to_owned());
-        check_readable_dir(Path::new(&grid_dir))?;
-        vec![(
-            PathBuf::from(
-                env("STATE_DIR")
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| "/data/state".to_owned()),
-            ),
-            "STATE_DIR",
-        )]
-    } else {
-        vec![
-            (
-                PathBuf::from(
-                    env("TILE_DIR")
-                        .filter(|s| !s.is_empty())
-                        .unwrap_or_else(|| "/data/tiles".to_owned()),
-                ),
-                "TILE_DIR",
-            ),
-            (
-                PathBuf::from(
-                    env("GRID_DIR")
-                        .filter(|s| !s.is_empty())
-                        .unwrap_or_else(|| "/data/grids".to_owned()),
-                ),
-                "GRID_DIR",
-            ),
-            (
+        if !grids_s3_active {
+            let grid_dir = env("GRID_DIR")
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "/data/grids".to_owned());
+            check_readable_dir(Path::new(&grid_dir))?;
+        }
+        if !state_pg_active {
+            volumes.push((
                 PathBuf::from(
                     env("STATE_DIR")
                         .filter(|s| !s.is_empty())
                         .unwrap_or_else(|| "/data/state".to_owned()),
                 ),
                 "STATE_DIR",
-            ),
-        ]
-    };
+            ));
+        }
+    } else {
+        if !tiles_s3_active {
+            volumes.push((
+                PathBuf::from(
+                    env("TILE_DIR")
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| "/data/tiles".to_owned()),
+                ),
+                "TILE_DIR",
+            ));
+        }
+        if !grids_s3_active {
+            volumes.push((
+                PathBuf::from(
+                    env("GRID_DIR")
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| "/data/grids".to_owned()),
+                ),
+                "GRID_DIR",
+            ));
+        }
+        if !state_pg_active {
+            volumes.push((
+                PathBuf::from(
+                    env("STATE_DIR")
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| "/data/state".to_owned()),
+                ),
+                "STATE_DIR",
+            ));
+        }
+    }
+    if volumes.is_empty() {
+        let scratch = env("TMPDIR")
+            .filter(|s| !s.is_empty())
+            .map_or_else(std::env::temp_dir, PathBuf::from);
+        volumes.push((scratch, "TMPDIR"));
+    }
     for (dir, _label) in &volumes {
         probe_volume(dir)?;
     }
@@ -266,6 +295,47 @@ mod tests {
             ("TILE_DIR", missing.to_str().unwrap()),
             ("GRID_DIR", scratch.path().to_str().unwrap()),
             ("STATE_DIR", scratch.path().to_str().unwrap()),
+        ]);
+        assert!(check_release(&env).is_err());
+    }
+
+    #[test]
+    fn volumeless_worker_skips_pg_and_s3_backed_dirs_and_probes_tmpdir() {
+        let scratch = tempfile::tempdir().unwrap();
+        let missing = scratch.path().join("absent");
+        let missing = missing.to_str().unwrap();
+        let env = lookup(&[
+            ("WORKER_ROLE", "mrms"),
+            ("TMPDIR", scratch.path().to_str().unwrap()),
+            ("TILE_DIR", missing),
+            ("GRID_DIR", missing),
+            ("STATE_DIR", missing),
+            ("RADAR_STATE_DATABASE_URL", "postgres://radar@pg/db"),
+            ("RADAR_STATE_READ_PG", "1"),
+            ("RADAR_S3_ENDPOINT", "http://rustfs:9000"),
+            ("RADAR_GRIDS_READ_S3", "1"),
+            ("RADAR_TILES_READ_S3", "1"),
+        ]);
+        let result = check_release(&env).unwrap();
+        assert!(result.ok);
+        assert_eq!(result.role, "mrms");
+    }
+
+    #[test]
+    fn shadow_mode_still_probes_disk_volumes() {
+        let scratch = tempfile::tempdir().unwrap();
+        let missing = scratch.path().join("absent");
+        let env = lookup(&[
+            ("WORKER_ROLE", "mrms"),
+            ("TMPDIR", scratch.path().to_str().unwrap()),
+            ("TILE_DIR", missing.to_str().unwrap()),
+            ("GRID_DIR", scratch.path().to_str().unwrap()),
+            ("STATE_DIR", scratch.path().to_str().unwrap()),
+            ("RADAR_STATE_DATABASE_URL", "postgres://radar@pg/db"),
+            ("RADAR_STATE_READ_PG", "0"),
+            ("RADAR_S3_ENDPOINT", "http://rustfs:9000"),
+            ("RADAR_GRIDS_READ_S3", "0"),
+            ("RADAR_TILES_READ_S3", "0"),
         ]);
         assert!(check_release(&env).is_err());
     }
