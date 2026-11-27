@@ -54,7 +54,7 @@ device, where it never leaves the app except through the two paths above.
 | " | `GET /api/reverse-geocode?lat&lon` | 3 dp | place label for the device position; the server asks the self-hosted Photon |
 | " | `GET /basemap/imagery/{z}/{x}/{y}.jpg`, or the self-hosted VersaTiles host's `/imagery/...` in release builds | none, z/x/y reveals the viewed area | satellite imagery; the server fetches public-domain USGS tiles |
 | Apple, via `MKDirections` (**CarPlay build only**) | route request with `MKMapItem(location:)` | **full precision** | turn-by-turn routing |
-| Configured OTLP endpoint (opt-in, off by default) | traces and logs | none, location-shaped attributes are stripped by `src/lib/telemetryPrivacy.ts` | diagnostics |
+| Your stack, `POST /api/telemetry/v1/{traces,logs}` (opt-in, off by default; the server forwards to its own collector) | traces and logs | none, location-shaped attributes are stripped by `src/lib/telemetryPrivacy.ts` | diagnostics |
 
 Notably **not** sent anywhere: the device's position is never included in telemetry, never written
 to the widget's snapshot, and never part of the watch hand-off.
@@ -125,8 +125,8 @@ or ZFS snapshots that retain deleted chunks past Loki's 24 h.
 ### 4.2 Everything else
 
 The app has no analytics SDK, no crash reporter and no advertising SDK. Telemetry is opt-in and
-inert unless `EXPO_PUBLIC_TELEMETRY_ENABLED=1` and `EXPO_PUBLIC_OTLP_BASE` are both set at build
-time.
+inert unless `EXPO_PUBLIC_TELEMETRY_ENABLED=1` is set at build time, and then goes only to the
+app's own stack, which relays it to its collector when `OTLP_UPSTREAM` is set.
 
 Upstream services the *server* calls (NWS, the self-hosted Photon) receive the server's address, not
 the device's.

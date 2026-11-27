@@ -190,6 +190,17 @@ EXPO_PUBLIC_BASEMAP_DARK_STYLE_URL=https://maps.vanillax.me/styles/dark.json
 | `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` | unset | Optional OpenAI-compatible endpoint for `/api/briefing`; unset hides the briefing. |
 | `GIBS_WMTS_BASE` | `https://gibs.earthdata.nasa.gov/wmts/epsg3857/nrt` | NASA GIBS WMTS root for the GOES satellite layer (`/tiles/satellite/*` and the manifest `satellite` layer). Empty turns the layer off. |
 | `SATELLITE_CACHE_MAX_BYTES` | `134217728` (128 MiB) | In-process cache for satellite tiles. Count it in the api memory limit. `0` turns the cache off. |
+| `OTLP_UPSTREAM` | unset | OTLP/HTTP collector base (for example `http://otel-collector:4318`). Turns on `POST /api/telemetry/v1/{traces,logs}`, which forwards the app's telemetry there. Unset answers 404. |
+| `TELEMETRY_TOKEN` | unset | When set, the relay requires `Authorization: Bearer <token>` (401 otherwise). Build the app with the same value in `EXPO_PUBLIC_TELEMETRY_TOKEN`. It ships inside the app, so treat it as a revocable abuse filter, not a secret. |
+| `TELEMETRY_RATE_PER_MIN` / `TELEMETRY_RATE_BURST` | `60` / `20` | Per-client limit for the relay, on top of the API limit. Bodies over 1 MiB answer 413. |
+
+### App telemetry (build-time, opt-in)
+
+The app exports traces and logs only when built with `EXPO_PUBLIC_TELEMETRY_ENABLED=1`. It posts
+them to its default stack (`EXPO_PUBLIC_RADAR_DEFAULT_URL`) at `/api/telemetry/v1/*`, so the server
+needs `OTLP_UPSTREAM` set. If the server sets `TELEMETRY_TOKEN`, put the same value in
+`EXPO_PUBLIC_TELEMETRY_TOKEN` in the git-ignored `frontend/.env.local`. The web radar sends no
+telemetry.
 
 ---
 

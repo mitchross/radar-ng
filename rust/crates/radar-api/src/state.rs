@@ -182,6 +182,8 @@ pub struct Inner {
     pub level2: std::sync::OnceLock<Arc<radar_level2::service::Level2Service>>,
     /// Per-client bucket for `POST /api/level2/views` on top of the global limiter.
     pub level2_limiter: Mutex<RateLimiter>,
+    /// Per-client bucket for `/api/telemetry/v1/*` on top of the global limiter.
+    pub telemetry_limiter: Mutex<RateLimiter>,
 }
 
 /// A moka weight in bytes, saturating at `u32::MAX`.
@@ -324,6 +326,10 @@ impl AppState {
             push_tokens: PushTokenStore::new(config.state_dir.clone()),
             level2: std::sync::OnceLock::new(),
             level2_limiter: Mutex::new(RateLimiter::new(0.5, 10.0)),
+            telemetry_limiter: Mutex::new(RateLimiter::new(
+                config.telemetry_rate_per_min / 60.0,
+                config.telemetry_rate_burst,
+            )),
             config,
         };
         Ok(Self(Arc::new(inner)))

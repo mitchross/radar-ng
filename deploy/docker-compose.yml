@@ -278,6 +278,9 @@ services:
       - BASEMAP_PMTILES=/basemap/basemap.pmtiles
       # Same contact the workers send (x-worker-env); NWS rejects anonymous clients.
       - NWS_USER_AGENT=${NWS_USER_AGENT:-(radar-ng, you@example.com)}
+      # App telemetry relay (/api/telemetry/v1/*) to an OTLP/HTTP collector; empty keeps it off (404).
+      - OTLP_UPSTREAM=${OTLP_UPSTREAM:-}
+      - TELEMETRY_TOKEN=${TELEMETRY_TOKEN:-}
     volumes:
       - tiles:/data/tiles:ro
       - grids:/data/grids:ro
