@@ -29,6 +29,7 @@ hmac.workspace = true
 hex.workspace = true
 url.workspace = true
 quick-xml.workspace = true
+bytes.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

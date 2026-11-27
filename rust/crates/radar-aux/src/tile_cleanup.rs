@@ -158,6 +158,9 @@ pub fn sweep_layer(
     retention_min: i64,
     now: SystemTime,
 ) -> Result<i64, CleanupError> {
+    if let Some(s3) = radar_core::object_store::global().filter(|s| s.read_tiles_s3()) {
+        return sweep_layer_s3(s3, cfg, layer, retention_min, now, true);
+    }
     let base = cfg.tile_dir.join(layer);
     if !base.exists() {
         return Ok(0);
@@ -231,6 +234,72 @@ pub fn sweep_layer(
             // Manifest first: de-list the frame before its tiles disappear.
             remove_frame(&cfg.state_dir, layer, &name)?;
             let _ = fs::remove_dir_all(&ts_dir);
+            removed += 1;
+        }
+    }
+    if let Some(s3) = radar_core::object_store::global()
+        && let Err(err) = sweep_layer_s3(s3, cfg, layer, retention_min, now, false)
+    {
+        tracing::warn!(layer, err = %err, "s3_shadow_tile_cleanup_failed");
+    }
+    Ok(removed)
+}
+
+fn sweep_layer_s3(
+    s3: &radar_core::object_store::S3Store,
+    cfg: &TileCleanupConfig,
+    layer: &str,
+    retention_min: i64,
+    now: SystemTime,
+    update_manifest: bool,
+) -> Result<i64, CleanupError> {
+    let now_secs = unix_secs(now);
+    let cutoff = now_secs - (retention_min as f64) * 60.0;
+    let manifest = read_manifest(&cfg.state_dir)?;
+    let current_run: Option<String> = manifest
+        .layers
+        .get(layer)
+        .and_then(|l| l.extra.get("run_id"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let prefix = format!("tiles/{layer}/");
+    let objs = s3
+        .list_prefix_blocking(&prefix)
+        .map_err(|e| CleanupError::Io(std::io::Error::other(e)))?;
+    let mut removed = 0i64;
+    for obj in objs {
+        let Some(rel) = obj
+            .key
+            .strip_prefix(&prefix)
+            .and_then(|s| s.strip_suffix(".rtb"))
+        else {
+            continue;
+        };
+        let parts: Vec<&str> = rel.split('/').collect();
+        // `<palette>/runs/<run>/<valid>`
+        if parts.len() >= 3 && parts[1] == "runs" {
+            let run_name = parts[2];
+            if current_run.as_deref() == Some(run_name) {
+                continue;
+            }
+            if let Some(issued) = parse_stamp(run_name)
+                && unix_secs_of(&issued) < cutoff
+            {
+                let _ = s3.delete_blocking(&obj.key);
+                removed += 1;
+            }
+            continue;
+        }
+        // `<palette>/<ts>` or legacy `<ts>`
+        let ts = *parts.last().unwrap_or(&"");
+        if let Some(valid) = parse_stamp(ts)
+            && unix_secs_of(&valid) < cutoff
+        {
+            if update_manifest {
+                remove_frame(&cfg.state_dir, layer, ts)?;
+            }
+            let _ = s3.delete_blocking(&obj.key);
             removed += 1;
         }
     }

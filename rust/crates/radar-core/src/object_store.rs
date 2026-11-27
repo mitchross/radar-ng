@@ -52,8 +52,12 @@ pub struct S3Config {
     pub prefix: String,
     /// When `true`, grid reads/writes/cleanup use S3 as authoritative (`RADAR_GRIDS_READ_S3=1`).
     pub read_grids_s3: bool,
+    /// When `true`, tile reads/writes/cleanup use S3 `.rtb` bundles as authoritative (`RADAR_TILES_READ_S3=1`).
+    pub read_tiles_s3: bool,
     /// Local `GRID_DIR` root used to derive relative object keys from filesystem paths.
     pub grid_dir: PathBuf,
+    /// Local `TILE_DIR` root used to derive relative tile bundle keys from filesystem paths.
+    pub tile_dir: PathBuf,
 }
 
 impl S3Config {
@@ -105,10 +109,20 @@ impl S3Config {
                 "1" | "true" | "yes" | "on"
             )
         });
+        let read_tiles_s3 = get("RADAR_TILES_READ_S3").is_some_and(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        });
         let grid_dir = get("GRID_DIR")
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .map_or_else(|| PathBuf::from("/data/grids"), PathBuf::from);
+        let tile_dir = get("TILE_DIR")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map_or_else(|| PathBuf::from("/data/tiles"), PathBuf::from);
         Ok(Some(Self {
             endpoint,
             bucket,
@@ -117,7 +131,9 @@ impl S3Config {
             region,
             prefix,
             read_grids_s3,
+            read_tiles_s3,
             grid_dir,
+            tile_dir,
         }))
     }
 }
@@ -191,6 +207,46 @@ impl S3Store {
     #[must_use]
     pub fn read_grids_s3(&self) -> bool {
         self.cfg.read_grids_s3
+    }
+
+    /// True when `RADAR_TILES_READ_S3=1`.
+    #[must_use]
+    pub fn read_tiles_s3(&self) -> bool {
+        self.cfg.read_tiles_s3
+    }
+
+    /// Derive the S3 bundle key `"tiles/<rel>.rtb"` from a pyramid or bucket directory under `TILE_DIR`.
+    #[must_use]
+    pub fn tile_bundle_key_for_dir(&self, pyramid_dir: &Path) -> Option<String> {
+        let rel = pyramid_dir.strip_prefix(&self.cfg.tile_dir).ok()?;
+        let mut parts = Vec::new();
+        for comp in rel.components() {
+            let std::path::Component::Normal(s) = comp else {
+                return None;
+            };
+            parts.push(s.to_str()?);
+        }
+        if parts.is_empty() {
+            return None;
+        }
+        Some(format!("tiles/{}.rtb", parts.join("/")))
+    }
+
+    /// Derive the S3 key `"tiles/<rel>.bucket.json"` for a packed bucket's metadata under `TILE_DIR`.
+    #[must_use]
+    pub fn packed_bucket_meta_key_for_dir(&self, bucket_dir: &Path) -> Option<String> {
+        let rel = bucket_dir.strip_prefix(&self.cfg.tile_dir).ok()?;
+        let mut parts = Vec::new();
+        for comp in rel.components() {
+            let std::path::Component::Normal(s) = comp else {
+                return None;
+            };
+            parts.push(s.to_str()?);
+        }
+        if parts.is_empty() {
+            return None;
+        }
+        Some(format!("tiles/{}.bucket.json", parts.join("/")))
     }
 
     /// Derive the S3 key `"grids/<rel>"` from a filesystem path under `GRID_DIR`.
@@ -713,6 +769,18 @@ pub fn read_grids_s3() -> bool {
     global().is_some_and(S3Store::read_grids_s3)
 }
 
+/// True when S3 is configured AND `RADAR_TILES_READ_S3=1`.
+#[must_use]
+pub fn read_tiles_s3() -> bool {
+    global().is_some_and(S3Store::read_tiles_s3)
+}
+
+/// Build the S3 object key `"tiles/<pyramid_rel>.rtb"` for a tile pyramid relative to `TILE_DIR`.
+#[must_use]
+pub fn tile_bundle_key_for_rel(pyramid_rel: &str) -> String {
+    format!("tiles/{}.rtb", pyramid_rel.trim_matches('/'))
+}
+
 /// Best-effort shadow write of `body` to `key` when S3 is configured (`RADAR_GRIDS_READ_S3=0`).
 pub fn mirror_put(key: &str, body: &[u8], content_type: &str) {
     let Some(store) = global() else {
@@ -813,12 +881,20 @@ mod tests {
             region: "us-east-1".into(),
             prefix: String::new(),
             read_grids_s3: false,
+            read_tiles_s3: false,
             grid_dir: PathBuf::from("/data/grids"),
+            tile_dir: PathBuf::from("/data/tiles"),
         })
         .unwrap();
         assert_eq!(
             store.grid_key_for_path(Path::new("/data/grids/radar/t.meta.json")),
             Some("grids/radar/t.meta.json".into())
+        );
+        assert_eq!(
+            store.tile_bundle_key_for_dir(Path::new(
+                "/data/tiles/radar/classic/2026-11-26T18:00:00Z"
+            )),
+            Some("tiles/radar/classic/2026-11-26T18:00:00Z.rtb".into())
         );
         assert_eq!(
             store.grid_key_for_path(Path::new("/other/t.meta.json")),
@@ -937,7 +1013,9 @@ mod tests {
             region: "us-east-1".into(),
             prefix: String::new(),
             read_grids_s3: true,
+            read_tiles_s3: true,
             grid_dir: PathBuf::from("/data/grids"),
+            tile_dir: PathBuf::from("/data/tiles"),
         })
         .unwrap();
 
